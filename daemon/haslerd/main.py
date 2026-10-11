@@ -125,6 +125,8 @@ def build(args) -> tuple[Panel, Actions, Lamp | None, dict]:
         log.info("no Home Assistant transport configured; hold actions are inert")
 
     actions = Actions(variant, player, ha=ha, state=state)
+    # Background: YTM presets resolve their opening track now, not on first press.
+    player.prefetch(list(actions.presets.values()))
     if lamp is not None:
         actions.on_play_error = lambda _exc: lamp.flash("error", time.monotonic())
     return panel, actions, lamp, config

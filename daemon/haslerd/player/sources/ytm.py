@@ -18,6 +18,9 @@ Consequences worth knowing:
   One region-locked track therefore costs a skip, not silence.
 * Resolving the *next* queued id in the background after each request means a
   track change normally hits the cache rather than waiting on yt-dlp.
+* ``warm()`` does the same for the *first* track of every ytm preset, in the
+  background and again every ``WARM_INTERVAL_S``. Without it the first press
+  pays for expansion plus one resolve - measured at ~13 s on a Pi 4.
 
 Operational notes (these bite in practice, so they live here, not in a wiki):
 
@@ -66,6 +69,12 @@ PLAYLIST_TTL_S = 10 * 60
 # mid-play on reconnect.
 EXPIRY_MARGIN_S = 30 * 60
 
+# How often warm() refreshes each preset's playlist and opening track. Well
+# inside a stream URL's lifetime, so a press between rounds still hits cache.
+WARM_INTERVAL_S = 30 * 60
+# After a round with failures (e.g. booted before the Wi-Fi), try again soon.
+WARM_RETRY_S = 60
+
 
 class YtmError(RuntimeError):
     """A ytm preset could not be started. Raised by ``play`` only."""
@@ -112,6 +121,10 @@ class YtmSource:
         self._mpd_lock = threading.Lock()
         # Queue order as we added it, used to guess the next id if MPD can't say.
         self._queue: list[str] = []
+        # Shuffle presets: playlist uri -> the start index warm() already resolved.
+        self._starts: dict[str, int] = {}
+        self._warm_stop = threading.Event()
+        self._warm_thread: threading.Thread | None = None
 
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -145,13 +158,23 @@ class YtmSource:
                 if preset.shuffle:
                     # MPD's random mode shuffles what comes *after* the current
                     # song; without a random start every press opens on track 1.
-                    client.play(random.randrange(len(ids)))
+                    # Use the start warm() picked (and resolved) if there is one.
+                    with self._cache_lock:
+                        start = self._starts.pop(preset.uri, None)
+                    if start is None or start >= len(ids):
+                        start = random.randrange(len(ids))
+                    client.play(start)
                 else:
                     client.play()
         except Exception as exc:
             raise YtmError(f"MPD refused ytm preset {preset.n}: {exc}") from exc
         self._queue = ids
         log.info("playing ytm preset %s (%s), %d tracks", preset.n, preset.name, len(ids))
+        if preset.shuffle and self._warm_thread is not None:
+            # That start is spent; line up the next one so the next press is quick too.
+            threading.Thread(
+                target=self.warm_once, args=(preset,), name="ytm-warm", daemon=True
+            ).start()
 
     def stop(self) -> None:
         try:
@@ -184,6 +207,7 @@ class YtmSource:
             return False
 
     def close(self) -> None:
+        self._warm_stop.set()
         with self._server_lock:
             server, thread = self._server, self._thread
             self._server = self._thread = None
@@ -196,6 +220,50 @@ class YtmSource:
             log.debug("ytm proxy shutdown failed", exc_info=True)
         if thread is not None:
             thread.join(timeout=5)
+
+    # -- warm-up ----------------------------------------------------------
+
+    def warm(self, presets: list[Preset], interval_s: float = WARM_INTERVAL_S) -> None:
+        """Keep each ytm preset's playlist and opening track resolved, forever.
+
+        Runs on a daemon thread: one round now, then every ``interval_s``
+        (``WARM_RETRY_S`` after a round where anything failed). Idempotent -
+        a second call while it runs does nothing.
+        """
+        presets = [p for p in presets if p.source == "ytm"]
+        if not presets or self._warm_thread is not None:
+            return
+        self._warm_interval_s = interval_s
+
+        def loop() -> None:
+            while not self._warm_stop.is_set():
+                ok = all([self.warm_once(p) for p in presets])
+                self._warm_stop.wait(interval_s if ok else min(WARM_RETRY_S, interval_s))
+
+        self._warm_thread = threading.Thread(target=loop, name="ytm-warm", daemon=True)
+        self._warm_thread.start()
+        log.info("warming %d ytm preset(s) every %ds", len(presets), interval_s)
+
+    def warm_once(self, preset: Preset) -> bool:
+        """Expand ``preset`` and resolve the track it will open on. True if both worked."""
+        try:
+            interval = getattr(self, "_warm_interval_s", WARM_INTERVAL_S)
+            # Fresh each round so playlist edits show up; kept until the next
+            # round so a press in between skips expansion.
+            ids = self._expand(preset.uri, ttl_s=interval + WARM_RETRY_S, force=True)
+            if not ids:
+                return False
+            start = 0
+            if preset.shuffle:
+                start = random.randrange(len(ids))
+                with self._cache_lock:
+                    self._starts[preset.uri] = start
+            ok = self.resolve(ids[start]) is not None
+            log.debug("warmed ytm preset %s: %s", preset.n, "ok" if ok else "resolve failed")
+            return ok
+        except Exception:
+            log.debug("warming ytm preset %s failed", preset.n, exc_info=True)
+            return False
 
     # -- proxy server -----------------------------------------------------
 
@@ -288,15 +356,18 @@ class YtmSource:
         log.warning("yt-dlp gave no URL for %s", vid)
         return None
 
-    def _expand(self, uri: str) -> list[str]:
-        """Playlist (or watch) URL -> video ids, in playlist order."""
+    def _expand(self, uri: str, ttl_s: float | None = None, force: bool = False) -> list[str]:
+        """Playlist (or watch) URL -> video ids, in playlist order.
+
+        Cached for ``ttl_s`` (default ``playlist_ttl_s``); ``force`` skips the cache.
+        """
         single = _single_video_id(uri)
         if single:
             return [single]
         now = time.time()
         with self._cache_lock:
             hit = self._playlists.get(uri)
-        if hit and hit[0] > now:
+        if hit and hit[0] > now and not force:
             return list(hit[1])
 
         cmd = [self.ytdlp, "--flat-playlist", "-J"]
@@ -317,8 +388,9 @@ class YtmSource:
             log.warning("yt-dlp gave unparseable JSON for %s", uri)
             return []
         ids = _ids_from_info(data)
+        ttl = self.playlist_ttl_s if ttl_s is None else ttl_s
         with self._cache_lock:
-            self._playlists[uri] = (now + self.playlist_ttl_s, ids)
+            self._playlists[uri] = (now + ttl, ids)
         return list(ids)
 
     # -- prefetch ---------------------------------------------------------

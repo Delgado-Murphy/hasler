@@ -351,3 +351,21 @@ class TestMpdConnection:
     def test_shared_factory_is_what_ytm_gets(self):
         radio = RadioSource()
         assert isinstance(radio.mpd, MpdConnection)
+
+
+class TestPrefetch:
+    def test_prefetch_hands_presets_to_sources_that_can_warm(self, router):
+        player, sources, log, _ = router
+        warmed = []
+        sources["ytm"].warm = lambda presets: warmed.append([p.n for p in presets])
+        player.prefetch([RADIO, SPOTIFY, YTM])
+        assert warmed == [[RADIO.n, SPOTIFY.n, YTM.n]]  # the source filters its own
+
+    def test_a_failing_warm_up_does_not_escape(self, router):
+        player, sources, _, _ = router
+
+        def boom(presets):
+            raise RuntimeError("no network")
+
+        sources["ytm"].warm = boom
+        player.prefetch([YTM])  # logged, not raised

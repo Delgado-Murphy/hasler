@@ -416,6 +416,16 @@ class MoodePlayer:
         # Excelsior only - DPDT relay on GPIO 24 plus a CamillaDSP profile swap.
         log.info("speaker route -> position %s (relay not fitted on this cabinet)", position)
 
+    def prefetch(self, presets: list[Preset]) -> None:
+        """Have sources that can warm up ahead of a press do so (today: ytm)."""
+        for source in self.sources.values():
+            warm = getattr(source, "warm", None)
+            if warm is not None:
+                try:
+                    warm(list(presets))
+                except Exception:
+                    log.warning("could not start %s warm-up", source.name, exc_info=True)
+
     def shutdown(self) -> None:
         log.warning("clean shutdown requested from the panel")
         subprocess.run(["sudo", "systemctl", "poweroff"], capture_output=True, timeout=10)

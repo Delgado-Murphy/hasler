@@ -307,3 +307,83 @@ def test_close_stops_the_server(mpd, runner):
     with pytest.raises(urllib.error.URLError):
         urllib.request.urlopen(url, timeout=2)
     src.close()  # idempotent
+
+
+# -- warm-up --------------------------------------------------------------
+
+
+def test_warm_once_expands_and_resolves_the_opening_track(source, runner):
+    assert source.warm_once(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")) is True
+    assert sum("-J" in c for c in runner.calls) == 1
+    assert runner.resolves() == [IDS[0]]
+
+
+def test_press_after_warm_needs_no_ytdlp(source, mpd, runner):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    source.warm_once(preset)
+    runner.calls.clear()
+    source.play(preset)
+    status, _ = fetch(mpd.queue[0])
+    assert status == 302
+    assert runner.calls == [] or all("-g" in c for c in runner.calls)  # only prefetch of track 2
+    assert IDS[0] not in runner.resolves()
+
+
+def test_warmed_playlist_outlives_the_short_press_cache(mpd, runner):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, playlist_ttl_s=0)
+    try:
+        src._warm_interval_s = 600
+        preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+        src.warm_once(preset)
+        src.play(preset)
+        assert sum("-J" in c for c in runner.calls) == 1
+    finally:
+        src.close()
+
+
+def test_warm_refreshes_the_playlist_each_round(source, runner):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    source.warm_once(preset)
+    source.warm_once(preset)
+    assert sum("-J" in c for c in runner.calls) == 2
+
+
+def test_shuffle_press_opens_on_the_warmed_track(source, mpd, runner, monkeypatch):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm", shuffle=True)
+    monkeypatch.setattr("haslerd.player.sources.ytm.random.randrange", lambda n: 2)
+    source.warm_once(preset)
+    assert runner.resolves() == [IDS[2]]
+    monkeypatch.setattr("haslerd.player.sources.ytm.random.randrange", lambda n: 1)
+    source.play(preset)
+    assert ("play", 2) in mpd.calls
+
+
+def test_warm_once_reports_failure(mpd):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=FakeRunner(fail_ids={IDS[0]}))
+    try:
+        assert src.warm_once(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")) is False
+        empty = YtmSource(mpd=lambda: mpd, port=0, runner=FakeRunner(entries=[]))
+        assert empty.warm_once(Preset(n=1, name="Empty", uri=PLAYLIST, source="ytm")) is False
+    finally:
+        src.close()
+
+
+def test_warm_runs_in_the_background_and_close_stops_it(mpd, runner):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    presets = [
+        Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"),
+        Preset(n=2, name="Radio", uri="http://radio.example/s", source="radio"),
+    ]
+    src.warm(presets, interval_s=0.05)
+    try:
+        assert wait_for(lambda: sum("-J" in c for c in runner.calls) >= 2)
+        assert all(PLAYLIST in c or "watch?v=" in c[-1] for c in runner.calls)  # radio ignored
+    finally:
+        src.close()
+    src._warm_thread.join(timeout=2)
+    assert not src._warm_thread.is_alive()
+
+
+def test_warm_with_no_ytm_presets_starts_nothing(source):
+    source.warm([Preset(n=2, name="Radio", uri="http://radio.example/s", source="radio")])
+    assert source._warm_thread is None

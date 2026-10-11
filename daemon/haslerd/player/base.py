@@ -125,6 +125,10 @@ class Player(Protocol):
 
     def shutdown(self) -> None: ...
 
+    def prefetch(self, presets: list[Preset]) -> None:
+        """Get presets ready in the background so a press starts quickly."""
+        ...
+
 
 @dataclass
 class FakePlayer:
@@ -155,6 +159,9 @@ class FakePlayer:
     def stop(self) -> None:
         self.calls.append(("stop",))
         self.playing = None
+
+    def prefetch(self, presets: list[Preset]) -> None:
+        self.calls.append(("prefetch", tuple(p.n for p in presets)))
 
     def next_track(self) -> None:
         self.calls.append(("next_track",))
