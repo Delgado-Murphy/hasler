@@ -14,7 +14,7 @@ from haslerd.player.moode import (
     MoodePlayer,
     SpotifyConfig,
     YtmConfig,
-    bluetooth_pair_script,
+    bluetooth_pair_commands,
     parse_amixer_percent,
     scale_volume,
     unscale_volume,
@@ -224,11 +224,11 @@ class TestConfig:
 
 class TestBluetoothPair:
     def test_window_is_honoured(self):
-        script = bluetooth_pair_script(90)
-        assert "discoverable-timeout 90\n" in script
-        assert "pairable-timeout 90\n" in script
-        # Timeouts first: BlueZ applies them when discoverable turns on.
-        assert script.index("discoverable-timeout") < script.index("discoverable on")
+        cmds = bluetooth_pair_commands(90)
+        assert ["discoverable-timeout", "90"] in cmds
+        # Timeout first: BlueZ applies it when discoverable turns on.
+        assert cmds.index(["discoverable-timeout", "90"]) < cmds.index(["discoverable", "on"])
+        assert ["pairable", "on"] in cmds
 
 
     def _player(self, monkeypatch, bt_active, hang=False):
@@ -253,10 +253,11 @@ class TestBluetoothPair:
         assert [c[0] for c in calls] == ["systemctl"]
         assert "bluetooth is off" in caplog.text
 
-    def test_bluetooth_on_runs_the_script(self, monkeypatch):
+    def test_bluetooth_on_runs_one_command_per_bluetoothctl(self, monkeypatch):
         player, calls = self._player(monkeypatch, bt_active=True)
         player.bluetooth_pair(120)
-        assert [c[0] for c in calls] == ["systemctl", "bluetoothctl"]
+        assert calls[0][0] == "systemctl"
+        assert calls[1:] == [["bluetoothctl", *args] for args in bluetooth_pair_commands(120)]
 
     def test_a_hung_bluetoothctl_is_logged_not_raised(self, monkeypatch, caplog):
         player, _ = self._player(monkeypatch, bt_active=True, hang=True)

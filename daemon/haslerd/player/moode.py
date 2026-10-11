@@ -410,17 +410,17 @@ class MoodePlayer:
         if not self._bluetooth_up():
             log.warning("bluetooth is off - turn it on in moOde (Renderers > Bluetooth) to pair")
             return
-        try:
-            subprocess.run(
-                [self.config.bluetoothctl],
-                input=bluetooth_pair_script(seconds),
-                text=True,
-                capture_output=True,
-                timeout=5,
-            )
-        except subprocess.TimeoutExpired:
-            log.warning("bluetoothctl did not answer; pairing mode not entered")
-            return
+        for args in bluetooth_pair_commands(seconds):
+            try:
+                result = subprocess.run(
+                    [self.config.bluetoothctl, *args], capture_output=True, text=True, timeout=5
+                )
+            except subprocess.TimeoutExpired:
+                log.warning("bluetoothctl did not answer; pairing mode not entered")
+                return
+            if result.returncode != 0:
+                log.warning("bluetoothctl %s failed: %s", " ".join(args), (result.stdout or "").strip()[-200:])
+                return
         log.info("bluetooth discoverable for %ss", seconds)
 
     def _bluetooth_up(self) -> bool:
@@ -461,20 +461,23 @@ class MoodePlayer:
                 log.debug("closing %s failed", name, exc_info=True)
 
 
-def bluetooth_pair_script(seconds: int) -> str:
-    """bluetoothctl commands for a pairing window of ``seconds``.
+def bluetooth_pair_commands(seconds: int) -> list[list[str]]:
+    """bluetoothctl invocations, in order, for a pairing window of ``seconds``.
 
-    The timeouts go first: BlueZ applies them when discoverable/pairable turn
-    on, so the box stops advertising itself on its own rather than staying
-    visible to every phone in the street until the next reboot.
+    One command per run: piped into an interactive bluetoothctl, commands
+    arrive before it has connected to bluetoothd and are silently lost (seen
+    on the bench - "pairable on" never took). The timeout goes first: BlueZ
+    applies it when discoverable turns on, so the box stops advertising itself
+    on its own rather than staying visible to every phone in the street.
+    There is no pairable timeout on this BlueZ; moOde keeps pairable on anyway,
+    and its agent asks for confirmation.
     """
     seconds = max(1, int(seconds))
-    return (
-        f"discoverable-timeout {seconds}\n"
-        f"pairable-timeout {seconds}\n"
-        "discoverable on\n"
-        "pairable on\n"
-    )
+    return [
+        ["discoverable-timeout", str(seconds)],
+        ["discoverable", "on"],
+        ["pairable", "on"],
+    ]
 
 
 def parse_amixer_percent(output: str) -> int | None:
