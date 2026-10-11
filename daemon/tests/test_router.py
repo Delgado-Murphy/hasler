@@ -4,6 +4,8 @@ Fake sources stand in for go-librespot and the YTM proxy; a fake MPD client
 stands in for MPD. What is under test is the arbitration and bookkeeping.
 """
 
+import subprocess
+
 import pytest
 
 from haslerd.player.base import Player, Preset, Source
@@ -227,6 +229,39 @@ class TestBluetoothPair:
         assert "pairable-timeout 90\n" in script
         # Timeouts first: BlueZ applies them when discoverable turns on.
         assert script.index("discoverable-timeout") < script.index("discoverable on")
+
+
+    def _player(self, monkeypatch, bt_active, hang=False):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append(cmd)
+            if cmd[0] == "systemctl":
+                return subprocess.CompletedProcess(cmd, 0 if bt_active else 3)
+            if hang:
+                raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr("haslerd.player.moode.shutil.which", lambda name: "/usr/bin/" + name)
+        monkeypatch.setattr("haslerd.player.moode.subprocess.run", run)
+        player = MoodePlayer(MoodeConfig(source_flags={}), sources={})
+        return player, calls
+
+    def test_bluetooth_off_returns_at_once_without_bluetoothctl(self, monkeypatch, caplog):
+        player, calls = self._player(monkeypatch, bt_active=False)
+        player.bluetooth_pair(120)
+        assert [c[0] for c in calls] == ["systemctl"]
+        assert "bluetooth is off" in caplog.text
+
+    def test_bluetooth_on_runs_the_script(self, monkeypatch):
+        player, calls = self._player(monkeypatch, bt_active=True)
+        player.bluetooth_pair(120)
+        assert [c[0] for c in calls] == ["systemctl", "bluetoothctl"]
+
+    def test_a_hung_bluetoothctl_is_logged_not_raised(self, monkeypatch, caplog):
+        player, _ = self._player(monkeypatch, bt_active=True, hang=True)
+        player.bluetooth_pair(120)
+        assert "did not answer" in caplog.text
 
 
 class TestVolumeReadback:

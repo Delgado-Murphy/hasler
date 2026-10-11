@@ -121,6 +121,9 @@ class Actions:
         if handler is None:
             log.warning("unknown action verb %r for %s", verb, event)
             return
+        # Keys at INFO so "did it see my press?" is answered by the journal;
+        # wheel changes stream while turning, so they stay at DEBUG.
+        log.log(logging.DEBUG if event.kind == "change" else logging.INFO, "%s -> %s", event, verb)
         try:
             handler(event, spec)
         except Exception:

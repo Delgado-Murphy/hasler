@@ -401,14 +401,32 @@ class MoodePlayer:
         if not shutil.which(self.config.bluetoothctl):
             log.warning("bluetoothctl not found; cannot enter pairing mode")
             return
-        subprocess.run(
-            [self.config.bluetoothctl],
-            input=bluetooth_pair_script(seconds),
-            text=True,
-            capture_output=True,
-            timeout=10,
-        )
+        # With BlueZ down, bluetoothctl waits for it indefinitely - and this
+        # runs on the panel loop, so every key would freeze until the timeout.
+        if not self._bluetooth_up():
+            log.warning("bluetooth is off - turn it on in moOde (Renderers > Bluetooth) to pair")
+            return
+        try:
+            subprocess.run(
+                [self.config.bluetoothctl],
+                input=bluetooth_pair_script(seconds),
+                text=True,
+                capture_output=True,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            log.warning("bluetoothctl did not answer; pairing mode not entered")
+            return
         log.info("bluetooth discoverable for %ss", seconds)
+
+    def _bluetooth_up(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["systemctl", "is-active", "--quiet", "bluetooth"], capture_output=True, timeout=2
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return True     # can't tell (no systemd?) - let bluetoothctl try
+        return result.returncode == 0
 
     # -- misc -------------------------------------------------------------
 

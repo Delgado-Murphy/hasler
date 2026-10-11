@@ -350,7 +350,7 @@ def test_warm_refreshes_the_playlist_each_round(source, runner):
 
 def test_shuffle_press_opens_on_the_warmed_track(source, mpd, runner, monkeypatch):
     preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm", shuffle=True)
-    monkeypatch.setattr("haslerd.player.sources.ytm.random.randrange", lambda n: 2)
+    monkeypatch.setattr("haslerd.player.sources.ytm.random.sample", lambda pop, k: [2, 0, 1][:k])
     source.warm_once(preset)
     assert runner.resolves() == [IDS[2]]
     monkeypatch.setattr("haslerd.player.sources.ytm.random.randrange", lambda n: 1)
@@ -359,7 +359,7 @@ def test_shuffle_press_opens_on_the_warmed_track(source, mpd, runner, monkeypatc
 
 
 def test_warm_once_reports_failure(mpd):
-    src = YtmSource(mpd=lambda: mpd, port=0, runner=FakeRunner(fail_ids={IDS[0]}))
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=FakeRunner(fail_ids=set(IDS)))
     try:
         assert src.warm_once(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")) is False
         empty = YtmSource(mpd=lambda: mpd, port=0, runner=FakeRunner(entries=[]))
@@ -387,3 +387,44 @@ def test_warm_runs_in_the_background_and_close_stops_it(mpd, runner):
 def test_warm_with_no_ytm_presets_starts_nothing(source):
     source.warm([Preset(n=2, name="Radio", uri="http://radio.example/s", source="radio")])
     assert source._warm_thread is None
+
+
+def test_warm_skips_a_dead_opening_track_and_the_press_starts_past_it(mpd):
+    runner = FakeRunner(fail_ids={IDS[0]})
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    try:
+        preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+        assert src.warm_once(preset) is True
+        assert runner.resolves() == [IDS[0], IDS[1]]
+        src.play(preset)
+        assert mpd.calls[-1] == ("play", 1)
+        src.play(preset)                      # in order: the start is kept
+        assert mpd.calls[-1] == ("play", 1)
+    finally:
+        src.close()
+
+
+def test_shuffle_warm_tries_another_random_start_when_its_pick_is_dead(mpd, monkeypatch):
+    runner = FakeRunner(fail_ids={IDS[2]})
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    monkeypatch.setattr("haslerd.player.sources.ytm.random.sample", lambda pop, k: [2, 1, 0][:k])
+    try:
+        preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm", shuffle=True)
+        assert src.warm_once(preset) is True
+        assert runner.resolves() == [IDS[2], IDS[1]]
+        src.play(preset)
+        assert ("play", 1) in mpd.calls
+    finally:
+        src.close()
+
+
+def test_warm_gives_up_after_three_dead_openers(mpd):
+    runner = FakeRunner(entries=IDS + ["ddddddddddd"], fail_ids=set(IDS))
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    try:
+        assert src.warm_once(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")) is False
+        assert runner.resolves() == IDS             # 3 tries, not the 4th
+        src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
+        assert mpd.calls[-1] == ("play",)            # no known-good start: from the top
+    finally:
+        src.close()

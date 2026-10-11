@@ -74,6 +74,9 @@ EXPIRY_MARGIN_S = 30 * 60
 WARM_INTERVAL_S = 30 * 60
 # After a round with failures (e.g. booted before the Wi-Fi), try again soon.
 WARM_RETRY_S = 60
+# Playlists carry dead entries (removed, region-locked). If the opening track
+# won't resolve, warm() tries this many in all before giving up for the round.
+WARM_TRIES = 3
 
 
 class YtmError(RuntimeError):
@@ -121,7 +124,8 @@ class YtmSource:
         self._mpd_lock = threading.Lock()
         # Queue order as we added it, used to guess the next id if MPD can't say.
         self._queue: list[str] = []
-        # Shuffle presets: playlist uri -> the start index warm() already resolved.
+        # playlist uri -> the start index warm() resolved: a pre-picked random
+        # start for shuffle, the first *playable* track otherwise.
         self._starts: dict[str, int] = {}
         self._warm_stop = threading.Event()
         self._warm_thread: threading.Thread | None = None
@@ -165,7 +169,13 @@ class YtmSource:
                         start = random.randrange(len(ids))
                     client.play(start)
                 else:
-                    client.play()
+                    # Kept, not popped: in order, the opening track is stable.
+                    with self._cache_lock:
+                        start = self._starts.get(preset.uri)
+                    if start is None or start >= len(ids):
+                        client.play()
+                    else:
+                        client.play(start)
         except Exception as exc:
             raise YtmError(f"MPD refused ytm preset {preset.n}: {exc}") from exc
         self._queue = ids
@@ -253,14 +263,19 @@ class YtmSource:
             ids = self._expand(preset.uri, ttl_s=interval + WARM_RETRY_S, force=True)
             if not ids:
                 return False
-            start = 0
+            tries = min(WARM_TRIES, len(ids))
             if preset.shuffle:
-                start = random.randrange(len(ids))
-                with self._cache_lock:
-                    self._starts[preset.uri] = start
-            ok = self.resolve(ids[start]) is not None
-            log.debug("warmed ytm preset %s: %s", preset.n, "ok" if ok else "resolve failed")
-            return ok
+                candidates = random.sample(range(len(ids)), tries)
+            else:
+                candidates = list(range(tries))
+            for start in candidates:
+                if self.resolve(ids[start]) is not None:
+                    with self._cache_lock:
+                        self._starts[preset.uri] = start
+                    log.debug("warmed ytm preset %s: opens on track %d", preset.n, start)
+                    return True
+            log.warning("ytm preset %s: none of %d opening tracks would resolve", preset.n, tries)
+            return False
         except Exception:
             log.debug("warming ytm preset %s failed", preset.n, exc_info=True)
             return False
