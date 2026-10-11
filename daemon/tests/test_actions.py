@@ -105,11 +105,11 @@ class TestSources:
 
     def test_cycling_home_to_radio_restores_the_last_station(self, hasler):
         _, player, actions = hasler
-        actions.dispatch(Event("k6", "tap"))
+        actions.dispatch(Event("k1", "tap"))       # a radio preset in the shipped set
         for _ in range(4):
             actions.dispatch(Event("pu", "tap"))
         assert player.active_source() == "radio"
-        assert player.playing.n == 6
+        assert player.playing.n == 1
 
     def test_holding_pu_opens_bluetooth_pairing(self, hasler):
         _, player, actions = hasler
