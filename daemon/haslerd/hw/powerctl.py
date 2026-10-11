@@ -18,6 +18,9 @@ log = logging.getLogger(__name__)
 ADDR = 0x77
 REG_LED_MODE = 0x01
 REG_LED_R, REG_LED_G, REG_LED_B = 0x02, 0x03, 0x04
+# Firmware LED modes (registers.h): 0 static, 1 pulsing, 2 blink, 3 flash, 4 off.
+# Static only - Lamp draws its own effects, and the firmware's would stack on top.
+LEDMODE_STATIC = 0
 REG_BUTTON = 0x06
 REG_POWEROFF_TIMER = 0x09
 
@@ -83,7 +86,7 @@ class PowerController:
         if self._bus is None:
             return
         try:
-            self._bus.write_byte_data(self.addr, REG_LED_MODE, 0x01)
+            self._bus.write_byte_data(self.addr, REG_LED_MODE, LEDMODE_STATIC)
             for reg, value in ((REG_LED_R, r), (REG_LED_G, g), (REG_LED_B, b)):
                 self._bus.write_byte_data(self.addr, reg, max(0, min(255, int(value))))
         except Exception:

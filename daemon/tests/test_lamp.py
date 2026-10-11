@@ -132,3 +132,21 @@ class TestLampPriority:
         from haslerd.main import lamp_state
 
         assert lamp_state(True, False, "radio") == "standby"
+
+
+def test_colour_writes_put_the_firmware_in_static_mode():
+    # Firmware LED mode 1 is *pulsing*; ours draws its own effects on top of static.
+    from haslerd.hw.powerctl import REG_LED_MODE, PowerController
+
+    class Bus:
+        def __init__(self):
+            self.writes = []
+
+        def write_byte_data(self, addr, reg, value):
+            self.writes.append((reg, value))
+
+    pc = PowerController.__new__(PowerController)
+    pc.addr, pc._bus = 0x77, Bus()
+    pc.set_rgb(255, 150, 40)
+    assert pc._bus.writes[0] == (REG_LED_MODE, 0)
+    assert pc._bus.writes[1:] == [(0x02, 255), (0x03, 150), (0x04, 40)]
