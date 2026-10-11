@@ -264,6 +264,19 @@ class TestBluetoothPair:
         assert "did not answer" in caplog.text
 
 
+    def test_back_to_radio_with_bluetooth_off_skips_bluetoothctl(self, monkeypatch):
+        player, calls = self._player(monkeypatch, bt_active=False)
+        player.config.renderer_units = {"bluetooth": "bluealsa"}
+        player.select_source("radio")
+        assert "bluetoothctl" not in [c[0] for c in calls]
+
+    def test_back_to_radio_survives_a_hung_disconnect(self, monkeypatch, caplog):
+        player, _ = self._player(monkeypatch, bt_active=True, hang=True)
+        player.config.renderer_units = {"bluetooth": "bluealsa"}
+        player.select_source("radio")   # must not raise
+        assert "did not answer" in caplog.text
+
+
 class TestVolumeReadback:
     def test_amixer_percent_is_parsed(self):
         out = "Simple mixer control 'Digital',0\n  Front Left: Playback 154 [75%] [-25.50dB] [on]\n"

@@ -390,12 +390,16 @@ class MoodePlayer:
         self.stop()
 
     def _disconnect(self, source: str) -> None:
-        if source == "bluetooth" and shutil.which(self.config.bluetoothctl):
-            subprocess.run(
-                [self.config.bluetoothctl, "disconnect"],
-                capture_output=True,
-                timeout=5,
-            )
+        if source != "bluetooth" or not shutil.which(self.config.bluetoothctl):
+            return
+        # Bluetooth off means nothing to disconnect - and bluetoothctl would
+        # hang waiting for BlueZ, failing the whole source switch.
+        if not self._bluetooth_up():
+            return
+        try:
+            subprocess.run([self.config.bluetoothctl, "disconnect"], capture_output=True, timeout=5)
+        except subprocess.TimeoutExpired:
+            log.warning("bluetoothctl disconnect did not answer; carrying on")
 
     def bluetooth_pair(self, seconds: int) -> None:
         if not shutil.which(self.config.bluetoothctl):
