@@ -7,7 +7,9 @@ moode:
   # This must be the HARDWARE mixer - it is what makes one knob control
   # Bluetooth and AirPlay as well as the radio.
   mixer: Digital
-  card: 0
+  # ALSA card id (or index) - from: cat /proc/asound/cards. With moOde's two
+  # HDMI cards in front, the Amp4 Pro is index 2; the id doesn't move.
+  card: sndrpihifiberry
   # Ceiling on the mixer, as a percentage of full scale.
   # The Hasler's speaker measures 14.2 ohm DCR -> ~16 ohm nominal. The Amp4 Pro
   # will put ~10 W into that; the vintage cone is good for maybe 1-3 W. Turn

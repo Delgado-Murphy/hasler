@@ -80,7 +80,9 @@ class MoodeConfig:
     mpd_host: str = "localhost"
     mpd_port: int = 6600
     mixer: str = "Digital"          # from: moodeutl -q "select value from cfg_system where param='amixname'"
-    card: int = 0
+    # amixer -c takes an index or the ALSA card id. The id survives HDMI
+    # cards shifting the numbering; the Amp4 Pro is "sndrpihifiberry".
+    card: int | str = 0
     moodeutl: str = "moodeutl"
     amixer: str = "amixer"
     # Ceiling on the hardware mixer, as a percentage. The Amp4 Pro can deliver
