@@ -136,7 +136,7 @@ class TestConnectivity:
 
 
 # Mirrors the commented-out fallback block in config/variants/hasler-hm.yaml.
-GPIO_FALLBACK = {"backend": "gpio", "pins": [5, 6, 12, 13, 16, 17, 22, 26, 25]}
+GPIO_FALLBACK = {"backend": "gpio", "pins": [5, 6, 12, 13, 16, 17, 24, 26, 25]}
 
 
 class TestGpioPinIndex:
@@ -178,4 +178,4 @@ class TestGpioPinIndex:
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
         variant.io["digital"] = dict(GPIO_FALLBACK)
         open_backends(variant)
-        assert seen == {"d0": 5, "d1": 6, "d2": 12, "d3": 13, "d4": 16, "d5": 17, "d6": 22, "d8": 25}
+        assert seen == {"d0": 5, "d1": 6, "d2": 12, "d3": 13, "d4": 16, "d5": 17, "d6": 24, "d8": 25}

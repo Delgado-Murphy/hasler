@@ -6,9 +6,9 @@
 |---|---|---|
 | **Raspberry Pi 4B** | the brain | **Use this one.** HiFiBerry rate the Amp4 Pro's 5 V supply as good "up to the Pi4B", so the Pi 5 exceeds its budget — and the 4B runs cooler in a sealed wooden cabinet. The 3B+ has weaker WiFi/BT |
 | **HiFiBerry Amp4 Pro** | DAC + amp, ~2×30 W | Hardware ALSA mixer — that is what makes one volume knob control radio, Bluetooth, AirPlay and Spotify alike. Powers the Pi from its own 5 V rail |
-| **HiFiBerry Power Controller v1.1** | power switching, RGB lamp, button | I²C `0x77`. Accepts up to 30 V, switches Vin→Vout. Drives the colour lamp at zero GPIO cost |
+| ~~HiFiBerry Power Controller v1.1~~ | **dropped** | Not used in this build. The lamp went to Pi GPIO instead (below); the power-path and JP1 notes further down only apply if it comes back |
 | **HW-398 PD trigger** | 20 V from a USB-C charger | Fastsoc FS312. Bridge the **20 V** pad only |
-| **RGB LED, 4-wire** | pilot lamp | Goes to the Power Controller, not the Pi |
+| **RGB LED, 4-wire** | pilot lamp | Pi header pins 13–16 (GPIO 27/22/23 + GND), three resistors — see *Pilot lamp* |
 | Hasler HM cabinet | keys, pots, speaker | 7 momentary keys, volume + tone pots, elliptical speaker |
 
 ## Buy now — Stage 1, makes it play
@@ -182,7 +182,7 @@ right-hand header → ADS1115.
 |---|---|---|---|
 | VCC | red | 3.3 V, pin 1 | the board runs at 3.3–5 V; **3.3 V** keeps SDA/SCL at the Pi's level |
 | GND | black | GND, pin 6 | |
-| SDA | green | pin 3 (GPIO 2) | shared with the Amp4 Pro's DAC config and the Power Controller |
+| SDA | green | pin 3 (GPIO 2) | shared with the Amp4 Pro's amp chip (0x4d) |
 | SCL | blue | pin 5 (GPIO 3) | |
 | INTA | yellow | — | leave unconnected; haslerd polls |
 | INTB | orange | — | leave unconnected |
@@ -198,7 +198,7 @@ key loom's common ground.
 |---|---|---|
 | VCC | 3.3 V (pin 1 or 17) | **Not 5 V** — the board's 4.7 kΩ I²C pull-ups go to VCC, and the Pi's pins are 3.3 V only |
 | GND | GND (pin 9) | the key loom's common ground lands here too |
-| SDA | pin 3 (GPIO 2) | shared bus with the Power Controller |
+| SDA | pin 3 (GPIO 2) | shared bus with the Amp4 Pro (0x4d) |
 | SCL | pin 5 (GPIO 3) | |
 | RST | — | must sit at VCC — meter RST↔VCC; if open, bridge it, or the chip stays in reset |
 | ITA / ITB | — | leave open; haslerd polls |
@@ -217,18 +217,39 @@ key loom's common ground.
 switch there may never read. The daemon refuses `d7`/`d15` at startup, which is why the end-switch
 skips to PB0.
 
-**Fallback: direct GPIO map** — avoids the Amp4 Pro's 2, 3, 4, 18–21, the HAT EEPROM (0, 1) and UART (14, 15). Commented out in `hasler-hm.yaml`:
+**Fallback: direct GPIO map** — avoids the Amp4 Pro's 2, 3, 4, 18–21, the HAT EEPROM (0, 1), UART (14, 15) and the lamp (22, 23, 27). Commented out in `hasler-hm.yaml`:
 
 | Logical | Key | GPIO | | Logical | Key | GPIO |
 |---|---|---|---|---|---|---|
 | d0 | 1 | 5 | | d4 | 5 | 16 |
 | d1 | 2 | 6 | | d5 | 6 | 17 |
-| d2 | 3 | 12 | | d6 | PU | 22 |
+| d2 | 3 | 12 | | d6 | PU | 24 |
 | d3 | 4 | 13 | | d8 | tone end-switch | 25 |
 
 All keys to a common ground rail, pull-ups enabled in software, 100 nF across each.
 
-**I²C map:** `0x77` Power Controller · `0x27` MCP23017 keys (CQRobot; `0x20` green board) · `0x48` ADS1115 (Phase 3b) · the Amp4 Pro's own DAC also lives on this bus — `i2cdetect` will show it, leave it alone
+## Pilot lamp — RGB LED on the Pi header
+
+Four **consecutive** header pins, so one 4-way Dupont housing plugs it in (`io.lamp` in
+`hasler-hm.yaml`). haslerd drives it with software PWM: every lamp state, dimming, pulse and flash.
+
+| Header pin | Pi | LED leg | Series resistor |
+|---|---|---|---|
+| 13 | GPIO 27 | red | **220 Ω** |
+| 14 | GND | common (**common cathode**, long leg) | — |
+| 15 | GPIO 22 | green | **100 Ω** |
+| 16 | GPIO 23 | blue | **100 Ω** |
+| 17 | 3V3 | common (**common anode** only — then 14 stays empty, 5-way housing) | — |
+
+- **Which type?** Meter in diode mode, red probe on the long leg: colours glow → common anode; glow
+  only with the black probe there → common cathode. Set `common:` to match. Backwards just inverts the
+  colours (off becomes white); nothing breaks.
+- **Resistors go on the colour legs, never the common.** These keep each pin at roughly 4–6 mA at 3.3 V, well inside what a GPIO can source
+  (red drops ~2.0 V, green/blue ~2.9 V). Too dim or one colour dominant: adjust `balance:` in the
+  descriptor before changing parts.
+- Pin 17 also feeds the pot rail (ADS1115, later) — a common-anode LED shares it via a splice.
+
+**I²C map:** `0x27` MCP23017 keys (CQRobot; `0x20` green board) · `0x48` ADS1115 (Phase 3b) · `0x4d` the Amp4 Pro's own amp chip (`UU` once its driver loads) — leave it alone
 
 ## The two steps that can destroy something
 

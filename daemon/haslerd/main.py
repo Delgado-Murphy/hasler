@@ -22,6 +22,7 @@ import yaml
 
 from .actions import Actions
 from .ha.rest import HomeAssistant
+from .hw.gpio_lamp import GpioRgbController
 from .hw.powerctl import Lamp, PowerController
 from .net import Connectivity
 from .player.base import FakePlayer
@@ -112,8 +113,7 @@ def build(args) -> tuple[Panel, Actions, Lamp | None, dict]:
         state = StateStore.at(config["state_file"]) if config.get("state_file") else StateStore(None)
     else:
         player = MoodePlayer(MoodeConfig(**(config.get("moode") or {})))
-        controller = PowerController()
-        lamp = Lamp(controller) if controller.available else None
+        lamp = open_lamp(variant.io.get("lamp") or {})
         state = StateStore.at(config.get("state_file"))
     log.info("state file: %s", state.path or "(in memory)")
 
@@ -130,6 +130,28 @@ def build(args) -> tuple[Panel, Actions, Lamp | None, dict]:
     if lamp is not None:
         actions.on_play_error = lambda _exc: lamp.flash("error", time.monotonic())
     return panel, actions, lamp, config
+
+
+def open_lamp(spec: dict) -> Lamp | None:
+    """The pilot lamp from the descriptor's ``io.lamp`` block, or None.
+
+    ``backend: gpio`` drives a bare RGB LED on three Pi pins; ``powerctl`` (the
+    default, for descriptors that predate the choice) the HiFiBerry Power
+    Controller; ``none`` no lamp at all.
+    """
+    backend = spec.get("backend", "powerctl")
+    if backend == "none":
+        return None
+    if backend == "gpio":
+        controller = GpioRgbController(
+            pins=spec.get("pins"), common=spec.get("common", "cathode"), balance=spec.get("balance")
+        )
+    elif backend == "powerctl":
+        controller = PowerController()
+    else:
+        log.warning("unknown lamp backend %r; no lamp", backend)
+        return None
+    return Lamp(controller) if controller.available else None
 
 
 def build_connectivity(config: dict) -> Connectivity:
@@ -232,6 +254,11 @@ def main(argv=None) -> int:
             time.sleep(max(0.0, period - (time.monotonic() - now)))
     finally:
         panel.close()
+        if lamp is not None:
+            try:
+                lamp.controller.close()
+            except Exception:
+                log.debug("lamp close failed", exc_info=True)
         close = getattr(actions.player, "close", None)
         if callable(close):
             try:
