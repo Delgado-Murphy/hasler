@@ -1,0 +1,97 @@
+# Hasler HM (Bern, ~1964) - Telefonica "Hilo Musical" wired-music receiver.
+# 7 momentary piano keys (1-6 + PU) and 2 pots (volume, tone).
+# The tone pot carries the original mains switch on its CCW end-stop.
+#
+# Keys go through an MCP23017 expander on I2C, so the panel loom is 4 wires
+# (3V3, GND, SDA, SCL). No ADC fitted yet - the wheels are dead and volume
+# comes from the moOde UI / HA until the ADS1115 lands.
+variant: hasler-hm
+
+io:
+  digital:
+    backend: mcp23017
+    # CQRobot board: A0-A2 pads open = pulled high = 0x27 (its default).
+    # The green breakout has them to GND = 0x20. Confirm: i2cdetect -y 1
+    addr: 0x27
+    # Logical names ARE the wiring: d0-d6 = PA0-PA6, d8 = PB0. Wire by the
+    # silkscreen. PA7 (d7) and PB7 (d15) are output-only - never use them.
+  # Fallback - keys straight to Pi GPIO, no expander. Uncomment this and
+  # remove the block above. The list is d0..d8 in order; d7 is a placeholder
+  # so the end-switch on d8 lands on GPIO 25. Avoids the Amp4 Pro's 2,3,4,
+  # 18-21, the HAT EEPROM (0,1) and UART (14,15).
+  # digital:
+  #   backend: gpio
+  #   pins: [5, 6, 12, 13, 16, 17, 22, 26, 25]
+  analog:
+    backend: none        # -> {backend: ads1115, addr: 0x48} in Phase 3b
+
+controls:
+  - {id: k1, kind: momentary, pin: d0}
+  - {id: k2, kind: momentary, pin: d1}
+  - {id: k3, kind: momentary, pin: d2}
+  - {id: k4, kind: momentary, pin: d3}
+  - {id: k5, kind: momentary, pin: d4}
+  - {id: k6, kind: momentary, pin: d5}
+  - {id: pu, kind: momentary, pin: d6}
+
+  - id: volume
+    kind: pot
+    channel: 0
+    taper: log
+    # TODO(phase-0): replace `taper`+`range` with measured `curve` points.
+    range: [0, 26400]
+
+  - id: tone
+    kind: pot
+    channel: 1
+    taper: log
+    # TODO(phase-0): first value is the ADC count AT THE DETENT. The switch
+    # eats the bottom of the sweep, so the usable range starts above it.
+    range: [0, 26400]
+    end_switch:
+      id: power
+      pin: d8              # PB0 - not d7/PA7, which cannot be an input
+      off_hold_ms: 5000    # held off this long -> clean shutdown
+
+# Actions bind to control ids. Nothing here knows a GPIO number.
+actions:
+  k1.tap: {do: preset, n: 1}
+  k2.tap: {do: preset, n: 2}
+  k3.tap: {do: preset, n: 3}
+  k4.tap: {do: preset, n: 4}
+  k5.tap: {do: preset, n: 5}
+  k6.tap: {do: preset, n: 6}
+  k1.hold: {do: ha_scene, entity: scene.entertain}
+  k2.hold: {do: ha_scene, entity: scene.cleaning}
+  k3.hold: {do: ha_scene, entity: scene.movie}
+  k4.hold: {do: ha_scene, entity: scene.relax}
+  k5.hold: {do: ha_scene, entity: scene.all_off}
+  k6.hold: {do: volume_step, delta: 0}       # spare
+  pu.tap: {do: cycle_source}
+  pu.hold: {do: bt_pair, seconds: 120}
+  power.on: {do: resume}
+  power.off: {do: standby}
+  power.off_held: {do: shutdown}
+  volume.change: {do: set_volume}
+  tone.change: {do: set_tone}
+
+# One key, one source. Each preset names exactly one of:
+#   radio:    an HTTP stream URL, played by MPD
+#   spotify:  a spotify:playlist:/album:/track: URI, played by go-librespot
+#   ytm:      a YouTube Music playlist (or watch) URL, queued into MPD
+# Optional `shuffle: true` (spotify/ytm). The pre-sources `url:` still works
+# and means `radio:`.
+#
+# Tapping the key that is already playing: radio -> standby, spotify/ytm ->
+# next track.
+#
+# TODO(phase-1): real stream URLs.
+presets:
+  - {n: 1, name: "Preset 1", radio: "http://example.invalid/stream1"}
+  - {n: 2, name: "Preset 2", radio: "http://example.invalid/stream2"}
+  - {n: 3, name: "Preset 3", radio: "http://example.invalid/stream3"}
+  - {n: 4, name: "Preset 4", radio: "http://example.invalid/stream4"}
+  - {n: 5, name: "Preset 5", radio: "http://example.invalid/stream5"}
+  # - {n: 5, name: "Morning", spotify: "spotify:playlist:REPLACE_ME", shuffle: true}
+  - {n: 6, name: "Preset 6", radio: "http://example.invalid/stream6"}
+  # - {n: 6, name: "Evening", ytm: "https://music.youtube.com/playlist?list=REPLACE_ME"}

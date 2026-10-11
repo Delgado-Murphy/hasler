@@ -1,0 +1,49 @@
+# Excelsior - the second cabinet. Not yet wired; this file exists so the
+# abstraction is exercised by the tests before the hardware arrives.
+#
+# 9 keys of three different kinds:
+#   0        momentary, mechanically pops whichever key is latched
+#   1-6 + Q  latching AND interlocked - exactly one down, or none
+#   SP       independent latching toggle, does not touch the bank
+# 4 wheels: volume, treble, bass, and a 3-position speaker selector.
+variant: excelsior
+
+io:
+  digital: {backend: mcp23017, addr: 0x20, int_gpio: 23}
+  analog: {backend: ads1115, addr: 0x48}
+
+controls:
+  - id: presets
+    kind: interlocked_bank
+    # keys 1-6 + Q. Q is d8 (GPB0), not d7: GPA7 is output-only on the MCP23017.
+    pins: [d1, d2, d3, d4, d5, d6, d8]
+    release: {pin: d0}                      # key 0
+    # Must exceed the mechanical changeover gap (outgoing key opens before the
+    # incoming one closes) and undershoot a deliberate press of key 0.
+    settle_ms: 60
+
+  - {id: sp, kind: latching_toggle, pin: d9}
+
+  - id: speaker_sel
+    kind: rotary_switch
+    pins: [d10, d11]
+    positions: 3
+    # TODO(phase-0): confirm the contact pattern per detent by metering.
+    map: {"10": 0, "00": 1, "01": 2}
+
+  - {id: volume, kind: pot, channel: 0, taper: log, range: [0, 26400]}
+  - {id: treble, kind: pot, channel: 1, taper: log, range: [0, 26400]}
+  - {id: bass,   kind: pot, channel: 2, taper: log, range: [0, 26400]}
+
+actions:
+  presets.select: {do: preset_by_index}
+  presets.hold: {do: ha_scene_by_index}
+  presets.clear: {do: standby}
+  presets_release.tap: {do: standby}
+  presets_release.hold: {do: shutdown}
+  sp.on: {do: mute, state: true}
+  sp.off: {do: mute, state: false}
+  speaker_sel.position: {do: speaker_route}
+  volume.change: {do: set_volume}
+  treble.change: {do: set_treble}
+  bass.change: {do: set_bass}

@@ -1,0 +1,49 @@
+# go-librespot - Spotify Connect device for haslerd to drive over its local API.
+# Installed to ~/.config/go-librespot/config.yml by scripts/install.sh.
+# Keys checked against config_schema.json at go-librespot v0.10.3.
+#
+# Credentials and player state live next to this file in state.json, written
+# after the one-time login (older releases used credentials.json). Delete it to
+# log out. Logged in: curl 127.0.0.1:3678/status gives JSON; 204 = not yet.
+
+device_name: Hasler
+device_type: speaker
+log_level: info
+
+# The Amp4 Pro, by card id so an HDMI card appearing cannot renumber it.
+# install.sh rewrites the CARD= part from /proc/asound/cards.
+# plughw, not hw: lets ALSA convert rate/format instead of refusing.
+# The card is exclusive - only one of MPD and go-librespot can hold it, which is
+# why moOde's own Spotify renderer must be OFF and haslerd stops one before
+# starting the other.
+audio_backend: alsa
+audio_device: plughw:CARD=sndrpihifiberry,DEV=0
+
+# Volume belongs to the knob and the hardware mixer, where haslerd enforces
+# volume_limit. external_volume = never scale samples, never touch the mixer.
+# Do not set mixer_device: a Spotify app could then push the mixer past the
+# speaker's limit.
+external_volume: true
+mixer_device: ''
+# Full-scale samples always; the hardware mixer does the attenuating.
+initial_volume: 100
+ignore_last_volume: true
+
+bitrate: 320
+
+# Log in once with the browser flow; credentials persist in state.json.
+# callback_port is fixed so the login can be tunnelled over SSH - see
+# docs/build-guide.md, Phase 3c. (Alternative with no tunnel: type: device_auth,
+# then enter the printed code at spotify.com/pair.)
+zeroconf_enabled: false
+credentials:
+  type: interactive
+  interactive:
+    callback_port: 36842
+
+# Local API for haslerd. Loopback only - it has no authentication.
+server:
+  enabled: true
+  address: 127.0.0.1
+  port: 3678
+  allow_origin: ''

@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly yt-dlp upgrade
+
+[Timer]
+OnCalendar=weekly
+RandomizedDelaySec=6h
+# Catch up after the box has been switched off over the scheduled time.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

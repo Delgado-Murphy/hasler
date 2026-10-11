@@ -1,0 +1,9 @@
+[Unit]
+Description=Upgrade yt-dlp (YouTube breaks old versions)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# [default] pulls yt-dlp-ejs at the version yt-dlp pins - upgrade them together.
+ExecStart=/opt/yt-dlp/bin/pip install --upgrade --quiet "yt-dlp[default]"

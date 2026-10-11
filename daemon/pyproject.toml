@@ -1,0 +1,26 @@
+[project]
+name = "haslerd"
+version = "0.1.0"
+description = "Panel daemon for vintage radio cabinets running moOde Audio"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Installed on the Pi only - these have no wheels on macOS.
+pi = [
+    "gpiozero>=2.0",
+    "lgpio>=0.2",
+    "smbus2>=0.4",
+    "python-mpd2>=3.1",
+    "paho-mqtt>=2.0",
+]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

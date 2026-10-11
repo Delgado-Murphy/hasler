@@ -1,0 +1,14 @@
+[Unit]
+Description=go-librespot (Spotify Connect, driven by haslerd)
+After=sound.target network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/go-librespot --config_dir /home/pi/.config/go-librespot
+Restart=always
+RestartSec=5
+User=pi
+SupplementaryGroups=audio
+
+[Install]
+WantedBy=multi-user.target
