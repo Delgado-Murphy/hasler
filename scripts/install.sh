@@ -85,7 +85,7 @@ if [[ ! -e /dev/i2c-1 ]]; then
 else
   say "I2C present. Devices seen:"
   command -v i2cdetect >/dev/null && i2cdetect -y 1 2>/dev/null | tail -n +2 || true
-  say "expect 0x77 (power controller); 0x20 / 0x48 once the expander and ADC are fitted"
+  say "expect 0x77 (power controller), the Amp4 Pro DAC; 0x27 / 0x48 once the expander and ADC are fitted"
 fi
 
 # --- python ------------------------------------------------------------------
@@ -99,6 +99,11 @@ if [[ ! -d "$VENV" ]]; then
 fi
 
 say "installing haslerd with hardware extras"
+# lgpio has no aarch64 wheel for newer Pythons (trixie ships 3.13), so pip
+# builds it - which needs swig and the C library.
+if (( ARM64 )) && ! dpkg -s swig liblgpio-dev >/dev/null 2>&1; then
+  run "sudo apt-get install -y -q swig liblgpio-dev"
+fi
 if command -v uv >/dev/null 2>&1; then
   run "VIRTUAL_ENV='$VENV' uv pip install -e '$REPO/daemon[pi]'"
 else
@@ -114,7 +119,7 @@ if [[ ! -f "$REPO/config/haslerd.yaml" ]]; then
   warn "  moodeutl -q \"select value from cfg_system where param='amixname'\""
 else
   for key in spotify: ytm: state_file:; do
-    grep -q "^$key" "$REPO/config/haslerd.yaml" || \
+    grep -Eq "^[[:space:]]*$key" "$REPO/config/haslerd.yaml" || \
       warn "config/haslerd.yaml has no '$key' - copy it from haslerd.yaml.example"
   done
 fi
@@ -150,11 +155,11 @@ if [[ -f "$SUDOERS" ]] && sudo -n cmp -s "$TMP" "$SUDOERS" 2>/dev/null; then
   :
 elif (( DRY )); then
   printf '   would write %s (0440, after visudo -cf):\n' "$SUDOERS"; sed 's/^/     /' "$TMP"
-elif command -v visudo >/dev/null 2>&1 && sudo visudo -cf "$TMP" >/dev/null; then
+elif sudo sh -c "command -v visudo" >/dev/null 2>&1 && sudo visudo -cf "$TMP" >/dev/null; then
   say "installing $SUDOERS"
   sudo install -m 0440 -o root -g root "$TMP" "$SUDOERS"
 else
-  warn "visudo missing or rejected the drop-in - not installing $SUDOERS"
+  warn "visudo (root PATH) missing or rejected the drop-in - not installing $SUDOERS"
 fi
 rm -f "$TMP"
 
@@ -264,7 +269,9 @@ if (( ! DRY && SYSTEMD )); then
     sudo systemctl start yt-dlp-update.timer
   fi
   sudo systemctl enable --quiet haslerd
-  sudo systemctl restart haslerd
+  # Fails until the panel's expander answers on I2C - keep going so the rest
+  # of the output (Spotify login steps) still shows.
+  sudo systemctl restart haslerd || warn "haslerd did not start - see journalctl -u haslerd"
 fi
 
 say "done"

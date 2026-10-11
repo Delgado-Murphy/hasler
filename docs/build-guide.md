@@ -49,7 +49,7 @@ Prove the boring half works before introducing anything that can destroy hardwar
 boot or join WiFi, you want to be finding that out with a £5 charger attached, not with a 20 V rail
 and a Power Controller in the path.
 
-- [ ] Flash **moOde 9.x, 64-bit**, SSH enabled, hostname `hasler`. **Pin the version** and note it.
+- [ ] Flash **moOde, 64-bit** (bench-tested on **10.3.0 / Debian 13 trixie**), SSH enabled, hostname `hasler`. **Pin the version** and note it.
 - [ ] Boot the Pi **alone** on a plain 5 V USB-C supply into its own power port.
 - [ ] Join WiFi, confirm `ssh hasler.local`, confirm the moOde web UI loads.
 - [ ] Enable I²C: `sudo raspi-config nonint do_i2c 0 && sudo reboot`
