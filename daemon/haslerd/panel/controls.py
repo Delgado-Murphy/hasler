@@ -3,7 +3,8 @@
 Five kinds cover every cabinet we have or expect:
 
 ``momentary``          spring-back key. Emits ``tap`` on release, ``hold`` at the
-                       threshold while still held.
+                       threshold while still held (and again every ``repeat_ms``
+                       if set - a volume key that ramps while held).
 ``latching_toggle``    independent stay-put switch. Emits ``on`` / ``off``.
 ``interlocked_bank``   mechanically ganged keys where exactly one is down.
                        Emits ``select`` / ``hold`` / ``clear``.
@@ -102,6 +103,9 @@ class Momentary(Control):
     Hold fires *while the key is still down* rather than on release, so the
     action lands when you feel it - and a tap is then defined as "released
     before the hold fired".
+
+    ``repeat_s`` makes ``hold`` fire again at that interval for as long as the
+    key stays down. Off by default: a hold that starts a scene must not repeat.
     """
 
     kind = "momentary"
@@ -112,13 +116,16 @@ class Momentary(Control):
         pin: str,
         hold_s: float = DEFAULT_HOLD_S,
         bounce_s: float = DEFAULT_BOUNCE_S,
+        repeat_s: float | None = None,
     ) -> None:
         super().__init__(id)
         self.pin = pin
         self.hold_s = hold_s
+        self.repeat_s = repeat_s
         self._settled = _Settled(False, bounce_s)
         self._down_at = 0.0
         self._hold_fired = False
+        self._last_hold = 0.0
 
     def update(self, now, digital, analog):
         events: list[Event] = []
@@ -132,7 +139,11 @@ class Momentary(Control):
         if self._settled.committed and not self._hold_fired:
             if now - self._down_at >= self.hold_s:
                 self._hold_fired = True
+                self._last_hold = now
                 events.append(Event(self.id, "hold"))
+        elif self._settled.committed and self.repeat_s and now - self._last_hold >= self.repeat_s:
+            self._last_hold = now
+            events.append(Event(self.id, "hold"))
         return events
 
     def state(self):
@@ -464,7 +475,10 @@ def build_controls(specs: list[dict]) -> list[Control]:
         if kind == "momentary":
             controls.append(
                 Momentary(
-                    cid, pin=spec["pin"], hold_s=spec.get("hold_ms", DEFAULT_HOLD_S * 1000) / 1000
+                    cid,
+                    pin=spec["pin"],
+                    hold_s=spec.get("hold_ms", DEFAULT_HOLD_S * 1000) / 1000,
+                    repeat_s=spec["repeat_ms"] / 1000 if spec.get("repeat_ms") else None,
                 )
             )
         elif kind == "latching_toggle":

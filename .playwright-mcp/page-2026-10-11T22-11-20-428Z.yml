@@ -1,0 +1,314 @@
+- generic [active] [ref=f7e1]:
+  - generic "Album Cover Backdrop" [ref=f7e2]
+  - banner:
+    - text:  
+    - generic [ref=f7e3]:
+      - link "Library" [ref=f7e4] [cursor=pointer]:
+        - /url: lib-config.php
+        - text: 
+      - link "Audio" [ref=f7e6] [cursor=pointer]:
+        - /url: snd-config.php
+        - text: 
+      - link "Network" [ref=f7e8] [cursor=pointer]:
+        - /url: net-config.php
+        - text: 
+      - link "System" [ref=f7e10] [cursor=pointer]:
+        - /url: sys-config.php
+        - text: 
+      - link "Renderers" [ref=f7e12] [cursor=pointer]:
+        - /url: ren-config.php
+        - text: 
+      - link "Peripherals" [ref=f7e14] [cursor=pointer]:
+        - /url: per-config.php
+        - text: 
+    - text:  
+    - generic [ref=f7e16]:
+      - button "Menu" [ref=f7e17] [cursor=pointer]:
+        - generic [ref=f7e18]: mm
+        - generic [ref=f7e19]: m
+      - text:        
+  - text: Tap on the Playbar to switch to Playback           
+  - generic [ref=f7e21]:
+    - heading "Audio" [level=1] [ref=f7e22]
+    - generic [ref=f7e23]:
+      - generic [ref=f7e24]: Audio Output
+      - paragraph [ref=f7e25]: Select from Pi HDMI/Headphone, I2S or USB audio devices. These settings cannot be changed when outputting to a Bluetooth speaker or when Multiroom Sender or Receiver are On.
+      - generic [ref=f7e26]:
+        - generic [ref=f7e27] [cursor=pointer]: Output device
+        - generic [ref=f7e28]:
+          - 'button "2: snd_rpi_hifiberry_dacplus" [ref=f7e30] [cursor=pointer]'
+          - text: 
+          - button "Scan" [ref=f7e33] [cursor=pointer]
+          - link "Help" [ref=f7e34] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e35]: 
+        - generic [ref=f7e36] [cursor=pointer]: Volume type
+        - generic [ref=f7e37]:
+          - button "Hardware" [ref=f7e39] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e42] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e43]: 
+          - generic [ref=f7e44]: Set volume to a low level before changing these options.
+        - text:  
+        - generic [ref=f7e45] [cursor=pointer]: Device ready wait
+        - generic [ref=f7e46]:
+          - button "1 min (Default)" [ref=f7e48] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e51] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e52]: 
+        - generic [ref=f7e54] [cursor=pointer]: Named I2S device
+        - generic [ref=f7e55]:
+          - button "None" [ref=f7e57]
+          - text: 
+        - generic [ref=f7e60] [cursor=pointer]: or DT overlay
+        - generic [ref=f7e61]:
+          - button "hifiberry-amp4pro" [ref=f7e63] [cursor=pointer]
+          - text: 
+          - generic [ref=f7e66]: After setting a device or overlay, reboot and then select the device from the Output device list.
+        - generic [ref=f7e67] [cursor=pointer]: Driver options
+        - generic [ref=f7e68]:
+          - button "None available" [ref=f7e70]
+          - text: 
+          - link "Help" [ref=f7e73] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e74]: 
+        - generic [ref=f7e75] [cursor=pointer]: Chip options
+        - link [ref=f7e77] [cursor=pointer]:
+          - /url: chp-config.php
+          - button "Edit" [disabled] [ref=f7e78]
+        - generic [ref=f7e79]:
+          - generic [ref=f7e81] [cursor=pointer]: Integrated audio
+          - generic [ref=f7e82]:
+            - button "Kernel mode (Default)" [ref=f7e84] [cursor=pointer]
+            - text: 
+            - link "Help" [ref=f7e87] [cursor=pointer]:
+              - /url: "#notarget"
+              - generic [ref=f7e88]: 
+      - generic [ref=f7e89]: ALSA Options
+      - paragraph [ref=f7e90]: Advanced Linux Sound Architecture (ALSA) is a software framework and part of the Linux kernel that provides an application programming interface (API) for sound card device drivers and audio applications.
+      - generic [ref=f7e91]:
+        - generic [ref=f7e92] [cursor=pointer]: Max volume
+        - generic [ref=f7e93]:
+          - spinbutton "Max volume" [ref=f7e94]: "90"
+          - button "" [ref=f7e95] [cursor=pointer]
+          - link "Help" [ref=f7e97] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e98]: 
+          - generic [ref=f7e99]: "Current ALSA volume: 53%"
+        - generic [ref=f7e100] [cursor=pointer]: Output mode
+        - generic [ref=f7e101]:
+          - button "Default" [ref=f7e103] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e106] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e107]: 
+          - generic [ref=f7e108]: "ALSA: plughw:2,0"
+        - generic [ref=f7e109] [cursor=pointer]: Loopback
+        - generic [ref=f7e110]:
+          - generic [ref=f7e111]:
+            - generic [ref=f7e112] [cursor=pointer]: "ON"
+            - generic [ref=f7e113] [cursor=pointer]: "OFF"
+          - text: 
+          - link "Help" [ref=f7e114] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e115]: 
+        - generic [ref=f7e116]:
+          - generic [ref=f7e117] [cursor=pointer]: Multiroom
+          - generic [ref=f7e118]:
+            - link [ref=f7e119] [cursor=pointer]:
+              - /url: trx-config.php
+              - button "Configure" [ref=f7e120]
+            - generic [ref=f7e121]: Set up multiroom sender and receivers.
+      - generic [ref=f7e122]: MPD Options
+      - paragraph [ref=f7e123]: Music Player Daemon (MPD) is a flexible, powerful, server-side application for playing music and is the primary audio application in moOde. MPD settings including DSD, SoX resampling, audio buffers and others are configured via the EDIT button.
+      - generic [ref=f7e124]: General
+      - generic [ref=f7e125]:
+        - generic [ref=f7e126] [cursor=pointer]: MPD settings
+        - link [ref=f7e128] [cursor=pointer]:
+          - /url: mpd-config.php
+          - button "Edit" [ref=f7e129]
+        - generic [ref=f7e130]:
+          - link [ref=f7e131] [cursor=pointer]:
+            - /url: "#mpd-restart"
+            - button "Restart" [ref=f7e132]
+          - generic [ref=f7e133]: MPD
+        - generic [ref=f7e134] [cursor=pointer]: Autoplay after start
+        - generic [ref=f7e135]:
+          - generic [ref=f7e136]:
+            - generic [ref=f7e137] [cursor=pointer]: "ON"
+            - generic [ref=f7e138] [cursor=pointer]: "OFF"
+          - text: 
+          - link "Help" [ref=f7e139] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e140]: 
+        - generic [ref=f7e141] [cursor=pointer]: Metadata file
+        - generic [ref=f7e142]:
+          - generic [ref=f7e143]:
+            - generic [ref=f7e144] [cursor=pointer]: "ON"
+            - generic [ref=f7e145] [cursor=pointer]: "OFF"
+          - text: 
+          - link "Help" [ref=f7e146] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e147]: 
+      - generic [ref=f7e148]: Auto-shuffle
+      - generic [ref=f7e149]:
+        - generic [ref=f7e150] [cursor=pointer]: Auto-shuffle
+        - generic [ref=f7e151]:
+          - generic [ref=f7e152]:
+            - generic [ref=f7e153] [cursor=pointer]: "ON"
+            - generic [ref=f7e154] [cursor=pointer]: "OFF"
+          - text: 
+          - link "Help" [ref=f7e155] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e156]: 
+        - generic [ref=f7e157] [cursor=pointer]: Mode
+        - generic [ref=f7e158]:
+          - button "Track" [ref=f7e160] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e163] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e164]: 
+        - generic [ref=f7e165] [cursor=pointer]: Window size
+        - generic [ref=f7e166]:
+          - spinbutton "Window size" [ref=f7e167]: "7"
+          - button "" [ref=f7e168] [cursor=pointer]
+          - link "Help" [ref=f7e170] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e171]: 
+        - generic [ref=f7e172] [cursor=pointer]: Tag filter
+        - generic [ref=f7e173]:
+          - textbox "Tag filter" [ref=f7e174]: None
+          - button "" [ref=f7e175] [cursor=pointer]
+          - link "Help" [ref=f7e177] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e178]: 
+        - generic [ref=f7e179] [cursor=pointer]: Tag exclude
+        - generic [ref=f7e180]:
+          - textbox "Tag exclude" [ref=f7e181]: None
+          - button "" [ref=f7e182] [cursor=pointer]
+          - link "Help" [ref=f7e184] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e185]: 
+      - generic [ref=f7e186]: Volume control
+      - generic [ref=f7e187]:
+        - generic [ref=f7e188] [cursor=pointer]: Volume step limit
+        - generic [ref=f7e189]:
+          - button "5" [ref=f7e191] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e194] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e195]: 
+        - generic [ref=f7e196] [cursor=pointer]: Max MPD volume
+        - generic [ref=f7e197]:
+          - spinbutton "Max MPD volume" [ref=f7e198]: "100"
+          - button "" [ref=f7e199] [cursor=pointer]
+          - link "Help" [ref=f7e201] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e202]: 
+        - generic [ref=f7e203] [cursor=pointer]: Display dB volume
+        - generic [ref=f7e204]:
+          - generic [ref=f7e205]:
+            - generic [ref=f7e206] [cursor=pointer]: "ON"
+            - generic [ref=f7e207] [cursor=pointer]: "OFF"
+          - text: 
+          - link "Help" [ref=f7e208] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e209]: 
+      - generic [ref=f7e210]: MPD DSP
+      - paragraph [ref=f7e211]: Note that Core DSP, Crossfeed, and Polarity inversion are mutually exclusive. Enabling one will disable the others.
+      - generic [ref=f7e212]:
+        - generic [ref=f7e213] [cursor=pointer]: Crossfade (secs)
+        - generic [ref=f7e214]:
+          - spinbutton "Crossfade (secs)" [ref=f7e215]: "0"
+          - button "" [ref=f7e216] [cursor=pointer]
+          - link "Help" [ref=f7e218] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e219]: 
+        - generic [ref=f7e220] [cursor=pointer]: Crossfeed
+        - generic [ref=f7e221]:
+          - button "Off" [ref=f7e223] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e226] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e227]: 
+        - generic [ref=f7e228] [cursor=pointer]: Polarity inversion
+        - generic [ref=f7e229]:
+          - generic [ref=f7e230]:
+            - generic [ref=f7e231] [cursor=pointer]: "ON"
+            - generic [ref=f7e232] [cursor=pointer]: "OFF"
+          - text: 
+          - link "Help" [ref=f7e233] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e234]: 
+      - generic [ref=f7e235]: HTTP streaming
+      - generic [ref=f7e236]:
+        - generic [ref=f7e237] [cursor=pointer]: Streaming server
+        - generic [ref=f7e238]:
+          - generic [ref=f7e239]:
+            - generic [ref=f7e240] [cursor=pointer]: "ON"
+            - generic [ref=f7e241] [cursor=pointer]: "OFF"
+          - text: 
+          - link "Help" [ref=f7e242] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e243]: 
+        - generic [ref=f7e244] [cursor=pointer]: Port
+        - generic [ref=f7e245]:
+          - spinbutton "Port" [ref=f7e246]: "8000"
+          - button "" [ref=f7e247] [cursor=pointer]
+          - link "Help" [ref=f7e249] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e250]: 
+        - generic [ref=f7e251] [cursor=pointer]: Encoder
+        - generic [ref=f7e252]:
+          - button "LAME (MP3)" [ref=f7e254] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e257] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e258]: 
+      - generic [ref=f7e259]: CoreDSP
+      - paragraph [ref=f7e260]: CoreDSP supports MPD, Bluetooth, AirPlay, Spotify Connect and Squeezelite renderers. It is not available if Multiroom Sender or Receiver are On. Note that CoreDSP and MPD Crossfeed and Polarity inversion are mutually exclusive. Enabling one will disable the others.
+      - generic [ref=f7e261]: General Purpose DSP
+      - generic [ref=f7e262]:
+        - generic [ref=f7e263] [cursor=pointer]: CamillaDSP
+        - generic [ref=f7e264]:
+          - button "Off" [ref=f7e266] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e269] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e270]: 
+          - generic [ref=f7e271]: Signal processing is off
+        - generic [ref=f7e272]:
+          - link [ref=f7e273] [cursor=pointer]:
+            - /url: cdsp-config.php
+            - button "Edit" [ref=f7e274]
+          - generic [ref=f7e275]: CamillaDSP settings
+      - generic [ref=f7e276]: ALSA Equalizers
+      - paragraph [ref=f7e277]: "Note: Peppy display cannot be turned on if playing to a Bluetooth speaker with Graphic or Parametric EQ on."
+      - generic [ref=f7e278] [cursor=pointer]: Graphic EQ
+      - generic [ref=f7e279]:
+        - button "Off" [ref=f7e281] [cursor=pointer]
+        - text: 
+        - link "Help" [ref=f7e284] [cursor=pointer]:
+          - /url: "#notarget"
+          - generic [ref=f7e285]: 
+      - generic [ref=f7e286]:
+        - link [ref=f7e287] [cursor=pointer]:
+          - /url: eqg-config.php
+          - button "Edit" [ref=f7e288]
+        - generic [ref=f7e289]: EQ curve
+      - generic [ref=f7e290]:
+        - generic [ref=f7e291] [cursor=pointer]: Parametric EQ
+        - generic [ref=f7e292]:
+          - button "Off" [ref=f7e294] [cursor=pointer]
+          - text: 
+          - link "Help" [ref=f7e297] [cursor=pointer]:
+            - /url: "#notarget"
+            - generic [ref=f7e298]: 
+        - generic [ref=f7e299]:
+          - link [ref=f7e300] [cursor=pointer]:
+            - /url: eqp-config.php
+            - button "Edit" [ref=f7e301]
+          - generic [ref=f7e302]: EQ curve
+  - text:            

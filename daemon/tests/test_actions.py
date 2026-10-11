@@ -509,9 +509,19 @@ class TestVolumeStep:
         assert player.volume == 45.0
 
     def test_zero_delta_is_a_spare_key(self, hasler):
-        _, player, actions = hasler
-        actions.dispatch(Event("k6", "hold"))      # shipped as delta: 0
+        variant, player, actions = hasler
+        variant.actions["k6.hold"] = {"do": "volume_step", "delta": 0}
+        actions.dispatch(Event("k6", "hold"))
         assert player.calls == []
+
+    def test_shipped_hasler_holds_k5_down_and_k6_up(self, hasler):
+        _, player, actions = hasler
+        player.volume = 40.0
+        actions.dispatch(Event("k6", "hold"))
+        actions.dispatch(Event("k6", "hold"))
+        assert player.volume == 44.0
+        actions.dispatch(Event("k5", "hold"))
+        assert player.volume == 42.0
 
 
 class TestPersistence:

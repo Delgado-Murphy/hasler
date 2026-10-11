@@ -30,8 +30,10 @@ controls:
   - {id: k2, kind: momentary, pin: d1}
   - {id: k3, kind: momentary, pin: d2}
   - {id: k4, kind: momentary, pin: d3}
-  - {id: k5, kind: momentary, pin: d4}
-  - {id: k6, kind: momentary, pin: d5}
+  # k5/k6 hold = volume down/up, ramping every repeat_ms until released.
+  # Tap still plays the preset. Stand-in for the dead wheels until the ADS1115.
+  - {id: k5, kind: momentary, pin: d4, repeat_ms: 150}
+  - {id: k6, kind: momentary, pin: d5, repeat_ms: 150}
   - {id: pu, kind: momentary, pin: d6}
 
   - id: volume
@@ -65,8 +67,9 @@ actions:
   k2.hold: {do: ha_scene, entity: scene.cleaning}
   k3.hold: {do: ha_scene, entity: scene.movie}
   k4.hold: {do: ha_scene, entity: scene.relax}
-  k5.hold: {do: ha_scene, entity: scene.all_off}
-  k6.hold: {do: volume_step, delta: 0}       # spare
+  # ~2 knob units (~1.8 dB) per step: bottom to volume_limit in ~8 s of holding.
+  k5.hold: {do: volume_step, delta: -2}
+  k6.hold: {do: volume_step, delta: 2}
   pu.tap: {do: cycle_source}
   pu.hold: {do: bt_pair, seconds: 120}
   power.on: {do: resume}

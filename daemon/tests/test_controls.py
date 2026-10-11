@@ -47,6 +47,23 @@ class TestMomentary:
         events = run(c, [(0.1, {"d0": False}), (5.0, {"d0": True}), (0.1, {"d0": False})])
         assert [str(e) for e in events] == ["k1.hold"]
 
+    def test_repeat_keeps_firing_hold_while_down(self):
+        c = Momentary("k6", "d5", hold_s=0.5, repeat_s=0.2)
+        # Down for 1.15 s (incl. debounce): hold at ~0.5 s, then every 0.2 s.
+        events = run(c, [(0.1, {"d5": False}), (1.15, {"d5": True}), (0.3, {"d5": False})])
+        assert [str(e) for e in events] == ["k6.hold"] * 4
+
+    def test_repeat_stops_on_release_and_a_short_press_is_still_a_tap(self):
+        c = Momentary("k6", "d5", hold_s=0.5, repeat_s=0.2)
+        events = run(c, [(0.1, {"d5": False}), (0.2, {"d5": True}), (0.5, {"d5": False})])
+        assert [str(e) for e in events] == ["k6.tap"]
+
+    def test_repeat_ms_comes_from_the_descriptor(self):
+        (c,) = build_controls([{"id": "k6", "kind": "momentary", "pin": "d5", "repeat_ms": 150}])
+        assert c.repeat_s == 0.15
+        (c,) = build_controls([{"id": "k1", "kind": "momentary", "pin": "d0"}])
+        assert c.repeat_s is None
+
     def test_contact_bounce_does_not_produce_phantom_taps(self):
         c = Momentary("k1", "d0", hold_s=0.8, bounce_s=0.03)
         script = [(0.1, {"d0": False})]
