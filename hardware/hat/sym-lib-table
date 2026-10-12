@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "hasler")(type "KiCad")(uri "${KIPRJMOD}/hasler.kicad_sym")(options "")(descr "Hasler HAT project symbols (CH224A, AZ431 SOT23)"))
+)
