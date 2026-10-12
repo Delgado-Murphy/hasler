@@ -31,9 +31,14 @@ Cheap insurance against a failure that would be miserable to diagnose from insid
 
 | Item | Qty | Why |
 |---|---|---|
-| **220–470 µF / 35 V electrolytic** | 1 | Across the PD board output. Absorbs the load-dump transient when the Power Controller opens Vout |
+| **220–470 µF / 35 V electrolytic** | 1 | Across the **Amp4 Pro's DC input**, at the amp end. Without the Power Controller this is the main protection: it soaks up plug/unplug transients |
 | **SMAJ24A TVS diode** (see below) | 1 | Clamps what the cap doesn't |
 | NTC inrush limiter (e.g. 5 Ω) | 1 | *Only if* the PD supply trips when Vout closes. Buy it, fit it only if needed |
+
+> **Without the Power Controller (the current build)** the limit is the **Amp4 Pro's absolute maximum of 24 V**, not
+> the Controller's 30 V. A 22-standoff TVS breaks down at 24.4–26.9 V, slightly *above* that, so it only catches fast
+> spikes and the bulk capacitor does the real work. Still fit an SMAJ/SMBJ**22**A (not a 24) at the amp input. Wiring:
+> Paper sheet 12.
 
 ### Choosing the TVS — the number means different things in different families
 
