@@ -71,10 +71,8 @@ actions:
   k4.tap: {do: preset, n: 4}
   k5.tap: {do: preset, n: 5}
   k6.tap: {do: preset, n: 6}
-  k1.hold: {do: ha_scene, entity: scene.entertain}
-  k2.hold: {do: ha_scene, entity: scene.cleaning}
-  k3.hold: {do: ha_scene, entity: scene.movie}
-  k4.hold: {do: ha_scene, entity: scene.relax}
+  # k1-k4 hold: nothing by default. Home Assistant actions belong to the home
+  # the radio lives in - connect HA on the key page and pick its scenes there.
   # ~2 knob units (~1.8 dB) per step: bottom to volume_limit in ~8 s of holding.
   k5.hold: {do: volume_step, delta: -2}
   k6.hold: {do: volume_step, delta: 2}

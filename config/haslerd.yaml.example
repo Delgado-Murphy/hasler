@@ -52,5 +52,5 @@ web:
 # Optional. Without it the box is fully standalone and hold actions do nothing.
 # Long-lived token: HA profile -> Security -> Long-lived access tokens.
 home_assistant:
-  url: http://ha.local:8123
+  url: http://homeassistant.local:8123   # HA's default address; set per home
   token: ""

@@ -185,16 +185,22 @@ class TestRobustness:
         assert player.playing.n == 2
 
     def test_ha_with_no_transport_configured_is_a_no_op(self, hasler):
-        _, player, actions = hasler
+        variant, player, actions = hasler
+        variant.actions["k4.hold"] = {"do": "ha_scene", "entity": "scene.relax"}
         actions.dispatch(Event("k4", "hold"))
         assert player.calls == []
 
     def test_ha_scene_fires_with_the_bound_entity(self, hasler):
-        _, player, actions = hasler
+        variant, player, actions = hasler
+        variant.actions["k4.hold"] = {"do": "ha_scene", "entity": "scene.relax"}
         fired = []
         actions.ha = lambda kind, payload: fired.append((kind, payload))
         actions.dispatch(Event("k4", "hold"))
         assert fired == [("scene", {"entity": "scene.relax"})]
+
+    def test_shipped_layout_assumes_no_particular_home_assistant(self, hasler):
+        variant, _, _ = hasler
+        assert not any(str(a.get("do", "")).startswith("ha_") for a in variant.actions.values())
 
 
 class TestToneMapping:
