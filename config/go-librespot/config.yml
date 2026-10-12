@@ -12,12 +12,15 @@ log_level: info
 
 # The Amp4 Pro, by card id so an HDMI card appearing cannot renumber it.
 # install.sh rewrites the CARD= part from /proc/asound/cards.
-# plughw, not hw: lets ALSA convert rate/format instead of refusing.
+# moOde's "_audioout" device - the one MPD, Bluetooth and AirPlay play into -
+# so Spotify gets the same treatment: the mono downmix when it is on (key page
+# -> Settings -> Mono; scripts/hasler-audio-mono), and whatever output moOde is
+# set to. It ends in plughw, so ALSA converts rate/format instead of refusing.
 # The card is exclusive - only one of MPD and go-librespot can hold it, which is
 # why moOde's own Spotify renderer must be OFF and haslerd stops one before
 # starting the other.
 audio_backend: alsa
-audio_device: plughw:CARD=sndrpihifiberry,DEV=0
+audio_device: _audioout
 
 # Volume belongs to the knob and the hardware mixer, where haslerd enforces
 # volume_limit. external_volume = never scale samples, never touch the mixer.

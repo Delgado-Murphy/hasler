@@ -26,6 +26,7 @@ from .ha.rest import HomeAssistant
 from .hw.gpio_lamp import GpioRgbController
 from .hw.powerctl import Lamp, PowerController
 from .web import stations
+from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
 from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_limit_from
 
 try:    # Home Assistant's page API; optional so the radio runs without it.
@@ -208,6 +209,29 @@ def build_ha_api(actions: Actions, state_dir: Path | None, config: dict) -> obje
     return ha_api
 
 
+def build_mono(state_dir: Path | None) -> MonoSwitch | None:
+    """The mono switch, re-applied from settings.json (default on) off-thread.
+
+    Re-applying at every start also refreshes the override's slave from
+    moOde's current output device. Absent helper (a laptop, --fake): None.
+    """
+    mono = MonoSwitch()
+    if not mono.available:
+        return None
+    settings = load_settings(state_dir / SETTINGS_FILE if state_dir is not None else None)
+    want = settings.get("mono", MONO_DEFAULT)
+    want = want if isinstance(want, bool) else MONO_DEFAULT
+
+    def apply() -> None:
+        try:
+            mono.set(want, reopen=False)
+        except MonoError:
+            log.exception("could not apply the saved mono setting")
+
+    threading.Thread(target=apply, name="mono", daemon=True).start()
+    return mono
+
+
 def build_web(
     config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool
 ) -> tuple[WebServer | None, WebApp]:
@@ -238,6 +262,7 @@ def build_web(
         actions, panel, keys_file, available, ha_flag,
         settings_file=state_dir / SETTINGS_FILE if state_dir is not None else None,
         browse=build_browse(actions, state_dir),
+        mono=build_mono(state_dir),
     )
     app.ha_api = ha_api
     if ha_api is not None:

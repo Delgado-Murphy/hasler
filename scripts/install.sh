@@ -148,10 +148,11 @@ done
 SUDOERS=/etc/sudoers.d/haslerd
 TMP="$(mktemp)"
 cat > "$TMP" <<EOF
-# haslerd: clean shutdown from the panel, and joining a new Wi-Fi from the
+# haslerd: clean shutdown from the panel, joining a new Wi-Fi from the
 # captive portal (the helper takes SSID/password on stdin, writes moOde's
-# network tables, reboots). Installed by scripts/install.sh.
-$USER_NAME ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join
+# network tables, reboots), and the mono switch on the key page (adds or
+# removes one ALSA override file). Installed by scripts/install.sh.
+$USER_NAME ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono
 EOF
 if [[ -f "$SUDOERS" ]] && sudo -n cmp -s "$TMP" "$SUDOERS" 2>/dev/null; then
   :
@@ -176,6 +177,9 @@ put_file() {   # put_file SRC DEST MODE - install if different, say whether it c
   if (( DRY )); then printf '   would install %s -> %s (%s)\n' "$src" "$dest" "$mode"; return 1; fi
   sudo install -D -m "$mode" -o root -g root "$src" "$dest"
 }
+say "mono switch (one speaker: L+R summed in ALSA; haslerd applies it at start)"
+put_file "$REPO/scripts/hasler-audio-mono" /usr/local/sbin/hasler-audio-mono 0755 || true
+
 say "captive portal for the Wi-Fi hotspot"
 put_file "$REPO/scripts/hasler-wifi-join" /usr/local/sbin/hasler-wifi-join 0755 || true
 put_file "$REPO/config/captive/dnsmasq-hotspot.conf" \

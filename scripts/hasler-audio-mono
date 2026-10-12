@@ -1,0 +1,61 @@
+#!/bin/sh
+# hasler-audio-mono - sum L+R into both outputs, for a one-speaker cabinet.
+#
+# Run as root by haslerd (sudoers allows exactly this file):
+#     hasler-audio-mono on|off|status
+# Prints one JSON object: {"ok": true, "mono": true|false} or {"ok": false, "error": "..."}.
+#
+# moOde sends MPD, Bluetooth and AirPlay to the ALSA device "_audioout", and
+# haslerd points go-librespot there too. "on" overrides that name with a route
+# plugin that mixes the two channels, slaved to whatever moOde's own
+# _audioout.conf currently plays into (so a changed output device in moOde is
+# picked up the next time this runs - haslerd runs it at every start). "off"
+# removes the override and moOde's definition applies again. moOde never
+# touches this file. Players see the change the next time they open the device.
+set -eu
+
+MOODE=/etc/alsa/conf.d/_audioout.conf
+OVERRIDE=/etc/alsa/conf.d/zz-hasler-mono.conf
+FALLBACK="plughw:CARD=sndrpihifiberry,DEV=0"
+
+say() { printf '%s\n' "$1"; }
+fail() { say "{\"ok\": false, \"error\": \"$1\"}"; exit 1; }
+state() { if [ -e "$OVERRIDE" ]; then echo true; else echo false; fi; }
+
+[ "$(id -u)" -eq 0 ] || fail "must run as root"
+
+case "${1:-}" in
+on)
+    slave=""
+    [ -r "$MOODE" ] && slave=$(sed -n 's/^slave\.pcm *"\([^"]*\)".*/\1/p' "$MOODE" | head -n 1)
+    case "$slave" in
+        ""|_audioout|*'"'*|*'\'*) slave=$FALLBACK ;;
+    esac
+    tmp=$(mktemp /etc/alsa/conf.d/.hasler-mono.XXXXXX)
+    cat > "$tmp" <<EOF
+#########################################
+# Written by haslerd (hasler-audio-mono) - not by moOde.
+# Mono: left and right summed, at half level each so nothing clips, into
+# both outputs. Remove this file (or switch Mono off on the key page) for
+# stereo. Slave copied from $MOODE.
+#########################################
+pcm.!_audioout {
+type route
+slave { pcm "$slave"; channels 2 }
+ttable { 0.0 0.5; 1.0 0.5; 0.1 0.5; 1.1 0.5 }
+}
+EOF
+    chmod 0644 "$tmp"
+    mv -f "$tmp" "$OVERRIDE"
+    ;;
+off)
+    rm -f "$OVERRIDE"
+    ;;
+status)
+    ;;
+*)
+    fail "usage: hasler-audio-mono on|off|status"
+    ;;
+esac
+
+say "{\"ok\": true, \"mono\": $(state)}"

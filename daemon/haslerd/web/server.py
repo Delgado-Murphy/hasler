@@ -142,6 +142,7 @@ class WebApp:
         catalog: Any = None,
         settings_file: Path | None = None,
         browse: Any = None,
+        mono: Any = None,
     ) -> None:
         self.actions = actions
         self.panel = panel
@@ -152,6 +153,8 @@ class WebApp:
         self.settings_file = settings_file
         # The curated Browse library (web/catalog.Catalog), or None.
         self.browse = browse
+        # audio.MonoSwitch (L+R downmix for the one speaker), or None.
+        self.mono = mono
         # Handlers for /api/ha/*: ``route(method, path, body) -> (status, doc) | None``.
         self.extra_routes: list[Any] = []
         self.station_db = station_db
@@ -359,24 +362,47 @@ class WebApp:
             ssid = ""
         return {
             "volume_limit": self._volume_limit(),
+            "mono": self._mono_doc(),
             "wifi": {"ssid": ssid},
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
 
     def put_settings(self, body: Any, host: str | None = None) -> dict:
-        """Validate, persist, apply live. Only ``volume_limit`` for now."""
-        if not isinstance(body, dict) or "volume_limit" not in body:
-            raise ValueError("expected {\"volume_limit\": 30-100}")
-        limit = volume_limit_from(body["volume_limit"])
+        """Validate, persist, apply live: ``volume_limit`` and/or ``mono``."""
+        if not isinstance(body, dict) or not ({"volume_limit", "mono"} & body.keys()):
+            raise ValueError("expected {\"volume_limit\": 30-100} and/or {\"mono\": true|false}")
+        limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
+        mono = body.get("mono")
+        if "mono" in body and not isinstance(mono, bool):
+            raise ValueError("mono must be true or false")
+        if mono is not None and (self.mono is None or not self.mono.available):
+            raise ValueError("mono output isn't installed on this radio (run install.sh)")
         with self.lock:
+            if mono is not None:
+                try:
+                    self.mono.set(mono)
+                except RuntimeError as exc:          # audio.MonoError
+                    raise ValueError(str(exc)) from exc
+            if limit is not None:
+                self._apply_volume_limit(limit)
             if self.settings_file is not None:
                 doc = load_settings(self.settings_file)
-                doc["volume_limit"] = limit
+                if limit is not None:
+                    doc["volume_limit"] = limit
+                if mono is not None:
+                    doc["mono"] = mono
                 save_settings(self.settings_file, doc)
-            self._apply_volume_limit(limit)
-        log.info("volume limit set to %s%% from the web page", limit)
+        if limit is not None:
+            log.info("volume limit set to %s%% from the web page", limit)
+        if mono is not None:
+            log.info("output set to %s from the web page", "mono" if mono else "stereo")
         return self.settings(host)
+
+    def _mono_doc(self) -> dict:
+        if self.mono is None or not self.mono.available:
+            return {"available": False, "on": False}
+        return {"available": True, "on": self.mono.is_on()}
 
     def _apply_volume_limit(self, limit: int) -> None:
         """New ceiling, same knob position: re-set the knob so the change is heard.
