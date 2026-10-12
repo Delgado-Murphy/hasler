@@ -49,8 +49,13 @@ web:
   enabled: true
   port: 8080
 
-# Optional. Without it the box is fully standalone and hold actions do nothing.
+# Optional, and normally left empty: connect Home Assistant from the key page
+# instead (Settings -> Home Assistant: it finds HA on the network, checks the
+# token and saves it to /var/lib/haslerd/ha.json, mode 0600, which wins over
+# this block). Kept for setups configured by hand before the page existed.
+# Without any HA the box is fully standalone and HA key actions do nothing.
 # Long-lived token: HA profile -> Security -> Long-lived access tokens.
-home_assistant:
-  url: http://homeassistant.local:8123   # HA's default address; set per home
-  token: ""
+# home_assistant:
+#   url: http://homeassistant.local:8123   # whatever HA the home has
+#   token: ""
+#   publish: false   # true: push what's playing to HA as sensor.hasler_radio

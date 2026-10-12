@@ -107,7 +107,13 @@ class Actions:
             "volume_step": self._volume_step,
             "ha_scene": self._ha_scene,
             "ha_scene_by_index": self._ha_scene_by_index,
+            "ha_script": self._ha_script,
+            "ha_toggle": self._ha_toggle,
+            "ha_automation": self._ha_automation,
         }
+        # (kind, entity) already reported as dropped for want of HA - say it
+        # once, not on every press.
+        self._ha_dropped: set[tuple[str, str]] = set()
 
     @property
     def cycle_position(self) -> str | None:
@@ -357,15 +363,34 @@ class Actions:
 
     # -- home assistant ---------------------------------------------------
 
+    # ``self.ha`` is swapped at runtime by web/ha_api.HaApi when the owner
+    # connects or disconnects HA on the key page: read it once per press.
+    # Kinds map to services in ha/rest.SERVICES: scene -> scene.turn_on,
+    # script -> script.turn_on, toggle -> homeassistant.toggle,
+    # automation -> automation.trigger.
+
     def _fire_ha(self, kind: str, payload: dict[str, Any]) -> None:
         """Fire-and-forget. HA being down must never slow down a key press."""
-        if self.ha is None:
-            log.debug("no HA transport configured; dropping %s %s", kind, payload)
+        ha = self.ha
+        if ha is None:
+            key = (kind, str(payload.get("entity", "")))
+            level = logging.DEBUG if key in self._ha_dropped else logging.INFO
+            self._ha_dropped.add(key)
+            log.log(level, "Home Assistant not connected; %s %s does nothing", kind, key[1])
             return
-        self.ha(kind, payload)
+        ha(kind, payload)
 
     def _ha_scene(self, event, spec):
         self._fire_ha("scene", {"entity": spec["entity"]})
+
+    def _ha_script(self, event, spec):
+        self._fire_ha("script", {"entity": spec["entity"]})
+
+    def _ha_toggle(self, event, spec):
+        self._fire_ha("toggle", {"entity": spec["entity"]})
+
+    def _ha_automation(self, event, spec):
+        self._fire_ha("automation", {"entity": spec["entity"]})
 
     def _ha_scene_by_index(self, event, spec):
         scenes = spec.get("scenes") or self.variant.actions.get("_scenes", [])

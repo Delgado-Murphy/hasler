@@ -43,9 +43,20 @@ VERBS: list[dict[str, Any]] = [
     {"do": "volume_up", "label": "Volume up (ramps while held)"},
     {"do": "volume_down", "label": "Volume down (ramps while held)"},
     {"do": "standby_toggle", "label": "Standby / wake"},
-    {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity"]},
+    {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity"], "domains": ["scene"]},
+    {"do": "ha_script", "label": "Run a Home Assistant script", "params": ["entity"], "domains": ["script"]},
+    {"do": "ha_toggle", "label": "Toggle a Home Assistant device", "params": ["entity"],
+     "domains": ["light", "switch", "input_boolean", "fan", "cover", "media_player"]},
+    {"do": "ha_automation", "label": "Trigger a Home Assistant automation", "params": ["entity"],
+     "domains": ["automation"]},
 ]
 VERB_NAMES = {v["do"] for v in VERBS}
+
+# Home Assistant verbs -> the entity domains each accepts. The page filters its
+# entity picker with the same lists (the "domains" hint above); the daemon
+# re-checks here, because a hand-edited request must not toggle a scene.
+HA_VERBS: dict[str, list[str]] = {v["do"]: v["domains"] for v in VERBS if "domains" in v}
+ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
 
 SPOTIFY_URI = re.compile(r"^spotify:(playlist|album|track|artist|show|episode):[A-Za-z0-9]{22}$")
 SPOTIFY_LINK = re.compile(
@@ -90,8 +101,8 @@ def to_page(spec: dict | None) -> dict | None:
         return {"do": "preset", "n": int(spec["n"])}
     if verb == "bt_pair":
         return {"do": "bt_pair", "seconds": int(spec.get("seconds", 120))}
-    if verb == "ha_scene":
-        return {"do": "ha_scene", "entity": str(spec.get("entity", ""))}
+    if verb in HA_VERBS:
+        return {"do": verb, "entity": str(spec.get("entity", ""))}
     # Something the page has no control for (set in the descriptor by hand):
     # shown, kept as-is on save.
     return {"do": "custom", "label": verb or "?", "spec": dict(spec)}
@@ -101,7 +112,19 @@ def preset_to_page(p: Preset) -> dict:
     return {"n": p.n, "name": p.name, "source": p.source, "uri": p.uri, "shuffle": p.shuffle}
 
 
-def config_doc(actions: Actions, sources: dict[str, bool], ha: bool) -> dict:
+def ha_connected(ha: Any) -> bool:
+    """``ha`` as WebApp holds it: a bool, a callable returning one, or a HaApi."""
+    try:
+        if callable(ha):
+            return bool(ha())
+        if hasattr(ha, "connected"):
+            return bool(ha.connected)
+        return bool(ha)
+    except Exception:
+        return False
+
+
+def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
     table = actions.variant.actions
     keys = []
     for cid in key_ids(actions):
@@ -117,7 +140,7 @@ def config_doc(actions: Actions, sources: dict[str, bool], ha: bool) -> dict:
         "presets": [preset_to_page(p) for p in sorted(actions.presets.values(), key=lambda p: p.n)],
         "verbs": VERBS,
         "sources": sources,
-        "ha": ha,
+        "ha": ha_connected(ha),
     }
 
 
@@ -145,6 +168,23 @@ def check_uri(source: str, uri: str) -> str | None:
     if source == "ytm":
         return None if YTM_LINK.match(uri) else "paste a YouTube Music playlist link (…playlist?list=…)"
     return f"unknown source {source!r}"
+
+
+def check_entity(verb: str, entity: str) -> str | None:
+    """Why ``entity`` can't be the target of HA ``verb``, or None if it can."""
+    domains = HA_VERBS[verb]
+    example = {"scene": "scene.living_room", "script": "script.good_night",
+               "automation": "automation.lights_out"}.get(domains[0], "light.kitchen")
+    if not entity:
+        return f"pick a Home Assistant entity, e.g. {example}"
+    if not ENTITY_ID.match(entity):
+        if verb == "ha_scene":
+            return "a scene id looks like scene.living_room"
+        return f"an entity id looks like {example}"
+    if entity.split(".", 1)[0] not in domains:
+        kinds = ", ".join(domains[:-1]) + (" or " if len(domains) > 1 else "") + domains[-1]
+        return f"{entity} isn't a {kinds} - pick one like {example}"
+    return None
 
 
 def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
@@ -207,12 +247,13 @@ def action_from_page(raw: Any, where: str, preset_ns: set[int], current: dict | 
             errors.append({"where": where, "message": "pairing window: 10–600 seconds"})
             return None
         return {"do": "bt_pair", "seconds": seconds}
-    if verb == "ha_scene":
+    if verb in HA_VERBS:
         entity = str(raw.get("entity") or "").strip()
-        if not re.fullmatch(r"scene\.[a-z0-9_]+", entity):
-            errors.append({"where": where, "message": "a scene id looks like scene.living_room"})
+        problem = check_entity(verb, entity)
+        if problem:
+            errors.append({"where": where, "message": problem})
             return None
-        return {"do": "ha_scene", "entity": entity}
+        return {"do": verb, "entity": entity}
     return {"do": verb}         # cycle_source, standby_toggle
 
 
@@ -273,6 +314,37 @@ def apply(actions: Actions, panel: Any, specs: list[dict], table: dict[str, dict
     actions.presets = presets           # reference swaps: atomic for the loop
     actions.variant.actions = merged
     tune_repeat(actions, panel)
+
+
+def ha_entries(actions: Actions) -> list[tuple[str, str, dict]]:
+    """Every key action that targets a Home Assistant entity: (key, event, spec)."""
+    table = actions.variant.actions
+    out = []
+    for cid in key_ids(actions):
+        for event in EVENTS:
+            spec = table.get(f"{cid}.{event}")
+            if spec and spec.get("do") in HA_VERBS and spec.get("entity"):
+                out.append((cid, event, dict(spec)))
+    return out
+
+
+def remove_entries(actions: Actions, panel: Any, keys_file: Path | None, names: list[str]) -> None:
+    """Clear some key actions ("k2.hold", …) through the normal save/apply path.
+
+    The overlay holds every key's tap and hold, so the whole current key table
+    is written with the named entries set to None - other keys keep whatever
+    the owner chose. Presets are untouched.
+    """
+    gone = set(names)
+    table = {
+        f"{cid}.{e}": (None if f"{cid}.{e}" in gone else actions.variant.actions.get(f"{cid}.{e}"))
+        for cid in key_ids(actions)
+        for e in EVENTS
+    }
+    specs = list(actions.variant.presets)
+    if keys_file is not None:
+        save(keys_file, specs, table)
+    apply(actions, panel, specs, table)
 
 
 def tune_repeat(actions: Actions, panel: Any) -> None:

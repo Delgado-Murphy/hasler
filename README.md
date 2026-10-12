@@ -15,7 +15,7 @@ wheels ─▶ analog backend ─┼──▶ haslerd ┤       └── ytm: :8
          (none │ ADS1115) │       │    │
 RGB lamp ─▶ Power Controller      │    └──▶ go-librespot :3678 ◀── spotify: playlist URI
                                   │
-                                  └──▶ Home Assistant (optional - hold actions only)
+                                  └──▶ Home Assistant (optional - key actions, now-playing sensor)
 
 MPD │ go-librespot │ BT │ AirPlay ──▶ Amp4 Pro (hardware mixer = the knob) ──▶ original speaker
 ```

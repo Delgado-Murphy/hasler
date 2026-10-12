@@ -291,16 +291,41 @@ box comes back playing the last preset (`cat /var/lib/haslerd/state.json` shows 
 
 ## Phase 5 — Home Assistant
 
-- [ ] Add HA's built-in **MPD integration** → `hasler.local:6600` → `media_player.hasler`. No code.
-- [ ] Confirm whether an **MQTT broker exists** — the instance runs Hue/Matter/WiZ/ESPHome and may
-      have none. If not: add Mosquitto, or set `ha.transport: rest` and use a long-lived token.
-- [ ] Bind hold actions to existing automations: `1775164862373` (All Off), `1775164862375` (Movie),
-      `living_room_switch_hold_b4_relax`.
-- [ ] **Delete** the stale ESPHome `hasler.yaml` device and the *"hasler Button 1 turned on"*
-      automation, so nothing stale is left triggering.
+*Optional, and not tied to any particular home: the radio works the same with no HA at all, and
+whatever HA the house has is connected from the key page — no file editing, no restart.*
 
-**Done when:** `media_player.hasler` appears in HA, holding a key fires its scene, **and the radio
-still works with HA stopped.**
+- [ ] **Media player, no code:** in HA, Settings → Devices & services → Add integration → **Music
+      Player Daemon (MPD)** → host `hasler.local`, port `6600` → `media_player.hasler`.
+- [ ] **Make a token:** in HA, click your user (bottom left) → **Security** → *Long-lived access
+      tokens* → **Create token**, name it "Hasler radio", copy it (HA shows it only once).
+- [ ] **Connect:** open `http://hasler.local:8080` → **Settings → Home Assistant**. The radio looks
+      for HA on the network (mDNS `_home-assistant._tcp` via `avahi-browse`, plus
+      `homeassistant.local:8123`) and lists what it finds; pick one or type the address
+      (`http://<ip>:8123` — prefer the LAN `http://` address: an `https://` one with a self-signed
+      certificate is refused). Paste the token → **Connect**. The radio checks it on the spot and says
+      plainly what's wrong: can't reach the address, not Home Assistant, token rejected, certificate
+      not trusted. The connection is saved in `/var/lib/haslerd/ha.json` (mode 0600; the token is
+      never logged or sent back to the page).
+- [ ] **Bind keys:** on the key page, a key's tap or hold can now be *Home Assistant scene*,
+      *Run a script*, *Toggle a device* (light, switch, input_boolean, fan, cover, media player) or
+      *Trigger an automation*. The picker lists that HA's entities, grouped by area; **Try it** runs
+      the action now. Key presses are fire-and-forget: HA being down never delays a key.
+- [ ] *(Optional)* **Publish what's playing:** turn on *Show the radio in Home Assistant*. The radio
+      then keeps `sensor.hasler_radio` up to date — state `playing` / `standby` / `idle`, attributes
+      `station`, `title`, `artist`, `source` — at most every 5 s and only on change. It's created
+      through HA's REST API, so it isn't stored by HA: after an HA restart it reappears with the next
+      change (or within 10 minutes). Turning the option off removes it.
+
+**Done when:** `media_player.hasler` appears in HA, holding a key bound to a scene fires it, **and
+the radio still works with HA stopped** (the key just does nothing).
+
+### Moving to another home
+
+The key actions name entities of the HA they were set up with. In a new home: Settings → Home
+Assistant → **Disconnect**, then connect the new home's HA as above. The page flags every key whose
+entity the new HA doesn't have ("Key 2 hold: scene.evening — not found", and that the keys were set
+up with a different Home Assistant); rebind them, or **Clear missing** to empty them in one go. Until
+then such a key logs once and does nothing.
 
 ## Phase 6 — Install in the cabinet
 

@@ -241,6 +241,8 @@ def build_web(
     )
     app.ha_api = ha_api
     if ha_api is not None:
+        # clear-missing rewrites keys.yaml: same file, same lock as the page
+        ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
         app.extra_routes.append(ha_api)
     app.load_saved()
     if not spec.get("enabled", True):
