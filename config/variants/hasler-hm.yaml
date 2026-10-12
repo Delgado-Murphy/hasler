@@ -32,13 +32,8 @@ io:
   # common goes to 3.3 V: IDC wire 11 (common anode, metered).
   lamp:
     backend: gpio
-<<<<<<< HEAD
     pins: {red: 17, green: 27, blue: 22}   # header pins 11, 13, 15
-    common: cathode      # TODO: confirm with the meter
-=======
-    pins: {red: 27, green: 22, blue: 23}
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
->>>>>>> master
 
 controls:
   - {id: k1, kind: momentary, pin: d0}
