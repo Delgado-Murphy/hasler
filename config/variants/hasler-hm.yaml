@@ -32,7 +32,7 @@ io:
   lamp:
     backend: gpio
     pins: {red: 27, green: 22, blue: 23}
-    common: cathode      # TODO: confirm with the meter
+    common: anode        # metered 2026-10-12: red probe on the long leg lights it
 
 controls:
   - {id: k1, kind: momentary, pin: d0}
