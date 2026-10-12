@@ -119,7 +119,7 @@ Order matters. Do these in sequence, with a meter.
 
 - [ ] **MCP23017 board** (the default; CQRobot preferred) — **four wires** to the Amp4 Pro's top
       header: VCC → **3.3 V** pin 1 (never 5 V), GND → pin 6, SDA → pin 3, SCL → pin 5. INTA/INTB
-      stay unconnected. Full diagram: Paper sheets 09–10.
+      stay unconnected. Full diagram: Paper sheets H1 (system) and H4 (key board).
 - [ ] Green breakout only: meter **RST ↔ VCC** — it must read connected, or the chip sits in reset.
 - [ ] `i2cdetect -y 1` → **`27`** for the CQRobot (`20` for the green board — set `addr:` to
       match), plus `77` for the Power Controller.

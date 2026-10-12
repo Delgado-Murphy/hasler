@@ -38,7 +38,7 @@ Cheap insurance against a failure that would be miserable to diagnose from insid
 > **Without the Power Controller (the current build)** the limit is the **Amp4 Pro's absolute maximum of 24 V**, not
 > the Controller's 30 V. A 22-standoff TVS breaks down at 24.4–26.9 V, slightly *above* that, so it only catches fast
 > spikes and the bulk capacitor does the real work. Still fit an SMAJ/SMBJ**22**A (not a 24) at the amp input. Wiring:
-> Paper sheet 12.
+> Paper sheet H2 (Power).
 
 ### Choosing the TVS — the number means different things in different families
 
@@ -258,11 +258,13 @@ Four **consecutive** header pins, so one 4-way Dupont housing plugs it in (`io.l
 
 ## The two steps that can destroy something
 
-1. **JP1 on the Power Controller must be OFF** before any 12–24 V is connected. HiFiBerry: *"Connecting a
-   higher voltage with JP1 set will destroy both the power controller and the Raspberry Pi!"* Verify with a
-   meter, not by eye.
+1. **More than 24 V into the Amp4 Pro**, or the speaker wired **across two channels**. Meter the PD
+   trigger unloaded before it ever touches the amp (19.5–20.5 V), and put the speaker on L+ / L− only.
 2. **The original mains transformer and wiring come out entirely**, and the old capacitors get discharged
    before they go in the bin.
+
+(If the Power Controller ever comes back: **JP1 must be OFF** before any 12–24 V is connected — with
+JP1 set, 20 V goes straight to the Pi and destroys both boards. Verify with a meter, not by eye.)
 
 Everything else is recoverable.
 
