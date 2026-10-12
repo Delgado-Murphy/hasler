@@ -19,31 +19,35 @@ io:
   # Fallback - keys straight to Pi GPIO, no expander. Uncomment this and
   # remove the block above. The list is d0..d8 in order; d7 is a placeholder
   # so the end-switch on d8 lands on GPIO 25. Avoids the Amp4 Pro's 2,3,4,
-  # 18-21, the HAT EEPROM (0,1), UART (14,15) and the lamp (22,23,27).
+  # 18-21, the HAT EEPROM (0,1), UART (14,15) and the lamp (17,22,27).
   # digital:
   #   backend: gpio
-  #   pins: [5, 6, 12, 13, 16, 17, 24, 26, 25]
+  #   pins: [5, 6, 12, 13, 16, 23, 24, 26, 25]
   analog:
     backend: none        # -> {backend: ads1115, addr: 0x48} in Phase 3b
-  # Pilot lamp: the 4-leg RGB LED straight on the Pi header (no Power
-  # Controller). Header pins 13/15/16 = GPIO 27/22/23, through resistors -
-  # see docs/hardware.md. `common` must match the LED (meter, diode test):
-  # cathode = long leg to GND (pin 14), anode = long leg to 3V3 (pin 17).
+  # Pilot lamp: the 4-leg RGB LED, its resistors on the prototype board
+  # (Paper PB1-PB3). The board's 7-wire ribbon sits on the Pi header's odd
+  # row only - pins 1 3V3, 3 SDA, 5 SCL, (7 empty: amp mute), 9 GND, 11/13/15
+  # = lamp R/G/B - so nothing ever lands on the 5 V row. The LED
+  # common goes to 3.3 V: IDC wire 11 (common anode, metered).
   lamp:
     backend: gpio
-    pins: {red: 27, green: 22, blue: 23}
+    pins: {red: 17, green: 27, blue: 22}   # header pins 11, 13, 15
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
 
 controls:
-  - {id: k1, kind: momentary, pin: d0}
-  - {id: k2, kind: momentary, pin: d1}
-  - {id: k3, kind: momentary, pin: d2}
-  - {id: k4, kind: momentary, pin: d3}
+  # Prototype stripboard (Paper PB3): each key sits on the MCP pin its J2
+  # wire lands on, chosen so half the keys need no wire link. J2 is the
+  # 26-pin Hasler standard: 1 GND, 2 K1, 3 K2, ... 8 PU, 13 tone switch.
+  - {id: k1, kind: momentary, pin: d4}
+  - {id: k2, kind: momentary, pin: d5}
+  - {id: k3, kind: momentary, pin: d3}
+  - {id: k4, kind: momentary, pin: d6}
   # k5/k6 hold = volume down/up, ramping every repeat_ms until released.
   # Tap still plays the preset. Stand-in for the dead wheels until the ADS1115.
-  - {id: k5, kind: momentary, pin: d4, repeat_ms: 150}
-  - {id: k6, kind: momentary, pin: d5, repeat_ms: 150}
-  - {id: pu, kind: momentary, pin: d6}
+  - {id: k5, kind: momentary, pin: d2, repeat_ms: 150}
+  - {id: k6, kind: momentary, pin: d0, repeat_ms: 150}
+  - {id: pu, kind: momentary, pin: d1}
 
   - id: volume
     kind: pot

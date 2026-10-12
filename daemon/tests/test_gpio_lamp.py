@@ -119,4 +119,4 @@ def test_hasler_descriptor_uses_the_gpio_lamp():
 
     lamp = load_variant(VARIANTS / "hasler-hm.yaml").io["lamp"]
     assert lamp["backend"] == "gpio"
-    assert set(lamp["pins"].values()) == {27, 22, 23}
+    assert lamp["pins"] == {"red": 17, "green": 27, "blue": 22}   # odd-row pins 11, 13, 15
