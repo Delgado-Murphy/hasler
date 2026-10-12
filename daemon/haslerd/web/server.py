@@ -48,6 +48,7 @@ from .. import __version__
 from ..actions import Actions
 from ..panel.controls import Event
 from ..player.base import Preset
+from ..player.moode import treble_db
 from . import keymap, stations
 from .wifi import Wifi
 
@@ -226,9 +227,11 @@ class WebApp:
     def status(self) -> dict:
         keys = set(keymap.key_ids(self.actions))
         try:
-            pressed = [cid for cid, state in self.panel.states().items() if cid in keys and state is True]
+            states = self.panel.states()
         except Exception:
-            pressed = []
+            states = {}
+        pressed = [cid for cid, state in states.items() if cid in keys and state is True]
+        tone = states.get("tone")
         current = self.actions.player.current()
         try:
             volume = self.actions.player.get_volume()
@@ -251,6 +254,11 @@ class WebApp:
             "keys": self._keys(),
             "current_key": self._current_key(current),
             "volume_limit": self._volume_limit(),
+            # The tone knob: 0-100 and what it does to the treble (None = no tone pot read yet).
+            "tone": None if not isinstance(tone, (int, float)) or isinstance(tone, bool) else
+                    {"value": round(tone), "treble_db": treble_db(tone)},
+            # The tone knob's end switch: True = radio on, False = clicked off, None = not fitted.
+            "knob_on": states.get("power") if isinstance(states.get("power"), bool) else None,
         }
 
     def _keys(self) -> list[dict]:

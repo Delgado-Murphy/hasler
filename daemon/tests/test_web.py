@@ -223,6 +223,25 @@ class TestPlayAndStatus:
         assert st["pressed"] == ["k3"]
         assert st["playing"]["name"] == "RNE Radio 3"
 
+    def test_status_shows_the_tone_knob_and_its_switch(self, rig):
+        app, actions, _, panel = rig
+        tone = next(c for c in actions.variant.controls if c["id"] == "tone")
+        if not hasattr(panel.analog, "set"):
+            pytest.skip("rig has no fake analog backend")
+        panel.analog.set(tone["channel"], tone.get("range", [0, 26400])[1])   # fully bright
+        for t in range(20):
+            panel.poll(t * 0.01)
+        st = app.status()
+        assert st["tone"] == {"value": 100, "treble_db": 6.0}
+        assert st["knob_on"] in (True, False, None)
+
+
+def test_treble_db_matches_hasler_tone():
+    from haslerd.player.moode import treble_db
+    assert treble_db(0) == -12.0
+    assert treble_db(50) == 0.0
+    assert treble_db(100) == 6.0
+
 
 def test_station_search_reads_moode_read_only(tmp_path):
     db = tmp_path / "moode.db"

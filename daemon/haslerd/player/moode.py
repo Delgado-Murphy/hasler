@@ -596,3 +596,14 @@ def tone_gain(value: float, span_db: float = 12.0, deadband_db: float = 0.5) -> 
     value = max(0.0, min(100.0, value))
     gain = round((value - 50.0) * (span_db / 50.0), 2)
     return 0.0 if abs(gain) < deadband_db else gain
+
+
+def treble_db(value: float) -> float:
+    """What the tone knob actually does to the treble, in dB (for display).
+
+    ``tone_gain`` is handed to scripts/hasler-tone, which halves boosts (and
+    drops the master gain to match) so the bright end can't clip: dark end
+    -12 dB, centre flat, bright end +6 dB. Keep the two in step.
+    """
+    gain = tone_gain(value)
+    return round(gain / 2 if gain > 0 else gain, 1)
