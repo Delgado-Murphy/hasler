@@ -325,10 +325,11 @@ Both are cheap, and both check that the abstraction actually earned its keep:
 
 ## After a moOde update
 
-`scripts/install.sh` patches one line of moOde (`/var/www/inc/mpd.php`) so moOde's own player shows
-the album cover for YouTube Music tracks. A moOde update replaces that file: covers fall back to
-moOde's default until you re-run `scripts/install.sh` (safe to repeat). The original is kept as
-`mpd.php.hasler-orig`.
+`scripts/install.sh` adds two lines to moOde for YouTube Music tracks: one in `/var/www/inc/mpd.php`
+so moOde's player shows the album cover, one in `/var/www/inc/music-library.php` so a new track's
+title appears at once instead of after a ~4 s `mediainfo` probe. A moOde update replaces those files:
+covers and the quick titles go back to moOde's defaults until you re-run `scripts/install.sh` (safe to
+repeat). Originals are kept as `*.hasler-orig`.
 
 ## Moving the radio to a new Wi-Fi network
 
