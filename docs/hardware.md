@@ -222,29 +222,30 @@ key loom's common ground.
 switch there may never read. The daemon refuses `d7`/`d15` at startup, which is why the end-switch
 skips to PB0.
 
-**Fallback: direct GPIO map** — avoids the Amp4 Pro's 2, 3, 4, 18–21, the HAT EEPROM (0, 1), UART (14, 15) and the lamp (22, 23, 27). Commented out in `hasler-hm.yaml`:
+**Fallback: direct GPIO map** — avoids the Amp4 Pro's 2, 3, 4, 18–21, the HAT EEPROM (0, 1), UART (14, 15) and the lamp (17, 22, 27). Commented out in `hasler-hm.yaml`:
 
 | Logical | Key | GPIO | | Logical | Key | GPIO |
 |---|---|---|---|---|---|---|
 | d0 | 1 | 5 | | d4 | 5 | 16 |
-| d1 | 2 | 6 | | d5 | 6 | 17 |
+| d1 | 2 | 6 | | d5 | 6 | 23 |
 | d2 | 3 | 12 | | d6 | PU | 24 |
 | d3 | 4 | 13 | | d8 | tone end-switch | 25 |
 
 All keys to a common ground rail, pull-ups enabled in software, 100 nF across each.
 
-## Pilot lamp — RGB LED on the Pi header
+## Pilot lamp — RGB LED, resistors on the prototype board
 
-Four **consecutive** header pins, so one 4-way Dupont housing plugs it in (`io.lamp` in
-`hasler-hm.yaml`). haslerd drives it with software PWM: every lamp state, dimming, pulse and flash.
+The board's 7-wire ribbon uses only the header's **odd row** (Paper PB1): pins 1 3V3 · 3 SDA · 5 SCL ·
+*7 empty (amp mute)* · 9 GND · 11 · 13 · 15 = lamp. Nothing lands on the even row, which carries 5 V.
+haslerd drives the lamp with software PWM (`io.lamp` in `hasler-hm.yaml`).
 
-| Header pin | Pi | LED leg | Series resistor |
+| Header pin | Pi | LED leg | Series resistor (on the board) |
 |---|---|---|---|
-| 13 | GPIO 27 | red | **220 Ω** |
-| 14 | GND | common (**common cathode**, long leg) | — |
-| 15 | GPIO 22 | green | **100 Ω** |
-| 16 | GPIO 23 | blue | **100 Ω** |
-| 17 | 3V3 | common (**common anode** only — then 14 stays empty, 5-way housing) | — |
+| 11 | GPIO 17 | red | **220 Ω** |
+| 13 | GPIO 27 | green | **100 Ω** |
+| 15 | GPIO 22 | blue | **100 Ω** |
+| — | board GND rail | common (**common cathode**, long leg) | — |
+| — | board 3V3 rail | common (**common anode** only — move jumper J1) | — |
 
 - **Which type?** Meter in diode mode, red probe on the long leg: colours glow → common anode; glow
   only with the black probe there → common cathode. Set `common:` to match. Backwards just inverts the
@@ -252,7 +253,7 @@ Four **consecutive** header pins, so one 4-way Dupont housing plugs it in (`io.l
 - **Resistors go on the colour legs, never the common.** These keep each pin at roughly 4–6 mA at 3.3 V, well inside what a GPIO can source
   (red drops ~2.0 V, green/blue ~2.9 V). Too dim or one colour dominant: adjust `balance:` in the
   descriptor before changing parts.
-- Pin 17 also feeds the pot rail (ADS1115, later) — a common-anode LED shares it via a splice.
+- The pots' 3.3 V and GND come from the board's rails too (header V), not from the Pi.
 
 **I²C map:** `0x27` MCP23017 keys (CQRobot; `0x20` green board) · `0x48` ADS1115 (Phase 3b) · `0x4d` the Amp4 Pro's own amp chip (`UU` once its driver loads) — leave it alone
 
