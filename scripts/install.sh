@@ -190,6 +190,18 @@ if [[ -d /etc/nginx/sites-enabled ]] && put_file "$REPO/config/captive/nginx-cap
   fi
 fi
 
+# --- moOde: cover art for YouTube Music tracks -------------------------------
+# One line in moOde's mpd.php, so its player shows the album cover for our
+# YouTube tracks (via haslerd's /art/<id>). Re-run after a moOde update.
+if [[ -f /var/www/inc/mpd.php ]]; then
+  if (( DRY )); then
+    printf '   would patch /var/www/inc/mpd.php (YouTube cover art; backup mpd.php.hasler-orig)\n'
+  else
+    say "moOde cover art for YouTube Music: $(sudo python3 "$REPO/config/moode/patch-ytm-art.py")" \
+      || warn "moOde cover-art patch not applied - default covers stay; everything else works"
+  fi
+fi
+
 # --- go-librespot ------------------------------------------------------------
 # Spotify presets. A Spotify Connect device haslerd drives over 127.0.0.1:3678.
 if (( ARM64 )); then

@@ -175,6 +175,15 @@ class WebApp:
                 waiting = not renderer.get("device")
         return source, waiting, renderer
 
+    def cover(self, vid: str) -> str | None:
+        """Cover URL for a YouTube video id, or None if it isn't one / no ytm."""
+        from ..player.sources.ytm import VIDEO_ID
+        if not VIDEO_ID.match(vid or ""):
+            return None
+        ytm = (getattr(self.actions.player, "sources", None) or {}).get("ytm")
+        cover = getattr(ytm, "cover", None)
+        return cover(vid) if callable(cover) else f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+
     def stations(self, query: str) -> list[dict]:
         return stations.search(query, self.station_db)
 
@@ -264,6 +273,10 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                     self._send(200, page.read_bytes(), "text/html; charset=utf-8")
                 else:
                     self._send(404, b"page not installed", "text/plain")
+            elif url.path.startswith("/art/"):
+                # Cover art for moOde's player (see config/moode/ytm-art.sed):
+                # moOde points its <img> here for our YouTube tracks.
+                self._guard(lambda: self._art(url.path[len("/art/"):]))
             elif url.path == "/api/wifi":
                 self._guard(lambda: self._json(200, app.wifi.status()))
             elif url.path == "/api/config":
@@ -283,6 +296,17 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, app.ytm_account()))
             else:
                 self._send(404, b"not found", "text/plain")
+
+        def _art(self, vid: str) -> None:
+            cover = app.cover(vid)
+            if cover is None:
+                self._send(404, b"no cover", "text/plain")
+                return
+            self.send_response(302)
+            self.send_header("Location", cover)
+            self.send_header("Cache-Control", "max-age=86400")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
         def do_PUT(self) -> None:
             if urlparse(self.path).path == "/api/config":

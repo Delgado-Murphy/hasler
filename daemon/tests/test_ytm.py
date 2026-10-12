@@ -719,3 +719,10 @@ def test_a_link_refused_twice_is_a_502_and_remembered(mpd, runner):
     assert src.handle(f"/ytm/{IDS[0]}") == (502, None)
     assert src.handle(f"/ytm/{IDS[0]}") == (502, None)
     assert runner.resolves() == [IDS[0], IDS[0]]      # not hammered on the retry
+
+
+def test_cover_prefers_the_catalogue_art(source):
+    with source._cache_lock:
+        source._meta[IDS[0]] = {"title": "t", "artist": "a", "album": "", "thumb": "https://lh3.example/x"}
+    assert source.cover(IDS[0]) == "https://lh3.example/x"
+    assert source.cover(IDS[1]) == f"https://i.ytimg.com/vi/{IDS[1]}/hqdefault.jpg"

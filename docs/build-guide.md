@@ -323,6 +323,13 @@ Both are cheap, and both check that the abstraction actually earned its keep:
    changeover never emitting a spurious "cleared". Watch `panel-probe.py` while cycling stations
    fast; the test suite already covers it, but the real switches are the real test.
 
+## After a moOde update
+
+`scripts/install.sh` patches one line of moOde (`/var/www/inc/mpd.php`) so moOde's own player shows
+the album cover for YouTube Music tracks. A moOde update replaces that file: covers fall back to
+moOde's default until you re-run `scripts/install.sh` (safe to repeat). The original is kept as
+`mpd.php.hasler-orig`.
+
 ## Moving the radio to a new Wi-Fi network
 
 No screen, no keyboard — moOde's fallback hotspot does it.

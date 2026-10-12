@@ -440,3 +440,16 @@ class TestYtm:
             assert "track" in json.loads(body)
         finally:
             server.close()
+
+
+class TestCoverArt:
+    def test_art_redirects_to_the_sources_cover(self, rig):
+        app, _, player, _ = rig
+        player.sources = {"ytm": type("Y", (), {"cover": lambda self, vid: f"https://lh3.example/{vid}=w544"})()}
+        assert app.cover("aaaaaaaaaaa") == "https://lh3.example/aaaaaaaaaaa=w544"
+
+    def test_art_falls_back_to_youtubes_thumbnail_and_refuses_junk(self, rig):
+        app, *_ = rig
+        assert app.cover("aaaaaaaaaaa") == "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg"
+        assert app.cover("../etc/passwd") is None
+        assert app.cover("") is None

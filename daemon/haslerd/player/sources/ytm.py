@@ -319,6 +319,13 @@ class YtmSource:
             return None
         return {**meta, "videoId": vid}
 
+    def cover(self, vid: str) -> str:
+        """Best cover image for a video id: the catalogue's square album art if
+        we have it, else YouTube's own thumbnail (always exists, 4:3)."""
+        with self._cache_lock:
+            thumb = (self._meta.get(vid) or {}).get("thumb", "")
+        return thumb or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+
     def close(self) -> None:
         self._warm_stop.set()
         self._warm_kick.set()
