@@ -29,11 +29,16 @@ io:
   # (Paper PB1-PB3). The board's 7-wire ribbon sits on the Pi header's odd
   # row only - pins 1 3V3, 3 SDA, 5 SCL, (7 empty: amp mute), 9 GND, 11/13/15
   # = lamp R/G/B - so nothing ever lands on the 5 V row. The LED
-  # common is on the board's GND rail (jumper J1 -> 3V3 for common anode).
+  # common goes to 3.3 V: IDC wire 11 (common anode, metered).
   lamp:
     backend: gpio
+<<<<<<< HEAD
     pins: {red: 17, green: 27, blue: 22}   # header pins 11, 13, 15
     common: cathode      # TODO: confirm with the meter
+=======
+    pins: {red: 27, green: 22, blue: 23}
+    common: anode        # metered 2026-10-12: red probe on the long leg lights it
+>>>>>>> master
 
 controls:
   - {id: k1, kind: momentary, pin: d0}
