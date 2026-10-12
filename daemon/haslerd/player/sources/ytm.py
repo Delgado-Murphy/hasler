@@ -78,6 +78,15 @@ WARM_RETRY_S = 60
 # won't resolve, warm() tries this many in all before giving up for the round.
 WARM_TRIES = 3
 
+# A video that won't resolve is remembered as dead for a while, so MPD skipping
+# it, the prefetch and warm() don't each re-run yt-dlp on it every few seconds
+# (seen on the bench: one removed video, a yt-dlp call every 2 s). Gone for good
+# is gone for hours; anything else might be the network, so only briefly.
+DEAD_GONE_S = 6 * 3600
+DEAD_OTHER_S = 60
+GONE_MARKERS = ("Video unavailable", "Private video", "This video has been removed",
+                "account associated with this video has been terminated")
+
 
 class YtmError(RuntimeError):
     """A ytm preset could not be started. Raised by ``play`` only."""
@@ -122,6 +131,8 @@ class YtmSource:
         # The MPD client is not thread-safe; the proxy's prefetch reads the
         # queue from a handler thread while the panel loop may be calling play.
         self._mpd_lock = threading.Lock()
+        # id -> monotonic time until which it counts as dead. Guarded by _cache_lock.
+        self._dead: dict[str, float] = {}
         # Queue order as we added it, used to guess the next id if MPD can't say.
         self._queue: list[str] = []
         # playlist uri -> the start index warm() resolved: a pre-picked random
@@ -333,6 +344,8 @@ class YtmSource:
         cached = self._cached_url(vid)
         if cached:
             return cached
+        if self._is_dead(vid):
+            return None
         with self._cache_lock:
             lock = self._id_locks.setdefault(vid, threading.Lock())
         with lock:
@@ -371,6 +384,8 @@ class YtmSource:
             log.warning("yt-dlp could not be run for %s", vid, exc_info=True)
             return None
         if result.returncode != 0:
+            gone = any(marker in (result.stderr or "") for marker in GONE_MARKERS)
+            self._mark_dead(vid, DEAD_GONE_S if gone else DEAD_OTHER_S)
             log.warning("yt-dlp failed for %s: %s", vid, _tail(result.stderr))
             return None
         for line in (result.stdout or "").splitlines():
@@ -378,6 +393,20 @@ class YtmSource:
                 return line.strip()
         log.warning("yt-dlp gave no URL for %s", vid)
         return None
+
+    def _mark_dead(self, vid: str, seconds: float) -> None:
+        with self._cache_lock:
+            self._dead[vid] = time.monotonic() + seconds
+
+    def _is_dead(self, vid: str) -> bool:
+        with self._cache_lock:
+            until = self._dead.get(vid)
+            if until is None:
+                return False
+            if until <= time.monotonic():
+                del self._dead[vid]
+                return False
+            return True
 
     def _expand(self, uri: str, ttl_s: float | None = None, force: bool = False) -> list[str]:
         """Playlist (or watch) URL -> video ids, in playlist order.

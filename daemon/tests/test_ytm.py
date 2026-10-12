@@ -440,3 +440,30 @@ def test_warm_again_swaps_the_list_and_goes_round_at_once(mpd, runner):
         assert wait_for(lambda: any(other in c for c in runner.calls))   # not an hour later
     finally:
         src.close()
+
+
+def test_a_removed_video_is_not_asked_about_again(mpd):
+    runner = FakeRunner(fail_ids={IDS[0]})   # stderr: "Video unavailable"
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    for _ in range(5):
+        assert src.resolve(IDS[0]) is None
+    assert runner.resolves() == [IDS[0]]
+
+
+def test_other_failures_are_only_remembered_briefly(mpd, monkeypatch):
+    import haslerd.player.sources.ytm as ytm
+
+    def flaky(cmd, **kwargs):
+        flaky.n += 1
+        return subprocess.CompletedProcess(cmd, 1, "", "ERROR: unable to download: timed out")
+
+    flaky.n = 0
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=flaky)
+    clock = [1000.0]
+    monkeypatch.setattr(ytm.time, "monotonic", lambda: clock[0])
+    src.resolve(IDS[0])
+    src.resolve(IDS[0])
+    assert flaky.n == 1
+    clock[0] += ytm.DEAD_OTHER_S + 1
+    src.resolve(IDS[0])
+    assert flaky.n == 2
