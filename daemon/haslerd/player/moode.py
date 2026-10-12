@@ -80,6 +80,9 @@ class YtmConfig:
     port: int = 8099
     ytdlp: str = "yt-dlp"
     cookies: str | None = None
+    # The ytmusicapi catalogue (search, names, endless radio, the owner's
+    # sign-in). Off = yt-dlp only, as before. Absent ytmusicapi = off anyway.
+    catalog: bool = True
 
 
 @dataclass
@@ -118,12 +121,13 @@ class MoodeConfig:
             self.ytm = YtmConfig(**self.ytm)
 
 
-def build_sources(config: MoodeConfig) -> dict[str, Source]:
+def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> dict[str, Source]:
     """Radio always; Spotify and YTM if their modules import and construct.
 
     Imported lazily and inside a try so the daemon still plays radio when a
     source module is missing, half-written, or its dependencies are absent -
-    the box must never lose its radio because Spotify broke.
+    the box must never lose its radio because Spotify broke. ``state_dir``
+    (/var/lib/haslerd) is where the YouTube Music sign-in is kept.
     """
     radio = RadioSource(config.mpd_host, config.mpd_port, ytm_port=config.ytm.port)
     sources: dict[str, Source] = {"radio": radio}
@@ -140,13 +144,23 @@ def build_sources(config: MoodeConfig) -> dict[str, Source]:
             log.warning("spotify source unavailable; spotify presets will not play", exc_info=True)
     if config.ytm.enabled:
         try:
-            from .sources.ytm import YtmSource
+            from .sources.ytm import YtmSource, stream_ok
 
+            catalog = None
+            if config.ytm.catalog:
+                try:
+                    from .sources.ytmusic import YtmCatalog
+
+                    catalog = YtmCatalog(state_dir)
+                except Exception:
+                    log.warning("YouTube Music catalogue unavailable; yt-dlp only", exc_info=True)
             sources["ytm"] = YtmSource(
                 mpd=radio.mpd,
                 port=config.ytm.port,
                 ytdlp=config.ytm.ytdlp,
-                cookies=config.ytm.cookies,
+                cookies=config.ytm.cookies or None,
+                catalog=catalog,
+                probe=stream_ok,
             )
         except Exception:
             log.warning("ytm source unavailable; ytm presets will not play", exc_info=True)
@@ -165,9 +179,12 @@ class MoodePlayer:
         config: MoodeConfig | None = None,
         sources: dict[str, Source] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        state_dir: str | Path | None = None,
     ) -> None:
         self.config = config or MoodeConfig()
-        self.sources: dict[str, Source] = sources if sources is not None else build_sources(self.config)
+        self.sources: dict[str, Source] = (
+            sources if sources is not None else build_sources(self.config, state_dir)
+        )
         self.current_preset: Preset | None = None
         self._clock = clock
         self._source_cache: tuple[float, str] | None = None

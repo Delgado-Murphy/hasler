@@ -117,9 +117,11 @@ def build(args) -> tuple[Panel, Actions, Lamp | None, dict]:
         # should not quietly overwrite what the real box remembers.
         state = StateStore.at(config["state_file"]) if config.get("state_file") else StateStore(None)
     else:
-        player = MoodePlayer(MoodeConfig(**(config.get("moode") or {})))
-        lamp = open_lamp(variant.io.get("lamp") or {})
         state = StateStore.at(config.get("state_file"))
+        # The state directory also keeps the YouTube Music sign-in.
+        state_dir = Path(state.path).parent if state.path is not None else None
+        player = MoodePlayer(MoodeConfig(**(config.get("moode") or {})), state_dir=state_dir)
+        lamp = open_lamp(variant.io.get("lamp") or {})
     log.info("state file: %s", state.path or "(in memory)")
 
     ha = None

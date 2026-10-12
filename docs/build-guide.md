@@ -243,6 +243,34 @@ the spot — so expired stream URLs are never a problem.
          ```
       3. Set `ytm.cookies: /var/lib/haslerd/ytm-cookies.txt` and restart `haslerd`.
       The file is the account's login — keep it out of the repo. A spare Google account is safest.
+      Easier: sign in from the key page instead (next item) — it writes the same file for you.
+- [ ] **YouTube Music on the key page — search, names, endless radio, your account.** With
+      `ytmusicapi` installed (the install script does it, via the `pi` extra) the key page can
+      search songs, artists, albums and playlists and turn a result into a preset: a **song** or
+      **artist** becomes an *endless radio* (when the queue nears its end `haslerd` fetches more of
+      the same radio), an **album** or **playlist** plays as itself. moOde's player and the key page
+      show real titles and artists instead of `127.0.0.1:8099/ytm/…` URLs. `ytm: {catalog: false}`
+      turns all of this off and leaves plain yt-dlp.
+      ```sh
+      ~/hasler/daemon/.venv/bin/python -c 'import ytmusicapi; print(ytmusicapi.__version__)'  # 1.12+
+      ```
+      **Signing in** adds Liked songs and private playlists, and gives yt-dlp the same login:
+      1. On a desktop browser, open **music.youtube.com** and make sure you are signed in.
+      2. Open DevTools (F12) → **Network**, type `browse` in the filter, then click around (Library,
+         Home) until a **POST** to `browse?…` appears. Click it.
+      3. Copy its request headers.
+         **Firefox:** right-click the request → *Copy Value* → **Copy Request Headers**.
+         **Chrome / Edge:** *Headers* tab → *Request Headers* → tick **Raw** (or "view source") →
+         select everything in that block → copy.
+      4. On the key page, open YouTube Music → **Sign in**, paste, and save. It shows the account
+         name when YouTube accepts the login. Pasting only the value of the `Cookie:` header works
+         too, as long as it contains `__Secure-3PAPISID`.
+
+      This is the owner's account cookie: **treat it like a password**. It is kept in
+      `/var/lib/haslerd/ytm-browser.json` and `ytm-cookies.txt`, both mode 600, is never logged,
+      and **Sign out** on the key page deletes both. The cookie lasts months, not forever — if Liked
+      songs stop loading (or the page says "not signed in"), sign in again. Signing out of that
+      browser session invalidates it at once, so close the tab rather than logging out.
 - [ ] `sudo systemctl restart haslerd && journalctl -u haslerd -f`, then press every key.
 
 **Done when:** with the **phone off** and **Home Assistant stopped**, each key plays its own source;

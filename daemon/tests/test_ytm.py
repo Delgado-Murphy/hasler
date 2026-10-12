@@ -48,6 +48,8 @@ class FakeMPD:
         self.file = ""
         self.nextsong = None
         self.queue = []
+        self.song = 0
+        self.tag_error = None
 
     def clear(self):
         self.calls.append(("clear",))
@@ -60,6 +62,21 @@ class FakeMPD:
         self.calls.append(("add", uri))
         self.queue.append(uri)
 
+    def addid(self, uri):
+        self.calls.append(("addid", uri))
+        self.queue.append(uri)
+        return str(len(self.queue))          # MPD's song ids are strings too
+
+    def addtagid(self, songid, tag, value):
+        if self.tag_error:
+            raise self.tag_error
+        self.calls.append(("addtagid", songid, tag, value))
+
+    def delete(self, span):
+        self.calls.append(("delete", span))
+        start, end = span
+        del self.queue[start:end]
+
     def play(self, *args):
         self.calls.append(("play", *args))
 
@@ -70,7 +87,7 @@ class FakeMPD:
         self.calls.append(("next",))
 
     def status(self):
-        st = {"state": self.state}
+        st = {"state": self.state, "playlistlength": str(len(self.queue)), "song": str(self.song)}
         if self.nextsong is not None:
             st["nextsong"] = str(self.nextsong)
         return st
@@ -467,3 +484,238 @@ def test_other_failures_are_only_remembered_briefly(mpd, monkeypatch):
     clock[0] += ytm.DEAD_OTHER_S + 1
     src.resolve(IDS[0])
     assert flaky.n == 2
+
+
+# -- the YouTube Music catalogue ------------------------------------------
+
+RADIO = "https://music.youtube.com/watch?v=aaaaaaaaaaa&list=RDAMVMaaaaaaaaaaa"
+
+
+def meta(vid, title=None):
+    return {"videoId": vid, "title": title or f"Song {vid[0]}", "artist": "Band", "album": "LP",
+            "thumb": f"https://t/{vid}", "duration": "3:00"}
+
+
+class FakeCatalog:
+    """Stands in for YtmCatalog: tracks() for playlists, radio() batches in turn."""
+
+    def __init__(self, tracks=None, batches=None, available=True, cookies_file=None):
+        self.available = available
+        self.cookies_file = cookies_file
+        self._tracks = [meta(i) for i in IDS] if tracks is None else tracks
+        self.batches = list(batches or [])
+        self.calls = []
+
+    def tracks(self, uri):
+        self.calls.append(("tracks", uri))
+        return self._tracks
+
+    def radio(self, uri, after=None):
+        self.calls.append(("radio", uri, after))
+        return self.batches.pop(0) if self.batches else []
+
+
+def ids_of(letters):
+    return [c * 11 for c in letters]
+
+
+def test_catalog_expands_and_tags_each_song(mpd, runner):
+    cat = FakeCatalog()
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
+    finally:
+        src.close()
+    assert runner.calls == []                                   # no yt-dlp expansion
+    assert cat.calls == [("tracks", PLAYLIST)]
+    assert mpd.queue == [src.prefix + i for i in IDS]
+    assert ("addtagid", "1", "Title", "Song a") in mpd.calls
+    assert ("addtagid", "1", "Artist", "Band") in mpd.calls
+    assert ("addtagid", "3", "Album", "LP") in mpd.calls
+    assert mpd.calls[-1] == ("play",)
+
+
+def test_a_refused_tag_still_queues_the_song_and_stops_asking(mpd, runner):
+    mpd.tag_error = RuntimeError("[2@0] {addtagid} not a remote song")
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=FakeCatalog())
+    try:
+        src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
+    finally:
+        src.close()
+    assert mpd.queue == [src.prefix + i for i in IDS]           # all three, once each
+    assert [c[0] for c in mpd.calls].count("addid") == 1         # then plain adds
+    assert [c[0] for c in mpd.calls].count("add") == 2
+
+
+def test_empty_catalog_answer_falls_back_to_ytdlp(mpd, runner):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=FakeCatalog(tracks=[]))
+    try:
+        src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
+    finally:
+        src.close()
+    assert runner.calls == [["yt-dlp", "--flat-playlist", "-J", PLAYLIST]]
+    assert [c for c in mpd.calls if c[0] == "add"] == [("add", src.prefix + i) for i in IDS]
+
+
+def test_unavailable_catalog_is_the_old_ytdlp_path(mpd, runner):
+    cat = FakeCatalog(available=False)
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
+    finally:
+        src.close()
+    assert cat.calls == [] and sum("-J" in c for c in runner.calls) == 1
+
+
+def test_catalog_expansion_is_cached_and_warmed_like_ytdlp(mpd, runner):
+    cat = FakeCatalog()
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+        assert src.warm_once(preset) is True
+        src.play(preset)
+        src.play(preset)
+    finally:
+        src.close()
+    assert cat.calls == [("tracks", PLAYLIST)]
+    assert runner.resolves() == [IDS[0]]                        # warm resolved the opener
+
+
+def test_radio_link_uses_radio_and_is_endless(mpd, runner):
+    cat = FakeCatalog(batches=[[meta(i) for i in IDS]])
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        src.play(Preset(n=1, name="Band radio", uri=RADIO, source="ytm"))
+        assert cat.calls == [("radio", RADIO, None)]
+        assert src._endless == RADIO
+        src.play(Preset(n=2, name="Jazz", uri=PLAYLIST, source="ytm"))
+        assert src._endless is None                             # a playlist ends
+    finally:
+        src.close()
+
+
+def test_top_up_near_the_end_appends_only_new_ids(mpd, runner):
+    first = ids_of("abcdefgh")
+    cat = FakeCatalog(batches=[[meta(i) for i in first], [meta(i) for i in ids_of("ghijk")]])
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        src.play(Preset(n=1, name="Band radio", uri=RADIO, source="ytm"))
+        assert src._maybe_top_up(first[1]) is False             # 6 from the end: not yet
+        assert len(cat.calls) == 1
+        assert src._maybe_top_up(first[3]) is True              # 5th from the end
+        assert cat.calls[-1] == ("radio", RADIO, first[-1])     # continue after the last
+        assert mpd.queue == [src.prefix + i for i in first + ids_of("ijk")]
+        assert src._queue == first + ids_of("ijk")
+        assert ("addtagid", "9", "Title", "Song i") in mpd.calls
+    finally:
+        src.close()
+
+
+def test_top_up_happens_on_the_prefetch_thread_when_mpd_asks(mpd, runner):
+    first = ids_of("abc")
+    cat = FakeCatalog(batches=[[meta(i) for i in first], [meta(i) for i in ids_of("de")]])
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        src.play(Preset(n=1, name="Band radio", uri=RADIO, source="ytm"))
+        status, _ = fetch(src.prefix + first[0])
+        assert status == 302
+        assert wait_for(lambda: len(mpd.queue) == 5)
+    finally:
+        src.close()
+
+
+def test_top_up_leaves_a_queue_someone_else_replaced(mpd, runner):
+    first = ids_of("abc")
+    cat = FakeCatalog(batches=[[meta(i) for i in first], [meta(i) for i in ids_of("de")]])
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        src.play(Preset(n=1, name="Band radio", uri=RADIO, source="ytm"))
+        mpd.queue = ["http://radio.example/stream"]             # a radio key was pressed
+        assert src._maybe_top_up(first[2]) is False
+        assert mpd.queue == ["http://radio.example/stream"]
+    finally:
+        src.close()
+
+
+def test_top_up_caps_the_queue_by_dropping_played_songs(mpd, runner, monkeypatch):
+    import haslerd.player.sources.ytm as ytm
+
+    monkeypatch.setattr(ytm, "QUEUE_CAP", 6)
+    first = ids_of("abcde")
+    cat = FakeCatalog(batches=[[meta(i) for i in first], [meta(i) for i in ids_of("fgh")]])
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    try:
+        src.play(Preset(n=1, name="Band radio", uri=RADIO, source="ytm"))
+        mpd.song = 3                                            # a-c played, d playing
+        assert src._maybe_top_up(first[3]) is True
+        assert ("delete", (0, 2)) in mpd.calls                  # only played songs go
+        assert len(mpd.queue) == 6
+        assert src._queue == ids_of("cdefgh")
+    finally:
+        src.close()
+
+
+def test_signed_in_cookies_reach_ytdlp_per_call(mpd, runner, tmp_path):
+    jar = tmp_path / "ytm-cookies.txt"
+    cat = FakeCatalog(available=False, cookies_file=jar)
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=cat)
+    src.resolve(IDS[0])
+    assert "--cookies" not in runner.calls[-1]                  # not signed in yet
+    jar.write_text("# Netscape HTTP Cookie File\n")
+    src.resolve(IDS[1])
+    assert runner.calls[-1][runner.calls[-1].index("--cookies") + 1] == str(jar)
+    src._expand(PLAYLIST)
+    assert "--cookies" in runner.calls[-1]
+
+
+def test_configured_cookies_win_over_the_sign_in(mpd, runner, tmp_path):
+    jar = tmp_path / "ytm-cookies.txt"
+    jar.write_text("x")
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, cookies="/etc/haslerd/yt.txt",
+                    catalog=FakeCatalog(cookies_file=jar))
+    src.resolve(IDS[0])
+    assert runner.calls[-1][runner.calls[-1].index("--cookies") + 1] == "/etc/haslerd/yt.txt"
+
+
+def test_now_playing_names_our_current_track(mpd, runner):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, catalog=FakeCatalog())
+    try:
+        src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
+        mpd.file = src.prefix + IDS[1]
+        assert src.now_playing() == {"title": "Song b", "artist": "Band", "album": "LP",
+                                     "thumb": f"https://t/{IDS[1]}", "videoId": IDS[1]}
+        mpd.file = src.prefix + "zzzzzzzzzzz"                   # ours, but never named
+        assert src.now_playing() is None
+        mpd.file = "http://radio.example/stream"
+        assert src.now_playing() is None
+    finally:
+        src.close()
+
+
+def test_build_sources_gives_ytm_a_catalog_in_the_state_dir(tmp_path):
+    from haslerd.player.moode import MoodeConfig, build_sources
+
+    sources = build_sources(MoodeConfig(spotify={"enabled": False}), tmp_path)
+    assert sources["ytm"].catalog.cookies_file == tmp_path / "ytm-cookies.txt"
+    off = build_sources(MoodeConfig(spotify={"enabled": False}, ytm={"catalog": False}), tmp_path)
+    assert off["ytm"].catalog is None
+
+
+def test_a_refused_link_is_resolved_again_before_mpd_sees_it(mpd, runner):
+    seen = []
+
+    def probe(url):
+        seen.append(url)
+        return len(seen) > 1          # first link refused, the fresh one fine
+
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, probe=probe)
+    status, location = src.handle(f"/ytm/{IDS[0]}")
+    assert status == 302 and location.endswith(f"/{IDS[0]}?x=1")
+    assert runner.resolves() == [IDS[0], IDS[0]]      # resolved twice: cache dropped
+
+
+def test_a_link_refused_twice_is_a_502_and_remembered(mpd, runner):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, probe=lambda url: False)
+    assert src.handle(f"/ytm/{IDS[0]}") == (502, None)
+    assert src.handle(f"/ytm/{IDS[0]}") == (502, None)
+    assert runner.resolves() == [IDS[0], IDS[0]]      # not hammered on the retry

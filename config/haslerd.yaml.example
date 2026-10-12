@@ -30,9 +30,13 @@ moode:
     enabled: true
     port: 8099
     ytdlp: yt-dlp        # on PATH via /usr/local/bin; or an absolute path
-    # Netscape cookies.txt for private playlists. Empty = public only.
-    # e.g. /var/lib/haslerd/ytm-cookies.txt, mode 600 - yt-dlp rewrites it.
+    # Netscape cookies.txt for private playlists. Empty = public only, or the
+    # cookies from the key page's YouTube Music sign-in (written to
+    # /var/lib/haslerd/ytm-cookies.txt, mode 600) once someone signs in there.
     cookies: ""
+    # ytmusicapi: search on the key page, track names in moOde, endless radio
+    # presets, Liked songs. false = yt-dlp only.
+    catalog: true
 
 # Last preset, resumed after a power-cycle. systemd creates the directory
 # (StateDirectory=haslerd); it must be writable by the service user.

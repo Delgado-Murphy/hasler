@@ -12,8 +12,12 @@ Python.
 
 Consequences worth knowing:
 
-* moOde's UI shows the queue as proxy URLs, not titles. That is the price of
-  late resolution; titles could be added later from the ``--flat-playlist`` JSON.
+* moOde's UI would show the queue as proxy URLs. When the YouTube Music
+  catalogue (ytmusic.py) expanded the preset we know each track's title, artist
+  and album, and queue it with ``addid`` + ``addtagid`` so MPD - and moOde,
+  which reads MPD - shows real names. MPD allows tag edits on remote songs
+  (since 0.19); if it refuses, the track plays untagged rather than not at all.
+  yt-dlp's ``--flat-playlist`` path stays untagged.
 * A resolver failure answers 502, which MPD treats as a broken song and skips.
   One region-locked track therefore costs a skip, not silence.
 * Resolving the *next* queued id in the background after each request means a
@@ -32,7 +36,21 @@ Operational notes (these bite in practice, so they live here, not in a wiki):
 * ``cookies`` points at a Netscape-format cookies.txt exported from a browser
   logged into YouTube Music. Needed for private/library playlists, and it
   reduces "confirm you are not a bot" failures; keep the file readable only by
-  the daemon user.
+  the daemon user. Without it, the cookies the key page's sign-in wrote
+  (``catalog.cookies_file``) are used if present - checked on every yt-dlp run,
+  so signing in or out takes effect without a restart.
+
+The catalogue (optional, ``catalog=``) changes three things when available:
+
+* **Expansion** uses ytmusicapi (~0.3 s for a 100-track playlist) instead of
+  ``yt-dlp --flat-playlist`` (several seconds), and learns names on the way.
+  If it returns nothing, yt-dlp is tried as before.
+* **Radio links** (``list=RD…``) become *endless*: when MPD asks for a track
+  within ``TOPUP_WITHIN`` of the end of the queue, the prefetch thread fetches
+  the next batch of the same radio, continuing from the last queued track, and
+  appends only ids not already queued. The queue is capped at ``QUEUE_CAP`` by
+  deleting already-played songs from the front.
+* ``now_playing()`` names the current track for the key page.
 """
 
 from __future__ import annotations
@@ -45,8 +63,11 @@ import subprocess
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
+import urllib.error
+import urllib.request
 
 from ..base import Preset
 
@@ -87,6 +108,33 @@ DEAD_OTHER_S = 60
 GONE_MARKERS = ("Video unavailable", "Private video", "This video has been removed",
                 "account associated with this video has been terminated")
 
+# Endless radio: top up when MPD reaches a track this close to the queue's end.
+# Five tracks is a quarter of an hour of slack for one ~1 s catalogue call.
+TOPUP_WITHIN = 5
+# Never let an endless queue grow past this; played songs go from the front.
+QUEUE_CAP = 500
+# Names learned from the catalogue, kept for the tags and the key page.
+META_CAP = 5000
+
+
+def stream_ok(url: str, timeout: float = 4.0) -> bool:
+    """Will googlevideo actually serve this link? One-byte range request.
+
+    YouTube now and then refuses a freshly resolved link with 403 (seen on the
+    bench: ~5 tracks in an evening). MPD doesn't retry - it skips the song - so
+    the proxy checks first and re-resolves once. A timeout or network error
+    counts as "fine": MPD will find out the same way, and a slow probe must not
+    make every track slower.
+    """
+    req = urllib.request.Request(url, headers={"Range": "bytes=0-0", "User-Agent": "Music Player Daemon"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status in (200, 206)
+    except urllib.error.HTTPError as err:
+        return err.code not in (403, 410)
+    except Exception:
+        return True
+
 
 class YtmError(RuntimeError):
     """A ytm preset could not be started. Raised by ``play`` only."""
@@ -111,8 +159,14 @@ class YtmSource:
         cache_ttl_s: float = 5 * 3600,
         runner: Callable[..., Any] = subprocess.run,
         playlist_ttl_s: float = PLAYLIST_TTL_S,
+        catalog: Any = None,
+        probe: Callable[[str], bool] | None = None,
     ) -> None:
         self._mpd = mpd
+        # stream_ok in production (moode.build_sources); None = trust yt-dlp.
+        self._probe = probe
+        # YtmCatalog or None. Asked per call whether it is available.
+        self.catalog = catalog
         self.port = port
         self.ytdlp = ytdlp
         self.cookies = cookies
@@ -142,6 +196,16 @@ class YtmSource:
         self._warm_kick = threading.Event()     # "new preset list - go round now"
         self._warm_presets: list[Preset] = []
         self._warm_thread: threading.Thread | None = None
+        # id -> {"title", "artist", "album", "thumb"}. Guarded by _cache_lock.
+        self._meta: dict[str, dict[str, str]] = {}
+        # MPD refused a tag once: don't ask again for every song of every press.
+        self._tags_ok = True
+        # The radio link the current queue was started from, if it is endless,
+        # and a counter bumped by every play so a slow top-up can tell that the
+        # queue it was extending has since been replaced.
+        self._endless: str | None = None
+        self._generation = 0
+        self._topup_lock = threading.Lock()
 
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -167,11 +231,13 @@ class YtmSource:
         prefix = self.prefix
         try:
             with self._mpd_lock:
+                self._generation += 1
+                self._endless = None
                 client = self._mpd()
                 client.clear()
                 client.random(1 if preset.shuffle else 0)
                 for vid in ids:
-                    client.add(prefix + vid)
+                    self._add(client, prefix + vid, vid)
                 if preset.shuffle:
                     # MPD's random mode shuffles what comes *after* the current
                     # song; without a random start every press opens on track 1.
@@ -192,7 +258,10 @@ class YtmSource:
         except Exception as exc:
             raise YtmError(f"MPD refused ytm preset {preset.n}: {exc}") from exc
         self._queue = ids
-        log.info("playing ytm preset %s (%s), %d tracks", preset.n, preset.name, len(ids))
+        if _is_radio(preset.uri) and self._catalog_ready():
+            self._endless = preset.uri
+        log.info("playing ytm preset %s (%s), %d tracks%s", preset.n, preset.name, len(ids),
+                 ", endless" if self._endless else "")
         if preset.shuffle and self._warm_thread is not None:
             # That start is spent; line up the next one so the next press is quick too.
             threading.Thread(
@@ -228,6 +297,27 @@ class YtmSource:
         except Exception:
             log.debug("ytm is_active check failed", exc_info=True)
             return False
+
+    def now_playing(self) -> dict | None:
+        """The current MPD song, named, if it is ours and the catalogue named it.
+
+        ``{"title", "artist", "album", "thumb", "videoId"}`` or None. For the
+        key page; never raises.
+        """
+        try:
+            with self._mpd_lock:
+                file = str(self._mpd().currentsong().get("file", ""))
+        except Exception:
+            log.debug("ytm now_playing failed", exc_info=True)
+            return None
+        if not file.startswith(self.prefix):
+            return None
+        vid = file[len(self.prefix):]
+        with self._cache_lock:
+            meta = self._meta.get(vid)
+        if meta is None:
+            return None
+        return {**meta, "videoId": vid}
 
     def close(self) -> None:
         self._warm_stop.set()
@@ -332,6 +422,14 @@ class YtmSource:
             return 404, None
         vid = parts[1]
         url = self.resolve(vid)
+        if url is not None and self._probe is not None and not self._probe(url):
+            log.info("googlevideo refused the link for %s; resolving again", vid)
+            with self._cache_lock:
+                self._urls.pop(vid, None)
+            url = self.resolve(vid)
+            if url is not None and not self._probe(url):
+                self._mark_dead(vid, DEAD_OTHER_S)
+                url = None
         if url is None:
             return 502, None
         self._prefetch_after(vid)
@@ -374,9 +472,7 @@ class YtmSource:
         return None
 
     def _ytdlp_url(self, vid: str) -> str | None:
-        cmd = [self.ytdlp, "-f", AUDIO_FORMAT, "-g"]
-        if self.cookies:
-            cmd += ["--cookies", self.cookies]
+        cmd = [self.ytdlp, "-f", AUDIO_FORMAT, "-g", *self._cookie_args()]
         cmd.append(WATCH_URL.format(id=vid))
         try:
             result = self._run(cmd, capture_output=True, text=True, timeout=30, check=False)
@@ -422,28 +518,96 @@ class YtmSource:
         if hit and hit[0] > now and not force:
             return list(hit[1])
 
-        cmd = [self.ytdlp, "--flat-playlist", "-J"]
-        if self.cookies:
-            cmd += ["--cookies", self.cookies]
-        cmd.append(uri)
-        try:
-            result = self._run(cmd, capture_output=True, text=True, timeout=120, check=False)
-        except Exception:
-            log.warning("yt-dlp could not be run for %s", uri, exc_info=True)
-            return []
-        if result.returncode != 0:
-            log.warning("yt-dlp could not expand %s: %s", uri, _tail(result.stderr))
-            return []
-        try:
-            data = json.loads(result.stdout)
-        except (TypeError, ValueError):
-            log.warning("yt-dlp gave unparseable JSON for %s", uri)
-            return []
-        ids = _ids_from_info(data)
+        ids = self._expand_catalog(uri) if self._catalog_ready() else None
+        if not ids:
+            ids = self._expand_ytdlp(uri)
+        if ids is None:
+            return []   # a failure: not cached, so the next press tries again
         ttl = self.playlist_ttl_s if ttl_s is None else ttl_s
         with self._cache_lock:
             self._playlists[uri] = (now + ttl, ids)
         return list(ids)
+
+    def _expand_catalog(self, uri: str) -> list[str] | None:
+        """ytmusicapi expansion, remembering names. None/[] = let yt-dlp try."""
+        try:
+            tracks = self.catalog.radio(uri) if _is_radio(uri) else self.catalog.tracks(uri)
+        except Exception:
+            log.warning("YouTube Music catalogue could not expand %s", uri, exc_info=True)
+            return None
+        self._remember(tracks)
+        return [t["videoId"] for t in tracks]
+
+    def _expand_ytdlp(self, uri: str) -> list[str] | None:
+        cmd = [self.ytdlp, "--flat-playlist", "-J", *self._cookie_args(), uri]
+        try:
+            result = self._run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        except Exception:
+            log.warning("yt-dlp could not be run for %s", uri, exc_info=True)
+            return None
+        if result.returncode != 0:
+            log.warning("yt-dlp could not expand %s: %s", uri, _tail(result.stderr))
+            return None
+        try:
+            data = json.loads(result.stdout)
+        except (TypeError, ValueError):
+            log.warning("yt-dlp gave unparseable JSON for %s", uri)
+            return None
+        return _ids_from_info(data)
+
+    # -- catalogue, names and tags ----------------------------------------
+
+    def _catalog_ready(self) -> bool:
+        try:
+            return self.catalog is not None and bool(self.catalog.available)
+        except Exception:
+            return False
+
+    def _cookie_args(self) -> list[str]:
+        """``--cookies`` for yt-dlp: the configured file, else the sign-in's, else none."""
+        if self.cookies:
+            return ["--cookies", self.cookies]
+        path = getattr(self.catalog, "cookies_file", None) if self.catalog is not None else None
+        try:
+            if path and Path(path).exists():
+                return ["--cookies", str(path)]
+        except OSError:
+            pass
+        return []
+
+    def _remember(self, tracks: list[dict]) -> None:
+        with self._cache_lock:
+            for t in tracks or []:
+                vid = t.get("videoId")
+                if isinstance(vid, str) and VIDEO_ID.match(vid):
+                    self._meta.pop(vid, None)       # re-insert: newest last
+                    self._meta[vid] = {k: str(t.get(k) or "") for k in ("title", "artist", "album", "thumb")}
+            while len(self._meta) > META_CAP:
+                del self._meta[next(iter(self._meta))]
+
+    def _add(self, client: Any, url: str, vid: str) -> None:
+        """Queue one track, tagged with its names when we know them. Under _mpd_lock."""
+        with self._cache_lock:
+            meta = self._meta.get(vid)
+        if not meta or not self._tags_ok:
+            client.add(url)
+            return
+        try:
+            songid = client.addid(url)
+        except Exception:
+            log.debug("MPD addid failed; plain add", exc_info=True)
+            client.add(url)
+            return
+        for tag, key in (("Title", "title"), ("Artist", "artist"), ("Album", "album")):
+            if not meta.get(key):
+                continue
+            try:
+                client.addtagid(songid, tag, meta[key])
+            except Exception as exc:
+                # The song is queued already; it just plays without a name.
+                log.warning("MPD would not tag queued songs (%s); names off until restart", exc)
+                self._tags_ok = False
+                return
 
     # -- prefetch ---------------------------------------------------------
 
@@ -461,6 +625,70 @@ class YtmSource:
                 self.resolve(nxt)
         except Exception:
             log.debug("ytm prefetch failed", exc_info=True)
+        try:
+            self._maybe_top_up(vid)
+        except Exception:
+            log.warning("endless radio top-up failed", exc_info=True)
+
+    # -- endless radio ----------------------------------------------------
+
+    def _maybe_top_up(self, vid: str) -> bool:
+        """If an endless radio is near the end of its queue, extend it. True if it did.
+
+        Runs on the prefetch thread, never the request thread. One top-up at a
+        time: a second request arriving mid-top-up simply skips.
+        """
+        uri, queue, generation = self._endless, list(self._queue), self._generation
+        if not uri or not queue or vid not in queue:
+            return False
+        if queue.index(vid) < len(queue) - TOPUP_WITHIN:
+            return False
+        if not self._topup_lock.acquire(blocking=False):
+            return False
+        try:
+            return self._top_up(uri, queue, generation)
+        finally:
+            self._topup_lock.release()
+
+    def _top_up(self, uri: str, queue: list[str], generation: int) -> bool:
+        tracks = self.catalog.radio(uri, after=queue[-1])
+        known = set(queue)
+        new = []
+        for t in tracks or []:
+            vid = t.get("videoId")
+            if isinstance(vid, str) and VIDEO_ID.match(vid) and vid not in known:
+                known.add(vid)
+                new.append(vid)
+        if not new:
+            log.info("endless radio: nothing new from %s this time", uri)
+            return False
+        self._remember(tracks)
+        prefix = self.prefix
+        with self._mpd_lock:
+            if generation != self._generation or self._endless != uri:
+                return False                    # a new preset was pressed meanwhile
+            client = self._mpd()
+            status = client.status()
+            length = int(status.get("playlistlength", 0) or 0)
+            if length != len(queue):
+                return False                    # someone else edited the queue: leave it be
+            info = client.playlistinfo(length - 1)
+            last = info[0] if isinstance(info, list) and info else info
+            if str((last or {}).get("file", "")) != prefix + queue[-1]:
+                return False
+            dropped = 0
+            excess = length + len(new) - QUEUE_CAP
+            if excess > 0:
+                current = int(status.get("song", 0) or 0)
+                dropped = min(excess, current)  # only songs already played
+                if dropped:
+                    client.delete((0, dropped))
+                new = new[: max(0, QUEUE_CAP - (length - dropped))]
+            for vid in new:
+                self._add(client, prefix + vid, vid)
+            self._queue = queue[dropped:] + new
+        log.info("endless radio: +%d tracks (dropped %d played)", len(new), dropped)
+        return True
 
     def _next_id(self, vid: str) -> str | None:
         """Ask MPD for its next song (honours shuffle); fall back to our order."""
@@ -510,6 +738,12 @@ def _make_handler(source: YtmSource) -> type[BaseHTTPRequestHandler]:
             log.debug("ytm proxy: " + fmt, *args)
 
     return Handler
+
+
+def _is_radio(uri: str) -> bool:
+    """A YouTube radio/mix link: ``list=RD…`` (song RDAMVM…, artist RDEM…/RDAO…)."""
+    lid = (parse_qs(urlparse(uri).query).get("list") or [""])[0]
+    return lid.startswith("RD")
 
 
 def _single_video_id(uri: str) -> str | None:

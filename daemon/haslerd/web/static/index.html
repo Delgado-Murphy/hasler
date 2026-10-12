@@ -21,7 +21,7 @@
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{margin:0;background:var(--ground);color:var(--cream);font:16px/1.45 var(--sans);
   min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
-button,input,select{font:inherit;color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
 [hidden]{display:none !important}
 .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .cap{font-family:var(--mono);font-variant-caps:all-small-caps;letter-spacing:.12em;font-size:15px;color:var(--muted)}
@@ -167,7 +167,61 @@ input::placeholder{color:#6F695F}
 .btn-save.saved:disabled{background:#2C2A22;color:var(--green)}
 .btn-save:focus-visible{outline:2px solid var(--cream);outline-offset:3px}
 
+/* ---------- now playing (YouTube Music) ---------- */
+.thumb{position:relative;flex:none;width:48px;height:48px;border-radius:4px;overflow:hidden;background:#2A2622;box-shadow:inset 0 0 0 1px rgba(239,230,210,.06)}
+.thumb::before{content:"\266A";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#5A544B;font-size:18px}
+.thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.np{display:flex;align-items:center;gap:12px;margin:-6px 0 16px;padding:8px 12px 8px 8px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);min-width:0}
+.np .thumb{width:56px;height:56px;border-radius:5px}
+.np-txt{display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.3}
+.np-title,.np-artist,.np-preset{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.np-title{color:var(--cream);font-weight:600}
+.np-artist{color:var(--muted);font-size:14px}
+.np-preset{font:11.5px var(--mono);letter-spacing:.04em;color:var(--dim);margin-top:1px}
+
+/* ---------- YouTube Music search ---------- */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{position:relative;display:inline-flex;align-items:center;min-height:34px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;
+  font-size:13.5px;font-weight:700;color:var(--muted);cursor:pointer}
+.chip:hover{border-color:var(--dim);color:var(--cream)}
+.chip input{position:absolute;opacity:0;pointer-events:none}
+.chip:has(input:checked){background:var(--cream);border-color:var(--cream);color:var(--ink)}
+.chip:has(input:focus-visible){outline:2px solid var(--cream);outline-offset:2px}
+.yt-list{list-style:none;margin:8px 0 0;padding:4px;border:1px solid var(--line);border-radius:9px;background:var(--ground);max-height:min(420px,60vh);overflow:auto}
+.yt-item{display:flex;align-items:center;gap:10px;padding:6px;border-radius:6px;cursor:pointer;min-width:0}
+.yt-item[aria-selected="true"],.yt-item:hover{background:#2A2621}
+.yt-item[aria-selected="true"]{box-shadow:inset 2px 0 0 var(--cream)}
+.yt-txt{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.3}
+.yt-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yt-sub{font-size:12.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.tag{display:inline-block;font:10.5px/1.5 var(--mono);letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 6px;margin-right:6px;vertical-align:1px}
+.yt-picked{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--ground);min-width:0}
+.yt-alt{margin-top:4px}
+.yt-stat:empty{display:none}
+
+/* ---------- YouTube Music account ---------- */
+.acct{margin-top:30px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.acct + .foot{margin-top:18px}
+.acct-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.acct-line{margin:0;font-size:15px;color:var(--muted)}
+.acct-line strong{color:var(--cream);font-weight:700}
+.acct-line .who{color:var(--cream)}
+.acct-line:focus-visible{outline-offset:4px}
+.acct .btn{margin-top:12px}
+.acct-panel{margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.acct-panel > .lbl{display:block;margin-bottom:5px}
+.steps{margin:0 0 12px;padding-left:22px;font-size:14px;color:var(--muted)}
+.steps li{margin:0 0 6px;padding-left:2px}
+.steps b{color:var(--cream);font-weight:600}
+.steps li::marker{font-family:var(--mono);color:var(--dim)}
+textarea{display:block;width:100%;min-height:120px;resize:vertical;background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:10px 12px;
+  color:var(--cream);font:13px/1.45 var(--mono)}
+textarea:focus-visible{outline:2px solid var(--cream);outline-offset:1px;border-color:transparent}
+.acct-actions{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.acct-actions .btn-save{min-height:42px}
+
 @media (min-width:700px){
+  .acct{padding:18px 20px}
   .key{padding-top:14px}
   .slot{padding:18px 20px}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -193,7 +247,18 @@ input::placeholder{color:#6F695F}
     </div>
   </header>
 
+  <section class="np" id="np" aria-label="Now playing" hidden>
+    <span class="thumb" id="npThumb" aria-hidden="true"></span>
+    <div class="np-txt">
+      <span class="np-title" id="npTitle"></span>
+      <span class="np-artist" id="npArtist"></span>
+      <span class="np-preset" id="npPreset"></span>
+    </div>
+  </section>
+
   <div id="app"><p class="loading">Warming up the valves…</p></div>
+
+  <section class="acct" id="acct" aria-label="YouTube Music account" hidden></section>
 
   <div class="foot" id="foot" hidden>
     <button type="button" class="link" id="resetBtn">Reset to defaults</button>
@@ -227,6 +292,15 @@ let lastSent = null;     // body of last PUT (to map indices -> ids / n)
 let saving = false, savedFlash = false, resetFlash = false;
 const remember = {};     // "k1.tap" -> last preset n / entity, to restore on toggle
 const errEls = new Map();
+// YouTube Music
+let ytm = {available:null, signed_in:false, name:''};  // from /api/ytm/account; available null = not asked yet
+let ytmLib = null;       // cached /api/ytm/library items while signed in
+const ytmUi = {};        // "k1-tap:3" -> {q, type, results, msg}: search survives re-renders
+const ytmLive = {};      // same key -> paint() of the search box currently on screen
+const ytmMode = {};      // "p3" -> 'search' | 'link' (unset = picked row if there's a link, else search)
+const ytmPicked = new Map(); // uri -> result item, for the "selected" row's thumbnail/title
+const autoName = {};     // n -> name we filled in ourselves (so a new pick may replace it)
+const acctUi = {open:false, text:'', err:'', busy:false};
 
 const SRC = [
   {id:'radio',   label:'Radio'},
@@ -268,6 +342,21 @@ async function api(method, url, body, opts = {}){
 const verbOf = a => (a && a.do) ? a.do : 'none';
 const presetByN = n => draft.presets.find(p => p.n === n);
 const keyLabel = k => k.id === 'pu' || !/^\d+$/.test(k.label) ? k.label : 'Key ' + k.label;
+const isRadioUri = u => /[?&]list=RD/i.test(u || '');
+const ytmIsRadio = it => it.type === 'song' || it.type === 'artist' || isRadioUri(it.uri);
+function ytmTag(it){
+  if (ytmIsRadio(it)) return 'Radio · endless';
+  if (it.type === 'album' || /[?&]list=OLAK5uy_/i.test(it.uri || '')) return 'Album';
+  return 'Playlist';
+}
+function thumbFill(el, src){
+  el.textContent = '';
+  if (!src) return;
+  const img = h('img', {src, alt:'', loading:'lazy', decoding:'async', referrerpolicy:'no-referrer'});
+  img.addEventListener('error', () => img.remove());  // the placeholder behind it shows through
+  el.append(img);
+}
+function thumb(src){ const s = h('span', {class:'thumb', 'aria-hidden':'true'}); thumbFill(s, src); return s; }
 
 /* ================= payload / dirty ================= */
 function normAct(a){
@@ -290,7 +379,7 @@ function payload(d){
     // keep presets the keys use, plus any other filled-in ones; drop abandoned empty slots
     presets: d.presets
       .filter(p => ref.has(p.n) || (p.uri || '').trim())
-      .map(p => ({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle: p.source === 'radio' ? false : !!p.shuffle})),
+      .map(p => ({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle: p.source === 'radio' || isRadioUri(p.uri) ? false : !!p.shuffle})),
   };
 }
 const isDirty = () => draft && JSON.stringify(payload(draft)) !== baseline;
@@ -313,10 +402,9 @@ function presetIssues(p){
   else if (p.source === 'spotify' && !/^spotify:(playlist|album|track|artist|show|episode):\S+$/i.test(uri) && !/^https?:\/\/open\.spotify\.com\/\S+/i.test(uri))
     out.uri = 'That doesn’t look like a Spotify link. Use Share → Copy link in Spotify.';
   else if (p.source === 'ytm'){
+    // Playlists, albums (OLAK5uy_…), Liked songs (LM) and endless radio (RD…) all carry list=.
     if (!/^https?:\/\/(music\.|www\.|m\.)?youtube\.com\/\S*[?&]list=/i.test(uri) && !/^https?:\/\/youtu\.be\/\S*[?&]list=/i.test(uri))
-      out.uri = 'Use a playlist link — it contains “playlist?list=”.';
-    else if (/[?&]list=RD/i.test(uri))
-      out.uri = 'That’s a mix, not a playlist. Mixes change every time — save it as a playlist first.';
+      out.uri = 'Use a playlist or album link — it contains “list=”.';
   }
   return out;
 }
@@ -373,6 +461,7 @@ function renderAll(){
   renderEditor(); updateBank();
   $('foot').hidden = false; $('bar').hidden = false;
   $('variant').textContent = cfg.variant || '';
+  renderAccount();
   renderBar();
 }
 
@@ -597,29 +686,68 @@ function presetEditor(k, slot){
   const L = {
     radio:   {lbl:'station', ph:'Search stations or paste a stream link', hint:'Type a station name to search, or paste any http(s) stream link.'},
     spotify: {lbl:'spotify link', ph:'Spotify playlist link', hint:'A playlist, album or track. In Spotify: Share → Copy link.'},
-    ytm:     {lbl:'youtube music link', ph:'YouTube Music playlist link', hint:'Use a playlist link (…playlist?list=…), not a mix.'},
+    ytm:     {lbl:'youtube music link', ph:'YouTube Music playlist link', hint:'A playlist, album or radio link — it contains “list=”.'},
   }[p.source] || {lbl:'link', ph:'', hint:''};
   const uriInp = h('input', {type:'text', id: id + '-uri', value:p.uri, placeholder:L.ph, inputmode:'url',
     autocomplete:'off', autocapitalize:'off', spellcheck:'false', 'aria-describedby': id + '-uri-hint ' + id + '-uri-err',
-    oninput: e => { p.uri = e.target.value; clearErr(pk + '.uri'); renderBar(); },
+    oninput: e => { p.uri = e.target.value; clearErr(pk + '.uri'); paintShuffle(); renderBar(); },
     onblur: () => { setTimeout(() => { if (!uriInp.isConnected) return; const i = presetIssues(p); if (i.uri && p.uri.trim()){ hints[pk + '.uri'] = i.uri; paintErr(pk + '.uri'); } }, 200); }});
   const uriErr = h('p', {class:'err', id: id + '-uri-err', hidden:true});
-  const fieldKids = [h('label', {for: id + '-uri', class:'cap'}, L.lbl)];
-  if (p.source === 'radio') fieldKids.push(stationCombo(uriInp, p, nameInp, id));
-  else fieldKids.push(uriInp);
-  fieldKids.push(h('p', {class:'hint', id: id + '-uri-hint'}, L.hint), uriErr);
-  box.append(h('div', {class:'field'}, fieldKids));
-  setErr(pk + '.uri', uriErr, uriInp);
+  let errInput = uriInp;
+  if (p.source === 'ytm'){
+    // Search first; pasting a link is the quiet alternative.
+    const canSearch = ytm.available !== false;
+    let mode = canSearch ? ytmMode[pk] : 'link';
+    if (!mode) mode = !p.uri.trim() ? 'search' : (presetIssues(p).uri ? 'link' : 'picked');
+    const alt = (text, to, focusId) => h('p', {class:'yt-alt'}, h('button', {type:'button', class:'link',
+      onclick: () => { ytmMode[pk] = to; renderEditor(); const f = $(focusId); if (f) f.focus(); }}, text));
+    const kids = [];
+    if (mode === 'link'){
+      kids.push(h('label', {for: id + '-uri', class:'cap'}, L.lbl), uriInp, h('p', {class:'hint', id: id + '-uri-hint'}, L.hint), uriErr);
+      if (canSearch) kids.push(alt('Search YouTube Music instead', 'search', id + '-yq'));
+      else kids.push(h('p', {class:'note'}, 'Search isn’t available on this radio — paste a playlist link instead.'));
+    } else if (mode === 'picked'){
+      const it = ytmPicked.get(p.uri.trim()) || {title: p.name.trim() || 'Your pick', subtitle:'', thumb:'', uri:p.uri.trim(), type:''};
+      kids.push(h('span', {class:'lbl cap', id: id + '-ysel-lbl'}, 'youtube music'),
+        h('div', {class:'yt-picked', role:'group', 'aria-labelledby': id + '-ysel-lbl'},
+          thumb(it.thumb),
+          h('span', {class:'yt-txt'}, h('span', {class:'yt-title'}, it.title || it.name || 'Your pick'),
+            h('span', {class:'yt-sub'}, h('span', {class:'tag'}, ytmTag(it)), it.subtitle || '')),
+          h('button', {type:'button', class:'btn-quiet', id: id + '-ychange', 'aria-label':'Change — search YouTube Music',
+            onclick: () => { ytmMode[pk] = 'search'; renderEditor(); const f = $(id + '-yq'); if (f) f.focus(); }}, 'Change')),
+        uriErr, alt('Paste a link instead', 'link', id + '-uri'));
+      errInput = null;
+    } else {
+      const s = ytmSearch(p, id, nameInp);
+      errInput = s.input;
+      kids.push(h('label', {for: id + '-yq', class:'cap'}, 'youtube music'), s.el, uriErr, alt('Paste a link instead', 'link', id + '-uri'));
+    }
+    box.append(h('div', {class:'field'}, kids));
+  } else {
+    const fieldKids = [h('label', {for: id + '-uri', class:'cap'}, L.lbl)];
+    if (p.source === 'radio') fieldKids.push(stationCombo(uriInp, p, nameInp, id));
+    else fieldKids.push(uriInp);
+    fieldKids.push(h('p', {class:'hint', id: id + '-uri-hint'}, L.hint), uriErr);
+    box.append(h('div', {class:'field'}, fieldKids));
+  }
+  setErr(pk + '.uri', uriErr, errInput);
 
-  // shuffle
-  if (p.source !== 'radio'){
+  // shuffle - or, for a YouTube Music radio link, a word on what radio does
+  const shWrap = h('div');
+  let shRadio = null;
+  function paintShuffle(){
+    const radio = p.source === 'ytm' && isRadioUri(p.uri);
+    if (radio === shRadio) return;
+    shRadio = radio; shWrap.textContent = ''; errEls.delete(pk + '.shuffle');
+    if (radio){ shWrap.append(h('p', {class:'note'}, 'Endless radio — keeps adding similar songs')); return; }
     const shErr = h('p', {class:'err', hidden:true});
-    box.append(h('label', {class:'switch', for: id + '-sh'},
+    shWrap.append(h('label', {class:'switch', for: id + '-sh'},
       h('span', null, 'Shuffle'),
       h('input', {type:'checkbox', role:'switch', id: id + '-sh', checked: !!p.shuffle,
         onchange: e => { p.shuffle = e.target.checked; clearErr(pk + '.shuffle'); renderBar(); }})), shErr);
     setErr(pk + '.shuffle', shErr, null);
   }
+  if (p.source !== 'radio'){ box.append(shWrap); paintShuffle(); }
 
   // test
   const out = h('span', {class:'test-out', 'aria-live':'polite'});
@@ -704,13 +832,143 @@ function stationCombo(inp, p, nameInp, id){
   return wrap;
 }
 
+/* ---------- YouTube Music search ---------- */
+const YT_TYPES = [['songs','Songs'], ['artists','Artists'], ['albums','Albums'], ['playlists','Playlists'], ['library','Library']];
+const YT_IDLE = 'Type a song, artist, album or playlist.';
+function ytmSearch(p, id, nameInp){
+  const key = id + ':' + p.n, pk = 'p' + p.n;
+  const st = ytmUi[key] || (ytmUi[key] = {q:'', type:'songs', results:null, msg:YT_IDLE});
+  if (st.type === 'library' && !ytm.signed_in){ st.type = 'songs'; st.results = null; st.msg = YT_IDLE; }
+  const lbId = id + '-yres', statId = id + '-ystat';
+  const inp = h('input', {type:'search', id: id + '-yq', value: st.q, placeholder:'Search YouTube Music', enterkeyhint:'search',
+    autocomplete:'off', autocapitalize:'off', spellcheck:'false', role:'combobox', 'aria-autocomplete':'list',
+    'aria-controls': lbId, 'aria-expanded':'false', 'aria-describedby': statId + ' ' + id + '-uri-err'});
+  const chips = h('div', {class:'chips', role:'radiogroup', 'aria-label':'Look for'});
+  for (const [t, label] of YT_TYPES){
+    if (t === 'library' && !ytm.signed_in) continue;
+    chips.append(h('label', {class:'chip'},
+      h('input', {type:'radio', name: id + '-ytype', value:t, checked: st.type === t,
+        onchange: () => { st.type = t; st.results = null; run(true); }}),
+      label));
+  }
+  const stat = h('p', {class:'hint yt-stat', id: statId, 'aria-live':'polite'});
+  const list = h('ul', {class:'yt-list', id: lbId, role:'listbox', 'aria-label':'Results', hidden:true});
+  let timer = null, ctl = null, active = -1;
+
+  const setActive = i => {
+    active = i;
+    [...list.children].forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
+    if (i >= 0 && list.children[i]){ inp.setAttribute('aria-activedescendant', list.children[i].id); list.children[i].scrollIntoView({block:'nearest'}); }
+    else inp.removeAttribute('aria-activedescendant');
+  };
+  const pick = it => {
+    p.uri = it.uri;
+    if (!p.name.trim() || p.name === autoName[p.n]){ p.name = (it.name || it.title || '').trim(); autoName[p.n] = p.name; }
+    if (ytmIsRadio(it)) p.shuffle = false;
+    ytmPicked.set(it.uri, it);
+    delete ytmMode[pk];
+    clearErr(pk + '.uri'); clearErr(pk + '.name');
+    renderEditor(); updateBank(); renderBar();
+    const c = $(id + '-ychange'); if (c) c.focus();
+  };
+  const paint = () => {
+    if (!inp.isConnected){ const live = ytmLive[key]; if (live && live !== paint) live(); return; }  // re-rendered meanwhile
+    stat.textContent = st.msg || '';
+    list.textContent = '';
+    const r = st.results || [];
+    r.forEach((it, i) => {
+      const li = h('li', {role:'option', id: lbId + '-' + i, class:'yt-item', 'aria-selected':'false'},
+        thumb(it.thumb),
+        h('span', {class:'yt-txt'},
+          h('span', {class:'yt-title'}, it.title || it.name || 'Untitled'),
+          h('span', {class:'yt-sub'}, h('span', {class:'tag'}, ytmTag(it)), it.subtitle || '')));
+      li.addEventListener('pointerdown', e => e.preventDefault()); // keep focus in the search field
+      li.addEventListener('click', () => pick(it));
+      list.append(li);
+    });
+    list.hidden = !r.length;
+    inp.setAttribute('aria-expanded', String(!!r.length));
+    setActive(-1);
+  };
+  const unavailable = () => { ytm.available = false; renderAccount(); renderEditor(); const f = $(id + '-uri'); if (f) f.focus(); };
+  const counted = n => n ? n + (n === 1 ? ' result' : ' results') + ' — pick one' : '';
+
+  async function library(){
+    const q = inp.value.trim().toLowerCase();
+    if (!ytmLib){
+      if (ctl) ctl.abort();
+      ctl = new AbortController();
+      st.msg = 'Loading your library…'; paint();
+      try {
+        const r = await api('GET', '/api/ytm/library', undefined, {signal: ctl.signal});
+        if (r.json && r.json.available === false){ unavailable(); return; }
+        if (r.json && r.json.signed_in === false){
+          ytm.signed_in = false; renderAccount(); st.type = 'songs'; st.results = null;
+          st.msg = 'You’re signed out of YouTube Music. Sign in below to see your library.';
+          rerenderKeepFocus(); return;
+        }
+        if (!r.ok || !r.json || !Array.isArray(r.json.items)){ st.results = null; st.msg = (r.json && r.json.error) || 'Couldn’t load your library just now.'; paint(); return; }
+        ytmLib = r.json.items.filter(x => x && x.uri);
+      } catch (e) {
+        if (e.name !== 'AbortError'){ st.results = null; st.msg = 'Couldn’t reach the radio.'; paint(); }
+        return;
+      }
+    }
+    st.results = ytmLib.filter(it => !q || ((it.title || '') + ' ' + (it.subtitle || '')).toLowerCase().includes(q));
+    if (!ytmLib.length) st.msg = 'Your library is empty.';
+    else if (st.results.length) st.msg = counted(st.results.length);
+    else { st.results = ytmLib.slice(); st.msg = 'Nothing matches “' + inp.value.trim() + '” — here’s your whole library.'; }
+    paint();
+  }
+  async function search(q){
+    if (ctl) ctl.abort();
+    const mine = ctl = new AbortController();
+    st.msg = 'Searching…'; stat.textContent = st.msg;
+    try {
+      const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=' + st.type, undefined, {signal: mine.signal});
+      if (r.json && r.json.available === false){ unavailable(); return; }
+      if (!r.ok || !r.json || !Array.isArray(r.json.results)){
+        st.results = null; st.msg = (r.json && r.json.error) || 'Search didn’t work just now — try again, or paste a link.'; paint(); return;
+      }
+      st.results = r.json.results.filter(x => x && x.uri).slice(0, 20);
+      st.msg = st.results.length ? counted(st.results.length) : 'Nothing found — try other words or another type.';
+      paint();
+    } catch (e) {
+      if (e.name !== 'AbortError'){ st.results = null; st.msg = 'Couldn’t reach the radio.'; paint(); }
+    }
+  }
+  function run(now){
+    clearTimeout(timer);
+    st.q = inp.value;
+    if (st.type === 'library'){ if (now || ytmLib) library(); else timer = setTimeout(library, 150); return; }
+    const q = inp.value.trim();
+    if (q.length < 2){ if (ctl) ctl.abort(); st.results = null; st.msg = q ? 'Keep typing…' : YT_IDLE; paint(); return; }
+    if (now) search(q); else timer = setTimeout(() => search(q), 350);
+  }
+
+  inp.addEventListener('input', () => run(false));
+  inp.addEventListener('keydown', e => {
+    const n = (st.results || []).length;
+    if (e.key === 'ArrowDown' && n){ e.preventDefault(); setActive(Math.min(n - 1, active + 1)); }
+    else if (e.key === 'ArrowUp' && n){ e.preventDefault(); setActive(Math.max(0, active - 1)); }
+    else if (e.key === 'Enter'){ e.preventDefault(); if (active >= 0 && n) pick(st.results[active]); else run(true); }
+    else if (e.key === 'Escape' && active >= 0){ e.preventDefault(); setActive(-1); }
+  });
+
+  ytmLive[key] = paint;
+  paint();
+  if (st.type === 'library' && !st.results) library();
+  return {input: inp, el: h('div', {class:'yt-search'}, inp, chips, stat, list)};
+}
+
 /* ================= actions ================= */
 async function testPreset(p, btn, out){
   const issues = presetIssues(p);
   if (!(p.uri || '').trim()){ out.className = 'test-out bad'; out.textContent = 'Add a link first.'; return; }
   btn.disabled = true; btn.classList.add('busy');
   out.className = 'test-out';
-  out.textContent = p.source === 'ytm' ? 'Loading the playlist — this can take a few seconds…' : 'Tuning in…';
+  out.textContent = p.source !== 'ytm' ? 'Tuning in…'
+    : (isRadioUri(p.uri) ? 'Starting the radio' : 'Loading the playlist') + ' — this can take a few seconds…';
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 30000);
   try {
     const r = await api('POST', '/api/play', {preset:{name:(p.name || '').trim() || 'Test', source:p.source, uri:p.uri.trim(), shuffle: p.source !== 'radio' && !!p.shuffle}}, {signal: ctl.signal});
@@ -811,7 +1069,7 @@ async function poll(){
     if (r.ok && r.json){ status = r.json; online = true; } else online = false;
   } catch (_) { online = false; }
   polling = false;
-  renderStatus(); updateBank(); updatePlaying();
+  renderStatus(); renderTrack(); updateBank(); updatePlaying();
 }
 function schedule(){
   clearTimeout(pollTimer); pollTimer = null;
@@ -852,6 +1110,118 @@ function updatePlaying(){
   document.querySelectorAll('[data-stop]').forEach(el => { el.hidden = !(status && status.playing); });
 }
 
+/* ---------- now playing with artwork (YouTube Music) ---------- */
+let npThumbSrc = null;
+function renderTrack(){
+  const t = online && status && !status.standby ? status.track : null;
+  const show = !!(t && (t.title || t.artist));
+  $('np').hidden = !show;
+  if (!show) return;
+  const set = (id, v) => { const el = $(id); if (el.textContent !== v) el.textContent = v; el.hidden = !v; };
+  set('npTitle', t.title || '');
+  set('npArtist', t.artist || '');
+  set('npPreset', status.playing && status.playing.name ? status.playing.name : '');
+  if ((t.thumb || '') !== npThumbSrc){ npThumbSrc = t.thumb || ''; thumbFill($('npThumb'), npThumbSrc); }
+}
+
+/* ================= YouTube Music account ================= */
+// Re-render the editor without yanking the cursor out of whatever field has it.
+function rerenderKeepFocus(){
+  const a = document.activeElement, fid = a && a.id && $('editor') && $('editor').contains(a) ? a.id : null;
+  const range = fid && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
+  renderEditor();
+  const f = fid && $(fid);
+  if (f){ f.focus(); if (range) try { f.setSelectionRange(range[0], range[1]); } catch (_) {} }
+}
+function adoptAccount(acc){
+  const was = ytm.signed_in;
+  ytm = {available: acc.available !== false, signed_in: !!acc.signed_in, name: acc.name || ''};
+  if (was !== ytm.signed_in) ytmLib = null;
+  renderAccount();
+  if (cfg) rerenderKeepFocus();
+}
+async function loadAccount(){
+  try {
+    const r = await api('GET', '/api/ytm/account');
+    if (r.ok && r.json) adoptAccount(r.json);
+    else adoptAccount({available:false});  // an older radio without YouTube Music search
+  } catch (_) { /* offline: leave it unknown, search will say */ }
+}
+function renderAccount(){
+  const box = $('acct');
+  box.hidden = !cfg || ytm.available !== true;
+  if (box.hidden) return;
+  box.textContent = '';
+  const err = acctUi.err ? h('p', {class:'err', role:'alert'}, acctUi.err) : '';  // '' not null: append() would print "null"
+  if (ytm.signed_in){
+    box.append(h('div', {class:'acct-row'},
+      h('p', {class:'acct-line', id:'acctLine', tabindex:'-1'}, h('strong', null, 'YouTube Music'), ' · signed in',
+        ytm.name ? [' as ', h('span', {class:'who'}, ytm.name)] : null),
+      h('button', {type:'button', class:'link', onclick: signOut}, 'Sign out')), err);
+    return;
+  }
+  box.append(h('p', {class:'acct-line', id:'acctLine', tabindex:'-1'}, h('strong', null, 'YouTube Music account'), ' — not signed in.'),
+    h('p', {class:'hint'}, 'Sign in to use your Liked songs, your playlists and private playlists.'));
+  if (!acctUi.open){
+    box.append(h('button', {type:'button', class:'btn', 'aria-expanded':'false',
+      onclick: () => { acctUi.open = true; acctUi.err = ''; renderAccount(); $('acctHdr').focus(); }}, 'Sign in'), err);
+    return;
+  }
+  const ta = h('textarea', {id:'acctHdr', rows:'6', autocomplete:'off', autocapitalize:'off', autocorrect:'off', spellcheck:'false',
+    'aria-describedby':'acctNote' + (acctUi.err ? ' acctErr' : ''), placeholder:'accept: */*\ncookie: …', 'aria-invalid': acctUi.err ? 'true' : 'false',
+    oninput: e => { acctUi.text = e.target.value; }});
+  ta.value = acctUi.text;
+  if (err) err.id = 'acctErr';
+  const go = h('button', {type:'button', class:'btn-save', disabled: acctUi.busy, onclick: signIn}, acctUi.busy ? 'Signing in…' : 'Sign in');
+  box.append(h('div', {class:'acct-panel', id:'acctPanel'},
+    h('ol', {class:'steps'},
+      h('li', null, 'On a computer, open ', h('b', null, 'music.youtube.com'), ' and make sure you’re signed in.'),
+      h('li', null, 'Open the browser’s developer tools (', h('b', null, 'F12'), ') → ', h('b', null, 'Network'), ' tab, and click anything on the page.'),
+      h('li', null, 'Find a request named ', h('b', null, '“browse”'), ' → right-click → Copy → ', h('b', null, '“Copy request headers”'),
+        ' (Firefox) — in Chrome: open it, ', h('b', null, 'Headers'), ' tab, ', h('b', null, 'Request Headers'), ', tick ', h('b', null, '“Raw”'), ', select all and copy.'),
+      h('li', null, 'Paste below and press ', h('b', null, 'Sign in'), '.')),
+    h('label', {for:'acctHdr', class:'lbl cap'}, 'request headers'), ta,
+    h('p', {class:'hint', id:'acctNote'}, 'This is your account’s login cookie — it’s stored only on the radio. Sign out here any time.'),
+    err,
+    h('div', {class:'acct-actions'}, go,
+      h('button', {type:'button', class:'btn-ghost', disabled: acctUi.busy,
+        onclick: () => { Object.assign(acctUi, {open:false, text:'', err:''}); renderAccount(); const l = $('acctLine'); if (l) l.focus(); }}, 'Cancel'))));
+}
+async function signIn(){
+  if (acctUi.busy) return;
+  if (!acctUi.text.trim()){ acctUi.err = 'Paste the request headers first.'; renderAccount(); $('acctHdr').focus(); return; }
+  acctUi.busy = true; acctUi.err = ''; renderAccount();
+  try {
+    const r = await api('POST', '/api/ytm/account', {headers: acctUi.text});
+    acctUi.busy = false;
+    if (r.ok && r.json && r.json.ok){
+      Object.assign(acctUi, {open:false, text:'', err:''});
+      adoptAccount(Object.assign({available:true, signed_in:true}, r.json.account || {}));
+      const l = $('acctLine'); if (l) l.focus();
+      return;
+    }
+    acctUi.err = (r.json && r.json.error) || 'Sign-in didn’t work (error ' + r.status + ').';
+  } catch (_) {
+    acctUi.busy = false; acctUi.err = 'Couldn’t reach the radio.';
+  }
+  renderAccount();
+  const ta = $('acctHdr'); if (ta) ta.focus();
+}
+async function signOut(){
+  if (!confirm('Sign out of YouTube Music on this radio?')) return;
+  acctUi.err = '';
+  try {
+    const r = await api('DELETE', '/api/ytm/account');
+    if (r.ok && r.json && r.json.ok){
+      adoptAccount(Object.assign({available:true}, r.json.account || {}, r.json.account ? {} : {signed_in:false, name:''}));
+      const l = $('acctLine'); if (l) l.focus();
+      return;
+    }
+    acctUi.err = (r.json && r.json.error) || 'Couldn’t sign out (error ' + r.status + ').';
+  } catch (_) { acctUi.err = 'Couldn’t reach the radio.'; }
+  renderAccount();
+}
+
 /* ================= boot ================= */
 async function load(){
   const app = $('app');
@@ -874,6 +1244,7 @@ window.addEventListener('beforeunload', e => { if (isDirty()){ e.preventDefault(
 document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 's'){ e.preventDefault(); save(); } });
 
 load();
+loadAccount();
 pollNow();
 })();
 </script>

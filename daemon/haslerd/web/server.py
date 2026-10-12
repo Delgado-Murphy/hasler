@@ -7,6 +7,13 @@ own web UI extends - and can do nothing worse than change what a key plays.
 Requests run on their own threads; everything that touches the layout goes
 through ``WebApp`` under one lock, and the change itself is a reference swap
 (see keymap.apply), so the 50 Hz panel loop never waits on the web.
+
+The ``/api/ytm/*`` endpoints front the YouTube Music catalogue (search, the
+owner's library and sign-in; player/sources/ytmusic.py). They answer
+``{"available": false, ...}`` when there is no catalogue - no ytm source, or no
+ytmusicapi - so the page can simply hide that part. They do not take the layout
+lock: the catalogue has its own, and a slow search must not hold up a save.
+The sign-in body is the account's cookie: it is never logged or echoed back.
 """
 
 from __future__ import annotations
@@ -43,6 +50,7 @@ class WebApp:
         ha: bool,
         station_db: str = stations.MOODE_DB,
         wifi: Wifi | None = None,
+        catalog: Any = None,
     ) -> None:
         self.actions = actions
         self.panel = panel
@@ -52,6 +60,9 @@ class WebApp:
         self.station_db = station_db
         self.wifi = wifi or Wifi(db=station_db)
         self.lock = threading.Lock()
+        # The ytm source (for now_playing) and its catalogue, if the player has them.
+        self.ytm = (getattr(actions.player, "sources", None) or {}).get("ytm")
+        self.catalog = catalog if catalog is not None else getattr(self.ytm, "catalog", None)
         # The descriptor's own layout, for "reset to defaults". Taken before any
         # saved overlay is laid on top.
         self.defaults = (copy.deepcopy(actions.variant.presets), copy.deepcopy(actions.variant.actions))
@@ -125,7 +136,22 @@ class WebApp:
             "source": source,
             "waiting": waiting,
             "renderer": renderer,
+            # The YouTube Music track playing, named: {title, artist, album, thumb} or None.
+            "track": self._track() if source == "ytm" else None,
         }
+
+    def _track(self) -> dict | None:
+        now_playing = getattr(self.ytm, "now_playing", None)
+        if not callable(now_playing):
+            return None
+        try:
+            info = now_playing()
+        except Exception:
+            log.debug("ytm now_playing failed", exc_info=True)
+            return None
+        if not info:
+            return None
+        return {k: str(info.get(k) or "") for k in ("title", "artist", "album", "thumb")}
 
     def _source(self, current: Any) -> tuple[str, bool, dict | None]:
         player = self.actions.player
@@ -151,6 +177,42 @@ class WebApp:
 
     def stations(self, query: str) -> list[dict]:
         return stations.search(query, self.station_db)
+
+    # -- YouTube Music ----------------------------------------------------
+
+    def _ytm_available(self) -> bool:
+        try:
+            return self.catalog is not None and bool(self.catalog.available)
+        except Exception:
+            return False
+
+    def ytm_search(self, query: str, kind: str) -> dict:
+        if not self._ytm_available():
+            return {"available": False, "results": []}
+        return {"available": True, "results": self.catalog.search(query, kind or "songs")}
+
+    def ytm_library(self) -> dict:
+        if not self._ytm_available():
+            return {"available": False, "signed_in": False, "items": []}
+        return {"available": True, "signed_in": bool(self.catalog.signed_in), "items": self.catalog.library()}
+
+    def ytm_account(self) -> dict:
+        if not self._ytm_available():
+            return {"available": False, "signed_in": False, "name": ""}
+        return {"available": True, **self.catalog.account()}
+
+    def ytm_sign_in(self, body: Any) -> dict:
+        if not self._ytm_available():
+            raise ValueError("YouTube Music sign-in is not available on this radio")
+        headers = body.get("headers") if isinstance(body, dict) else None
+        if not isinstance(headers, str):
+            raise ValueError("expected {\"headers\": \"…\"}")
+        return self.catalog.sign_in(headers)
+
+    def ytm_sign_out(self) -> dict:
+        if not self._ytm_available():
+            return {"signed_in": False, "name": ""}
+        return self.catalog.sign_out()
 
     def _rewarm(self) -> None:
         prefetch = getattr(self.actions.player, "prefetch", None)
@@ -211,6 +273,14 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif url.path == "/api/stations":
                 q = parse_qs(url.query).get("q", [""])[0]
                 self._guard(lambda: self._json(200, app.stations(q)))
+            elif url.path == "/api/ytm/search":
+                query = parse_qs(url.query)
+                q, kind = query.get("q", [""])[0], query.get("type", ["songs"])[0]
+                self._guard(lambda: self._json(200, app.ytm_search(q, kind)))
+            elif url.path == "/api/ytm/library":
+                self._guard(lambda: self._json(200, app.ytm_library()))
+            elif url.path == "/api/ytm/account":
+                self._guard(lambda: self._json(200, app.ytm_account()))
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -238,6 +308,14 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(join)
             elif path == "/api/reset":
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.reset()}))
+            elif path == "/api/ytm/account":
+                self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_in(self._body())}))
+            else:
+                self._send(404, b"not found", "text/plain")
+
+        def do_DELETE(self) -> None:
+            if urlparse(self.path).path == "/api/ytm/account":
+                self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_out()}))
             else:
                 self._send(404, b"not found", "text/plain")
 

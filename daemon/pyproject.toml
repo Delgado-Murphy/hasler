@@ -15,6 +15,9 @@ pi = [
     "smbus2>=0.4",
     "python-mpd2>=3.1",
     "paho-mqtt>=2.0",
+    # YouTube Music search, names, endless radio and the owner's sign-in.
+    # Imported lazily: without it the ytm source falls back to yt-dlp alone.
+    "ytmusicapi>=1.12",
 ]
 dev = ["pytest>=8.0"]
 

@@ -315,3 +315,128 @@ class TestSourceStatus:
         actions.dispatch(Event("k4", "tap"))
         st = app.status()
         assert st["source"] == "spotify" and st["waiting"] is False
+
+
+# -- YouTube Music --------------------------------------------------------
+
+
+class FakeCatalog:
+    available = True
+
+    def __init__(self):
+        self.signed_in = False
+        self.pasted = None
+
+    def search(self, q, kind):
+        if kind not in ("songs", "artists", "albums", "playlists"):
+            raise ValueError("search type must be one of: songs, artists, albums, playlists")
+        if not q.strip():
+            return []
+        return [{"type": "song", "title": q, "subtitle": "Band", "thumb": "https://t/1",
+                 "uri": "https://music.youtube.com/watch?v=aaaaaaaaaaa&list=RDAMVMaaaaaaaaaaa",
+                 "name": f"{q} radio"}]
+
+    def library(self):
+        return [{"type": "playlist", "title": "Liked songs", "subtitle": "Your likes", "thumb": "",
+                 "uri": "https://music.youtube.com/playlist?list=LM", "name": "Liked songs"}] if self.signed_in else []
+
+    def account(self):
+        return {"signed_in": self.signed_in, "name": "Owner" if self.signed_in else ""}
+
+    def sign_in(self, headers):
+        if "SAPISID" not in headers:
+            raise ValueError("that cookie has no SAPISID (__Secure-3PAPISID)")
+        self.pasted = headers
+        self.signed_in = True
+        return self.account()
+
+    def sign_out(self):
+        self.signed_in = False
+        return self.account()
+
+
+class FakeYtm:
+    def __init__(self, catalog):
+        self.catalog = catalog
+        self.track = None
+
+    def now_playing(self):
+        return self.track
+
+
+@pytest.fixture
+def ytm_rig(rig):
+    app, actions, player, panel = rig
+    catalog = FakeCatalog()
+    player.sources = {"ytm": FakeYtm(catalog)}
+    app = WebApp(actions, panel, app.keys_file, {"radio": True, "spotify": True, "ytm": True}, ha=False)
+    return app, catalog, player
+
+
+class TestYtm:
+    def test_catalog_comes_from_the_players_ytm_source(self, ytm_rig):
+        app, catalog, _ = ytm_rig
+        assert app.catalog is catalog
+
+    def test_search_library_account(self, ytm_rig):
+        app, catalog, _ = ytm_rig
+        res = app.ytm_search("so what", "songs")
+        assert res["available"] is True and res["results"][0]["name"] == "so what radio"
+        assert app.ytm_search("", "songs") == {"available": True, "results": []}
+        assert app.ytm_library() == {"available": True, "signed_in": False, "items": []}
+        assert app.ytm_account() == {"available": True, "signed_in": False, "name": ""}
+        assert app.ytm_sign_in({"headers": "Cookie: SAPISID=x"}) == {"signed_in": True, "name": "Owner"}
+        assert app.ytm_library()["items"][0]["title"] == "Liked songs"
+        assert app.ytm_sign_out() == {"signed_in": False, "name": ""}
+
+    def test_without_a_catalog_everything_says_unavailable(self, rig):
+        app, *_ = rig
+        assert app.catalog is None
+        assert app.ytm_search("x", "songs") == {"available": False, "results": []}
+        assert app.ytm_library() == {"available": False, "signed_in": False, "items": []}
+        assert app.ytm_account() == {"available": False, "signed_in": False, "name": ""}
+        with pytest.raises(ValueError):
+            app.ytm_sign_in({"headers": "x"})
+
+    def test_status_names_the_ytm_track(self, ytm_rig):
+        app, catalog, player = ytm_rig
+        ytm = player.sources["ytm"]
+        ytm.track = {"title": "So What", "artist": "Miles Davis", "album": "Kind Of Blue",
+                     "thumb": "https://t/1", "videoId": "aaaaaaaaaaa"}
+        player.source = "radio"
+        assert app.status()["track"] is None
+        player.source = "ytm"
+        assert app.status()["track"] == {"title": "So What", "artist": "Miles Davis",
+                                         "album": "Kind Of Blue", "thumb": "https://t/1"}
+        ytm.track = None
+        assert app.status()["track"] is None
+
+    def test_http_endpoints(self, ytm_rig):
+        app, catalog, _ = ytm_rig
+        server = WebServer(app, host="127.0.0.1", port=0)
+        server.start()
+        base = f"http://127.0.0.1:{server.port}"
+        call = TestHttp.call
+        try:
+            status, body = call(None, base + "/api/ytm/search?q=blue&type=albums")
+            assert status == 200 and json.loads(body)["results"][0]["title"] == "blue"
+            status, body = call(None, base + "/api/ytm/search?q=blue&type=videos")
+            assert status == 400 and json.loads(body)["ok"] is False
+            status, body = call(None, base + "/api/ytm/account", "POST", {"headers": "SID=1"})
+            assert status == 400 and "SAPISID" in json.loads(body)["error"]
+            secret = "Cookie: SAPISID=very-secret-value"
+            status, body = call(None, base + "/api/ytm/account", "POST", {"headers": secret})
+            assert status == 200
+            assert json.loads(body) == {"ok": True, "account": {"signed_in": True, "name": "Owner"}}
+            assert b"very-secret-value" not in body
+            assert catalog.pasted == secret
+            status, body = call(None, base + "/api/ytm/library")
+            assert json.loads(body)["signed_in"] is True and len(json.loads(body)["items"]) == 1
+            status, body = call(None, base + "/api/ytm/account", "DELETE")
+            assert status == 200 and json.loads(body)["account"]["signed_in"] is False
+            status, body = call(None, base + "/api/ytm/account")
+            assert json.loads(body) == {"available": True, "signed_in": False, "name": ""}
+            status, body = call(None, base + "/api/status")
+            assert "track" in json.loads(body)
+        finally:
+            server.close()
