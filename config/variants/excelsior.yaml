@@ -1,10 +1,12 @@
 # Excelsior - the second cabinet. Not yet wired; this file exists so the
 # abstraction is exercised by the tests before the hardware arrives.
 #
-# 9 keys of three different kinds:
-#   0        momentary, mechanically pops whichever key is latched
-#   1-6 + Q  latching AND interlocked - exactly one down, or none
-#   SP       independent latching toggle, does not touch the bank
+# 10 keys of three different kinds (confirmed by the owner, 2026-10-12):
+#   0                 momentary, mechanically pops whichever key is latched
+#   1-6 + Q + Tape    latching AND interlocked - exactly one down, or none
+#                     (Tape is the key with the tape symbol; assumed in the
+#                     bank like Q - confirm by metering)
+#   SP                independent latching toggle, does not touch the bank
 # 4 wheels: volume, treble, bass, and a 3-position speaker selector.
 variant: excelsior
 
@@ -15,18 +17,19 @@ io:
 controls:
   - id: presets
     kind: interlocked_bank
-    # keys 1-6 + Q. Q is d8 (GPB0), not d7: GPA7 is output-only on the MCP23017.
-    pins: [d1, d2, d3, d4, d5, d6, d8]
+    # keys 1-6, Q, Tape. Q is d8 (GPB0), not d7: GPA7 is output-only on the
+    # MCP23017. Tape is d9 (GPB1). Bank position 7 (Tape) plays preset 8.
+    pins: [d1, d2, d3, d4, d5, d6, d8, d9]
     release: {pin: d0}                      # key 0
     # Must exceed the mechanical changeover gap (outgoing key opens before the
     # incoming one closes) and undershoot a deliberate press of key 0.
     settle_ms: 60
 
-  - {id: sp, kind: latching_toggle, pin: d9}
+  - {id: sp, kind: latching_toggle, pin: d10}
 
   - id: speaker_sel
     kind: rotary_switch
-    pins: [d10, d11]
+    pins: [d11, d12]
     positions: 3
     # TODO(phase-0): confirm the contact pattern per detent by metering.
     map: {"10": 0, "00": 1, "01": 2}
