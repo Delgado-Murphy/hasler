@@ -95,6 +95,7 @@ class Actions:
             "cycle_source": self._cycle_source,
             "bt_pair": self._bt_pair,
             "standby": self._standby,
+            "standby_toggle": self._standby_toggle,
             "resume": self._resume,
             "shutdown": self._shutdown,
             "set_volume": self._set_volume,
@@ -256,6 +257,15 @@ class Actions:
         self._persist()
         self.player.stop()
         self.player.set_mute(True)
+
+    def _standby_toggle(self, event, spec):
+        """One key for both: asleep -> wake and play the last preset; else sleep."""
+        if self.standby:
+            self._wake()
+            self._persist()
+            self.resume_last()
+        else:
+            self._standby(event, spec)
 
     def _resume(self, event, spec):
         self._wake()

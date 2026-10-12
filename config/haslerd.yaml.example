@@ -38,6 +38,13 @@ moode:
 # (StateDirectory=haslerd); it must be writable by the service user.
 state_file: /var/lib/haslerd/state.json
 
+# The key page: http://hasler.local:8080 - choose what each key does on tap
+# and hold. LAN only, no login (like moOde's own UI). Choices are saved to
+# keys.yaml next to state_file and laid over the descriptor's defaults.
+web:
+  enabled: true
+  port: 8080
+
 # Optional. Without it the box is fully standalone and hold actions do nothing.
 # Long-lived token: HA profile -> Security -> Long-lived access tokens.
 home_assistant:

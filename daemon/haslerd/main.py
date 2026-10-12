@@ -24,6 +24,7 @@ from .actions import Actions
 from .ha.rest import HomeAssistant
 from .hw.gpio_lamp import GpioRgbController
 from .hw.powerctl import Lamp, PowerController
+from .web.server import WebApp, WebServer
 from .net import Connectivity
 from .player.base import FakePlayer
 from .player.moode import MoodeConfig, MoodePlayer
@@ -125,11 +126,41 @@ def build(args) -> tuple[Panel, Actions, Lamp | None, dict]:
         log.info("no Home Assistant transport configured; hold actions are inert")
 
     actions = Actions(variant, player, ha=ha, state=state)
-    # Background: YTM presets resolve their opening track now, not on first press.
+    web = build_web(config, actions, panel, state, ha is not None)
+    # Background: YTM presets resolve their opening track now, not on first
+    # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))
     if lamp is not None:
         actions.on_play_error = lambda _exc: lamp.flash("error", time.monotonic())
-    return panel, actions, lamp, config
+    return panel, actions, lamp, config, web
+
+
+def build_web(config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool) -> WebServer | None:
+    """The key page, with the owner's saved layout laid over the descriptor.
+
+    ``keys.yaml`` lives next to state.json; ``web: {enabled: false}`` turns the
+    page off but still honours a saved layout.
+    """
+    spec = config.get("web") or {}
+    if config.get("keys_file"):
+        keys_file: Path | None = Path(config["keys_file"])
+    elif state.path is not None:
+        keys_file = Path(state.path).parent / "keys.yaml"
+    else:
+        keys_file = None
+    sources = getattr(actions.player, "sources", None)
+    available = {name: (sources is None or name in sources) for name in ("radio", "spotify", "ytm")}
+    app = WebApp(actions, panel, keys_file, available, ha)
+    app.load_saved()
+    if not spec.get("enabled", True):
+        return None
+    server = WebServer(app, host=spec.get("host", "0.0.0.0"), port=int(spec.get("port", 8080)))
+    try:
+        server.start()
+    except OSError:
+        log.exception("key page could not listen on port %s; carrying on without it", server.port)
+        return None
+    return server
 
 
 def open_lamp(spec: dict) -> Lamp | None:
@@ -192,7 +223,7 @@ def main(argv=None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
 
-    panel, actions, lamp, config = build(args)
+    panel, actions, lamp, config, web = build(args)
     connectivity = build_connectivity(config)
     log.info("haslerd up: %s, %d controls", actions.variant.name, len(panel.controls))
 
@@ -254,6 +285,8 @@ def main(argv=None) -> int:
             time.sleep(max(0.0, period - (time.monotonic() - now)))
     finally:
         panel.close()
+        if web is not None:
+            web.close()
         if lamp is not None:
             try:
                 lamp.controller.close()

@@ -128,6 +128,8 @@ class YtmSource:
         # start for shuffle, the first *playable* track otherwise.
         self._starts: dict[str, int] = {}
         self._warm_stop = threading.Event()
+        self._warm_kick = threading.Event()     # "new preset list - go round now"
+        self._warm_presets: list[Preset] = []
         self._warm_thread: threading.Thread | None = None
 
         self._server: ThreadingHTTPServer | None = None
@@ -218,6 +220,7 @@ class YtmSource:
 
     def close(self) -> None:
         self._warm_stop.set()
+        self._warm_kick.set()
         with self._server_lock:
             server, thread = self._server, self._thread
             self._server = self._thread = None
@@ -237,22 +240,27 @@ class YtmSource:
         """Keep each ytm preset's playlist and opening track resolved, forever.
 
         Runs on a daemon thread: one round now, then every ``interval_s``
-        (``WARM_RETRY_S`` after a round where anything failed). Idempotent -
-        a second call while it runs does nothing.
+        (``WARM_RETRY_S`` after a round where anything failed). Calling it
+        again replaces the list and starts a fresh round at once - the web
+        page does that when presets change.
         """
-        presets = [p for p in presets if p.source == "ytm"]
-        if not presets or self._warm_thread is not None:
+        self._warm_presets = [p for p in presets if p.source == "ytm"]
+        if self._warm_thread is not None:
+            self._warm_kick.set()
+            return
+        if not self._warm_presets:
             return
         self._warm_interval_s = interval_s
 
         def loop() -> None:
             while not self._warm_stop.is_set():
-                ok = all([self.warm_once(p) for p in presets])
-                self._warm_stop.wait(interval_s if ok else min(WARM_RETRY_S, interval_s))
+                ok = all([self.warm_once(p) for p in list(self._warm_presets)])
+                self._warm_kick.wait(interval_s if ok else min(WARM_RETRY_S, interval_s))
+                self._warm_kick.clear()
 
         self._warm_thread = threading.Thread(target=loop, name="ytm-warm", daemon=True)
         self._warm_thread.start()
-        log.info("warming %d ytm preset(s) every %ds", len(presets), interval_s)
+        log.info("warming %d ytm preset(s) every %ds", len(self._warm_presets), interval_s)
 
     def warm_once(self, preset: Preset) -> bool:
         """Expand ``preset`` and resolve the track it will open on. True if both worked."""

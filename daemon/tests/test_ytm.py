@@ -428,3 +428,15 @@ def test_warm_gives_up_after_three_dead_openers(mpd):
         assert mpd.calls[-1] == ("play",)            # no known-good start: from the top
     finally:
         src.close()
+
+
+def test_warm_again_swaps_the_list_and_goes_round_at_once(mpd, runner):
+    other = "https://music.youtube.com/playlist?list=PLother"
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    try:
+        src.warm([Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")], interval_s=3600)
+        assert wait_for(lambda: any(PLAYLIST in c for c in runner.calls))
+        src.warm([Preset(n=2, name="Other", uri=other, source="ytm")], interval_s=3600)
+        assert wait_for(lambda: any(other in c for c in runner.calls))   # not an hour later
+    finally:
+        src.close()
