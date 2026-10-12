@@ -430,3 +430,19 @@ def test_connected_device_is_parsed_from_bluetoothctl():
 def test_airplay_flag_is_moodes_real_name():
     from haslerd.player.moode import DEFAULT_SOURCE_FLAGS
     assert DEFAULT_SOURCE_FLAGS == {"bluetooth": "btactive", "airplay": "aplactive"}
+
+
+class TestVolumeFloor:
+    def test_first_step_above_zero_lands_on_the_floor(self):
+        assert scale_volume(0, 90, 40) == 0
+        assert scale_volume(1, 90, 40) == 40
+        assert scale_volume(100, 90, 40) == 90
+        assert scale_volume(50, 90, 40) == 65
+
+    def test_unscale_inverts_and_reads_quiet_as_zero(self):
+        assert unscale_volume(scale_volume(70, 90, 40), 90, 40) == pytest.approx(70, abs=1)
+        assert unscale_volume(30, 90, 40) == 0.0
+        assert unscale_volume(100, 90, 40) == 100.0
+
+    def test_floor_zero_is_the_plain_mapping(self):
+        assert scale_volume(50, 70, 0) == scale_volume(50, 70) == 35

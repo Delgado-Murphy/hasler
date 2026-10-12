@@ -101,6 +101,10 @@ class MoodeConfig:
     # coil on a part that cannot be bought. Calibrate by ear (see docs), then
     # the knob's full sweep maps into 0..volume_limit.
     volume_limit: int = 70
+    # Mixer percentage at the knob's first step above zero. Digital on the
+    # Amp4 Pro is linear in dB (0.5 dB per step, 0% = -103.5 dB), so without
+    # a floor the bottom half of the knob is silent. 0 keeps the plain mapping.
+    volume_floor: int = 0
     bluetoothctl: str = "bluetoothctl"
     source_flags: dict = field(default_factory=lambda: dict(DEFAULT_SOURCE_FLAGS))
     renderer_units: dict = field(default_factory=lambda: dict(DEFAULT_RENDERER_UNITS))
@@ -283,7 +287,7 @@ class MoodePlayer:
         )
 
     def set_volume(self, value: float) -> None:
-        percent = scale_volume(value, self.config.volume_limit)
+        percent = scale_volume(value, self.config.volume_limit, self.config.volume_floor)
         self._amixer(f"{percent}%")
         self._volume = float(percent)
         self._knob = max(0.0, min(100.0, float(value)))
@@ -311,7 +315,7 @@ class MoodePlayer:
             percent = None
         if percent is None:
             return self._knob
-        return unscale_volume(percent, self.config.volume_limit)
+        return unscale_volume(percent, self.config.volume_limit, self.config.volume_floor)
 
     def set_mute(self, muted: bool) -> None:
         # Prefer the mixer's own mute switch; fall back to volume 0 on mixers
@@ -552,17 +556,20 @@ def parse_amixer_percent(output: str) -> int | None:
     return int(match.group(1)) if match else None
 
 
-def unscale_volume(percent: float, limit: int = 70) -> float:
+def unscale_volume(percent: float, limit: int = 70, floor: int = 0) -> float:
     """Mixer percentage -> knob position. The inverse of ``scale_volume``.
 
     Anything above the ceiling (set by moOde's own slider, say) reads as a knob
-    at maximum rather than beyond it.
+    at maximum rather than beyond it; anything at or under the floor as zero.
     """
     limit = max(1, min(100, int(limit)))
-    return round(max(0.0, min(100.0, percent * 100.0 / limit)), 1)
+    floor = max(0, min(limit - 1, int(floor)))
+    if floor and percent <= floor:
+        return 0.0
+    return round(max(0.0, min(100.0, (percent - floor) * 100.0 / (limit - floor))), 1)
 
 
-def scale_volume(value: float, limit: int = 70) -> int:
+def scale_volume(value: float, limit: int = 70, floor: int = 0) -> int:
     """Knob position (0-100) -> mixer percentage, capped at ``limit``.
 
     Protects an irreplaceable 60-year-old cone from an amplifier with several
@@ -571,7 +578,11 @@ def scale_volume(value: float, limit: int = 70) -> int:
     exactly how it would have behaved originally.
     """
     limit = max(1, min(100, int(limit)))
-    return int(round(max(0.0, min(100.0, value)) * limit / 100.0))
+    floor = max(0, min(limit - 1, int(floor)))
+    value = max(0.0, min(100.0, value))
+    if value <= 0:
+        return 0
+    return int(round(floor + value * (limit - floor) / 100.0))
 
 
 def tone_gain(value: float, span_db: float = 12.0, deadband_db: float = 0.5) -> float:
