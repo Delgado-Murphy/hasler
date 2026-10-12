@@ -1,0 +1,2441 @@
+{
+ "version": 1,
+ "generated": "2026-10-12",
+ "region": "ES",
+ "note": "Generated on the radio (Spain) from YouTube Music's own Moods & genres and featured playlists, Radio Browser, and hand-picked artist radios. Every playlist was checked with get_playlist(limit=5) and every stream with curl from the Pi. Regenerate rather than hand-edit large parts; refresh() keeps YouTube Music ids and artwork current.",
+ "sections": [
+  {
+   "id": "recommended",
+   "title": "Recommended",
+   "subtitle": "Hand-picked to start with",
+   "items": [
+    {
+     "type": "radio",
+     "title": "RNE Radio 3",
+     "subtitle": "Music · indie, rock, jazz · RTVE",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://rtvelivestream.rtve.es/rtvesec/rne/rne_r3_main.m3u8",
+     "name": "RNE Radio 3"
+    },
+    {
+     "type": "radio",
+     "title": "FIP",
+     "subtitle": "Radio France · eclectic, no talk",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://icecast.radiofrance.fr/fip-hifi.aac",
+     "name": "FIP"
+    },
+    {
+     "type": "radio",
+     "title": "RNE Radio Clásica",
+     "subtitle": "Classical · RTVE",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://dispatcher.rndfnk.com/crtve/rnerc/main/mp3/high",
+     "name": "RNE Radio Clásica"
+    },
+    {
+     "type": "radio",
+     "title": "Radio Swiss Jazz",
+     "subtitle": "Jazz · Switzerland",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://stream.srg-ssr.ch/srgssr/rsj/aac/96",
+     "name": "Radio Swiss Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "Top 100 Music Videos Spain",
+     "subtitle": "YouTube Charts · 100 songs",
+     "thumb": "https://yt3.googleusercontent.com/AQCksXb9ZiYvJdsismL_FFKxoI0z99WEFpnAVtGevSBd4Pqy-Eba9eivtSB5eprraCu89IxcoOM=s1200",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PL4fGSI1pDJn4jhQB4kb9M36dvVmJQPt4T",
+     "name": "Top 100 Spain"
+    },
+    {
+     "type": "playlist",
+     "title": "Spanish Pop hits",
+     "subtitle": "YouTube Music · 68 songs",
+     "thumb": "https://yt3.googleusercontent.com/vPQLPiomnc2xpjyYifkD1OPapaNFugKi5mof1BMonQ2EOnTmjHbMfOS0cneg1BYjI2_Pf8Haj9eoXLk=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mODoXSJeiOpgt_UVHmVsURrDfXEx3Ruok",
+     "name": "Spanish Pop hits",
+     "ytm_title": "Spanish Pop hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Flamenco Hits",
+     "subtitle": "YouTube Music · 58 songs",
+     "thumb": "https://yt3.googleusercontent.com/11GQfj9aU8Vl-GBxA5yLbY9pUhggtIr-VgwCxHJrnMJnGMXqrMbMYGaCEm9NV5qQWXbMmcv7CX5_B18=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_klkdmXJrzrkbQarGTsInTgw5gsKsvyXnM",
+     "name": "Flamenco Hits",
+     "ytm_title": "Flamenco Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Essential Jazz",
+     "subtitle": "YouTube Music · 91 songs",
+     "thumb": "https://yt3.googleusercontent.com/jf2rZB_RbJ2huKYkmpMqKnwRKjmcZfFu_RBLDlbPGfdapRwoUtNsSDn0nSyptF2SF3D1zUydIj0_B9c=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m7EF_vYZXBhXNuduyXmhT00DYapc8cobs",
+     "name": "Essential Jazz",
+     "ytm_title": "Essential Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "Coffee Shop Blend",
+     "subtitle": "YouTube Music · 96 songs",
+     "thumb": "https://yt3.googleusercontent.com/CDt4RjHDGr0YiX6WxARTBFkdb9k9VsAIm88sJXZ7B3O1yMoS53kLS_dy8ZIKRrFRHHCB6OJePWU1GbY=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nBE4bLuBHUXWZrF59ZrkPEToKt8M_I3Vc",
+     "name": "Coffee Shop Blend",
+     "ytm_title": "Coffee Shop Blend"
+    },
+    {
+     "type": "playlist",
+     "title": "The Hits: '80s",
+     "subtitle": "YouTube Music · 109 songs",
+     "thumb": "https://yt3.googleusercontent.com/VGxWK75H8M5k3r2I89b7Tg9Mi1JPNkCtc9IOkAfpznmJu4N7toBj_PB2Fubc_sFHa8CZ1MqSb6AqVTE=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lMzHW51iFg1Kx0d_2EHpzbOgCrwtu8cgI",
+     "name": "The Hits: '80s",
+     "ytm_title": "The Hits: '80s"
+    },
+    {
+     "type": "playlist",
+     "title": "Essential Classical",
+     "subtitle": "YouTube Music · 102 songs",
+     "thumb": "https://yt3.googleusercontent.com/gkQ7vbmDn5Mdo2e0-dpTdiTD7uTEYXML6uPPTFLiRxe4ZVyAi5XNkzj_Of0WCwinF-Iup7YcM8O5iw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mv1P2oVguxLCIDXavV-jcDG1lQyukfSpo",
+     "name": "Essential Classical",
+     "ytm_title": "Essential Classical"
+    },
+    {
+     "type": "playlist",
+     "title": "Children's Songs",
+     "subtitle": "YouTube Music · 70 songs",
+     "thumb": "https://yt3.googleusercontent.com/0NZKX-5UEO_v3CSm4JyCNRKsrvUqg6f2E5R5e6BrDW5H2EBIBvabYwyCKYHEj4UryBFYQXuVYrLREt4=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lFmE-qSLpSYkAf1iI2dikJmNRNimenYH4",
+     "name": "Canciones infantiles",
+     "ytm_title": "Children's Songs"
+    }
+   ]
+  },
+  {
+   "id": "spanish_radio",
+   "title": "Spanish radio by genre",
+   "subtitle": "Live stations from Spain",
+   "items": [
+    {
+     "type": "radio",
+     "title": "RNE Radio Nacional",
+     "subtitle": "News & talk · RTVE",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://dispatcher.rndfnk.com/crtve/rne1/main/mp3/high",
+     "name": "RNE Radio Nacional"
+    },
+    {
+     "type": "radio",
+     "title": "Cadena SER",
+     "subtitle": "News & talk",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/CADENASER.mp3",
+     "name": "Cadena SER"
+    },
+    {
+     "type": "radio",
+     "title": "COPE",
+     "subtitle": "News & talk",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://net1-cope-rrcast.flumotion.com/cope/net1.mp3",
+     "name": "COPE"
+    },
+    {
+     "type": "radio",
+     "title": "Onda Cero",
+     "subtitle": "News & talk",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://atres-live.ondacero.es/live/ondacero/bitrate_1.m3u8",
+     "name": "Onda Cero"
+    },
+    {
+     "type": "radio",
+     "title": "RNE Radio 5",
+     "subtitle": "Rolling news · RTVE",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://dispatcher.rndfnk.com/crtve/rne5/main/mp3/high",
+     "name": "RNE Radio 5"
+    },
+    {
+     "type": "radio",
+     "title": "LOS40",
+     "subtitle": "Music · today's hits",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/Los40.mp3",
+     "name": "LOS40"
+    },
+    {
+     "type": "radio",
+     "title": "LOS40 Classic",
+     "subtitle": "Music · classic hits",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/LOS40_CLASSIC.mp3",
+     "name": "LOS40 Classic"
+    },
+    {
+     "type": "radio",
+     "title": "Cadena 100",
+     "subtitle": "Music · pop",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://cadena100-streamers-mp3.flumotion.com/cope/cadena100.mp3",
+     "name": "Cadena 100"
+    },
+    {
+     "type": "radio",
+     "title": "Cadena Dial",
+     "subtitle": "Music · pop en español",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/CADENADIAL.mp3",
+     "name": "Cadena Dial"
+    },
+    {
+     "type": "radio",
+     "title": "MegaStar FM",
+     "subtitle": "Music · new hits",
+     "thumb": "",
+     "source": "radio",
+     "uri": "http://megastar-cope-rrcast.flumotion.com/cope/megastar.mp3",
+     "name": "MegaStar FM"
+    },
+    {
+     "type": "radio",
+     "title": "RNE Radio 3",
+     "subtitle": "Music · indie, rock, jazz · RTVE",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://rtvelivestream.rtve.es/rtvesec/rne/rne_r3_main.m3u8",
+     "name": "RNE Radio 3"
+    },
+    {
+     "type": "radio",
+     "title": "RNE Radio Clásica",
+     "subtitle": "Classical · RTVE",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://dispatcher.rndfnk.com/crtve/rnerc/main/mp3/high",
+     "name": "RNE Radio Clásica"
+    },
+    {
+     "type": "radio",
+     "title": "Catalunya Música",
+     "subtitle": "Classical",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://shoutcast.ccma.cat/ccma/catalunyamusicaHD.mp3",
+     "name": "Catalunya Música"
+    },
+    {
+     "type": "radio",
+     "title": "Jazz Radio Spain",
+     "subtitle": "Jazz",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://server5.mediasector.es:8020/jazzradiospain.mp3",
+     "name": "Jazz Radio Spain"
+    },
+    {
+     "type": "radio",
+     "title": "Radio Callao Madrid",
+     "subtitle": "Jazz & soul",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://server8.emitironline.com:18176/stream",
+     "name": "Radio Callao Madrid"
+    },
+    {
+     "type": "radio",
+     "title": "Rock FM",
+     "subtitle": "Rock",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://rockfm-cope-rrcast.flumotion.com/cope/rockfm.mp3",
+     "name": "Rock FM"
+    },
+    {
+     "type": "radio",
+     "title": "Radiolé",
+     "subtitle": "Flamenco & música española",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/RADIOLE.mp3",
+     "name": "Radiolé"
+    },
+    {
+     "type": "radio",
+     "title": "Canal Fiesta Radio",
+     "subtitle": "Flamenco, copla & fiesta · Andalucía",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://rtva-live-radio.flumotion.com/rtva/cfr.mp3",
+     "name": "Canal Fiesta Radio"
+    },
+    {
+     "type": "radio",
+     "title": "Radio Sevillanas",
+     "subtitle": "Sevillanas & flamenco",
+     "thumb": "",
+     "source": "radio",
+     "uri": "http://radio.wesped.com:8000/stream",
+     "name": "Radio Sevillanas"
+    },
+    {
+     "type": "radio",
+     "title": "Flamenco FM",
+     "subtitle": "Flamenco",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://sonic.mediatelekom.net/8534/;",
+     "name": "Flamenco FM"
+    },
+    {
+     "type": "radio",
+     "title": "Chocolate FM",
+     "subtitle": "Latin & urban",
+     "thumb": "",
+     "source": "radio",
+     "uri": "http://streaming5.elitecomunicacion.es:8082/live.mp3",
+     "name": "Chocolate FM"
+    },
+    {
+     "type": "radio",
+     "title": "Ibiza Global Radio",
+     "subtitle": "Electronic · Ibiza",
+     "thumb": "",
+     "source": "radio",
+     "uri": "http://ibizaglobalradio.streaming-pro.com:8024/",
+     "name": "Ibiza Global Radio"
+    },
+    {
+     "type": "radio",
+     "title": "Café del Mar CALM",
+     "subtitle": "Chill-out · Ibiza",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://streamer.radio.co/sb748f24ad/listen",
+     "name": "Café del Mar CALM"
+    },
+    {
+     "type": "radio",
+     "title": "LOS40 Dance",
+     "subtitle": "Dance",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/LOS40_DANCE.mp3",
+     "name": "LOS40 Dance"
+    },
+    {
+     "type": "radio",
+     "title": "Ibiza Sonica",
+     "subtitle": "Electronic & chill · Ibiza",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://ibizasonica.streaming-pro.com:8000/ibizasonica",
+     "name": "Ibiza Sonica"
+    },
+    {
+     "type": "radio",
+     "title": "Canal Sur Radio",
+     "subtitle": "Regional · Andalucía",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://rtva-live-radio.flumotion.com/rtva/csr.mp3",
+     "name": "Canal Sur Radio"
+    },
+    {
+     "type": "radio",
+     "title": "Catalunya Ràdio",
+     "subtitle": "Regional · Catalunya",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://shoutcast.ccma.cat/ccma/catalunyaradioHD.mp3",
+     "name": "Catalunya Ràdio"
+    },
+    {
+     "type": "radio",
+     "title": "RAC1",
+     "subtitle": "Regional · Catalunya",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/RAC_1.mp3",
+     "name": "RAC1"
+    },
+    {
+     "type": "radio",
+     "title": "Radio Galega",
+     "subtitle": "Regional · Galicia",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://crtvg-radiogalega-hls.flumotion.cloud/playlist.m3u8",
+     "name": "Radio Galega"
+    },
+    {
+     "type": "radio",
+     "title": "Radio Euskadi",
+     "subtitle": "Regional · Euskadi",
+     "thumb": "",
+     "source": "radio",
+     "uri": "http://mp3-eitb.stream.flumotion.com/eitb/radioeuskadi.mp3",
+     "name": "Radio Euskadi"
+    }
+   ]
+  },
+  {
+   "id": "jazz",
+   "title": "Jazz",
+   "subtitle": "Every kind of jazz",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Essential Jazz",
+     "subtitle": "YouTube Music · 91 songs",
+     "thumb": "https://yt3.googleusercontent.com/jf2rZB_RbJ2huKYkmpMqKnwRKjmcZfFu_RBLDlbPGfdapRwoUtNsSDn0nSyptF2SF3D1zUydIj0_B9c=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m7EF_vYZXBhXNuduyXmhT00DYapc8cobs",
+     "name": "Essential Jazz",
+     "ytm_title": "Essential Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "Traditional Jazz",
+     "subtitle": "Early & New Orleans · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/yddA6irVEwpzX4sSiGCycEHG67l5aVcvp4jQQG4R7y84eZzRr3uGyy4ppV6cbMyzFsz52IYwixXeofmd=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n8797v38N8JhZdT2JJtlM0OfIpgkJ3Mkk",
+     "name": "Traditional Jazz",
+     "ytm_title": "Traditional Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "High Society Swing",
+     "subtitle": "Swing · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/4W0j2l_dtYxTO8ptFrZX-yL0IeucQc8Sst1Y6kxoya-RgVTKV9o0Sb2NCkUDvyKYHFR-SPN7hmhKHr8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_k7a3ErfM0mejMiVztB0eN4NdTGJMKf9mQ",
+     "name": "High Society Swing",
+     "ytm_title": "High Society Swing"
+    },
+    {
+     "type": "playlist",
+     "title": "Big Band Boogie",
+     "subtitle": "Big band · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/j4eHW1q1ucsfbzxWQLXZArS1ES2QcRzQfrlBzBSuKuyTm1rh7kKQUdPX-OGQBut8uNnP2XvS-LuJvMQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lFKr5z77iMwCSQYpYTCh_TJFysUHuwzh0",
+     "name": "Big Band Boogie",
+     "ytm_title": "Big Band Boogie"
+    },
+    {
+     "type": "playlist",
+     "title": "Presenting Charlie Parker",
+     "subtitle": "Bebop · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/ursYahsCu4RXBeP1oFVoO2ykEX6w0lv4Fdvj1-8gRHUYgA4VWBtrXzqsYmIWXu21mYV6tCv41K5KW2k=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kuSUfYEd2auBL38OoKUgy04al56xw79yk",
+     "name": "Presenting Charlie Parker",
+     "ytm_title": "Presenting Charlie Parker"
+    },
+    {
+     "type": "playlist",
+     "title": "Cool Jazz Moods",
+     "subtitle": "Cool jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/-LOaMhH9BN-W_jjoliVSZRAh36iziK8GGPO0VEC62CvaE58AqOeMV5475fGN3C5PIyDr-8FE1wFEH3k=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l3Iir9QZmCUPLjUqyR9PmYIKkkY7YEJZA",
+     "name": "Cool Jazz Moods",
+     "ytm_title": "Cool Jazz Moods"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Art Blakey & The Jazz Messengers",
+     "subtitle": "Hard bop · artist radio",
+     "thumb": "https://lh3.googleusercontent.com/UoXJYT1W8u9ZQ5RI4WIw8VL-Z-NPjO1C9yavlvMs6VLv4pmE4ksNF-w-5P6PCAIV6b8vAmBmYyNPJN8=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMsTnng8ALad_qp4d1xwYciA",
+     "name": "Art Blakey & The Jazz Messengers radio"
+    },
+    {
+     "type": "playlist",
+     "title": "Presenting Miles Davis",
+     "subtitle": "Modal & cool · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/g-ykQTKO0NcC5l2oXpSAz5WZ2yF8CheL4fykVmMlL_WLORw4R3C-xjBkGZxhHk0stT-6bCfTCK9K2WI=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mH4-XCPltdsB93kwS0cenyhcIm6C7XNtc",
+     "name": "Presenting Miles Davis",
+     "ytm_title": "Presenting Miles Davis"
+    },
+    {
+     "type": "playlist",
+     "title": "Presenting John Coltrane",
+     "subtitle": "Modal & spiritual · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/oQ5wdUL89tncrq1RlEh15mushnqMKYW_l2BBzbbr9UhOZUjOJquB64Jp6n8C7iAZiAZQM0TrxArXHg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lqesL199jtCxMoHVmvdg4y-XEwU9dKK6Q",
+     "name": "Presenting John Coltrane",
+     "ytm_title": "Presenting John Coltrane"
+    },
+    {
+     "type": "playlist",
+     "title": "Sophisticated Vocal Jazz",
+     "subtitle": "Vocal jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/O1RJJhxPXy6xcgMvpHRRyMSipeGEGR5xVpY61D96-8QgAUpMHLOoiMFZYSfmrQDiBpX50FZGQGE0opKf=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kY-qKujvKmhfzV5CJW73SBPkDuZByO8xI",
+     "name": "Sophisticated Vocal Jazz",
+     "ytm_title": "Sophisticated Vocal Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "Divas of Jazz",
+     "subtitle": "Vocal jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/qRhK_QxuBpOTVKbENsH1hlBJcOikfzaFDEfuZs8EM-ex82kO8h18_5Ua955cc6Sa7NvpnCd649xj8ow=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mdTxN0bl86mzbRbdr9gW6MEXhBJ8h-mME",
+     "name": "Divas of Jazz",
+     "ytm_title": "Divas of Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "Latin Jazz",
+     "subtitle": "Latin jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/mbHtzEJl6o2RM8rrsWJHlNkl2FXblfmuKjT1nxII4x4xABJp_t3xRGpLOd3Z0UUICJ2zZkNFxNafFwh4=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lDA1IUXJfnEH78l7lLI-CcD7pwXSuAyNY",
+     "name": "Latin Jazz",
+     "ytm_title": "Latin Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "Bossa Nova Time",
+     "subtitle": "Bossa nova · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/YB8A5koB7dRb3Kd9HERmZ63SzoK6-zPb4Jej5Qp1jn1_kg9aGZf-ykyavzxtR3-QPH0IYFP7Pte92gcg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n3QuG8R7-PdIR0VmWV_yUIPtwbDDmlMqg",
+     "name": "Bossa Nova Time",
+     "ytm_title": "Bossa Nova Time"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Django Reinhardt",
+     "subtitle": "Gypsy jazz · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/69PFZyrz3NcDMJqeFWnOOG5imFl6g242_WkX6DdXqwpvQKOuHrO5D-jwaVrc4krSBUADxV09tUB-0A=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEM45IwSGXIUbZbdkR_o8HioQ",
+     "name": "Django Reinhardt radio"
+    },
+    {
+     "type": "playlist",
+     "title": "Jazz Fusion",
+     "subtitle": "Fusion · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/sKyrV-9C9pNNx9Z2W5Daj6prN8l28ACM5moupP636EM-qpr2pW8BlfpuFwtRcfIP8QK8vMO_hJ2kXMzx=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lzki7nUlzgW62wBDmL__RL8DiBx5Xhd8o",
+     "name": "Jazz Fusion",
+     "ytm_title": "Jazz Fusion"
+    },
+    {
+     "type": "playlist",
+     "title": "The Smoothest of Smooth Jazz",
+     "subtitle": "Smooth jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/_fJbAPvRvDFktq7Ot97d-FPGQW3zkOpcxgb-B369Tq9h7fVm5LpUWJoea-fuZ0FbWQFdTfhSzqKmOnI=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nm4NA8cldZNPqj1D0ayZxfySeY89qedRs",
+     "name": "The Smoothest of Smooth Jazz",
+     "ytm_title": "The Smoothest of Smooth Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "South London Sound",
+     "subtitle": "Contemporary / nu jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/1uEYa3JQbNi34STUeFKyZ-cren-DU7n775ZzT1frz8KGz7QbudZbxSN_gc6qDz7Du1pXXi6U0YOiAMxV=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m5CeLIvFRb3751kezUJtlgVUIR7qina-c",
+     "name": "South London Sound",
+     "ytm_title": "South London Sound"
+    },
+    {
+     "type": "playlist",
+     "title": "New Jazz Impressions",
+     "subtitle": "Contemporary jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/5GD_aWp7Gj2UsmzjHIjKLtORDHm8bbqXVAP42nF7MByaENB71oV-5tktKT6u6_7P6FDfOrEAGFvodA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nlJdxcHTlQmkhdN48_-8CjPKyja3x86tQ",
+     "name": "New Jazz Impressions",
+     "ytm_title": "New Jazz Impressions"
+    },
+    {
+     "type": "playlist",
+     "title": "Jazz Piano",
+     "subtitle": "Piano jazz · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/xpEqkV7xoz1ZXsCHszYT0fjmc06QoWczDWRUTNoaTSeTw5hE3vtTSkgEN3r7xOwwajjXEWs9ZvF2epzU=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nRr0zn4n0C5AGQqZKdSaSzs2zmbImOIwU",
+     "name": "Jazz Piano",
+     "ytm_title": "Jazz Piano"
+    },
+    {
+     "type": "playlist",
+     "title": "Late Night Jazz",
+     "subtitle": "YouTube Music · 77 songs",
+     "thumb": "https://yt3.googleusercontent.com/idWICmKd1-yjJrMC-sqvLLnb9J2jbzBwZsD-uIsOKGS3YVGySaJeRGaHwycigQSIlVhN1IiRawGCvQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n2cq0PxECLzVblC6NOorWjaCtF5NwXJT4",
+     "name": "Late Night Jazz",
+     "ytm_title": "Late Night Jazz"
+    },
+    {
+     "type": "radio",
+     "title": "FIP Jazz",
+     "subtitle": "Jazz · Radio France",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://icecast.radiofrance.fr/fipjazz-hifi.aac",
+     "name": "FIP Jazz"
+    },
+    {
+     "type": "radio",
+     "title": "Radio Swiss Jazz",
+     "subtitle": "Jazz · Switzerland",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://stream.srg-ssr.ch/srgssr/rsj/aac/96",
+     "name": "Radio Swiss Jazz"
+    }
+   ]
+  },
+  {
+   "id": "rock",
+   "title": "Rock, punk & indie",
+   "subtitle": "From classic rock to grunge",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Classic Rock's Greatest Hits",
+     "subtitle": "YouTube Music · 117 songs",
+     "thumb": "https://yt3.googleusercontent.com/w8QDcpITg-64iylxia0Z4oWzbmlkHdSeSNyGslc_0ZcJgCtgLHkhugunsDRh_t87UQadn_si6-gPpvI=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nZiG9ehz_MQoWQxY5yElsLHCcG0tv9PRg",
+     "name": "Classic Rock's Greatest Hits",
+     "ytm_title": "Classic Rock's Greatest Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "'70s Rock",
+     "subtitle": "YouTube Music · 93 songs",
+     "thumb": "https://yt3.googleusercontent.com/nJGiSJsB3AaHyxsOiHivjVuvWHYc_t5-eW6IB64qy14YbMxwyNAeWnAQMfyKb_S6Mi_6zG4Mkul7GFU=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m8tb7ahoXoyC82BkVgvWpJo2TUw8VnrlI",
+     "name": "'70s Rock",
+     "ytm_title": "'70s Rock"
+    },
+    {
+     "type": "playlist",
+     "title": "'80s Rock",
+     "subtitle": "YouTube Music · 132 songs",
+     "thumb": "https://yt3.googleusercontent.com/-tjg2qJc4FcGfgqxVKNR8NdQikIFX6xBf5gYRtb-VwbWRcLpwILvwMU5whYTwyWMMKxpzWhztceb2Q=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lvHI2Z7dSfpD5g8wvmePjWPfYwq5IgkLo",
+     "name": "'80s Rock",
+     "ytm_title": "'80s Rock"
+    },
+    {
+     "type": "playlist",
+     "title": "90s Rock",
+     "subtitle": "YouTube Music · 99 songs",
+     "thumb": "https://yt3.googleusercontent.com/M-27G9KLFY5KvR_VKl0syt1RTSWmYOLF5K6x2ZmvTypeWxUKG3aNDJH_S-XoACvFQiYzN7vhTf7kb-M=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l6aLGm9YTfnptXPJCncaK3NpN_0bX3I0w",
+     "name": "90s Rock",
+     "ytm_title": "90s Rock"
+    },
+    {
+     "type": "playlist",
+     "title": "Modern Rock Hits",
+     "subtitle": "YouTube Music · 225 songs",
+     "thumb": "https://yt3.googleusercontent.com/ND3Jmh2yGqIe9EuL113Vei3pvrqeCciqnuLGP6pSjQAszyV-dBl9qozsTNBkP5GYL3FaEegRMHXgZp8k=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l3PeyHeqJh1dR78WjfsMJwRHJx9ofMvvc",
+     "name": "Modern Rock Hits",
+     "ytm_title": "Modern Rock Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "The Grunge Era",
+     "subtitle": "Grunge · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/yZpnKPaOWj5t7nWUUH9Fo9D01DBxHDILGzwExpV9cEZ3y4WrKhPGhSMSR-KFrSFob6uY0IeNf1dhELY=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kQDX7ciH8Pm8h48FWNLv5suF7U6abRhU4",
+     "name": "The Grunge Era",
+     "ytm_title": "The Grunge Era"
+    },
+    {
+     "type": "playlist",
+     "title": "'90s Alternative",
+     "subtitle": "Alternative · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/DJ_3rld29GplW8Zn3R7pinzuSVVvYv6V702JvYnfhW5XKNhL-4qjoFjZj64X86uM8G-vfw2qUm92P70=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m_h-nx7OCFaq9AlyXv78lG0AuloqW_NUA",
+     "name": "'90s Alternative",
+     "ytm_title": "'90s Alternative"
+    },
+    {
+     "type": "playlist",
+     "title": "Alternative Current: Hits",
+     "subtitle": "Alternative today · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/rRPdEJv4pXymEG6Gb0uNNfDyhHf2Rz7xhShYlecWD2v8nQBGVfcv49ngU2am0eC-aBC2kTpBMaWQBWU=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kuEc3lB_I49bqnoy24kbjutvsiOi9ZQe0",
+     "name": "Alternative Current: Hits",
+     "ytm_title": "Alternative Current: Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "'90s Pop-Punk",
+     "subtitle": "Punk · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/kHDa7DftxCyRP0UO8ZKG87LR5mZubdPK_jae5DJ_16EcwXlzh4B6EdE9kVPnQwy25usZvMP9MTCRjg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kPjcoqujX4nTKs3YhCKNIZtS67cICOsYc",
+     "name": "'90s Pop-Punk",
+     "ytm_title": "'90s Pop-Punk"
+    },
+    {
+     "type": "playlist",
+     "title": "'10s Punk",
+     "subtitle": "Punk · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/wzG8Lq5z2YeafA_N7lRWcPOQPJqUrRgWeVorwBVktXBG78-CmQ_nfCpdX8J0n0XTeyM1c-3p-GgS6w=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lhiHzH9fy-2CZoXQ-8D1_R5M_yf54ltuE",
+     "name": "'10s Punk",
+     "ytm_title": "'10s Punk"
+    },
+    {
+     "type": "playlist",
+     "title": "Indie Anthems",
+     "subtitle": "Indie · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/f-ugTVDNO2ePt6ZyaACocrfZzDL06_Bn2b7JQFoRZzoNZ2V0Zwhf0htoIG0680QeK7SBLe7zZ57_psJR=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m9Rw_g5eCJtMhuRgP1eqU3H-XW7UL6uWQ",
+     "name": "Indie Anthems",
+     "ytm_title": "Indie Anthems"
+    },
+    {
+     "type": "playlist",
+     "title": "Today's Indie Hits",
+     "subtitle": "Indie · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/yU6TLYuBkuYqYLxXcwhoBPrQApjvZ5XGbeVESTAkJ5VtqK4-lNxPOO_YaXqTXhn9gOeWVl5e7fn5dD8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m0Nsi5Jnn_g6qbvc7fywPRhEv1qN0PcMM",
+     "name": "Today's Indie Hits",
+     "ytm_title": "Today's Indie Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Yacht Rock Classics",
+     "subtitle": "YouTube Music · 87 songs",
+     "thumb": "https://yt3.googleusercontent.com/PkxHm9XmdLDyWZ-jGGfs6NS7JTaTs8vS4XtKXlLDIudIJ6MtIFdTv1H-CCG2y-httcq7F9zFjY57kODU=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lRZPrRiskUd_P0ld4JdIZNxOmqFVWOZIU",
+     "name": "Yacht Rock Classics",
+     "ytm_title": "Yacht Rock Classics"
+    },
+    {
+     "type": "radio",
+     "title": "KEXP",
+     "subtitle": "Indie & alternative · Seattle",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://kexp-mp3-128.streamguys1.com/kexp128.mp3",
+     "name": "KEXP"
+    },
+    {
+     "type": "radio",
+     "title": "Rock FM",
+     "subtitle": "Rock",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://rockfm-cope-rrcast.flumotion.com/cope/rockfm.mp3",
+     "name": "Rock FM"
+    }
+   ]
+  },
+  {
+   "id": "metal",
+   "title": "Heavy metal",
+   "subtitle": "All the kinds",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Essential Heavy Metal",
+     "subtitle": "Classic heavy metal · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/xp7ngV8x4_hBH_ldytPG7LunD6SVI8WLxdW5MJrGGUZ4ZXq8VxVhgEW6Clp41SFlsEaTPX2ZquCzJTM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lhO-w4BZWObj7daKVuBz_A2wORvjyBCZU",
+     "name": "Essential Heavy Metal",
+     "ytm_title": "Essential Heavy Metal"
+    },
+    {
+     "type": "playlist",
+     "title": "Golden Gods of Metal",
+     "subtitle": "Heavy metal · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/9Q3Bg10TTEpckT8loX0eSPzkxAGiD8mIAw6MgKHI92MNHvSQk2KtbGjwIrNOMKpp5Qw1QHoen8WvO5ct=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_k59GXAlPBRGnPK4iQupnDUUI1AIz1t6QM",
+     "name": "Golden Gods of Metal",
+     "ytm_title": "Golden Gods of Metal"
+    },
+    {
+     "type": "playlist",
+     "title": "Thrash Metal Shred",
+     "subtitle": "Thrash · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/UDsaMv1-Yozn6ezZWMmvrAsb--wgKq-okn7wYvoufR3Eu5rmo9PvyPJCtCQXsXm23evzPesht55L9F8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lBVNxnQ9RF9ebeFNHsaLPTJdem3IPWl7o",
+     "name": "Thrash Metal Shred",
+     "ytm_title": "Thrash Metal Shred"
+    },
+    {
+     "type": "playlist",
+     "title": "Crypt of Death",
+     "subtitle": "Death metal · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/18pwtomQVFdQt1_MRqwyr6_CJMLlZ7lGKXD0ebPT7vqECp7YCRpUteiFwikMLVREZ3ImxGiRaW5uxETy=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kd0jYs5ssZ0yMCd8g_oPiIGGQQ4CB7Ffc",
+     "name": "Crypt of Death",
+     "ytm_title": "Crypt of Death"
+    },
+    {
+     "type": "playlist",
+     "title": "Blasphemous In Black",
+     "subtitle": "Black metal · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/jykDHIZXi6ANzkLoifylR_xLF4om7TrNsxZYXr6KzrunoCt47nWYxR9V0Reo5G30QocJuIsVYn-QKSY=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l_lvmeoF7r_PT-cMEJagW3WutxkeGX-bQ",
+     "name": "Blasphemous In Black",
+     "ytm_title": "Blasphemous In Black"
+    },
+    {
+     "type": "playlist",
+     "title": "Swords & Sorcery",
+     "subtitle": "Power & symphonic · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/eAf6q_sLXJwlxqMaihPiA8XbkDNzVyEwj-4kqhh8tgP0Voo01RrA-abt1zQbx3fS75yHXesdhGO41w=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lNJWTKAQXB9QGN2JwdS_wfvJQq7NLlBo8",
+     "name": "Swords & Sorcery",
+     "ytm_title": "Swords & Sorcery"
+    },
+    {
+     "type": "playlist",
+     "title": "Epic Viking Metal",
+     "subtitle": "Viking & folk metal · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/z0qHeXFBT_hu6vvcGhoQwZxa3b6rfd0tgD5xoKXDDVq_v_c-r4kf8aDHC_jyCBxP0gqZVDB_wsUZNME=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mq8aFg7Y3lRXxbIQG7VVtVte2vmBWArH8",
+     "name": "Epic Viking Metal",
+     "ytm_title": "Epic Viking Metal"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Candlemass",
+     "subtitle": "Doom · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/z99O2hUxjfcs98ME4b-5X2zIEc_6HZ9J0UaKH9SiNSJl84CkpnuV3aY1tG3yX73jPCoOrRdLzohwpUc=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEM7I3jjUCgkiG_f7xzOrb87w",
+     "name": "Candlemass radio"
+    },
+    {
+     "type": "playlist",
+     "title": "Nu Metal Revolution",
+     "subtitle": "Nu-metal · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/fcndsw8gk1pQpXCMVnnnx7WcdNn04TQIJvwAfjO9lXpBhXMyvwCvFNi2S0cbgi5UiuOKg8Gm-cFHUw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mRkN4u_vp9wj0JZuVOyJyjUACfjZG_3gI",
+     "name": "Nu Metal Revolution",
+     "ytm_title": "Nu Metal Revolution"
+    },
+    {
+     "type": "playlist",
+     "title": "Metalcore Meltdown",
+     "subtitle": "Metalcore · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/WcM9PVJheTzffgn9uWi-Lj_uCHEuB5YuXo5HstxwgQxX1Ey_1MAtMW6gHR-hRa6VMAOkAzTLpWL_mq7J=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_leGeXSJUXcic_9YyekWAjAbnSQB9hxDbg",
+     "name": "Metalcore Meltdown",
+     "ytm_title": "Metalcore Meltdown"
+    },
+    {
+     "type": "playlist",
+     "title": "Hair Metal Hedonists",
+     "subtitle": "Glam / hair metal · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/7d6eHvL7EDKUuRPNN0tlXHMSgJ3uPxn7iPjlYPNLMJJP1QrCsSSfJtRqbR3MckNXsqvZSB_RJ76I2Fa0=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ktzAOYKQtyq6Kak2i3lt9d3dfNB3-nSAs",
+     "name": "Hair Metal Hedonists",
+     "ytm_title": "Hair Metal Hedonists"
+    },
+    {
+     "type": "playlist",
+     "title": "Metal Hits",
+     "subtitle": "YouTube Music · 135 songs",
+     "thumb": "https://yt3.googleusercontent.com/z4IiFMlMD5GvO42BHG960-3YLtOP8kqeBz09tyitaUy3IOeIQKDqd83RkImxvSQEzaaLt8DGrDyNMEs=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nbgFAZAHrA9Wh3i9EGZFjFpBMuJNN_9mU",
+     "name": "Metal Hits",
+     "ytm_title": "Metal Hits"
+    }
+   ]
+  },
+  {
+   "id": "hiphop",
+   "title": "Hip-hop & rap",
+   "subtitle": "US, Spanish, trap, old school",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "On Everything: Today's Hip-Hop Hits",
+     "subtitle": "US today · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Bn5bhuvUPEquRibzAc5U_UmGu5eA0Nxn4Fbmg0GXyk-lj5jAdfyhnBrbOWnh389BY0tFkyRHo6yTEcw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lBGRuQnsG37Akr1CY4SxL0VWFbPrbO4gs",
+     "name": "On Everything: Today's Hip-Hop Hits",
+     "ytm_title": "On Everything: Today's Hip-Hop Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Hip-Hop Classics",
+     "subtitle": "YouTube Music · 90 songs",
+     "thumb": "https://yt3.googleusercontent.com/QbaOnF8DHmwx70wCX4E3e8QcmkZNaO91jkIqz1U-UcW_PFYzA2419D7icVlUZRrWwsDqxAal_RzCOg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kP2172rQNb3KFXz880xp6M98R_ME5CIKA",
+     "name": "Hip-Hop Classics",
+     "ytm_title": "Hip-Hop Classics"
+    },
+    {
+     "type": "playlist",
+     "title": "Old-School Hip Hop",
+     "subtitle": "Old school · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/mwe5MQbO8Ne71wR_oGfV5JAD3uoLWiShjU-9xAMWhoBdO7T-o5ln5XCb1QuujFkRSh_lWeEEdgdrSeSx=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kjWs8kYE7G6CkEijcEvsO9MVdE5doD3uY",
+     "name": "Old-School Hip Hop",
+     "ytm_title": "Old-School Hip Hop"
+    },
+    {
+     "type": "playlist",
+     "title": "Essential '90s Hip Hop",
+     "subtitle": "Boom bap / '90s · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/3Igaf-693b9QgADSlRVPScx-pKN_Mzxcnseo_OsIA-i8a14YQ-Z7WKIwC9wv9odPGJaGZO8crsb_=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mpx6f-Md6iPbWSaizatzQIHfcF33fmT7E",
+     "name": "Essential '90s Hip Hop",
+     "ytm_title": "Essential '90s Hip Hop"
+    },
+    {
+     "type": "playlist",
+     "title": "Classic West Coast Hip Hop",
+     "subtitle": "West Coast · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/mtA6g7Z8rWajZHNZilJNLLLTDiylwjNMMqHCZe0cVDicgCpaRAHn9-s6nED34Ita-KwIrJEK8lfUHQI=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mU6GwWHPorAUvZLgNsRekuN-Wvltw0oZ0",
+     "name": "Classic West Coast Hip Hop",
+     "ytm_title": "Classic West Coast Hip Hop"
+    },
+    {
+     "type": "playlist",
+     "title": "Trap Anthems",
+     "subtitle": "Trap · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/NuEiYLsaJuafnUhYA0I3zZdwvfwlh6qWgfCNhgSwK5XbK-J-yzy2uIphdSRIe3KkkULrTks6c87VAG1S=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kc4LIsE0KNO69Yql4rnUIW0xJCBp5d3MM",
+     "name": "Trap Anthems",
+     "ytm_title": "Trap Anthems"
+    },
+    {
+     "type": "playlist",
+     "title": "All Urban Spain",
+     "subtitle": "Spanish rap & urban · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Ew7H0YeQLgZ6m_NrQGYu_V_fuDfpJ5SF-FXrh5bO27mhnAL0MKb6_h9LLEwlnmgbRqOTt8ZOsuFqbA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lZJqtJmiXtuBW8kOB7hulATn5JHaxKP2o",
+     "name": "All Urban Spain",
+     "ytm_title": "All Urban Spain"
+    },
+    {
+     "type": "playlist",
+     "title": "Revolución Rap",
+     "subtitle": "Rap en español · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/DOVfHiEhWke7Jsbt4li2iWM2BjzzQUQWbNcgOrIyF1qWMJE0DwnPeBD8VxRbGQpQwFus57TuwLde_tlM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mlZxK41b9W2tgD4_TnQ9yVjHp6JcQcYaQ",
+     "name": "Revolución Rap",
+     "ytm_title": "Revolución Rap"
+    },
+    {
+     "type": "playlist",
+     "title": "Latin Hip Hop Anthems",
+     "subtitle": "Latin hip-hop · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/WFvoTFDT-w-qVJaMVgDxcxQxBEspnsdxvZSlbyJxxAebTbhZpwo_-9BrCNVPr8fOTilfEDGuxZsbZw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m774h5Cc44q7NfQLDqSQrrlezMKFlhddQ",
+     "name": "Latin Hip Hop Anthems",
+     "ytm_title": "Latin Hip Hop Anthems"
+    },
+    {
+     "type": "playlist",
+     "title": "Territorio Trap",
+     "subtitle": "Trap latino · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/x8jOONag7uJNpvKluMkMlTRcgQBTQK3Dmb1AO-UmUGNyIPBMT94jbUkXiW3SG14aoz0RMDPZVsHYphM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n7_FwRa75aSodf-i7XSGyyCE8klGSbipQ",
+     "name": "Territorio Trap",
+     "ytm_title": "Territorio Trap"
+    },
+    {
+     "type": "playlist",
+     "title": "Chilled Hip-Hop",
+     "subtitle": "Chill · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/nnfd-MRJ1GofXOsI_GNP3lKYFw4iL8jfSHec7MaV2ZeNc_3OYL4UU1dUC6cfUkxcEgCIhKsL-gQJVek=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_myzznSrnHv4d3VAWYEFRkjuSvgiAXZshk",
+     "name": "Chilled Hip-Hop",
+     "ytm_title": "Chilled Hip-Hop"
+    },
+    {
+     "type": "playlist",
+     "title": "UK Rap & Grime Bangers",
+     "subtitle": "UK rap & grime · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/GA_MYcxWcgG0o2uOzxTYlzqmNmSLyJOjKhCzFo1rganduTB-lFbEpM6viXhPeTUM5nHdctQkm25XvS0=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lfgBSVSqqZ19m8nPWzXBT8_IYXy38ZDzs",
+     "name": "UK Rap & Grime Bangers",
+     "ytm_title": "UK Rap & Grime Bangers"
+    }
+   ]
+  },
+  {
+   "id": "electronic",
+   "title": "Electronic",
+   "subtitle": "House, techno, d&b and more",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Huge House Anthems",
+     "subtitle": "House · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/5LadTcIKAyK_D_yDPG3CmuQOvGScyG1-li3h7Yqt7yYURrR7EAD3Zk98h-7OvgQXFpdxq2KdX53OhIE=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nBrLYLD4uLur0yOG-Ayla-Ig64ZzZcy7A",
+     "name": "Huge House Anthems",
+     "ytm_title": "Huge House Anthems"
+    },
+    {
+     "type": "playlist",
+     "title": "Chicago House Foundation",
+     "subtitle": "Classic house · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/cKPfuHK1UU2OPoznP8Djbhjc2y-ggw8nzUjX1EaZKNsxmxM4wjZ-77r047T1EFla814Xe_l4MHzsxzMm=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_miMSxuvE6h6QxKk8pnABxR-CbiRcA5KiI",
+     "name": "Chicago House Foundation",
+     "ytm_title": "Chicago House Foundation"
+    },
+    {
+     "type": "playlist",
+     "title": "Deep House Deep Dive",
+     "subtitle": "Deep house · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Xl6Fb1sAWOAbTawX4r3Vyjn2XvKwVZdtrbScPW2P1fb2fD34RnvRUlhOhXALg-CUt_0YGrWoo6k3dZw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ln5QrejQxkRjfKqqrWPtxtAOjkGR2w1FI",
+     "name": "Deep House Deep Dive",
+     "ytm_title": "Deep House Deep Dive"
+    },
+    {
+     "type": "playlist",
+     "title": "Techno Gold",
+     "subtitle": "Techno · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/imMey_iYrtjAiV7bNWbn49itcGVw9MVCEJoVwgzugfKZlB2XlxBNkIW-Lyhjyuz7bV4QMPoeX2XhAg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lCqtBqKkhlmGF07XjPvt1WD8B-v8gurkE",
+     "name": "Techno Gold",
+     "ytm_title": "Techno Gold"
+    },
+    {
+     "type": "playlist",
+     "title": "Drum & Bass Anthems",
+     "subtitle": "Drum & bass · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/p8l3FNDGdmxUDyMEDKVBehWLMkAC6fJW0v4-7Rd6oo-4HtZ9mRbZe6ZfcVmFJIL-_2_uFcIw-C5MDA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n24VQSq-J5UBG0hJUFTThmNJZEdWApSUw",
+     "name": "Drum & Bass Anthems",
+     "ytm_title": "Drum & Bass Anthems"
+    },
+    {
+     "type": "playlist",
+     "title": "Bass Haven",
+     "subtitle": "Dubstep & bass · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/YnIYyiRGBenPH2Bvb_bkgYSR7uqshP6n85IMfl0b7KGEkbGds8n-0sJLGqFo6Z2-xdAm61lBCYckEGc=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n6xsA4G1s9bHFjUyr2MGPBH4LXdj0orZQ",
+     "name": "Bass Haven",
+     "ytm_title": "Bass Haven"
+    },
+    {
+     "type": "playlist",
+     "title": "Trance Classics",
+     "subtitle": "Trance · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/xQwaXqEMDtUww-oZCBMYv_kl7WUemoyK4YPFng9seKCFi8w1yLDIK_QBibjFrcoDocM8ysXAIqou5g=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m5-Ur8LO4mxLbawH6xdL4htYBw9mq-1RI",
+     "name": "Trance Classics",
+     "ytm_title": "Trance Classics"
+    },
+    {
+     "type": "playlist",
+     "title": "EDM Anthems",
+     "subtitle": "EDM · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/2XiXUUeC61YCXfsh4pCohpUnDokt6Q81Cgoq-iI_9SWU2LgXY_ZRdEfk3poFjTBSuMxPKJG0c5UJYRM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_k8M88-3MJRUSCbipYWLH5socYNhDI06Sc",
+     "name": "EDM Anthems",
+     "ytm_title": "EDM Anthems"
+    },
+    {
+     "type": "playlist",
+     "title": "'90s Dance",
+     "subtitle": "'90s dance · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/U5wAJeB3rnIvBNZ5NWz1CvYbiOBAbIoFXYbyvXqrqMZrDBJpBo-auP4-MhgFm-uxH3OGI5cfb8IsctM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ltlS29HmNHZb3oCsEjfXmZhIGaWpaDZck",
+     "name": "'90s Dance",
+     "ytm_title": "'90s Dance"
+    },
+    {
+     "type": "playlist",
+     "title": "Chilled Ibiza",
+     "subtitle": "Ibiza chill · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/D-hwIp13Ypiw9wlR9M_80Nw81_Qu6m_riBul_mo5q-q4qhEiFopLT90YUqmdNK8qPI68VvBzkbvmFvwv=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nM6gXW5m1DqYCO6eu0P8Di2jEdj_Hm4fQ",
+     "name": "Chilled Ibiza",
+     "ytm_title": "Chilled Ibiza"
+    },
+    {
+     "type": "playlist",
+     "title": "Lofi Loft",
+     "subtitle": "Lo-fi · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/9I45SYZAfTeR17ByV9i2yDpWhQ5DTWMCrW3Lei8vMIiZzeyUnf2zRFUDBob4TGwgUkXAAR_x1Xa8VA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kb7EBi6y3GrtJri4_ZH56Ms786DFEimbM",
+     "name": "Lofi Loft",
+     "ytm_title": "Lofi Loft"
+    },
+    {
+     "type": "playlist",
+     "title": "Classic Ambient",
+     "subtitle": "Ambient · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/N2IX9WbSttaFO3fjS1dszeCEUw-8tbWycwhpSMtwunC42mLUPYMhZvDGFJsNCp1WrogJjyxeOKDxYw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nPaBlmfKLPFyzWF0NeUzb9XhJwpWT5p1I",
+     "name": "Classic Ambient",
+     "ytm_title": "Classic Ambient"
+    }
+   ]
+  },
+  {
+   "id": "pop",
+   "title": "Pop",
+   "subtitle": "Hits from every decade",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Pop's Biggest Hits",
+     "subtitle": "YouTube Music · 129 songs",
+     "thumb": "https://yt3.googleusercontent.com/ih5QdpqpkVNRXtD-joBWj3jo1woxAXJFyAoA3hWYNWAKX0M9B825HH2VOh7aDX-unf67oyCyJGN9TljR=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nmS3YoxSwVVQk9lEQJ0UX4ZCjXsW_psU8",
+     "name": "Pop's Biggest Hits",
+     "ytm_title": "Pop's Biggest Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Pop Hotlist",
+     "subtitle": "New pop · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/OdrGgWam1zgDNpCOA0u1UQiRQ0kpBtwa32A9tW_DVJtBQ04-Gx_S2fxvy0p-vguuO7Uhxf85OGzJwJIw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_npj3EI5VV_uv_GdeeNgVpsGe5n_9YwzoI",
+     "name": "Pop Hotlist",
+     "ytm_title": "Pop Hotlist"
+    },
+    {
+     "type": "playlist",
+     "title": "The Hits: 70s",
+     "subtitle": "YouTube Music · 102 songs",
+     "thumb": "https://yt3.googleusercontent.com/2KZb8nfXkIxXVj-jiCSH3c4xJg5WMl1DDrXfMwBKiJQBbQVGsdwuE_lnseyny2MUPNgtP0skOnPDEgCL=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_myl2Kxu04jRiia7vYY6jnavWDeUP8xLhY",
+     "name": "The Hits: 70s",
+     "ytm_title": "The Hits: 70s"
+    },
+    {
+     "type": "playlist",
+     "title": "The Hits: '80s",
+     "subtitle": "YouTube Music · 109 songs",
+     "thumb": "https://yt3.googleusercontent.com/VGxWK75H8M5k3r2I89b7Tg9Mi1JPNkCtc9IOkAfpznmJu4N7toBj_PB2Fubc_sFHa8CZ1MqSb6AqVTE=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lMzHW51iFg1Kx0d_2EHpzbOgCrwtu8cgI",
+     "name": "The Hits: '80s",
+     "ytm_title": "The Hits: '80s"
+    },
+    {
+     "type": "playlist",
+     "title": "The Hits: '90s",
+     "subtitle": "YouTube Music · 120 songs",
+     "thumb": "https://yt3.googleusercontent.com/B8E9fq8u20DKZsSzeCnBw03S2WifECB_xs_d8CsP9Vkomclj7K4YFq2m3svNG_kMlvdv1ajAelU8Fw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nQkPLhMF6chdzKSlWdX8NHMrLVpdci-eU",
+     "name": "The Hits: '90s",
+     "ytm_title": "The Hits: '90s"
+    },
+    {
+     "type": "playlist",
+     "title": "The Hits: 00s",
+     "subtitle": "YouTube Music · 98 songs",
+     "thumb": "https://yt3.googleusercontent.com/ZTCZsbApLibPgOcSoA2_373I-DnNwyeLlahtEt9GnW7otA8HC3JOVVEKER0Dhl8XAwVrjGjxr_NGOQA7=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mVQsicmiGWIirrcMMQO4g7QL3BQKuKCSM",
+     "name": "The Hits: 00s",
+     "ytm_title": "The Hits: 00s"
+    },
+    {
+     "type": "playlist",
+     "title": "The Hits: '10s",
+     "subtitle": "YouTube Music · 100 songs",
+     "thumb": "https://yt3.googleusercontent.com/PzpjzCcvOOWN7fRIGzI5su0UEbtbF1va8Vb1ylLUwLnTxIjwOP2twr7TPfoR7ZBXMUfu09H5a16bc6ox=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mGYde2Wyx9INZd6GbPcMWkxDOu6Utmedw",
+     "name": "The Hits: '10s",
+     "ytm_title": "The Hits: '10s"
+    },
+    {
+     "type": "playlist",
+     "title": "Pop Ballads",
+     "subtitle": "YouTube Music · 75 songs",
+     "thumb": "https://yt3.googleusercontent.com/09HQwRpgr-61KaEmoOUUpYHODNzUMN6lRV2iXvTlVBiOvE-J3f53NHJaKg-r4dHailg8yDozMUCD00AA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mibxs1G4XQF8vFFlnlyBimkbFP7fKUh3U",
+     "name": "Pop Ballads",
+     "ytm_title": "Pop Ballads"
+    },
+    {
+     "type": "playlist",
+     "title": "Classic Feel-Good Pop",
+     "subtitle": "YouTube Music · 137 songs",
+     "thumb": "https://yt3.googleusercontent.com/1XWwcowCLklGEv2AF_q4AEPSRUq51EBf0eMeTryYWp4gtLSTn8_5pmWcJNBav6kjgUlKcnNyolR17lc=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_k4sXYMRc7kePx3BjjVv5z2fB1CePqvVDw",
+     "name": "Classic Feel-Good Pop",
+     "ytm_title": "Classic Feel-Good Pop"
+    },
+    {
+     "type": "playlist",
+     "title": "K-HITLIST",
+     "subtitle": "K-pop · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/W4yr0OQCXp-ZXIIglwE-gZuE9Zi2PvKgizHBDhlXdyf4JC9a8-diaqhyu6rcN35MhCWxffA1XAaSEpw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l7wbVbkC-dG5fyEQQsBfjm_z3dLAhYyvo",
+     "name": "K-HITLIST",
+     "ytm_title": "K-HITLIST"
+    },
+    {
+     "type": "playlist",
+     "title": "J-Pop Hits 2025",
+     "subtitle": "J-pop · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/waYDQeSNdtaDXbxBHbH6eNfHqRpWcc2DQ2Bdd2QKAaAfRGOPOpatY14BmpwE89Me6HYv89iV3gwiW0Gk=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lwbizuU3lWX-XkvD8tvEd8phxcIneMvwc",
+     "name": "J-Pop Hits 2025",
+     "ytm_title": "J-Pop Hits 2025"
+    },
+    {
+     "type": "playlist",
+     "title": "City Pop: Origins",
+     "subtitle": "Japanese city pop · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/wvXttq3f_r656zJLWwJh5GZ0WC89mYeRxgu1NtE_oXqWX7TuJ8cfGHkbGHAfRzsZ-3XNft_Nf5JLU9o=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nEjjAWEM3M3fk2tT4Lhb5JOr_HoD0tjnk",
+     "name": "City Pop: Origins",
+     "ytm_title": "City Pop: Origins"
+    }
+   ]
+  },
+  {
+   "id": "spanish",
+   "title": "Pop español, flamenco & copla",
+   "subtitle": "Music from Spain",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Spanish Pop hits",
+     "subtitle": "YouTube Music · 68 songs",
+     "thumb": "https://yt3.googleusercontent.com/vPQLPiomnc2xpjyYifkD1OPapaNFugKi5mof1BMonQ2EOnTmjHbMfOS0cneg1BYjI2_Pf8Haj9eoXLk=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mODoXSJeiOpgt_UVHmVsURrDfXEx3Ruok",
+     "name": "Pop español",
+     "ytm_title": "Spanish Pop hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Éxitos De Los '80s",
+     "subtitle": "Pop en español de los 80 · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/VoTBX6oVREpvdK1j1IQOcpLU_PA97k328TGczRcY4UKkzYV-BfqwgNFOf0ErP11zlMLkWhxT00VD3so=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_k_2bOWe-ThBcMDFFdd5oYe00RVhVH5TYs",
+     "name": "Éxitos De Los '80s",
+     "ytm_title": "Éxitos De Los '80s"
+    },
+    {
+     "type": "playlist",
+     "title": "Spanish Rock of the '80s and '90s",
+     "subtitle": "Rock español · movida · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/HVEEETlcFvGoRWUM_gRy8EHLpdi9jYHGk55Kgh5m97aq4_ZMXQ5s1ECgwe7hk4eveOSastfiuLqzXQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nMjH-zwJOKTmoBGmVBQlTCML5WXHqxDOA",
+     "name": "Spanish Rock of the '80s and '90s",
+     "ytm_title": "Spanish Rock of the '80s and '90s"
+    },
+    {
+     "type": "playlist",
+     "title": "'10s Rock en Español",
+     "subtitle": "YouTube Music · 64 songs",
+     "thumb": "https://yt3.googleusercontent.com/ZgpcXEHlIK3nt24QGWW1ppi9xyHfcF5GAUMt27UX_0e8adh6IagZzRYWvyRC-ESl0JFc79xxHchvQP4=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lwyoPL3R27f426o6LQgZn1SiznHnJb_QY",
+     "name": "'10s Rock en Español",
+     "ytm_title": "'10s Rock en Español"
+    },
+    {
+     "type": "playlist",
+     "title": "Íconos: Rock en Español",
+     "subtitle": "YouTube Music · 55 songs",
+     "thumb": "https://yt3.googleusercontent.com/_Lqjt78ZXcMQmznPq1aYMcQEhOum5bPJUTmy-CxsUSye_LPXlnEVKFkSen2mlE0p6rHsF4wFAbw7Qes=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lSogQlOWorqTv0Laig4R-tTCu1AY27Iv8",
+     "name": "Íconos: Rock en Español",
+     "ytm_title": "Íconos: Rock en Español"
+    },
+    {
+     "type": "playlist",
+     "title": "Éxitos Indie",
+     "subtitle": "Indie en español · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/BHyimxsLC3c75Iv5gk2MMW8508PSXoNHBuh8-7f3B6wA9PHwJm1Cc0tmPGTDeUuaXHjEZ81QX42YW-KL=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l6anMdHsoKwWB8tkoniMzsL7OKZ1ZqnFU",
+     "name": "Éxitos Indie",
+     "ytm_title": "Éxitos Indie"
+    },
+    {
+     "type": "playlist",
+     "title": "Flamenco Hits",
+     "subtitle": "YouTube Music · 58 songs",
+     "thumb": "https://yt3.googleusercontent.com/11GQfj9aU8Vl-GBxA5yLbY9pUhggtIr-VgwCxHJrnMJnGMXqrMbMYGaCEm9NV5qQWXbMmcv7CX5_B18=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_klkdmXJrzrkbQarGTsInTgw5gsKsvyXnM",
+     "name": "Flamenco Hits",
+     "ytm_title": "Flamenco Hits"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Camarón De La Isla",
+     "subtitle": "Flamenco · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/RQzhgggj9HuKGsUG2_T6SYfHDtAEKCGos81wnpmz_Xc434iUKH-ugvXelgDcjd8fkt7_GvfoIDzPKMz4=w120-h120-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEM10QoLzBTeIlRCYcRC3ZOGQ",
+     "name": "Camarón De La Isla radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Paco de Lucía",
+     "subtitle": "Flamenco guitar · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/eo5rrolb62fzY65rNXM65JNqM_d0_paG58o1NVwCYFtKbU-WLOqnZTPsPFX_GFTqOjz3Y1ksn23ICw=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMYNquyZQPgZzsix5KOOjUWA",
+     "name": "Paco de Lucía radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Peret",
+     "subtitle": "Rumba catalana · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/cueYJ2XQpE98i3yNwOpEKh_9e_jl2g1-lUYC_acBdlk7Ewe6zWNwOpoFvUWOn0k_2JwUgLX75KTOZI0oFw=w120-h120-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMAEsQIe59WBlcQlGzkhSFdQ",
+     "name": "Peret radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Estopa",
+     "subtitle": "Rumba-rock · artist radio",
+     "thumb": "https://lh3.googleusercontent.com/wJbzH7XFAmjW6WQKNcIf4cbbeAILKXeIxXE_WuhK4Mqg1RpEbk36TlZ9_4qCEknyHkCNNJMogps43hty=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMI5sGY8hexd6MH0F-y19r9g",
+     "name": "Estopa radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Rocío Jurado",
+     "subtitle": "Copla · artist radio",
+     "thumb": "https://lh3.googleusercontent.com/0U913Ew_wA-tJEP7yMPmtoQ2JbEq5b4Xzgs-cbwRASa3RNsjLY_kfommyjvcyLP97tATq4jLjW-x5A=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEM4jj4NjgRDKeBvablDdZ_Yw",
+     "name": "Rocío Jurado radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Lola Flores",
+     "subtitle": "Copla · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/WiUGAN6fuzVcRvUarQHgAWUAQFAGNzNUUxGqEmXJwXsRTrEa8zltl7UQ3epQScEV42tTRL9d5mjs9uE=w120-h120-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMo_LYHAjSQXW8TeGqyPFsCA",
+     "name": "Lola Flores radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Joan Manuel Serrat",
+     "subtitle": "Cantautores · artist radio",
+     "thumb": "https://yt3.ggpht.com/ytc/AIdro_l1MnUNWt6rQ4xHBgoJct6ASc7PsXSoU72nRKb9KCnowA=w120-h120-l90-rj-dcmWSAzDEF",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMytzrATzSXHnuprTMf_F5vw",
+     "name": "Joan Manuel Serrat radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Joaquín Sabina",
+     "subtitle": "Cantautores · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/M-p6_ojxxm5j4lavzLADVeekd5JZ9-z5nkRI1Zs6jMAO7ZVXyAvVz9OPYTayWB8bv3tB487r8O8b1Ic=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMcRL-whEYfI_NdQZruHzDeQ",
+     "name": "Joaquín Sabina radio"
+    },
+    {
+     "type": "playlist",
+     "title": "Baladas Románticas Clásicas",
+     "subtitle": "YouTube Music · 80 songs",
+     "thumb": "https://yt3.googleusercontent.com/Bu4WXXjECOX7lIYzP_C3_AB9-8ByGcnyAOGxfvGT135yEAaW3EeHFyFNeQTKakcRgXIUw3trc47c5V8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lDiA4O9nB0WajiXFx4Q0hVrTyM1rXyijQ",
+     "name": "Baladas Románticas Clásicas",
+     "ytm_title": "Baladas Románticas Clásicas"
+    }
+   ]
+  },
+  {
+   "id": "latin",
+   "title": "Latin",
+   "subtitle": "Reggaeton, salsa, bachata, cumbia, tango",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Latin Now",
+     "subtitle": "YouTube Music · 60 songs",
+     "thumb": "https://yt3.googleusercontent.com/TRMKFMwVDmKZDEdf518SZXgdTGzbYEV2UjO-Kk7f_V8eP605GdBcF1tIMMzmzA7ORK61hr_c5zRX30Q=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lOAAW-PX5XUed76iQefCxkOXd6m6ZvyiM",
+     "name": "Latin Now",
+     "ytm_title": "Latin Now"
+    },
+    {
+     "type": "playlist",
+     "title": "Reggaeton Essential Hits",
+     "subtitle": "Reggaeton · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/d_XwGiutbuR-ynMCIndd86x10egkvXPtn6XOZkG5iYF2849fVhF4mesRfHU_MaszX_CeADlzVdge2p8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mFaoBNPmTUVcY51UGFuAYedXv4kXuqg5M",
+     "name": "Reggaeton Essential Hits",
+     "ytm_title": "Reggaeton Essential Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Old-School Reggaeton",
+     "subtitle": "Reggaeton classics · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/otNOkQlQVXks2cc-xcbUD98b4xF_LbliN7Y41G7deqJsL_46-p5qxuJr3aNSIHQ2Mj04n1qdlwXaRpw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lk7bC42AIcIBpSBiioTBrFdJeDNLSGCyE",
+     "name": "Old-School Reggaeton",
+     "ytm_title": "Old-School Reggaeton"
+    },
+    {
+     "type": "playlist",
+     "title": "Salsa & Merengue Classics",
+     "subtitle": "Salsa · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/joFBKfS7mK1_7FGyZIIKECqevWi4aifaCLPYWgzDu2L71gTPs1Feq0LUw7mcM9RdtkY3LN-VWshI1mw9=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nptezepKPSceWDwbXkMVfIYSD2rLRjiCA",
+     "name": "Salsa & Merengue Classics",
+     "ytm_title": "Salsa & Merengue Classics"
+    },
+    {
+     "type": "playlist",
+     "title": "Cuban Salsa",
+     "subtitle": "Salsa cubana · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/ylNWtU03q2XHq8xojtfUNQKBLct4sUrdq_onbOTdp6tsoStLTNk60vR6xUzVmC2kOpXsshyD679pOg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mm5PyPEBhvja2dKK5v3NmMMyPN8bK7pYY",
+     "name": "Cuban Salsa",
+     "ytm_title": "Cuban Salsa"
+    },
+    {
+     "type": "playlist",
+     "title": "Bachata Mix",
+     "subtitle": "Bachata · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/N4cesOwsF0eMZxB6M8RtO3MMgfKQ7ai9syXkpRjsbW3Hwi9PubEHh6j374HgIoxP6PhTerP2gbmjLE8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kLYyE7wnPy-CdtP7hzzpru0iPr-eY2ea4",
+     "name": "Bachata Mix",
+     "ytm_title": "Bachata Mix"
+    },
+    {
+     "type": "playlist",
+     "title": "Cumbia Megamix",
+     "subtitle": "Cumbia · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/pyq7hTdYN4GDTmsoXz-8wMV7H3bjM2E9gVgH1HQ3OQEYv1pO71hTus48lgBk9ZJclg5YSQJn5Ub79Kc=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_k6ACq4WNfG-uJSz_jML9ZkUEULUoCzWIw",
+     "name": "Cumbia Megamix",
+     "ytm_title": "Cumbia Megamix"
+    },
+    {
+     "type": "playlist",
+     "title": "Argentinian Tango",
+     "subtitle": "Tango · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/jEdfn8qbM9zjfKEfaKQQX7AWj0N7cNb-oClalRV2k34JNv6jOtgb339p4gKojjSs3hTUjMHko9Ya3A=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kxo_VDUiaw-r_ApQ5NannKN6lmw7liiE0",
+     "name": "Argentinian Tango",
+     "ytm_title": "Argentinian Tango"
+    },
+    {
+     "type": "playlist",
+     "title": "Romantic Boleros",
+     "subtitle": "Boleros · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/7bPdaw-j2Y6cgfstAB4Uz4SkOQcGUfnwGA8Z6P4Twhsn1HgKMd9KWuzEPgYL0lIoOCp6Psm113XO7g=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kyBjXiKUuGfPYEb6TuImB59ptF0i8e0jA",
+     "name": "Romantic Boleros",
+     "ytm_title": "Romantic Boleros"
+    },
+    {
+     "type": "playlist",
+     "title": "Classic Latin Hits",
+     "subtitle": "YouTube Music · 80 songs",
+     "thumb": "https://yt3.googleusercontent.com/6HXM5wqehl9YRHMTC-83wn97vtTKojyDf5LvQ0BdtQAE8GqrMaCpDwTC-MgDGSAZVEGKyVlxd0LnFQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m-H5tH6XKlmMxXlwyUSgwCdGC1dCpaQsk",
+     "name": "Classic Latin Hits",
+     "ytm_title": "Classic Latin Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Fiesta Latina",
+     "subtitle": "Party · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/L7G1NTrRApLWpA75lon3IyA4oAeOSJN1Y9Vg_Dgi7K8-22KMpgICAfPTWLAZkpYG9z4o5ZZss3IdG2U=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_npkgrjOge0uceDgFNjxp5ymEDMdUUHQ_4",
+     "name": "Fiesta Latina",
+     "ytm_title": "Fiesta Latina"
+    }
+   ]
+  },
+  {
+   "id": "soul",
+   "title": "Soul, funk & R&B",
+   "subtitle": "Motown to neo-soul, disco and gospel",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Essential Motown Hits",
+     "subtitle": "Motown · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/TqPdtlRwNSXansiJ9Mp9eMAQuWJjI4QIlhP2YBMdAhMZSOnu_DcC3O7Ct4mjFNHB6tcCe-mOC0zxVA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_md9QGmtE2Pn3CLaFPcx9AhVuY7CmE2yes",
+     "name": "Essential Motown Hits",
+     "ytm_title": "Essential Motown Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Funk & Soul Power",
+     "subtitle": "Funk · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/0miU1XkPX1fEFzq0sN_4_FfUMBbcJpO1SzREjRHh8Xk9SldLirXxHNhGVLZQjaAie_WwptzzFGp_gQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kOJNgwq4_Es1d2f9Z95etYKgzaQ6l5xd8",
+     "name": "Funk & Soul Power",
+     "ytm_title": "Funk & Soul Power"
+    },
+    {
+     "type": "playlist",
+     "title": "Southern Soul",
+     "subtitle": "YouTube Music · 65 songs",
+     "thumb": "https://yt3.googleusercontent.com/6WYlMq6Ztas7pSAQXL4KRJ4IDXM77ceCmfXwo95AziXPpPr9VOTPfcSktekl7SFLrx4wB9sOEdkDls5o=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mybtfE45fSgpqHxjWGsD9GqJWchGhJl9k",
+     "name": "Southern Soul",
+     "ytm_title": "Southern Soul"
+    },
+    {
+     "type": "playlist",
+     "title": "Neo Soul Essentials",
+     "subtitle": "Neo-soul · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Amwgc3dGQNamna-ft9kc7IW58VShOLD7f7g60jkGMPPb1btq97RWSCUE9Wj7CxrjbjxecIf0XsJ6hwk=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nxZ3Bp0gO6_Wkb3bp9jESFoOz6bANXw4s",
+     "name": "Neo Soul Essentials",
+     "ytm_title": "Neo Soul Essentials"
+    },
+    {
+     "type": "playlist",
+     "title": "Classic Disco Hits",
+     "subtitle": "Disco · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/lCG7s7JacHNYKSNhV2RrtVL3GS-WyNs1kZ0-jQ8o4-0qBv65mKmkG0jW53Kc2SsQJTTLd9Z565CnBiJR=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lwXnxGJ28lRP8WzewNcEpQKoSkysytWfU",
+     "name": "Classic Disco Hits",
+     "ytm_title": "Classic Disco Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Disco Inferno",
+     "subtitle": "Disco · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/j91_MBIsA8zDcxfSBPBzM7hzeaC-VRYeaSQfhppHL2iPFpq_qh6HZmEm5bVICxGxJb4OUid4tm6BN9o=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mgVILQJR6PIbFvXyYCjmwbSVxmgaVTELI",
+     "name": "Disco Inferno",
+     "ytm_title": "Disco Inferno"
+    },
+    {
+     "type": "playlist",
+     "title": "Biggest R&B Hits",
+     "subtitle": "R&B · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/J8HQJbXPRAX2Qk-rZnfouKZLN-K-h9FLdexCY-DA_eHvYUyXfeIFM07xXC2hiRIiKKTruSig60yd96s=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kEtrQFmd2q44rtlNH5ukTHmda2jzWkwO0",
+     "name": "Biggest R&B Hits",
+     "ytm_title": "Biggest R&B Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Essential '90s R&B",
+     "subtitle": "'90s R&B · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Beq7mpALcMGAWemarWEzm7ioSss5YH5Ha3qDa_GqolA9aVICKCTnLXcrJgUClF-ROTglrgv9dPSIxvM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ne3DJMol0EVIfwcuZnx2hQak0q6EbeBlY",
+     "name": "Essential '90s R&B",
+     "ytm_title": "Essential '90s R&B"
+    },
+    {
+     "type": "playlist",
+     "title": "Chill R&B",
+     "subtitle": "YouTube Music · 102 songs",
+     "thumb": "https://yt3.googleusercontent.com/os2tezdGFEBR345LVPDbBsyUgnMBu2yXtl8-1DPZg1vu7LYikXg_yot_y1VmYZ8Jl2gK8UVq74T3WA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mX4JK0m7lhZ8Egv1E7bbXox_e0k6rGejo",
+     "name": "Chill R&B",
+     "ytm_title": "Chill R&B"
+    },
+    {
+     "type": "playlist",
+     "title": "Timeless Gospel Hits",
+     "subtitle": "Gospel · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/AVTgDQtFaMbYbz1IZ7QKwwTUKsB9tQQQFLSbMd6JfB_HI1J_3Cjo6kYxXOWe9YwW7dRb9g7RcZLIrQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kZFOUXnpa_oJMql3vYc-jq6yVxwqhdkrM",
+     "name": "Timeless Gospel Hits",
+     "ytm_title": "Timeless Gospel Hits"
+    }
+   ]
+  },
+  {
+   "id": "roots",
+   "title": "Blues, country & folk",
+   "subtitle": "Roots music",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Classic Chicago Blues",
+     "subtitle": "Blues · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/YQjvgrCbIdgxbeUcD7KoTeBkFzGQCW3QRKmZ-wO9hqnFjGcNLUKUEiGmHnEiZnnnDX8tV3_KppB2GA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ljVba2Q-nrSeVsdpsZDeZAFwlIu-yPOsc",
+     "name": "Classic Chicago Blues",
+     "ytm_title": "Classic Chicago Blues"
+    },
+    {
+     "type": "playlist",
+     "title": "Electric Blues",
+     "subtitle": "Blues · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Y7sEOopi0vVyWjJaPdHZHGU0fSribhLIwikQXeoJ4h0PSk81dEhmrFGiTxUwl-4lY2FN5I__-TuP-q0=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m3HzvijoJyqNDV4v6NfYNwpSXLvznIXzg",
+     "name": "Electric Blues",
+     "ytm_title": "Electric Blues"
+    },
+    {
+     "type": "playlist",
+     "title": "Roots of blues",
+     "subtitle": "Early blues · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/t2ZZXMvwc5XnKhxrRIh55jOGXwASYOWRRgE2BB0hjOa1LmvgXtMOsSY-ph7E1GfGL8SIwFWpkPSLNDfn=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kFiFlofDDuvu9gYiBrcI8cMG3V2Lab8xA",
+     "name": "Roots of blues",
+     "ytm_title": "Roots of blues"
+    },
+    {
+     "type": "playlist",
+     "title": "Today's Country",
+     "subtitle": "Country · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/HyvZ137rkiZZWXFvptcIStAF9PXk2x-f5L0ef1EUakmfzNo3ErinvAogGj4HPy1nI5Pykb6HDQp_3A=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lf4wLV2b5cb2gsfuBM42Ng8eCoXv6no5w",
+     "name": "Today's Country",
+     "ytm_title": "Today's Country"
+    },
+    {
+     "type": "playlist",
+     "title": "'90s Country",
+     "subtitle": "Country · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/BUXcuUBXYDWPE0uKGJV4yBoI3MrCq5VN_uTx8N5Xt48oSm_3iEZo0-qYq1MRUvJMKGHQ4V32mAQ_tIw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kpxnNxJpPZjLKbL9WgvrPuErWkUxMP6x4",
+     "name": "'90s Country",
+     "ytm_title": "'90s Country"
+    },
+    {
+     "type": "playlist",
+     "title": "Sunshine Americana",
+     "subtitle": "Americana · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/ub1oZiJpiQ4qD556GFd92W3VimZrzmBLCgQ7DxHkPpU0-HiTb1FS2BiKCBXvUz0GATsrLRPimdvT4L8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mG2iR2lXzh01Cg2xzCkNgOdXx1YBjsF2I",
+     "name": "Sunshine Americana",
+     "ytm_title": "Sunshine Americana"
+    },
+    {
+     "type": "playlist",
+     "title": "Essential Folk",
+     "subtitle": "Folk · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/VNZ-8PPGDKOOa9jfHRyFd9j6wl75UWfqqCblKq5y4jnHHY9CWPkRAVXrfXSz6Bb75kmGo59Whp8VcGc=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kNt1WT5NSpZ4HErcqC6sDbZlPTpsZW9aM",
+     "name": "Essential Folk",
+     "ytm_title": "Essential Folk"
+    },
+    {
+     "type": "playlist",
+     "title": "'60s Folk",
+     "subtitle": "Folk revival · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/nRO2hqtPoXqXm9PRHMQaRhqicJXUwG-QR4bZW_2zHaupjT-pVSUyFY3Qtk7gLE0ZtzYOhQu7hqi41GsL=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lq4Mm_BGGH1VmOL1gSySABLvuX2Li_EGc",
+     "name": "'60s Folk",
+     "ytm_title": "'60s Folk"
+    },
+    {
+     "type": "playlist",
+     "title": "Singer-Songwriter Classics",
+     "subtitle": "Singer-songwriter · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/0H88jj0tp0so2eTQsRzTOteNaFvKiMfW56TfEIqJnZa-9n3eg5KjYAo7w7KsYiQU0vSYiBI3PyE29aI=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mfaUwDt7NeNk6xtpIkmd6C7KLfaOG-T8s",
+     "name": "Singer-Songwriter Classics",
+     "ytm_title": "Singer-Songwriter Classics"
+    },
+    {
+     "type": "playlist",
+     "title": "Campfire Classics",
+     "subtitle": "Acoustic · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/9AsBamvDn0qukL9rWgDMLveUsSZ5JAe1eGXS4XTE98JU2H5pjNCmJYO0MV6o6Q24sIeum82kBE4MZ_g=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_liwwwIG8z4P25AWeLZ2Nvydx1GwbvndEI",
+     "name": "Campfire Classics",
+     "ytm_title": "Campfire Classics"
+    }
+   ]
+  },
+  {
+   "id": "classical",
+   "title": "Classical & soundtracks",
+   "subtitle": "Baroque to film scores and games",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Essential Classical",
+     "subtitle": "YouTube Music · 102 songs",
+     "thumb": "https://yt3.googleusercontent.com/gkQ7vbmDn5Mdo2e0-dpTdiTD7uTEYXML6uPPTFLiRxe4ZVyAi5XNkzj_Of0WCwinF-Iup7YcM8O5iw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mv1P2oVguxLCIDXavV-jcDG1lQyukfSpo",
+     "name": "Essential Classical",
+     "ytm_title": "Essential Classical"
+    },
+    {
+     "type": "playlist",
+     "title": "Basically Baroque",
+     "subtitle": "Baroque · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/IpLnBbeAXU9DdaejvC-Ykr5RroXIuBjUnci_BqzErkhCiOGylUozFXGy5lVAh8M4vVuKgeyIgZujJTk=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lahGu6JbqItqnvE8Juv2Kh2CkvwSx5B_w",
+     "name": "Basically Baroque",
+     "ytm_title": "Basically Baroque"
+    },
+    {
+     "type": "playlist",
+     "title": "Classical Romance",
+     "subtitle": "Romantic era · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/zD5faeZrM6EqIQNLLd1XlPOZ8cCxh07ByLXZtXrmXIDJkFMAe-eNrSSB5a12Uu856koplvTxp5i4Agu_=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kujHHFkpZkDcuyi7TNreotQ0F-UYjSAjo",
+     "name": "Classical Romance",
+     "ytm_title": "Classical Romance"
+    },
+    {
+     "type": "playlist",
+     "title": "Presenting Mozart",
+     "subtitle": "Mozart · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/1lBUUdmrx8lQxFdZooaaQlDnRXGDcv5n0t-jqNY1pPEkLTqChBVYJmMB1gzdkU7fYfbe4Ke81eyMmXXm=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mcEcgNqgJaGcYHtoujn4vaopNDqb7s1a0",
+     "name": "Presenting Mozart",
+     "ytm_title": "Presenting Mozart"
+    },
+    {
+     "type": "playlist",
+     "title": "Essential Opera",
+     "subtitle": "Opera · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Vrb-jKSyT2cCjPL8eJlZQZBvk9froLrQ9Lnb2Sl4b2e9dzP88hInLtaGLir_P93vxtrISCsfAHcNaKAA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kfCVjCCPVWTEtmpQ8b6VfSZLuZLKJm-Yg",
+     "name": "Essential Opera",
+     "ytm_title": "Essential Opera"
+    },
+    {
+     "type": "playlist",
+     "title": "Classical Solo Piano",
+     "subtitle": "Piano · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Oqy21N5liarP3dhmBg7J3NECiG-RAH2NavdLV62ugcmgR6v_dushUh52ZN_FRjP1BTvAvREAYCwcew=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kmK1aMjb7sJ6eWV95Co02JwJJmdi0z05M",
+     "name": "Classical Solo Piano",
+     "ytm_title": "Classical Solo Piano"
+    },
+    {
+     "type": "playlist",
+     "title": "Classical Spanish Guitar",
+     "subtitle": "Spanish guitar · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/427dllrVLETRtMdFn1U_Pq4esHK7k2cM3cbBJMkJDgidu3wQSkT_5rvXZRTC5lDwMOr66wKsSUzkLQQJ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m8ULgAe9Lkf7wIsoguU3IqZ8ZePk1ndMc",
+     "name": "Classical Spanish Guitar",
+     "ytm_title": "Classical Spanish Guitar"
+    },
+    {
+     "type": "playlist",
+     "title": "Gentle Chamber Music",
+     "subtitle": "Chamber music · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/8psoIIvcQhqSUljk5cYVTSBbIfK4n3uaQ7Sa2NN0NnlNmeAIVBhptLrorZ3UZgh0mbKF0CF55bcD5w=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m2p5A1NXN8SInEzfsxzFEvQ6zws-V-wBo",
+     "name": "Gentle Chamber Music",
+     "ytm_title": "Gentle Chamber Music"
+    },
+    {
+     "type": "playlist",
+     "title": "Epic Film Scores",
+     "subtitle": "Film scores · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/wA5G5lSkD8KQPNJIHZOU7AfQADlTxQML5FXiq6hQdt8ko5diIwWJs8kwZeOu33-mNpJK6TaG-LENMkm5=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lwuEBboC99qPJNGXs0Um80VvHYNtxSTFg",
+     "name": "Epic Film Scores",
+     "ytm_title": "Epic Film Scores"
+    },
+    {
+     "type": "playlist",
+     "title": "Presenting John Williams",
+     "subtitle": "Film scores · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/RTjiaTTAxtijjDWAPumSM--9ioYGyfs7lZlysveUBFF4VSkUCphSr3K3j56qlyLwEYPUG4_OScsIBsM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kjxxPWUb-wD3TWOOhTNx6vUljsipx_Ht0",
+     "name": "Presenting John Williams",
+     "ytm_title": "Presenting John Williams"
+    },
+    {
+     "type": "playlist",
+     "title": "Soundtrack Hits",
+     "subtitle": "Soundtracks · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/VmreFIZHgJeO770WFTfgcoJxzi-tdhUw6PtL7du-EEJGo1DBabidNNq78QcNRH4bTmYz6NMZMFOeKw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nixo3rhrzllo_TPCR0bOGV_Sw-dZdkuHU",
+     "name": "Soundtrack Hits",
+     "ytm_title": "Soundtrack Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Video Game Soundtracks",
+     "subtitle": "Video game music · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/FsLMevWKr0kSaPHwvMWpNPQr4hQmB6SoZC3fsWzHPMqkj7tKKNxH11HfoJhjxRkIkFB9Hjo5nBg2mA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nebpZj-vRJ3W47DV1uCky0oAZkZFHuxWM",
+     "name": "Video Game Soundtracks",
+     "ytm_title": "Video Game Soundtracks"
+    },
+    {
+     "type": "playlist",
+     "title": "Broadway's Biggest Hits",
+     "subtitle": "Musicals · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/3BxMjroAzKEF_SQmtuFEF1BCNQubyxYVx_8R-YS4RnuD23S5tabXaBVJlGaRkJZRbWDvvtc_jxuWOd0=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nPnGWGH5heS4fkBjX2B7mJi3AZlYYzMMc",
+     "name": "Broadway's Biggest Hits",
+     "ytm_title": "Broadway's Biggest Hits"
+    },
+    {
+     "type": "radio",
+     "title": "Radio Swiss Classic",
+     "subtitle": "Classical · Switzerland",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://stream.srg-ssr.ch/srgssr/rsc_de/aac/96",
+     "name": "Radio Swiss Classic"
+    },
+    {
+     "type": "radio",
+     "title": "RNE Radio Clásica",
+     "subtitle": "Classical · RTVE",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://dispatcher.rndfnk.com/crtve/rnerc/main/mp3/high",
+     "name": "RNE Radio Clásica"
+    }
+   ]
+  },
+  {
+   "id": "world",
+   "title": "World & folk",
+   "subtitle": "Reggae, Afrobeats, Celtic, fado, Balkan",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Essential Reggae",
+     "subtitle": "Reggae · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/5bUkISi4v459vQdAS88ztsAGR1peafIwWe1OvDgVnErcXEnJtX7I4H3Kc2HPgE2CyLnXOld1cXiGKJM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lheErTnEXzx41DFOdllzXH0qFOH6I6rbo",
+     "name": "Essential Reggae",
+     "ytm_title": "Essential Reggae"
+    },
+    {
+     "type": "playlist",
+     "title": "Ska Sounds",
+     "subtitle": "Ska · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/t4ID2brDjbmdB7JtBxmj832H0INoVJ-4rAuESQ7Xn_tNorOu_hxh_-_CPiQCH57yuC3S3xdo0CVKyeY=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mWChIyo800Sh01YcXvbP_kinI3XpQ_Cak",
+     "name": "Ska Sounds",
+     "ytm_title": "Ska Sounds"
+    },
+    {
+     "type": "playlist",
+     "title": "Afrobeats Now",
+     "subtitle": "Afrobeats · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/uEYTrU6rsBrnIimS2jnIWycPXe0y_WMs0P-hgNqg6kiihRIglVz-PbXJqlosJ_d66lW5Uhwz79m2UI4=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kmq8ZD0NbHbKkZZ6frtlEjd8khfeZrAd0",
+     "name": "Afrobeats Now",
+     "ytm_title": "Afrobeats Now"
+    },
+    {
+     "type": "playlist",
+     "title": "Traditional Celtic Folk",
+     "subtitle": "Celtic · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/zz1znnF3HqtzyKaxrjoysJI7NHZSZLGjgGhpIFlGu4p3t8vQznjRCmD_fwxOsk17cCH_MoScUoxoWNA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kyyab4NtVwxxTZfEn88-L-ftho75SrO4A",
+     "name": "Traditional Celtic Folk",
+     "ytm_title": "Traditional Celtic Folk"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Amália Rodrigues",
+     "subtitle": "Fado · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/RSAX2nQo775CfIjoYlApNbEZ_fHzSlHLj60ZrSU8wAoScYH71oVcTPx3iS1AjQ7z4WRcdrnY6g=w120-h120-l90-rj-dcIUKYTyUI",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEME57zQmiWw8Qt3SWu3xOuWQ",
+     "name": "Amália Rodrigues radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Goran Bregović",
+     "subtitle": "Balkan · artist radio",
+     "thumb": "https://yt3.ggpht.com/ytc/AIdro_mI0do6ynDzqwmsb1eFKBbdDGTYsIsuQ-9GB2HyGfh3yi4=w120-h120-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMEx6UxuUwxEogVj8P6v7x-g",
+     "name": "Goran Bregović radio"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Buena Vista Social Club",
+     "subtitle": "Cuban son · artist radio",
+     "thumb": "https://lh3.googleusercontent.com/ZSrj8F9-zUHOUwG3v7KP8Ti9vXa8w07GOFlre31gk5JUU-0OkiOtQpx0sLUVi3famwRHUtzD4X5NMfc=w120-h120-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEMkIlmPguUoTgHzbw6yV9n_g",
+     "name": "Buena Vista Social Club radio"
+    },
+    {
+     "type": "playlist",
+     "title": "Bossa Nova Time",
+     "subtitle": "Brazil · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/YB8A5koB7dRb3Kd9HERmZ63SzoK6-zPb4Jej5Qp1jn1_kg9aGZf-ykyavzxtR3-QPH0IYFP7Pte92gcg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n3QuG8R7-PdIR0VmWV_yUIPtwbDDmlMqg",
+     "name": "Bossa Nova Time",
+     "ytm_title": "Bossa Nova Time"
+    },
+    {
+     "type": "radio_mix",
+     "title": "Ali Farka Touré",
+     "subtitle": "Desert blues · artist radio",
+     "thumb": "https://yt3.googleusercontent.com/k-TCS5eTsnhMSkZFAo9SahZJmlmIHQnqRIpFIo-T3yLSicsQPNISx_qxgpSE0uT1RGJsSomcYNFirQ=w120-h120-p-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/watch?list=RDEM5QvhlfTupec_L7x1HSv4xA",
+     "name": "Ali Farka Touré radio"
+    },
+    {
+     "type": "playlist",
+     "title": "Infinite Sound Healing",
+     "subtitle": "New age · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/MfPgkhYVNnnXVbiTjjJZYgpmejz2mWO06o9Kmhs5m73bjDrZ6-58aaDkRNvS8TMjj6BZYUaqVH85aw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mkG6Cj4VqXPmlYf3xbLQQhhAZHGI8vJHo",
+     "name": "Infinite Sound Healing",
+     "ytm_title": "Infinite Sound Healing"
+    }
+   ]
+  },
+  {
+   "id": "moods",
+   "title": "Moods",
+   "subtitle": "Music for the moment",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Classical Focus",
+     "subtitle": "Focus · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Jx8ayDHUoBH0ZDj87d2Jibuvd0nXxeVf3RAbYUAf3f2o3Sr9vWkMVVGfgMLjjAuFBXcp7Wl-JW3pVzw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n9hGvSNdO2TpX8jJuiThvnfrfIi1qNRnY",
+     "name": "Classical Focus",
+     "ytm_title": "Classical Focus"
+    },
+    {
+     "type": "playlist",
+     "title": "Jazz Focus",
+     "subtitle": "Focus · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/eGCJ1swKrqgnbSuxmivcYbLjUdk0_tIN5QgGjFqVqGxPAsCsurvQpQexTDUfyICxNUH81r2p0pJxDsA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_n7hJdfgnhIUKMgZ8afb77pS4ZF1zCAI7c",
+     "name": "Jazz Focus",
+     "ytm_title": "Jazz Focus"
+    },
+    {
+     "type": "playlist",
+     "title": "Lofi Flow State",
+     "subtitle": "Focus · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Xzndf084o4ian2SBi8hMmRL2wPCpkwsHRU4EQl5U9pgLNEGt57Z4j-0ZO-eZZHG1gJ1I7NnUZFYjoKM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nZJzoZEBYRptA2XXskbxGTvKkevapT_F4",
+     "name": "Lofi Flow State",
+     "ytm_title": "Lofi Flow State"
+    },
+    {
+     "type": "playlist",
+     "title": "Super Chill",
+     "subtitle": "Relax · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/gStib6WPuxExmcTH9cWa0y2s7MLQtJtplRzikNIwcq6r_H4EPtqPXxb9exUy-mfTw-9XZhksFljUS8pu=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mYa86YJNGqE4Jl5jG7DZP9NKdflw0hQL0",
+     "name": "Super Chill",
+     "ytm_title": "Super Chill"
+    },
+    {
+     "type": "playlist",
+     "title": "Unwind",
+     "subtitle": "Relax · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/VpOriKyGqxkLFfgo6IMEyr9BhKBO3eQwmCAyYrTZFd6WKQisnz0Y9V9skWgg_dDDscugoTmYD6zr=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_np_soSTj6w3-N7Dh_xmdDpQINJ8LsVpa8",
+     "name": "Unwind",
+     "ytm_title": "Unwind"
+    },
+    {
+     "type": "playlist",
+     "title": "Dinner Party Jazz",
+     "subtitle": "Dinner · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/r75272b4WOeU5cUPr26TIpHVfk9uLZjp1o_C8Fl1K9wlF4reZAujCbEJbk_lHqYrQO9fIau9WBw3k00=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l_2hw6aZpjgIxEsMFWku27S5_WJDv9m1E",
+     "name": "Dinner Party Jazz",
+     "ytm_title": "Dinner Party Jazz"
+    },
+    {
+     "type": "playlist",
+     "title": "Classical for Dining",
+     "subtitle": "Dinner · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Le_IeKDlrNNCdY1Sm1vOe2_prRglTAYy1Q7FsbfaI_JsXVJ4FtglZQQ2XbmmpNYpJqbkx5CaGd8yAA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lpltY4P2bGTrMXiRAysnLCp8f8HAgOyyM",
+     "name": "Classical for Dining",
+     "ytm_title": "Classical for Dining"
+    },
+    {
+     "type": "playlist",
+     "title": "Classical Morning",
+     "subtitle": "Morning · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/MT4qXC_y8Z8GPHW6lIwFq6tTrC1HumLB279sT_R4u6W53P_nADNDgsmxWii2nxPRiYgtKTk6DKpNTfM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lnT790jjnx0IDmitYyxTHX7VniBXN0vsU",
+     "name": "Classical Morning",
+     "ytm_title": "Classical Morning"
+    },
+    {
+     "type": "playlist",
+     "title": "Good Vibes Only",
+     "subtitle": "Feel good · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/kg3zBm3FVxZx7DYJYVOgXmuYFdwEB5_GaZw6mg1EhcxioelCyk3Cte5kFFNsPJSUhlEZc5dD14C2OOQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ktU_MiPyxsoBpl68TuShAvg-ZCArB772M",
+     "name": "Good Vibes Only",
+     "ytm_title": "Good Vibes Only"
+    },
+    {
+     "type": "playlist",
+     "title": "Dance Party Hits",
+     "subtitle": "Party · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/fcBazTj_SCl0s9rsgsI2x8d0UKr_vxHEuu35GYcua25DbjK4HpqV2ZxoykjwhdAVH34GJVq-5bEADJM=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mkXiaMATud8GJQ3aX7f0nCeCqvehA9wTQ",
+     "name": "Dance Party Hits",
+     "ytm_title": "Dance Party Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "Party Hits of the 00s",
+     "subtitle": "Party · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/Y1N3FqkayWwpiAcQ3Eco9moQBs7JbW09c4vtCWhBIG_fHTGS3o-dqWsg1bu8PZwcdZujXOHIAy7Gn-w=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kdvWR_QRHLWglseXUQFRCR0vTMLV61QFQ",
+     "name": "Party Hits of the 00s",
+     "ytm_title": "Party Hits of the 00s"
+    },
+    {
+     "type": "playlist",
+     "title": "Pump-Up Pop",
+     "subtitle": "Workout · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/PiHeLTzGupMv0PkTI0dg-sstkzOx8yNkBOEfV67yP_sUkJtXLRk4JO8dwhz18rZAz9gHJSAGHeztsJ4=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mVJ3RRi_YBfUJnZnQxLAedQQcXHujbUcg",
+     "name": "Pump-Up Pop",
+     "ytm_title": "Pump-Up Pop"
+    },
+    {
+     "type": "playlist",
+     "title": "Running Tracks",
+     "subtitle": "Running · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/X5uo8BWY7l2_INsZVQnwkkRk_M-aDhvXDo37NA6a3FZ91Ogi27bkLSHmpbt8t2L7xUt_oUdMAPFWPfs=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_m2DbXGr69B7FSL6LqEHjdEFsxTmghY4Qw",
+     "name": "Running Tracks",
+     "ytm_title": "Running Tracks"
+    },
+    {
+     "type": "playlist",
+     "title": "Romantic Duets in Spanish",
+     "subtitle": "Romance · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/bT2m933vnDyUvLyVPOu2TAdKrbZcNU9IpXK89yqpiMpsawATSY_Ej02kUFsRvwuMSvgCw3bSvn_AGb-9=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mbgBB2Ibb70n1mYvtAPXYn3L7ziZ2jRD0",
+     "name": "Romantic Duets in Spanish",
+     "ytm_title": "Romantic Duets in Spanish"
+    },
+    {
+     "type": "playlist",
+     "title": "Classical for Sleeping",
+     "subtitle": "Sleep · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/SwyowKe-kDLokD2wEouPllJwjfKlG73podaFDHBzaEDeR0mu3mgp0x4iy7ouTDD0JuksjzG3ObZsfQ=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_k83Q0BJ_yGLX2nTNKxOXb3BP3Pb7uMIN0",
+     "name": "Classical for Sleeping",
+     "ytm_title": "Classical for Sleeping"
+    },
+    {
+     "type": "playlist",
+     "title": "Deep Sleep Meditation",
+     "subtitle": "Sleep · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/xyXsi35vQy3dpqG7dKguId0u04QgBgo-9sc5GpQ46UCTEoqEgKtKr3Y05NQzvVXYA3BQzR8zIwMzos6i=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_l2OjbOL4oVkkHE86UT6oQCNufuv8d0luQ",
+     "name": "Deep Sleep Meditation",
+     "ytm_title": "Deep Sleep Meditation"
+    },
+    {
+     "type": "playlist",
+     "title": "Rain Sounds",
+     "subtitle": "Sleep · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/4kY86HKnF6GY9VXvbcvNADz3SSiD-feffTNa32I1JXM7tbjL_UnPc3Q9OSH1esc9am-CzwjzB252tAc=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lQ2iiRFCsEvoxLRfTCOyVd6-tdZ75Gw-E",
+     "name": "Rain Sounds",
+     "ytm_title": "Rain Sounds"
+    },
+    {
+     "type": "playlist",
+     "title": "Ambient Dreams",
+     "subtitle": "Ambient · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/wIfBUg3xNQfRL-P-x_XfS_JRLwczofydHbXpWSvojY8zknDeh0Qtn-A4TcMGdimbJsZBabXj8hklugU=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lakC34Al6Kd5kidN8Bq0jpdnGUpIw2ctQ",
+     "name": "Ambient Dreams",
+     "ytm_title": "Ambient Dreams"
+    }
+   ]
+  },
+  {
+   "id": "kids",
+   "title": "Kids & family",
+   "subtitle": "Songs, lullabies and Disney - in Spanish and English",
+   "items": [
+    {
+     "type": "playlist",
+     "title": "Children's Songs",
+     "subtitle": "Canciones infantiles · YouTube Music · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/0NZKX-5UEO_v3CSm4JyCNRKsrvUqg6f2E5R5e6BrDW5H2EBIBvabYwyCKYHEj4UryBFYQXuVYrLREt4=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lFmE-qSLpSYkAf1iI2dikJmNRNimenYH4",
+     "name": "Canciones infantiles",
+     "ytm_title": "Children's Songs"
+    },
+    {
+     "type": "playlist",
+     "title": "Lo mejor de CantaJuego",
+     "subtitle": "CantaJuego · official",
+     "thumb": "https://yt3.ggpht.com/xZvCEDiX5taQmYbGDhFAfiv4dmh-CX3ywClZJVlZ1m0zRwHfwSWfGL5Y5ofQEWGLai8nwonmJfU=s1200",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PLq3aw1QZnLT3WS1Zj7Tg7gBaQhpHhLdwU",
+     "name": "CantaJuego"
+    },
+    {
+     "type": "playlist",
+     "title": "¡Hits de Pocoyó!",
+     "subtitle": "Pocoyó · Animaj",
+     "thumb": "https://i.ytimg.com/pl_c/PLBNNNweB7kACKOv4GhF4PlcmIVaA4mDxv/studio_square_thumbnail.jpg?sqp=CL2ZsdYG-oaymwEKCKAEEKAEIABIWqLzl_8DBgjopIjBBg&rs=AMzJL3m15TF2O6eeS55AEczyyfIQ1u9xRA",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PLBNNNweB7kACKOv4GhF4PlcmIVaA4mDxv",
+     "name": "Pocoyó"
+    },
+    {
+     "type": "album",
+     "title": "Super Simple Español",
+     "subtitle": "Canciones infantiles · Super Simple",
+     "thumb": "https://i.ytimg.com/vi/OonqrUZCef4/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3nPoQw26hjxuL1FW_c_JkRvUbOleQ",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=OLAK5uy_mR_9KqHr-bVvWZFhNir3Vj95kY5ivZUvQ",
+     "name": "Super Simple Español"
+    },
+    {
+     "type": "playlist",
+     "title": "CoComelon en Español",
+     "subtitle": "Canciones infantiles · CoComelon",
+     "thumb": "https://yt3.googleusercontent.com/IRgBEPUkZnfP55F-gU7aQjecfQaHldrQtXi__pym8rDQqsmpC8ludH3soCjoJNh3wI6RBd8tj00=s1200",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PLvnTbjU4xLew60Us2l12FFOqdhMAmEr1B",
+     "name": "CoComelon español"
+    },
+    {
+     "type": "playlist",
+     "title": "Disney Hits España",
+     "subtitle": "Disney Music · en castellano",
+     "thumb": "https://i.ytimg.com/pl_c/PLiNVoBckLqLkTpzWWt38vCNb-cdJZ7mN-/studio_square_thumbnail.jpg?sqp=CMCZsdYG-oaymwEKCKAEEKAEIABIWqLzl_8DBgj3_oDABg&rs=AMzJL3k2A2S81d9O_CyiqVV2wXZ7cG6rXg",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PLiNVoBckLqLkTpzWWt38vCNb-cdJZ7mN-",
+     "name": "Disney en castellano"
+    },
+    {
+     "type": "playlist",
+     "title": "Classic Children's Songs",
+     "subtitle": "Nursery rhymes · English · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/T53o8FBjl-OFZMVngnX9f9nrlL-1QeYb_6u0VZ81qyRmPQBwUKxduVe3ai92cu8wKRzpwDaIgWQxbA8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kIdiH02YL21o6iOEuDqTNq6bFpzBBTjL8",
+     "name": "Classic Children's Songs",
+     "ytm_title": "Classic Children's Songs"
+    },
+    {
+     "type": "playlist",
+     "title": "Nursery Rhymes from Super Simple!",
+     "subtitle": "Nursery rhymes · English",
+     "thumb": "https://i.ytimg.com/vi/HhixmtAIwQs/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3lK1EkE7dBkZTBFFjRrfnpkf8z4-w",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PLdkj6XH8GYPSMCsoD5Z55LxK-VLTwAgOA",
+     "name": "Super Simple Songs"
+    },
+    {
+     "type": "playlist",
+     "title": "Pinkfong! Best Kids Songs",
+     "subtitle": "Kids songs · English",
+     "thumb": "https://i.ytimg.com/vi/vBf3HUjh6PM/hq720.jpg?sqp=-oaymwEKCNUGEN8DIABIWg&rs=AMzJL3nNI41-9vuELplJvOjWb3ukbMO74Q",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PLQiKLJnked45l7pD-DY6b_jEBVe06_LAX",
+     "name": "Pinkfong"
+    },
+    {
+     "type": "playlist",
+     "title": "Disney Hits",
+     "subtitle": "Disney Music · English",
+     "thumb": "https://i.ytimg.com/pl_c/PLiNVoBckLqLmdcbotc6n_MjdTDCHLiYDo/studio_square_thumbnail.jpg?sqp=CMOZsdYG-oaymwEKCKAEEKAEIABIWqLzl_8DBgiorq2-Bg&rs=AMzJL3n9e6Ld6JPmECvaw8ezuX7TEqUJhg",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=PLiNVoBckLqLmdcbotc6n_MjdTDCHLiYDo",
+     "name": "Disney Hits"
+    },
+    {
+     "type": "playlist",
+     "title": "21st Century Disney",
+     "subtitle": "YouTube Music · 99 songs",
+     "thumb": "https://yt3.googleusercontent.com/aKV-pzQMi2zCdVqxE2pV089ASPkocny30Koo0qEip9KH28aqpC5tHxkiSH3TNEu2SvPSwsSdHTnElE8=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_nwGVTzraBvAR-wPGHBPeqp4Qb139ns16Y",
+     "name": "21st Century Disney",
+     "ytm_title": "21st Century Disney"
+    },
+    {
+     "type": "playlist",
+     "title": "Songs From Animated Movies",
+     "subtitle": "Movie songs · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/_yoZX1rcGnWdZJYpVNfPSmj7P3dFbZ0icl7ZSvPm7HHLKWIPaLDmtM_qaiMKAGGs-ZmqDoCQ-vSuHrg=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_miLWNpTeijYvQSlKHp8wU6xVGhSUSR0P0",
+     "name": "Songs From Animated Movies",
+     "ytm_title": "Songs From Animated Movies"
+    },
+    {
+     "type": "album",
+     "title": "Nanas para dormir",
+     "subtitle": "Nanas · en español",
+     "thumb": "",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=OLAK5uy_lSRBrK-ra29Am6Nb9V96pA5T85Sm80W7Y",
+     "name": "Nanas para dormir"
+    },
+    {
+     "type": "playlist",
+     "title": "Lullabies for Babies",
+     "subtitle": "Lullabies · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/rSI4omzSKdkau_NB9EJW5LTm3akk6bdtxmC2YUnl8pzgPe-6rnskUivwDwtl2HRsyBoCtTgGSQI5u40=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ljjZXYOZsVqtkknNg4nai7elA6kVq0cac",
+     "name": "Lullabies for Babies",
+     "ytm_title": "Lullabies for Babies"
+    },
+    {
+     "type": "playlist",
+     "title": "Sweet Lullabies",
+     "subtitle": "Lullabies · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/5Y98yMZMZUloTa5musauqCrY-km5wQjn0tA97isthi0HfVmmc1Dv9B4oqPungulSacoyauod8Sz176eC=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_lW6vYWQsUf4Jlhvy9Bo7476unA14vqfPo",
+     "name": "Sweet Lullabies",
+     "ytm_title": "Sweet Lullabies"
+    },
+    {
+     "type": "playlist",
+     "title": "Children's Instrumental Bedtime Tunes",
+     "subtitle": "Bedtime · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/ogqgf-OadqGbGuj_NdGlBixbg3o3DlWienJO1Mt8Bj7vzYR2wfs6OOyK5oGFW8KwiSWahVXLWszGJ9I=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_ngY0Zg-BcF081qMSWi95ivcqWoVlLRun0",
+     "name": "Children's Instrumental Bedtime Tunes",
+     "ytm_title": "Children's Instrumental Bedtime Tunes"
+    },
+    {
+     "type": "album",
+     "title": "Best Classical Music for Kids",
+     "subtitle": "Classical for kids",
+     "thumb": "",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=OLAK5uy_nYc-8SR5E0GYKwaZ0ErE-VbpxBj3jUnyY",
+     "name": "Best Classical Music for Kids"
+    },
+    {
+     "type": "playlist",
+     "title": "Songs to Raise Your Kids To",
+     "subtitle": "Family · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/FcDEFvGGFR_jjUFkzwTT82d6DDkoLBL-oPBAmNE2wcDgZlKzTQTwFlfbLmxiHE55D7Jx79Ee1kbjwA=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_mH5mS2pbI9c743F2Xoi7WxRVBbw7k3hPE",
+     "name": "Songs to Raise Your Kids To",
+     "ytm_title": "Songs to Raise Your Kids To"
+    },
+    {
+     "type": "playlist",
+     "title": "Fun Family Hangout",
+     "subtitle": "Family · YouTube Music",
+     "thumb": "https://yt3.googleusercontent.com/B0xOeOhbTHesdcmH7ozS_8ERBOfOlx3TnRXfverufHrIWolc9OHVvs1xJ5MT1fn86__bP_1cza8Vhlw=w544-h544-l90-rj",
+     "source": "ytm",
+     "uri": "https://music.youtube.com/playlist?list=RDCLAK5uy_kPR9usfd5aQ8n4rTcEv7y1VLvMm1ewig4",
+     "name": "Fun Family Hangout",
+     "ytm_title": "Fun Family Hangout"
+    },
+    {
+     "type": "radio",
+     "title": "Babyradio",
+     "subtitle": "Radio infantil · España",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://playerservices.streamtheworld.com/api/livestream-redirect/SAM04AAC34_SC",
+     "name": "Babyradio"
+    },
+    {
+     "type": "radio",
+     "title": "Fun Kids",
+     "subtitle": "Kids' radio · UK, English",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://listen-funkids.sharp-stream.com/funkids.mp3",
+     "name": "Fun Kids"
+    },
+    {
+     "type": "radio",
+     "title": "Fun Kids Junior",
+     "subtitle": "Under-sevens · UK, English",
+     "thumb": "",
+     "source": "radio",
+     "uri": "https://listen-funkids.sharp-stream.com/funkidsjunior.mp3",
+     "name": "Fun Kids Junior"
+    }
+   ]
+  }
+ ]
+}
