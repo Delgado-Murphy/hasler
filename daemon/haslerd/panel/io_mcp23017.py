@@ -12,9 +12,19 @@ documents both as output-only, and newer silicon does not reliably read them.
 So ``d7`` and ``d15`` are refused at startup rather than becoming a switch that
 works on one chip and silently never fires on the next. Wire around them: 14
 usable inputs is still more than either cabinet needs.
+
+**Address.** Boards differ only in how their A0-A2 pads are strapped: the
+CQRobot board defaults to 0x27, the common green breakout to 0x20. ``addr:
+auto`` probes the chip's whole range (0x20-0x27) at start and takes the one
+board that answers, so swapping boards needs no config edit. Two answering is
+an error - better a clear refusal than reading the wrong one.
 """
 
 from __future__ import annotations
+
+import logging
+
+log = logging.getLogger(__name__)
 
 IODIRA, IODIRB = 0x00, 0x01
 IPOLA, IPOLB = 0x02, 0x03
@@ -23,6 +33,29 @@ GPIOA, GPIOB = 0x12, 0x13
 
 # Logical pin index -> port bit. d0-d7 = GPA0-7, d8-d15 = GPB0-7.
 OUTPUT_ONLY = {7: "GPA7", 15: "GPB7"}
+ADDR_RANGE = range(0x20, 0x28)     # A0-A2 select one of these eight
+
+
+def find_addr(bus) -> int:
+    """The one MCP23017 address that answers on ``bus``, for ``addr: auto``."""
+    found = []
+    for addr in ADDR_RANGE:
+        try:
+            bus.read_byte_data(addr, IODIRA)
+        except OSError:
+            continue
+        found.append(addr)
+    if not found:
+        raise RuntimeError(
+            "mcp23017: no expander answers at 0x20-0x27 - check VCC (3.3 V), "
+            "GND, SDA/SCL, and that RST is held at VCC (i2cdetect -y 1)"
+        )
+    if len(found) > 1:
+        raise RuntimeError(
+            "mcp23017: several expanders answer (" + ", ".join(f"0x{a:02x}" for a in found)
+            + ") - set addr: to the one wired to the keys"
+        )
+    return found[0]
 
 
 def check_pins(names: list[str]) -> None:
@@ -44,17 +77,24 @@ class Mcp23017Digital:
     def __init__(
         self,
         names: list[str],
-        addr: int = 0x20,
+        addr: int | str = 0x20,
         bus: int = 1,
         int_gpio: int | None = None,
+        bus_factory=None,
     ) -> None:
         check_pins(names)
-        from smbus2 import SMBus
+        if bus_factory is None:
+            from smbus2 import SMBus as bus_factory
 
+        self._bus = bus_factory(bus)
+        if addr == "auto":
+            addr = find_addr(self._bus)
+            log.info("mcp23017: keys found at 0x%02x", addr)
+        elif not isinstance(addr, int):
+            raise ValueError(f"mcp23017: addr must be a number or 'auto', not {addr!r}")
         self.addr = addr
         self.names = list(names)
         self.int_gpio = int_gpio
-        self._bus = SMBus(bus)
         for direction, polarity, pullup in ((IODIRA, IPOLA, GPPUA), (IODIRB, IPOLB, GPPUB)):
             self._bus.write_byte_data(addr, direction, 0xFF)  # all inputs
             self._bus.write_byte_data(addr, pullup, 0xFF)     # pull-ups on

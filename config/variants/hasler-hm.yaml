@@ -10,9 +10,10 @@ variant: hasler-hm
 io:
   digital:
     backend: mcp23017
-    # CQRobot board: A0-A2 pads open = pulled high = 0x27 (its default).
-    # The green breakout has them to GND = 0x20. Confirm: i2cdetect -y 1
-    addr: 0x27
+    # auto = probe 0x20-0x27 and use the one board that answers: the CQRobot
+    # board (A0-A2 open, 0x27) and the green breakout (A0-A2 to GND, 0x20) both
+    # work with no edit. A number pins it. Check: i2cdetect -y 1
+    addr: auto
     # Logical names ARE the wiring: d0-d6 = PA0-PA6, d8 = PB0. Wire by the
     # silkscreen. PA7 (d7) and PB7 (d15) are output-only - never use them.
   # Fallback - keys straight to Pi GPIO, no expander. Uncomment this and
