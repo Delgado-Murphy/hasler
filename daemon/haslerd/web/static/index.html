@@ -198,6 +198,7 @@ input::placeholder{color:#6F695F}
 .yt-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yt-sub{font-size:12.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 .tag{display:inline-block;font:10.5px/1.5 var(--mono);letter-spacing:.04em;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 6px;margin-right:6px;vertical-align:1px}
+.yt-again{display:block;margin-top:14px}
 .yt-picked{display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--ground);min-width:0}
 .yt-alt{margin-top:4px}
 .yt-stat:empty{display:none}
@@ -711,15 +712,17 @@ function presetEditor(k, slot){
       else kids.push(h('p', {class:'note'}, 'Search isn’t available on this radio — paste a playlist link instead.'));
     } else if (mode === 'picked'){
       const it = ytmPicked.get(p.uri.trim()) || {title: p.name.trim() || 'Your pick', subtitle:'', thumb:'', uri:p.uri.trim(), type:''};
-      kids.push(h('span', {class:'lbl cap', id: id + '-ysel-lbl'}, 'youtube music'),
+      // The current choice, and the search right under it - not behind a
+      // "Change" button (the owner couldn't find the search that way).
+      const s = ytmSearch(p, id, nameInp);
+      kids.push(h('span', {class:'lbl cap', id: id + '-ysel-lbl'}, 'youtube music · now on this key'),
         h('div', {class:'yt-picked', role:'group', 'aria-labelledby': id + '-ysel-lbl'},
           thumb(it.thumb),
           h('span', {class:'yt-txt'}, h('span', {class:'yt-title'}, it.title || it.name || 'Your pick'),
-            h('span', {class:'yt-sub'}, h('span', {class:'tag'}, ytmTag(it)), it.subtitle || '')),
-          h('button', {type:'button', class:'btn-quiet', id: id + '-ychange', 'aria-label':'Change — search YouTube Music',
-            onclick: () => { ytmMode[pk] = 'search'; renderEditor(); const f = $(id + '-yq'); if (f) f.focus(); }}, 'Change')),
+            h('span', {class:'yt-sub'}, h('span', {class:'tag'}, ytmTag(it)), it.subtitle || ''))),
+        h('label', {for: id + '-yq', class:'cap yt-again'}, 'search youtube music'), s.el,
         uriErr, alt('Paste a link instead', 'link', id + '-uri'));
-      errInput = null;
+      errInput = s.input;
     } else {
       const s = ytmSearch(p, id, nameInp);
       errInput = s.input;
