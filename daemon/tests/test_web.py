@@ -234,9 +234,224 @@ def test_station_search_reads_moode_read_only(tmp_path):
     ])
     con.commit()
     con.close()
-    assert [s["name"] for s in stations.search("swit", str(db))] == ["Radio SRF 1"]
-    assert len(stations.search("", str(db))) == 2
-    assert stations.search("x", str(tmp_path / "missing.db")) == []
+    assert [s["name"] for s in stations.search_moode("swit", str(db))] == ["Radio SRF 1"]
+    assert len(stations.search_moode("", str(db))) == 2
+    assert stations.search_moode("x", str(tmp_path / "missing.db")) == []
+    # Through the combined search too, with no curated list and no directory.
+    offline = {"curated": tmp_path / "none.json", "directory": None}
+    assert [s["name"] for s in stations.search("swit", str(db), **offline)] == ["Radio SRF 1"]
+    assert stations.search("x", str(tmp_path / "missing.db"), **offline) == []
+
+
+# -- the Spanish station search: curated list, moOde, Radio Browser ----------
+
+@pytest.fixture(autouse=True)
+def _no_directory(monkeypatch):
+    """No test reaches radio-browser.info: the shared client is switched off."""
+    monkeypatch.setattr(stations, "DIRECTORY", None)
+
+
+@pytest.fixture
+def curated(tmp_path):
+    path = tmp_path / "es.json"
+    path.write_text(json.dumps({"stations": [
+        {"name": "RNE Radio Clásica", "url": "https://rne/r2.m3u8", "genre": "Classical", "region": "Spain · National"},
+        {"name": "RAC1", "url": "https://rac/1.mp3", "genre": "News, talk", "region": "Spain · Catalonia",
+         "keywords": "Catalunya"},
+        {"name": "Catalunya Ràdio", "url": "https://ccma/cr.mp3", "genre": "News", "region": "Spain · Catalonia"},
+    ]}), encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def moode_db(tmp_path):
+    db = tmp_path / "moode.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE cfg_radio (station TEXT, name TEXT, genre TEXT, country TEXT)")
+    con.executemany("INSERT INTO cfg_radio VALUES (?,?,?,?)", [
+        ("http://moode/clasica", "Radio Clasica Mundo", "Classical", "Peru"),
+        ("https://rac/1.mp3", "RAC 1 (moOde copy)", "Talk", "Spain"),
+    ])
+    con.commit()
+    con.close()
+    return str(db)
+
+
+def rb_station(name, url, country="Spain", **extra):
+    return {"name": name, "url": url, "url_resolved": url, "country": country, "tags": "news,talk,live,more",
+            "codec": "MP3", "bitrate": 128, "favicon": "", **extra}
+
+
+class FakeDirectory:
+    """A fetch for RadioBrowser: answers by countrycode, counts calls, can fail mirrors."""
+
+    def __init__(self, spanish=(), everyone=(), dead=()):
+        self.spanish, self.everyone, self.dead = list(spanish), list(everyone), set(dead)
+        self.calls = []
+
+    def __call__(self, url, timeout):
+        self.calls.append(url)
+        if any(url.startswith(d) for d in self.dead):
+            raise urllib.error.URLError("connection refused")
+        return self.spanish if "countrycode=ES" in url else self.everyone
+
+
+def directory(fake, **kw):
+    return stations.RadioBrowser(fetch=fake, mirrors=("https://m1", "https://m2"), **kw)
+
+
+def test_curated_matching_folds_accents_and_case(curated):
+    names = lambda q: [s["name"] for s in stations.search_curated(q, curated)]
+    assert names("rac") == ["RAC1"]
+    assert names("catalunya") == ["RAC1", "Catalunya Ràdio"]  # RAC1 by region
+    assert names("radio clasica") == ["RNE Radio Clásica"]
+    assert names("rac 1") == ["RAC1"]  # spaces optional
+    assert names("catalonia") == ["RAC1", "Catalunya Ràdio"]
+    assert names("RÀDIO") == ["RNE Radio Clásica", "Catalunya Ràdio"]  # both fold to "radio"
+    assert all(s["source"] == "curated" for s in stations.search_curated("", curated))
+
+
+def test_moode_matching_folds_accents_too(moode_db):
+    assert [s["name"] for s in stations.search_moode("clásica", moode_db)] == ["Radio Clasica Mundo"]
+
+
+def test_search_orders_curated_moode_directory_and_dedupes(curated, moode_db):
+    fake = FakeDirectory(
+        spanish=[rb_station("RNE Clásica (directory)", "https://rne/r2.m3u8"),  # dup of curated
+                 rb_station("Clásica FM Madrid", "https://cfm/stream")],
+        everyone=[rb_station("Klassik Radio", "http://klassik/", country="Germany")],
+    )
+    found = stations.search("clasica", moode_db, curated=curated, directory=directory(fake))
+    assert [(s["name"], s["source"]) for s in found] == [
+        ("RNE Radio Clásica", "curated"),
+        ("Radio Clasica Mundo", "moode"),
+        ("Clásica FM Madrid", "radio-browser"),
+        ("Klassik Radio", "radio-browser"),
+    ]
+    assert set(found[0]) >= {"name", "url", "genre", "country"}
+
+
+def test_dedupe_ignores_scheme_and_trailing_slash(curated, moode_db):
+    found = stations.search("rac", moode_db, curated=curated, directory=None)
+    assert [s["name"] for s in found] == ["RAC1"]  # moOde's https://rac/1.mp3 is the same stream
+    fake = FakeDirectory(spanish=[rb_station("RAC1", "http://rac/1.mp3/")])
+    assert len(stations.search("rac", moode_db, curated=curated, directory=directory(fake))) == 1
+
+
+def test_search_caps_results(curated, moode_db):
+    fake = FakeDirectory(everyone=[rb_station(f"Clásica {i}", f"http://c/{i}") for i in range(80)])
+    assert len(stations.search("clasica", moode_db, curated=curated, directory=directory(fake))) == stations.LIMIT
+
+
+def test_directory_spanish_first_and_shape():
+    fake = FakeDirectory(
+        spanish=[rb_station("Cadena SER", "https://ser/live.mp3", favicon="https://ser/i.png")],
+        everyone=[rb_station("SER World", "https://world/ser", country="Mexico"),
+                  rb_station("Cadena SER", "https://ser/live.mp3"),      # already had it
+                  rb_station("Bad", "rtmp://nope"),                       # not http(s)
+                  {"name": "", "url_resolved": "http://anon/"}],          # no name
+    )
+    found = directory(fake).search("ser")
+    assert [s["name"] for s in found] == ["Cadena SER", "SER World"]
+    assert found[0] == {"name": "Cadena SER", "url": "https://ser/live.mp3", "genre": "news, talk, live",
+                        "country": "Spain", "source": "radio-browser", "codec": "MP3", "bitrate": 128,
+                        "favicon": "https://ser/i.png"}
+    sent = fake.calls[0]
+    assert "name=ser" in sent and "hidebroken=true" in sent and "order=clickcount" in sent and "reverse=true" in sent
+
+
+def test_directory_uses_url_resolved():
+    fake = FakeDirectory(spanish=[{"name": "X", "url": "http://x/playlist.pls", "url_resolved": "http://x/stream"}])
+    assert directory(fake).search("xx")[0]["url"] == "http://x/stream"
+
+
+def test_directory_caches_per_query():
+    now = [1000.0]
+    fake = FakeDirectory(spanish=[rb_station("COPE", "https://cope/net1.mp3")])
+    rb = directory(fake, clock=lambda: now[0])
+    rb.search("cope")
+    rb.search("COPE ")  # same query, folded
+    assert len(fake.calls) == 2  # one Spanish + one worldwide, once
+    now[0] += stations.CACHE_TTL + 1
+    rb.search("cope")
+    assert len(fake.calls) == 4  # expired: asked again
+
+
+def test_directory_falls_back_to_next_mirror_and_remembers_it():
+    fake = FakeDirectory(spanish=[rb_station("COPE", "https://cope/net1.mp3")], dead=["https://m1"])
+    rb = directory(fake)
+    assert [s["name"] for s in rb.search("cope")] == ["COPE"]
+    assert rb.server == "https://m2"
+    fake.calls.clear()
+    rb.search("onda cero")
+    assert all(c.startswith("https://m2") for c in fake.calls)  # no time wasted on m1
+
+
+def test_unreachable_directory_degrades_to_the_other_lists(curated, moode_db, caplog):
+    caplog.set_level("INFO", logger="haslerd.web.stations")
+    fake = FakeDirectory(dead=["https://m1", "https://m2"])
+    rb = directory(fake)
+    assert rb.search("rac") == []
+    assert rb.cache == {}  # failures are not cached: the next keystroke retries
+    found = stations.search("rac", moode_db, curated=curated, directory=rb)
+    assert [s["name"] for s in found] == ["RAC1"]
+    assert "radio-browser unreachable" in caplog.text
+
+
+def test_half_an_answer_is_used_but_not_cached():
+    def es_down(url, timeout):
+        if "countrycode=ES" in url:
+            raise urllib.error.URLError("reset")
+        return [rb_station("COPE", "https://cope/net1.mp3")]
+
+    rb = directory(es_down)
+    assert [s["name"] for s in rb.search("cope")] == ["COPE"]
+    assert rb.cache == {}
+
+
+def test_slow_directory_is_cut_off_by_the_budget(curated, moode_db):
+    import threading
+    release = threading.Event()
+
+    def slow(url, timeout):
+        release.wait(5)
+        return [rb_station("Late", "http://late/")]
+
+    try:
+        found = stations.search("rac", moode_db, curated=curated, directory=directory(slow), budget=0.05)
+        assert [s["name"] for s in found] == ["RAC1"]
+    finally:
+        release.set()
+
+
+def test_short_queries_skip_the_directory():
+    fake = FakeDirectory(spanish=[rb_station("A", "http://a/")])
+    assert directory(fake).search("a") == []
+    assert fake.calls == []
+
+
+def test_empty_query_is_the_curated_list(curated, moode_db):
+    fake = FakeDirectory(spanish=[rb_station("Never", "http://never/")])
+    found = stations.search("  ", moode_db, curated=curated, directory=directory(fake))
+    assert [s["name"] for s in found] == ["RNE Radio Clásica", "RAC1", "Catalunya Ràdio"]
+    assert fake.calls == []
+
+
+def test_missing_curated_file_is_empty(tmp_path):
+    assert stations.load_curated(tmp_path / "nope.json") == []
+
+
+def test_shipped_curated_list_is_valid():
+    doc = json.loads(stations.CURATED_FILE.read_text(encoding="utf-8"))
+    entries = doc["stations"]
+    assert len(entries) >= 30
+    urls = [e["url"] for e in entries]
+    for e in entries:
+        assert e["name"].strip() and e["url"].startswith(("http://", "https://")), e
+        assert e.get("genre") and e.get("region", "").startswith("Spain"), e
+    assert len(urls) == len(set(urls)), "duplicate stream URL"
+    assert len({e["name"] for e in entries}) == len(entries), "duplicate name"
+    assert len(stations.load_curated()) == len(entries)  # nothing silently dropped
 
 
 class TestHttp:
