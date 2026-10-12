@@ -263,6 +263,8 @@ class TestHttp:
         assert status == 200 and json.loads(body)["variant"] == "hasler-hm"
         status, _ = self.call(url + "/nope")
         assert status == 404
+        status, page = self.call(url + "/")
+        assert status == 200 and b"/api/config" in page   # the page ships with the package
 
     def test_put_valid_and_invalid(self, base):
         url, app = base

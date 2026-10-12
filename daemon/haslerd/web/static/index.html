@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#14110F">
+<link rel="icon" href="data:,">
+<title>Hasler Keys</title>
+<style>
+:root{
+  --ground:#14110F; --panel:#1C1A17; --panel2:#23201C; --line:#3A352E;
+  --cream:#EFE6D2; --muted:#B9B0A0; --dim:#8A8378;
+  --amber:#FFB238; --red:#E5484D; --green:#46D17A;
+  --ink:#2A241C;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --r:10px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--cream);font:16px/1.45 var(--sans);
+  min-height:100vh;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+[hidden]{display:none !important}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.cap{font-family:var(--mono);font-variant-caps:all-small-caps;letter-spacing:.12em;font-size:15px;color:var(--muted)}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--cream);outline-offset:2px}
+
+main{max-width:760px;margin:0 auto;padding:max(16px,env(safe-area-inset-top)) 16px calc(112px + env(safe-area-inset-bottom))}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding:8px 0 18px}
+h1{margin:0;font-weight:900;font-size:clamp(34px,10vw,48px);letter-spacing:-.045em;line-height:.9}
+.now{display:flex;align-items:center;gap:8px;min-width:0;justify-content:flex-end;text-align:right}
+.now-text{font-family:var(--mono);font-size:13px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.now-text b{color:var(--cream);font-weight:600}
+.dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.dot.on{background:var(--green);box-shadow:0 0 8px rgba(70,209,122,.7)}
+.dot.bad{background:var(--red)}
+.btn-quiet{background:none;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font:12px var(--mono);color:var(--muted);cursor:pointer;flex:none;min-height:28px}
+.btn-quiet:hover{border-color:var(--dim);color:var(--cream)}
+
+/* ---------- key bank ---------- */
+.bank-wrap{background:linear-gradient(#0E0C0A,#191612 30%,#120F0D);border:1px solid var(--line);border-radius:14px;padding:0 10px 14px;
+  box-shadow:inset 0 10px 18px rgba(0,0,0,.55)}
+.bank-lip{height:12px;margin:0 -10px 0;border-radius:13px 13px 0 0;background:linear-gradient(#2B2620,#0D0B09);border-bottom:1px solid #000}
+.bank{display:flex;gap:4px;align-items:flex-start}
+.key{position:relative;flex:1 1 0;min-width:0;height:clamp(128px,36vw,184px);padding:10px 2px 10px;border:0;border-radius:0 0 7px 7px;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;color:var(--ink);
+  background:linear-gradient(180deg,#D9CDB2 0,#F7F0E1 9%,#EFE6D2 70%,#E2D6BC 100%);
+  box-shadow:inset 0 -6px 0 #CBBE9F, inset 1px 0 0 rgba(255,255,255,.5), inset -1px 0 0 rgba(0,0,0,.08), 0 4px 0 #0A0807, 0 6px 10px rgba(0,0,0,.6);
+  transition:transform .08s ease, box-shadow .12s ease, background .12s ease}
+.key.pu{margin-left:8px;flex-grow:1.15;color:#EFE6D2;
+  background:linear-gradient(180deg,#2C2620 0,#4A4036 9%,#3E352C 70%,#2F2822 100%);
+  box-shadow:inset 0 -6px 0 #251F19, inset 1px 0 0 rgba(255,255,255,.12), 0 4px 0 #0A0807, 0 6px 10px rgba(0,0,0,.6)}
+.key-n{font-weight:900;font-size:clamp(20px,6vw,30px);letter-spacing:-.04em;line-height:1}
+.key-s{font-size:clamp(9px,2.6vw,12.5px);line-height:1.15;font-weight:600;overflow-wrap:break-word;-webkit-hyphens:auto;hyphens:auto;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;opacity:.82}
+.key-flags{position:absolute;left:0;right:0;bottom:12px;display:flex;justify-content:center;gap:4px}
+.flag{width:7px;height:7px;border-radius:50%}
+.flag.play{background:var(--green);box-shadow:0 0 6px rgba(70,209,122,.9)}
+.flag.bad{background:var(--red)}
+.flag.warn{background:transparent;border:1.5px solid #9A6B4A}
+.key[aria-pressed="true"]{outline:2px solid var(--amber);outline-offset:3px}
+.key:focus-visible{outline:2px dashed var(--cream);outline-offset:3px}
+.key[aria-pressed="true"]:focus-visible{outline:2px solid var(--amber);box-shadow:inset 0 -6px 0 #CBBE9F,0 0 0 6px var(--ground),0 0 0 8px var(--cream)}
+.key.down{transform:translateY(5px);
+  background:linear-gradient(180deg,#E9C98E 0,#FFE7B5 12%,#FBDDA0 75%,#EFC77E 100%);
+  box-shadow:inset 0 -3px 0 #D9AE62, 0 0 0 #000, 0 0 22px 6px rgba(255,178,56,.55)}
+.key.pu.down{background:linear-gradient(180deg,#5A4523 0,#8C6A33 12%,#7A5C2C 75%,#5E4622 100%);color:#FFF3DC}
+.bank-cap{margin:10px 2px 0;font-size:13px;color:var(--dim)}
+
+/* ---------- editor ---------- */
+.editor{margin-top:22px}
+.ed-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}
+h2{margin:0;font-weight:900;font-size:30px;letter-spacing:-.04em;line-height:1}
+.slot{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:12px}
+.slot-head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px}
+.slot-head label{font-weight:800;font-size:18px;letter-spacing:-.01em}
+.slot-head .cap{font-size:14px;color:var(--dim)}
+select,input[type=text],input[type=url],input[type=number],input[type=search]{
+  width:100%;min-height:46px;background:var(--ground);border:1px solid var(--line);border-radius:8px;padding:10px 12px;color:var(--cream);font-size:16px}
+select{appearance:none;-webkit-appearance:none;padding-right:36px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23B9B0A0' stroke-width='1.6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 14px center}
+select option{background:var(--panel);color:var(--cream)}
+select:focus-visible,input:focus-visible{outline:2px solid var(--cream);outline-offset:1px;border-color:transparent}
+input::placeholder{color:#6F695F}
+[aria-invalid="true"]{border-color:var(--red) !important}
+.field{margin-top:12px}
+.field > label,.field > .lbl{display:block;margin-bottom:5px}
+.hint{margin:6px 0 0;font-size:13px;color:var(--dim)}
+.err{margin:6px 0 0;font-size:13.5px;color:var(--red);font-weight:600}
+.err::before{content:"▲ ";content:"▲ " / "";font-size:10px;vertical-align:1px}
+.note{margin:10px 0 0;font-size:13.5px;color:var(--muted)}
+.note.warn{color:#E8B9A0}
+
+.preset{margin-top:12px;border-top:1px dashed var(--line);padding-top:4px}
+.preset-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;flex-wrap:wrap}
+.preset-head select{width:auto;min-height:36px;padding:5px 32px 5px 10px;font-size:14px;max-width:100%}
+.badge{font:12px var(--mono);letter-spacing:.06em;color:var(--green);display:inline-flex;align-items:center;gap:6px}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 6px rgba(70,209,122,.8)}
+
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;padding:3px;gap:3px;background:var(--ground);margin:0;min-width:0}
+.seg legend{padding:0;margin-bottom:5px;float:left;width:100%}
+.seg-wrap{margin-top:12px}
+.seg-wrap > .lbl{display:block;margin-bottom:5px}
+.seg label{flex:1 1 0;min-width:0;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:42px;padding:4px 4px;border-radius:6px;
+  cursor:pointer;font-size:14px;font-weight:700;color:var(--muted);text-align:center;line-height:1.1}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg label:has(input:checked){background:var(--cream);color:var(--ink)}
+.seg label:has(input:focus-visible){outline:2px solid var(--cream);outline-offset:2px}
+.seg .off{font:10.5px var(--mono);letter-spacing:.05em;font-weight:400;opacity:.8}
+
+.combo{position:relative}
+.listbox{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);margin:0;padding:4px;list-style:none;max-height:min(320px,50vh);overflow:auto;
+  background:var(--panel2);border:1px solid var(--line);border-radius:9px;box-shadow:0 14px 30px rgba(0,0,0,.6)}
+.listbox li{padding:9px 10px;border-radius:6px;cursor:pointer}
+.listbox li[aria-selected="true"],.listbox li:hover{background:#332E27}
+.listbox .st-name{font-weight:700;display:block}
+.listbox .st-meta{font-size:12.5px;color:var(--dim);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.listbox .st-empty{color:var(--dim);cursor:default;font-size:14px}
+.listbox .st-empty:hover{background:none}
+
+.switch{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px;cursor:pointer}
+.switch input{appearance:none;-webkit-appearance:none;flex:none;width:46px;height:28px;border-radius:999px;background:var(--ground);border:1px solid var(--line);position:relative;cursor:pointer;margin:0;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--dim);transition:transform .15s,background .15s}
+.switch input:checked{background:#4A4336}
+.switch input:checked::after{transform:translateX(18px);background:var(--cream)}
+
+.test-row{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:42px;padding:8px 16px;border-radius:8px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--cream);font-weight:700;font-size:15px;cursor:pointer}
+.btn:hover:not(:disabled){border-color:var(--dim)}
+.btn:disabled{cursor:default;opacity:.55}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .8s linear infinite;display:none}
+.busy .spin{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+.test-out{font-size:13.5px;color:var(--muted);min-width:0}
+.test-out.ok{color:var(--green)}
+.test-out.bad{color:var(--red)}
+
+.alert{border:1px solid rgba(229,72,77,.5);background:rgba(229,72,77,.08);color:#F3B7B9;border-radius:var(--r);padding:12px 14px;margin:0 0 12px;font-size:14px}
+.alert ul{margin:6px 0 0;padding-left:18px}
+.loading{padding:40px 0;text-align:center;color:var(--dim)}
+
+.foot{margin-top:30px;padding-top:16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.link{background:none;border:0;padding:6px 0;color:var(--dim);text-decoration:underline;text-underline-offset:3px;cursor:pointer;font-size:14px}
+.link:hover{color:var(--muted)}
+.foot .cap{font-size:13px;color:#6F695F}
+
+/* ---------- save bar ---------- */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(20,17,15,.94);border-top:1px solid var(--line);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);padding:12px 16px calc(12px + env(safe-area-inset-bottom))}
+.bar-in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:10px}
+.bar-msg{flex:1;min-width:0;font-size:14px;color:var(--muted);line-height:1.25}
+.bar-msg.bad{color:var(--red);font-weight:600}
+.bar-msg.ok{color:var(--cream)}
+.btn-ghost{background:none;border:1px solid transparent;color:var(--muted);font-weight:600;padding:8px 10px;min-height:46px;border-radius:8px;cursor:pointer;font-size:15px}
+.btn-ghost:hover:not(:disabled){color:var(--cream)}
+.btn-ghost:disabled{opacity:.4;cursor:default}
+.btn-save{min-height:46px;min-width:112px;padding:10px 22px;border-radius:9px;border:0;background:var(--amber);color:#1A1208;font-weight:900;font-size:16px;letter-spacing:-.01em;cursor:pointer;
+  box-shadow:0 0 18px rgba(255,178,56,.25)}
+.btn-save:disabled{background:#3A342B;color:var(--dim);box-shadow:none;cursor:default}
+.btn-save.saved:disabled{background:#2C2A22;color:var(--green)}
+.btn-save:focus-visible{outline:2px solid var(--cream);outline-offset:3px}
+
+@media (min-width:700px){
+  .key{padding-top:14px}
+  .slot{padding:18px 20px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row2 .field{margin-top:12px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none !important;animation-duration:2s !important}}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Hasler</h1>
+    <div class="now" id="now" aria-live="polite">
+      <span class="dot" id="nowDot"></span>
+      <span class="now-text" id="nowText">Connecting…</span>
+      <button type="button" class="btn-quiet" id="stopTop" hidden>Stop</button>
+    </div>
+  </header>
+
+  <div id="app"><p class="loading">Warming up the valves…</p></div>
+
+  <div class="foot" id="foot" hidden>
+    <button type="button" class="link" id="resetBtn">Reset to defaults</button>
+    <span class="cap" id="variant"></span>
+  </div>
+</main>
+
+<div class="bar" id="bar" hidden>
+  <div class="bar-in">
+    <div class="bar-msg" id="barMsg" role="status" aria-live="polite"></div>
+    <button type="button" class="btn-ghost" id="revertBtn" disabled>Revert</button>
+    <button type="button" class="btn-save" id="saveBtn" disabled>Save</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= state ================= */
+let cfg = null;          // last config from server
+let draft = null;        // {keys, presets} being edited
+let baseline = '';       // JSON of payload(cfg) for dirty check
+let sel = null;          // selected key id
+let status = null, online = true;
+let errs = {};           // server errors: "k1.tap", "k1._", "p3.uri", "p3._"
+let hints = {};          // light client-side hints, same keys
+let general = [];        // unmapped error messages
+let lastSent = null;     // body of last PUT (to map indices -> ids / n)
+let saving = false, savedFlash = false, resetFlash = false;
+const remember = {};     // "k1.tap" -> last preset n / entity, to restore on toggle
+const errEls = new Map();
+
+const SRC = [
+  {id:'radio',   label:'Radio'},
+  {id:'spotify', label:'Spotify'},
+  {id:'ytm',     label:'YouTube Music', short:'YT Music'},
+];
+const srcLabel = id => (SRC.find(s => s.id === id) || {label:id}).label;
+const SUMMARY = {none:'—', cycle_source:'Source', bt_pair:'Pairing', volume_up:'Vol +', volume_down:'Vol −', standby:'Standby', ha_scene:'Scene'};
+
+/* ================= helpers ================= */
+const $ = id => document.getElementById(id);
+const clone = o => JSON.parse(JSON.stringify(o));
+function h(tag, props, ...kids){
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})){
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'text') el.textContent = v;
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k === 'value' || k === 'checked' || k === 'selected' || k === 'disabled') el[k] = v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat()){
+    if (c == null || c === false) continue;
+    el.append(c.nodeType ? c : document.createTextNode(String(c)));
+  }
+  return el;
+}
+async function api(method, url, body, opts = {}){
+  const r = await fetch(url, {
+    method, cache:'no-store', signal: opts.signal,
+    headers: body !== undefined ? {'Content-Type':'application/json'} : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+  let j = null;
+  try { j = await r.json(); } catch (_) {}
+  return {status:r.status, ok:r.ok, json:j};
+}
+const verbOf = a => (a && a.do) ? a.do : 'none';
+const presetByN = n => draft.presets.find(p => p.n === n);
+const keyLabel = k => k.id === 'pu' || !/^\d+$/.test(k.label) ? k.label : 'Key ' + k.label;
+
+/* ================= payload / dirty ================= */
+function normAct(a){
+  if (!a || a.do === 'none') return null;
+  const o = clone(a);
+  if (typeof o.entity === 'string') o.entity = o.entity.trim();
+  return o;
+}
+function referencedNs(d){
+  const s = new Set();
+  for (const k of d.keys) for (const sl of ['tap','hold']){
+    const a = k[sl]; if (a && a.do === 'preset' && a.n != null) s.add(a.n);
+  }
+  return s;
+}
+function payload(d){
+  const ref = referencedNs(d);
+  return {
+    keys: d.keys.map(k => ({id:k.id, tap:normAct(k.tap), hold:normAct(k.hold)})),
+    // keep presets the keys use, plus any other filled-in ones; drop abandoned empty slots
+    presets: d.presets
+      .filter(p => ref.has(p.n) || (p.uri || '').trim())
+      .map(p => ({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle: p.source === 'radio' ? false : !!p.shuffle})),
+  };
+}
+const isDirty = () => draft && JSON.stringify(payload(draft)) !== baseline;
+
+function adopt(newCfg){
+  cfg = newCfg;
+  draft = {keys: clone(cfg.keys || []), presets: clone(cfg.presets || [])};
+  baseline = JSON.stringify(payload(draft));
+  if (!draft.keys.some(k => k.id === sel)) sel = draft.keys.length ? draft.keys[0].id : null;
+}
+
+/* ================= validation (light) ================= */
+function presetIssues(p){
+  const out = {};
+  const uri = (p.uri || '').trim();
+  if (!(p.name || '').trim()) out.name = 'Give it a name.';
+  if (!uri) out.uri = p.source === 'radio' ? 'Pick a station or paste a stream link.' : 'Paste a link.';
+  else if (p.source === 'radio' && !/^https?:\/\/\S+$/i.test(uri))
+    out.uri = 'Pick a station from the list, or paste a link starting with http:// or https://';
+  else if (p.source === 'spotify' && !/^spotify:(playlist|album|track|artist|show|episode):\S+$/i.test(uri) && !/^https?:\/\/open\.spotify\.com\/\S+/i.test(uri))
+    out.uri = 'That doesn’t look like a Spotify link. Use Share → Copy link in Spotify.';
+  else if (p.source === 'ytm'){
+    if (!/^https?:\/\/(music\.|www\.|m\.)?youtube\.com\/\S*[?&]list=/i.test(uri) && !/^https?:\/\/youtu\.be\/\S*[?&]list=/i.test(uri))
+      out.uri = 'Use a playlist link — it contains “playlist?list=”.';
+    else if (/[?&]list=RD/i.test(uri))
+      out.uri = 'That’s a mix, not a playlist. Mixes change every time — save it as a playlist first.';
+  }
+  return out;
+}
+
+/* ================= errors ================= */
+function setErr(key, el, input){
+  errEls.set(key, {el, input});
+  paintErr(key);
+}
+function paintErr(key){
+  const r = errEls.get(key); if (!r || !r.el.isConnected) return;
+  const msg = errs[key] || hints[key] || '';
+  r.el.textContent = msg; r.el.hidden = !msg;
+  if (r.input) r.input.setAttribute('aria-invalid', msg ? 'true' : 'false');
+}
+function clearErr(key){
+  if (key in errs || key in hints){ delete errs[key]; delete hints[key]; paintErr(key); }
+}
+function keyErrCount(k){
+  let c = 0;
+  for (const s of ['tap','hold','_']) if (errs[k.id + '.' + s]) c++;
+  for (const sl of ['tap','hold']){
+    const a = k[sl];
+    if (a && a.do === 'preset') for (const f of ['name','source','uri','shuffle','_']) if (errs['p' + a.n + '.' + f]) c++;
+  }
+  return c;
+}
+function applyServerErrors(list){
+  errs = {}; hints = {}; general = [];
+  for (const e of list || []){
+    const where = String(e.where || ''), msg = e.message || 'Not valid.';
+    let m;
+    if ((m = /^presets\[(\d+)\](?:\.(\w+))?/.exec(where))){
+      const p = lastSent && lastSent.presets[+m[1]];
+      if (p){
+        const f = ['name','source','uri','shuffle'].includes(m[2]) ? m[2] : '_';
+        errs['p' + p.n + '.' + f] = errs['p' + p.n + '.' + f] ? errs['p' + p.n + '.' + f] + ' ' + msg : msg;
+        if (!referencedNs(draft).has(p.n)) general.push('Preset “' + (p.name || p.n) + '”: ' + msg);
+        continue;
+      }
+    } else if ((m = /^keys\[(\d+)\](?:\.(tap|hold))?/.exec(where))){
+      const k = lastSent && lastSent.keys[+m[1]];
+      if (k){ const kk = k.id + '.' + (m[2] || '_'); errs[kk] = errs[kk] ? errs[kk] + ' ' + msg : msg; continue; }
+    }
+    general.push(where ? where + ': ' + msg : msg);
+  }
+}
+
+/* ================= rendering: shell ================= */
+function renderAll(){
+  const app = $('app'); app.textContent = '';
+  if (!cfg){ return; }
+  app.append(renderBank(), h('div', {id:'editor', class:'editor'}));
+  renderEditor(); updateBank();
+  $('foot').hidden = false; $('bar').hidden = false;
+  $('variant').textContent = cfg.variant || '';
+  renderBar();
+}
+
+function keySummary(k){
+  const a = k.tap, v = verbOf(a);
+  if (v === 'preset'){
+    const p = presetByN(a.n);
+    return p && p.name.trim() ? p.name.trim() : 'Preset ' + a.n;
+  }
+  if (SUMMARY[v]) return SUMMARY[v];
+  const vb = (cfg.verbs || []).find(x => x.do === v);
+  return vb ? vb.label.split(/\s+/).slice(0, 2).join(' ') : v;
+}
+
+function renderBank(){
+  const wrap = h('section', {class:'bank-wrap', 'aria-label':'Piano keys'});
+  const bank = h('div', {class:'bank', id:'bank'});
+  for (const k of draft.keys){
+    bank.append(h('button', {type:'button', class:'key' + (k.id === 'pu' ? ' pu' : ''), 'data-key':k.id,
+        'aria-pressed': String(k.id === sel), onclick:() => selectKey(k.id)},
+      h('span', {class:'key-n', 'aria-hidden':'true'}, k.label),
+      h('span', {class:'key-s'}),
+      h('span', {class:'key-flags', 'aria-hidden':'true'})));
+  }
+  wrap.append(h('div', {class:'bank-lip'}), bank);
+  const frag = document.createDocumentFragment();
+  frag.append(wrap, h('p', {class:'bank-cap cap'}, 'Tap a key to set it up · keys light up when pressed on the radio'));
+  return frag;
+}
+
+function updateBank(){
+  const bank = $('bank'); if (!bank) return;
+  const pressed = new Set((status && status.pressed) || []);
+  const playingN = status && status.playing ? status.playing.n : null;
+  for (const btn of bank.children){
+    const k = draft.keys.find(x => x.id === btn.dataset.key); if (!k) continue;
+    const sum = keySummary(k);
+    btn.querySelector('.key-s').textContent = sum;
+    btn.setAttribute('aria-pressed', String(k.id === sel));
+    btn.classList.toggle('down', pressed.has(k.id));
+    const isPlaying = playingN != null && ['tap','hold'].some(s => k[s] && k[s].do === 'preset' && k[s].n === playingN);
+    const nErr = keyErrCount(k);
+    const off = ['tap','hold'].some(s => { const a = k[s]; if (!a) return false;
+      if (a.do === 'preset'){ const p = presetByN(a.n); return p && cfg.sources && cfg.sources[p.source] === false; }
+      return a.do === 'ha_scene' && !cfg.ha; });
+    const flags = btn.querySelector('.key-flags'); flags.textContent = '';
+    if (isPlaying) flags.append(h('span', {class:'flag play'}));
+    if (nErr) flags.append(h('span', {class:'flag bad'}));
+    else if (off) flags.append(h('span', {class:'flag warn'}));
+    btn.setAttribute('aria-label', keyLabel(k) + ': ' + sum +
+      (isPlaying ? ', playing' : '') + (nErr ? ', has a problem' : '') + (pressed.has(k.id) ? ', pressed' : ''));
+  }
+}
+
+function selectKey(id){
+  if (sel === id) return;
+  sel = id; updateBank(); renderEditor();
+}
+
+/* ================= rendering: editor ================= */
+function renderEditor(){
+  const ed = $('editor'); if (!ed) return;
+  ed.textContent = ''; errEls.clear();
+  const k = draft.keys.find(x => x.id === sel);
+  if (!k){ ed.append(h('p', {class:'note'}, 'No keys configured.')); return; }
+
+  if (general.length){
+    ed.append(h('div', {class:'alert', role:'alert'}, h('strong', null, 'The radio didn’t accept these settings:'),
+      h('ul', null, general.map(g => h('li', null, g)))));
+  }
+  ed.append(h('div', {class:'ed-head'},
+    h('h2', {id:'edTitle'}, keyLabel(k)),
+    h('span', {class:'cap'}, k.id === 'pu' ? 'the odd one out' : 'position ' + (draft.keys.indexOf(k) + 1) + ' of ' + draft.keys.length)));
+  const kErr = h('p', {class:'err', hidden:true});
+  ed.append(kErr); setErr(k.id + '._', kErr, null);
+  ed.append(slotSection(k, 'tap'), slotSection(k, 'hold'));
+  for (const key of errEls.keys()) paintErr(key);
+}
+
+function verbOptions(cur){
+  const verbs = (cfg.verbs || []).slice();
+  if (!verbs.some(v => v.do === 'none')) verbs.unshift({do:'none', label:'Nothing'});
+  if (!verbs.some(v => v.do === cur)) verbs.push({do:cur, label:cur});
+  return verbs.map(v => {
+    let label = v.label;
+    if (v.do === 'ha_scene' && !cfg.ha) label += ' (needs Home Assistant)';
+    return h('option', {value:v.do, selected: v.do === cur, disabled: v.do === 'ha_scene' && !cfg.ha && cur !== 'ha_scene'}, label);
+  });
+}
+
+function slotSection(k, slot){
+  const a = k[slot], v = verbOf(a);
+  const id = k.id + '-' + slot;
+  const sec = h('section', {class:'slot', 'aria-labelledby': id + '-lbl'});
+  const select = h('select', {id: id + '-verb', 'aria-describedby': id + '-err',
+    onchange: e => { setVerb(k, slot, e.target.value); renderEditor(); updateBank(); renderBar(); const s = $(id + '-verb'); if (s) s.focus(); }},
+    verbOptions(v));
+  sec.append(h('div', {class:'slot-head'},
+      h('label', {for: id + '-verb', id: id + '-lbl'}, slot === 'tap' ? 'Tap' : 'Hold'),
+      h('span', {class:'cap'}, slot === 'tap' ? 'short press' : 'press and hold')),
+    select);
+
+  if (v === 'preset') sec.append(presetEditor(k, slot));
+  else if (v === 'bt_pair'){
+    const inp = h('input', {type:'number', id: id + '-sec', inputmode:'numeric', min:'10', max:'900', step:'10', value: String(a.seconds ?? 120),
+      oninput: e => { const n = parseInt(e.target.value, 10); a.seconds = isNaN(n) ? e.target.value : n; clearErr(k.id + '.' + slot); renderBar(); },
+      onblur: e => { const n = parseInt(e.target.value, 10); if (!(n > 0)){ hints[k.id + '.' + slot] = 'Enter a number of seconds.'; paintErr(k.id + '.' + slot); } }});
+    sec.append(h('div', {class:'field'}, h('label', {for: id + '-sec', class:'cap'}, 'pairing window, seconds'), inp,
+      h('p', {class:'hint'}, 'How long the radio stays discoverable for a new phone.')));
+  }
+  else if (v === 'ha_scene'){
+    const inp = h('input', {type:'text', id: id + '-ent', value: a.entity || '', placeholder:'scene.evening_lights', autocapitalize:'off', autocomplete:'off', spellcheck:'false',
+      oninput: e => { a.entity = e.target.value; remember[k.id + '.' + slot + '.entity'] = a.entity; clearErr(k.id + '.' + slot); renderBar(); },
+      onblur: e => { if (!e.target.value.trim()){ hints[k.id + '.' + slot] = 'Enter a scene entity, e.g. scene.evening_lights.'; paintErr(k.id + '.' + slot); } }});
+    sec.append(h('div', {class:'field'}, h('label', {for: id + '-ent', class:'cap'}, 'scene entity'), inp));
+    if (!cfg.ha) sec.append(h('p', {class:'note warn'}, 'Home Assistant isn’t set up on this radio, so this won’t do anything yet.'));
+  }
+  else if (v !== 'none' && a){
+    // unknown params from the verb list: plain text fields
+    const vb = (cfg.verbs || []).find(x => x.do === v);
+    for (const p of (vb && vb.params) || []){
+      const fid = id + '-p-' + p;
+      sec.append(h('div', {class:'field'}, h('label', {for:fid, class:'cap'}, p),
+        h('input', {type:'text', id:fid, value: a[p] != null ? String(a[p]) : '',
+          oninput: e => { a[p] = e.target.value; clearErr(k.id + '.' + slot); renderBar(); }})));
+    }
+  }
+  if (v === 'volume_up' || v === 'volume_down'){
+    if (slot === 'tap') sec.append(h('p', {class:'note'}, 'A tap nudges the volume one step.'));
+  }
+  const err = h('p', {class:'err', id: id + '-err', hidden:true});
+  sec.append(err); setErr(k.id + '.' + slot, err, select);
+  return sec;
+}
+
+function nextFreeN(){ return draft.presets.reduce((m, p) => Math.max(m, +p.n || 0), 0) + 1; }
+function newPreset(){
+  const src = SRC.find(s => !cfg.sources || cfg.sources[s.id] !== false) || SRC[0];
+  const p = {n: nextFreeN(), name:'', source: src.id, uri:'', shuffle:false};
+  draft.presets.push(p);
+  return p;
+}
+
+function setVerb(k, slot, v){
+  const old = k[slot], rk = k.id + '.' + slot;
+  if (old && old.do === 'preset') remember[rk] = old.n;
+  clearErr(rk);
+  if (v === 'none') k[slot] = null;
+  else if (v === 'preset'){
+    let n = remember[rk];
+    if (n == null || !presetByN(n)) n = newPreset().n;
+    k[slot] = {do:'preset', n};
+  }
+  else if (v === 'bt_pair') k[slot] = {do:'bt_pair', seconds: (old && old.seconds) || 120};
+  else if (v === 'ha_scene') k[slot] = {do:'ha_scene', entity: remember[rk + '.entity'] || ''};
+  else k[slot] = {do:v};
+}
+
+/* ---------- inline preset editor ---------- */
+function presetEditor(k, slot){
+  const a = k[slot];
+  let p = presetByN(a.n);
+  if (!p){ p = {n:a.n, name:'', source:'radio', uri:'', shuffle:false}; draft.presets.push(p); }
+  const id = k.id + '-' + slot;
+  const pk = 'p' + p.n;
+  const box = h('div', {class:'preset'});
+
+  // which preset slot (most people never touch this)
+  const others = draft.presets.slice().sort((x, y) => x.n - y.n);
+  const slotSel = h('select', {'aria-label':'Which preset', id: id + '-pn',
+    onchange: e => {
+      const val = e.target.value;
+      remember[k.id + '.' + slot] = a.n;
+      a.n = val === 'new' ? newPreset().n : +val;
+      renderEditor(); updateBank(); renderBar();
+      const s = $(id + '-pn'); if (s) s.focus();
+    }},
+    others.map(o => h('option', {value:String(o.n), selected: o.n === p.n}, 'Preset ' + o.n + (o.name.trim() ? ' · ' + o.name.trim() : ''))),
+    h('option', {value:'new'}, '+ New preset'));
+  const syncOpt = () => { const o = slotSel.querySelector('option[value="' + p.n + '"]'); if (o) o.textContent = 'Preset ' + p.n + (p.name.trim() ? ' \u00b7 ' + p.name.trim() : ''); };
+  const badge = h('span', {class:'badge', 'data-playing-n': String(p.n), hidden: !(status && status.playing && status.playing.n === p.n)}, 'Playing');
+  box.append(h('div', {class:'preset-head'}, slotSel, badge));
+
+  const shared = [];
+  for (const kk of draft.keys) for (const s of ['tap','hold']){
+    if ((kk !== k || s !== slot) && kk[s] && kk[s].do === 'preset' && kk[s].n === p.n) shared.push(keyLabel(kk) + ' ' + s);
+  }
+  if (shared.length) box.append(h('p', {class:'note'}, 'Also used by ' + shared.join(', ') + ' — changes apply there too.'));
+
+  const pErr = h('p', {class:'err', hidden:true}); box.append(pErr); setErr(pk + '._', pErr, null);
+
+  // name
+  const nameInp = h('input', {type:'text', id: id + '-name', value:p.name, placeholder:'e.g. Radio Swiss Jazz', autocomplete:'off', 'aria-describedby': id + '-name-err',
+    oninput: e => { p.name = e.target.value; clearErr(pk + '.name'); syncOpt(); updateBank(); renderBar(); },
+    onblur: () => { const i = presetIssues(p); if (i.name){ hints[pk + '.name'] = i.name; paintErr(pk + '.name'); } }});
+  const nameErr = h('p', {class:'err', id: id + '-name-err', hidden:true});
+  box.append(h('div', {class:'field'}, h('label', {for: id + '-name', class:'cap'}, 'name'), nameInp, nameErr));
+  setErr(pk + '.name', nameErr, nameInp);
+
+  // source
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-labelledby': id + '-src-lbl'});
+  for (const s of SRC){
+    const off = cfg.sources && cfg.sources[s.id] === false;
+    seg.append(h('label', null,
+      h('input', {type:'radio', name: id + '-src', value:s.id, checked: p.source === s.id,
+        onchange: () => {
+          p.source = s.id; if (s.id === 'radio') p.shuffle = false;
+          clearErr(pk + '.source'); clearErr(pk + '.uri');
+          renderEditor(); updateBank(); renderBar();
+          const r = document.querySelector('input[name="' + id + '-src"]:checked'); if (r) r.focus();
+        }}),
+      h('span', null, s.short ? h('span', {'aria-hidden':'true'}, s.short) : s.label, s.short ? h('span', {class:'sr'}, s.label) : null),
+      off ? h('span', {class:'off'}, 'off') : null));
+  }
+  const srcErr = h('p', {class:'err', hidden:true});
+  box.append(h('div', {class:'seg-wrap'}, h('span', {class:'lbl cap', id: id + '-src-lbl'}, 'source'), seg, srcErr));
+  setErr(pk + '.source', srcErr, null);
+  if (cfg.sources && cfg.sources[p.source] === false)
+    box.append(h('p', {class:'note warn'}, srcLabel(p.source) + ' is turned off on this radio. This preset won’t play until it’s switched on.'));
+
+  // link
+  const L = {
+    radio:   {lbl:'station', ph:'Search stations or paste a stream link', hint:'Type a station name to search, or paste any http(s) stream link.'},
+    spotify: {lbl:'spotify link', ph:'Spotify playlist link', hint:'A playlist, album or track. In Spotify: Share → Copy link.'},
+    ytm:     {lbl:'youtube music link', ph:'YouTube Music playlist link', hint:'Use a playlist link (…playlist?list=…), not a mix.'},
+  }[p.source] || {lbl:'link', ph:'', hint:''};
+  const uriInp = h('input', {type:'text', id: id + '-uri', value:p.uri, placeholder:L.ph, inputmode:'url',
+    autocomplete:'off', autocapitalize:'off', spellcheck:'false', 'aria-describedby': id + '-uri-hint ' + id + '-uri-err',
+    oninput: e => { p.uri = e.target.value; clearErr(pk + '.uri'); renderBar(); },
+    onblur: () => { setTimeout(() => { if (!uriInp.isConnected) return; const i = presetIssues(p); if (i.uri && p.uri.trim()){ hints[pk + '.uri'] = i.uri; paintErr(pk + '.uri'); } }, 200); }});
+  const uriErr = h('p', {class:'err', id: id + '-uri-err', hidden:true});
+  const fieldKids = [h('label', {for: id + '-uri', class:'cap'}, L.lbl)];
+  if (p.source === 'radio') fieldKids.push(stationCombo(uriInp, p, nameInp, id));
+  else fieldKids.push(uriInp);
+  fieldKids.push(h('p', {class:'hint', id: id + '-uri-hint'}, L.hint), uriErr);
+  box.append(h('div', {class:'field'}, fieldKids));
+  setErr(pk + '.uri', uriErr, uriInp);
+
+  // shuffle
+  if (p.source !== 'radio'){
+    const shErr = h('p', {class:'err', hidden:true});
+    box.append(h('label', {class:'switch', for: id + '-sh'},
+      h('span', null, 'Shuffle'),
+      h('input', {type:'checkbox', role:'switch', id: id + '-sh', checked: !!p.shuffle,
+        onchange: e => { p.shuffle = e.target.checked; clearErr(pk + '.shuffle'); renderBar(); }})), shErr);
+    setErr(pk + '.shuffle', shErr, null);
+  }
+
+  // test
+  const out = h('span', {class:'test-out', 'aria-live':'polite'});
+  const testBtn = h('button', {type:'button', class:'btn'}, h('span', {class:'spin', 'aria-hidden':'true'}), 'Test');
+  testBtn.addEventListener('click', () => testPreset(p, testBtn, out));
+  const stopBtn = h('button', {type:'button', class:'btn', 'data-stop':'1', hidden: !(status && status.playing), onclick: stopPlayback}, 'Stop');
+  box.append(h('div', {class:'test-row'}, testBtn, stopBtn, out));
+  return box;
+}
+
+/* ---------- station picker (combobox) ---------- */
+function stationCombo(inp, p, nameInp, id){
+  const lbId = id + '-stations';
+  const list = h('ul', {class:'listbox', id:lbId, role:'listbox', 'aria-label':'Stations', hidden:true});
+  const wrap = h('div', {class:'combo'}, inp, list);
+  inp.setAttribute('role', 'combobox');
+  inp.setAttribute('aria-autocomplete', 'list');
+  inp.setAttribute('aria-expanded', 'false');
+  inp.setAttribute('aria-controls', lbId);
+  let timer = null, ctl = null, results = [], active = -1;
+
+  const close = () => { list.hidden = true; inp.setAttribute('aria-expanded', 'false'); inp.removeAttribute('aria-activedescendant'); active = -1; };
+  const open = () => { list.hidden = false; inp.setAttribute('aria-expanded', 'true');
+    const b = list.getBoundingClientRect(), bar = $('bar').getBoundingClientRect().top;
+    if (b.bottom > bar - 8) window.scrollBy({top: Math.min(b.bottom - bar + 16, inp.getBoundingClientRect().top - 12)}); };
+  const message = t => { list.textContent = ''; list.append(h('li', {class:'st-empty', role:'option', 'aria-disabled':'true'}, t)); open(); };
+  const setActive = i => {
+    active = i;
+    [...list.children].forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
+    if (i >= 0 && list.children[i]){ inp.setAttribute('aria-activedescendant', list.children[i].id); list.children[i].scrollIntoView({block:'nearest'}); }
+    else inp.removeAttribute('aria-activedescendant');
+  };
+  const pick = st => {
+    p.uri = st.url; inp.value = st.url;
+    if (!p.name.trim()){ p.name = st.name; nameInp.value = st.name; nameInp.dispatchEvent(new Event('input')); }
+    clearErr('p' + p.n + '.uri');
+    close(); updateBank(); renderBar();
+  };
+  const show = () => {
+    list.textContent = '';
+    if (!results.length){ message('No stations found. You can also paste a stream link.'); return; }
+    results.forEach((st, i) => {
+      const meta = [st.genre, st.country].filter(Boolean).join(' · ');
+      const li = h('li', {role:'option', id: lbId + '-' + i, 'aria-selected':'false'},
+        h('span', {class:'st-name'}, st.name || st.url), h('span', {class:'st-meta'}, meta || st.url));
+      li.addEventListener('pointerdown', e => e.preventDefault()); // keep focus in input
+      li.addEventListener('click', () => pick(st));
+      list.append(li);
+    });
+    open(); setActive(-1);
+  };
+  const search = async q => {
+    if (ctl) ctl.abort();
+    ctl = new AbortController();
+    message('Searching…');
+    try {
+      const r = await api('GET', '/api/stations?q=' + encodeURIComponent(q), undefined, {signal: ctl.signal});
+      if (!r.ok || !Array.isArray(r.json)){ message('Station search isn’t available right now. Paste a stream link instead.'); return; }
+      results = r.json.filter(s => s && s.url).slice(0, 50);
+      if (document.activeElement === inp) show(); else close();
+    } catch (e) {
+      if (e.name !== 'AbortError') message('Couldn’t reach the station list.');
+    }
+  };
+  inp.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = inp.value.trim();
+    if (q.length < 2 || /^(https?:|\w+:\/\/)/i.test(q)){ if (ctl) ctl.abort(); close(); return; }
+    timer = setTimeout(() => search(q), 250);
+  });
+  inp.addEventListener('keydown', e => {
+    if (list.hidden || !results.length || list.querySelector('.st-empty')){
+      if (e.key === 'Escape' && !list.hidden){ e.preventDefault(); close(); }
+      return;
+    }
+    if (e.key === 'ArrowDown'){ e.preventDefault(); setActive(Math.min(results.length - 1, active + 1)); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); setActive(Math.max(0, active - 1)); }
+    else if (e.key === 'Enter' && active >= 0){ e.preventDefault(); pick(results[active]); }
+    else if (e.key === 'Escape'){ e.preventDefault(); close(); }
+  });
+  inp.addEventListener('blur', () => setTimeout(close, 120));
+  return wrap;
+}
+
+/* ================= actions ================= */
+async function testPreset(p, btn, out){
+  const issues = presetIssues(p);
+  if (!(p.uri || '').trim()){ out.className = 'test-out bad'; out.textContent = 'Add a link first.'; return; }
+  btn.disabled = true; btn.classList.add('busy');
+  out.className = 'test-out';
+  out.textContent = p.source === 'ytm' ? 'Loading the playlist — this can take a few seconds…' : 'Tuning in…';
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 30000);
+  try {
+    const r = await api('POST', '/api/play', {preset:{name:(p.name || '').trim() || 'Test', source:p.source, uri:p.uri.trim(), shuffle: p.source !== 'radio' && !!p.shuffle}}, {signal: ctl.signal});
+    if (r.json && r.json.ok){ out.className = 'test-out ok'; out.textContent = 'Playing on the radio.'; }
+    else { out.className = 'test-out bad'; out.textContent = (r.json && r.json.error) || ('Couldn’t play that (error ' + r.status + ').') + (issues.uri ? ' ' + issues.uri : ''); }
+  } catch (e) {
+    out.className = 'test-out bad';
+    out.textContent = e.name === 'AbortError' ? 'The radio took too long to answer.' : 'Couldn’t reach the radio.';
+  } finally {
+    clearTimeout(t); btn.disabled = false; btn.classList.remove('busy'); pollNow();
+  }
+}
+
+async function stopPlayback(){
+  try { await api('POST', '/api/stop', {}); } catch (_) {}
+  pollNow();
+}
+
+async function save(){
+  if (saving || !isDirty()) return;
+  saving = true; savedFlash = false; resetFlash = false; renderBar();
+  const body = payload(draft);
+  lastSent = body;
+  try {
+    const r = await api('PUT', '/api/config', body);
+    if (r.ok && r.json && r.json.ok){
+      errs = {}; hints = {}; general = [];
+      adopt(r.json.config || Object.assign({}, cfg, body));
+      savedFlash = true;
+      renderAll();
+    } else if (r.json && Array.isArray(r.json.errors)){
+      applyServerErrors(r.json.errors);
+      const first = draft.keys.find(k => keyErrCount(k) > 0);
+      if (first) sel = first.id;
+      renderAll();
+      const el = document.querySelector('.editor p.err:not([hidden]), .editor .alert');
+      if (el) el.scrollIntoView({block:'center', behavior:'smooth'});
+    } else {
+      general = [(r.json && (r.json.error || r.json.message)) || 'Saving failed (error ' + r.status + ').'];
+      renderAll();
+    }
+  } catch (e) {
+    general = ['Couldn’t reach the radio. Check you’re on the same Wi-Fi and try again.'];
+    renderAll();
+  } finally {
+    saving = false; renderBar();
+  }
+}
+
+function revert(){
+  if (!cfg) return;
+  errs = {}; hints = {}; general = []; savedFlash = false;
+  adopt(cfg); renderAll();
+  $('barMsg').textContent = 'Changes discarded.';
+}
+
+async function resetDefaults(){
+  if (!confirm('Restore the radio’s built-in key settings and presets?\n\nThis replaces all your keys and presets.')) return;
+  try {
+    const r = await api('POST', '/api/reset', {});
+    if (r.json && r.json.ok && r.json.config){
+      errs = {}; hints = {}; general = []; savedFlash = false; resetFlash = true;
+      adopt(r.json.config); renderAll();
+    } else alert((r.json && r.json.error) || 'Reset failed (error ' + r.status + ').');
+  } catch (_) { alert('Couldn’t reach the radio.'); }
+}
+
+/* ================= save bar ================= */
+function renderBar(){
+  const dirty = isDirty();
+  if (dirty) { savedFlash = false; resetFlash = false; }
+  const save = $('saveBtn'), msg = $('barMsg');
+  save.disabled = !dirty || saving;
+  save.classList.toggle('saved', savedFlash && !dirty);
+  save.textContent = saving ? 'Saving…' : (savedFlash && !dirty ? 'Saved ✓' : 'Save');
+  $('revertBtn').disabled = !dirty || saving;
+  const nErr = Object.keys(errs).length + general.length;
+  let text = '', cls = 'bar-msg';
+  if (saving) text = 'Saving…';
+  else if (nErr){
+    const ks = draft.keys.filter(k => keyErrCount(k)).map(keyLabel);
+    text = 'Not saved — ' + (ks.length ? 'check ' + ks.join(', ') : 'see the message above') + '.';
+    cls += ' bad';
+  }
+  else if (savedFlash) { text = 'Saved to the radio.'; cls += ' ok'; }
+  else if (resetFlash) { text = 'Built-in defaults restored.'; cls += ' ok'; }
+  else if (dirty) text = 'Unsaved changes';
+  if (msg.textContent !== text) msg.textContent = text;
+  msg.className = cls;
+}
+
+/* ================= status polling ================= */
+let pollTimer = null, polling = false;
+async function poll(){
+  if (polling) return; polling = true;
+  try {
+    const r = await api('GET', '/api/status');
+    if (r.ok && r.json){ status = r.json; online = true; } else online = false;
+  } catch (_) { online = false; }
+  polling = false;
+  renderStatus(); updateBank(); updatePlaying();
+}
+function schedule(){
+  clearTimeout(pollTimer); pollTimer = null;
+  if (document.hidden) return;
+  pollTimer = setTimeout(async () => { await poll(); schedule(); }, 1000);
+}
+function pollNow(){ poll().then(schedule); }
+document.addEventListener('visibilitychange', () => { if (document.hidden){ clearTimeout(pollTimer); pollTimer = null; } else pollNow(); });
+
+function renderStatus(){
+  const dot = $('nowDot'), txt = $('nowText'), stop = $('stopTop');
+  txt.textContent = ''; dot.className = 'dot'; stop.hidden = true;
+  if (!online){ dot.classList.add('bad'); txt.textContent = 'Can’t reach the radio'; return; }
+  if (!status) { txt.textContent = 'Connecting…'; return; }
+  const vol = status.volume != null ? ' · vol ' + status.volume : '';
+  if (status.standby){ txt.textContent = 'Standby'; return; }
+  if (status.playing){
+    dot.classList.add('on'); stop.hidden = false;
+    txt.append(h('b', null, status.playing.name || 'Playing'), ' · ' + srcLabel(status.playing.source) + vol);
+  } else txt.textContent = 'Idle' + vol;
+}
+function updatePlaying(){
+  const n = status && status.playing ? status.playing.n : null;
+  document.querySelectorAll('[data-playing-n]').forEach(el => { el.hidden = n == null || String(n) !== el.dataset.playingN; });
+  document.querySelectorAll('[data-stop]').forEach(el => { el.hidden = !(status && status.playing); });
+}
+
+/* ================= boot ================= */
+async function load(){
+  const app = $('app');
+  try {
+    const r = await api('GET', '/api/config');
+    if (!r.ok || !r.json || !Array.isArray(r.json.keys)) throw new Error('bad');
+    adopt(r.json); renderAll();
+  } catch (_) {
+    app.textContent = '';
+    app.append(h('div', {class:'alert', role:'alert'}, 'Couldn’t load the key settings from the radio. ',
+      h('button', {type:'button', class:'btn-quiet', onclick: () => { app.textContent = ''; app.append(h('p', {class:'loading'}, 'Trying again…')); load(); }}, 'Try again')));
+  }
+}
+
+$('saveBtn').addEventListener('click', save);
+$('revertBtn').addEventListener('click', revert);
+$('resetBtn').addEventListener('click', resetDefaults);
+$('stopTop').addEventListener('click', stopPlayback);
+window.addEventListener('beforeunload', e => { if (isDirty()){ e.preventDefault(); e.returnValue = ''; } });
+document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 's'){ e.preventDefault(); save(); } });
+
+load();
+pollNow();
+})();
+</script>
+</body>
+</html>
