@@ -100,7 +100,8 @@ actions:
 presets:
   - {n: 1, name: "Radio Swiss Classic", radio: "http://stream.srg-ssr.ch/m/rsc_de/mp3_128"}
   - {n: 2, name: "Radio Swiss Jazz", radio: "http://stream.srg-ssr.ch/m/rsj/mp3_128"}
-  - {n: 3, name: "Radio Swiss Pop", radio: "http://stream.srg-ssr.ch/m/rsp/mp3_128"}
+  # RNE Radio 3 (Spain). HLS - MPD plays it; not in moOde's station list.
+  - {n: 3, name: "RNE Radio 3", radio: "https://rtvelivestream.rtve.es/rtvesec/rne/rne_r3_main.m3u8"}
   - {n: 4, name: "Today's Top Hits", spotify: "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", shuffle: true}
   - {n: 5, name: "Famous classical", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB"}
   - {n: 6, name: "Classical shuffle", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB", shuffle: true}
