@@ -164,6 +164,7 @@ class TestGpioPinIndex:
         monkeypatch.setattr(io_gpio, "GpioDigital", FakeGpio)
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
         variant.io["digital"] = dict(GPIO_FALLBACK)
+        variant.io["analog"] = {"backend": "none"}   # no ADS1115 on the laptop
         variant.controls = [{"id": "k1", "kind": "momentary", "pin": "d3"}]
         open_backends(variant)
         assert seen == {"d3": variant.io["digital"]["pins"][3]}
@@ -177,5 +178,6 @@ class TestGpioPinIndex:
         monkeypatch.setattr(io_gpio, "GpioDigital", lambda m: seen.update(m))
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
         variant.io["digital"] = dict(GPIO_FALLBACK)
+        variant.io["analog"] = {"backend": "none"}   # no ADS1115 on the laptop
         open_backends(variant)
         assert seen == {"d0": 5, "d1": 6, "d2": 12, "d3": 13, "d4": 16, "d5": 17, "d6": 24, "d8": 25}
