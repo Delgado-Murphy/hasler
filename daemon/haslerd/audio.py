@@ -1,7 +1,7 @@
 """Mono output for a one-speaker cabinet.
 
-The Amp4 Pro is stereo and the Hasler has one speaker, on one channel (the right, as wired).
-Without a downmix anything panned to the other side is simply lost. The mix happens in
+The Amp4 Pro is stereo and the Hasler has one speaker, on the left channel (L+ / L−).
+Without a downmix anything panned right is simply lost. The mix happens in
 ALSA, below every player: ``scripts/hasler-audio-mono`` (root, via sudoers)
 adds or removes an override of moOde's ``_audioout`` device - which MPD,
 Bluetooth, AirPlay and (as installed) go-librespot all play into.

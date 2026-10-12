@@ -259,7 +259,7 @@ Four **consecutive** header pins, so one 4-way Dupont housing plugs it in (`io.l
 ## The two steps that can destroy something
 
 1. **More than 24 V into the Amp4 Pro**, or the speaker wired **across two channels**. Meter the PD
-   trigger unloaded before it ever touches the amp (19.5–20.5 V), and put the speaker on one channel only (this build: R+ / R−).
+   trigger unloaded before it ever touches the amp (19.5–20.5 V), and put the speaker on L+ / L− only.
 2. **The original mains transformer and wiring come out entirely**, and the old capacitors get discharged
    before they go in the bin.
 
