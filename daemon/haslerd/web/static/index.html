@@ -173,6 +173,12 @@ input::placeholder{color:#6F695F}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .row2 .field{margin-top:12px}
 }
+/* ---------- maker's mark ---------- */
+.mark{display:flex;align-items:center;justify-content:center;gap:12px;margin:34px 0 6px;color:#6F695F;
+  font:600 10.5px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.34em;text-transform:uppercase}
+.mark::before,.mark::after{content:"";flex:0 0 28px;height:1px;background:var(--line)}
+.mark .amp{font:italic 400 16px/1 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;letter-spacing:0;
+  text-transform:none;color:var(--amber);opacity:.8;margin:0 -.12em 0 -.2em}
 @media (prefers-reduced-motion:reduce){*{transition:none !important;animation-duration:2s !important}}
 </style>
 </head>
@@ -193,6 +199,7 @@ input::placeholder{color:#6F695F}
     <button type="button" class="link" id="resetBtn">Reset to defaults</button>
     <span class="cap" id="variant"></span>
   </div>
+  <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
 </main>
 
 <div class="bar" id="bar" hidden>

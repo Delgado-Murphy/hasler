@@ -1,5 +1,7 @@
 # Hasler Music Box
 
+<sub><i>A Delgado &amp; Murphy restoration</i></sub>
+
 A gutted **Hasler HM** (Bern, ~1964) — a Telefónica *Hilo Musical* wired-music receiver whose
 piano keys once selected preset music channels over the telephone line — rebuilt around a
 Raspberry Pi. Tap a key, get a radio station, a Spotify playlist or a YouTube Music playlist — no
@@ -85,3 +87,7 @@ That was attempt one, and an ESPHome device was attempt two. Both failed the sam
 inside someone else's sandbox, half-working with no way to see why. moOde is plain Raspberry Pi OS
 + MPD with a documented REST API, so this is an ordinary systemd service that we own end to end,
 and `panel-probe` means the hardware is never a black box.
+
+---
+
+<sub>Delgado &amp; Murphy · Hasler HM, Bern 1964 — restored 2026</sub>

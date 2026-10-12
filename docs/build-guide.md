@@ -309,3 +309,7 @@ No screen, no keyboard — moOde's fallback hotspot does it.
 
 The hotspot only starts at boot. If the Wi-Fi drops later, the box keeps trying it; power-cycle to get
 the hotspot.
+
+---
+
+<sub>Delgado &amp; Murphy</sub>

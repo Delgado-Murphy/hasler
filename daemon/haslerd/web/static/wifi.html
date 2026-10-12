@@ -38,6 +38,12 @@ input{width:100%;padding:14px;border-radius:6px;border:1px solid var(--line);bac
 .done h2{margin:0 0 8px;font-size:24px}
 .done ol{margin:8px 0 0;padding-left:20px;color:var(--muted)}
 .done li{margin:6px 0}
+/* ---------- maker's mark ---------- */
+.mark{display:flex;align-items:center;justify-content:center;gap:12px;margin:34px 0 6px;color:#6F695F;
+  font:600 10.5px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.34em;text-transform:uppercase}
+.mark::before,.mark::after{content:"";flex:0 0 28px;height:1px;background:var(--line)}
+.mark .amp{font:italic 400 16px/1 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;letter-spacing:0;
+  text-transform:none;color:var(--amber);opacity:.8;margin:0 -.12em 0 -.2em}
 code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--cream)}
 </style>
 </head>
@@ -47,6 +53,7 @@ code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--cream)}
   <h1>Hasler</h1>
   <p class="lede" id="lede">Choose the network the radio should use.</p>
   <div id="app"><p class="quiet">Looking for networks…</p></div>
+  <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
 </main>
 <script>
 const $ = s => document.querySelector(s);
@@ -82,7 +89,8 @@ function form(net) {
 
 function render(data) {
   const app = $('#app'); app.textContent = '';
-  if (data.current) $('#lede').replaceChildren('It couldn’t find ', h('b', null, data.current), '. Choose the network the radio should use now.');
+  if (data.current && data.hotspot) $('#lede').replaceChildren('It couldn’t find ', h('b', null, data.current), '. Choose the network the radio should use now.');
+  else if (data.current) $('#lede').replaceChildren('The radio is on ', h('b', null, data.current), '. Choosing another network restarts it onto that one.');
   const list = h('ul');
   for (const net of data.networks) {
     const li = h('li');

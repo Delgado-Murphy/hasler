@@ -265,3 +265,7 @@ Four **consecutive** header pins, so one 4-way Dupont housing plugs it in (`io.l
    before they go in the bin.
 
 Everything else is recoverable.
+
+---
+
+<sub>Delgado &amp; Murphy</sub>

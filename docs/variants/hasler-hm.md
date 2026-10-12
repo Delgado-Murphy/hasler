@@ -339,3 +339,7 @@ rather than in the cabinet:
 ```sh
 cd daemon && .venv/bin/python -m pytest -q
 ```
+
+---
+
+<sub>Delgado &amp; Murphy</sub>
