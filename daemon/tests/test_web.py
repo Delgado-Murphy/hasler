@@ -289,3 +289,29 @@ class TestHttp:
         with pytest.raises(urllib.error.HTTPError) as exc:
             urllib.request.urlopen(req, timeout=5)
         assert exc.value.code == 400
+
+
+class TestSourceStatus:
+    def test_pu_parked_on_bluetooth_reads_as_waiting(self, rig):
+        app, actions, player, _ = rig
+        actions.dispatch(Event("k1", "tap"))          # radio playing
+        player.source = "radio"
+        actions.dispatch(Event("pu", "tap"))          # -> bluetooth, MPD stopped
+        player.source = "radio"     # like moOde: btactive stays 0 until a phone connects
+        st = app.status()
+        assert st["playing"] is None
+        assert (st["source"], st["waiting"]) == ("bluetooth", True)
+
+    def test_a_connected_phone_shows_its_name_and_track(self, rig):
+        app, _, player, _ = rig
+        player.source = "bluetooth"
+        player.renderer_info = lambda: {"device": "Pixel 11", "title": "Song", "artist": "Band"}
+        st = app.status()
+        assert st["source"] == "bluetooth" and st["waiting"] is False
+        assert st["renderer"]["device"] == "Pixel 11"
+
+    def test_presets_report_their_own_source(self, rig):
+        app, actions, *_ = rig
+        actions.dispatch(Event("k4", "tap"))
+        st = app.status()
+        assert st["source"] == "spotify" and st["waiting"] is False

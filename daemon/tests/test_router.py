@@ -418,3 +418,15 @@ class TestPrefetch:
 
         sources["ytm"].warm = boom
         player.prefetch([YTM])  # logged, not raised
+
+
+def test_connected_device_is_parsed_from_bluetoothctl():
+    from haslerd.player.moode import parse_connected_device
+    out = "Device B0:9C:B2:EB:15:F9 Pixel 11 Pro XL\nDevice 00:11:22:33:44:55 Other\n"
+    assert parse_connected_device(out) == "Pixel 11 Pro XL"
+    assert parse_connected_device("") == ""
+
+
+def test_airplay_flag_is_moodes_real_name():
+    from haslerd.player.moode import DEFAULT_SOURCE_FLAGS
+    assert DEFAULT_SOURCE_FLAGS == {"bluetooth": "btactive", "airplay": "aplactive"}

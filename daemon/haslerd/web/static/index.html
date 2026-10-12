@@ -227,7 +227,7 @@ const SRC = [
   {id:'ytm',     label:'YouTube Music', short:'YT Music'},
 ];
 const srcLabel = id => (SRC.find(s => s.id === id) || {label:id}).label;
-const SUMMARY = {none:'—', cycle_source:'Source', bt_pair:'Pairing', volume_up:'Vol +', volume_down:'Vol −', standby:'Standby', ha_scene:'Scene'};
+const SUMMARY = {none:'—', cycle_source:'Source', bt_pair:'Pairing', volume_up:'Vol +', volume_down:'Vol −', standby:'Standby', standby_toggle:'Standby', ha_scene:'Scene'};
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -824,7 +824,20 @@ function renderStatus(){
   if (status.playing){
     dot.classList.add('on'); stop.hidden = false;
     txt.append(h('b', null, status.playing.name || 'Playing'), ' · ' + srcLabel(status.playing.source) + vol);
-  } else txt.textContent = 'Idle' + vol;
+    return;
+  }
+  // A phone or renderer owns the speaker (or PU parked us on one, waiting).
+  const RENDERER = {bluetooth:'Bluetooth', airplay:'AirPlay', spotify:'Spotify (phone)'};
+  const name = RENDERER[status.source];
+  if (!name){ txt.textContent = 'Idle' + vol; return; }
+  const r = status.renderer || {};
+  if (status.waiting){
+    txt.append(h('b', null, name), ' · waiting for a phone' + vol);
+    return;
+  }
+  dot.classList.add('on');
+  const track = [r.artist, r.title].filter(Boolean).join(' – ');
+  txt.append(h('b', null, name), (r.device ? ' · ' + r.device : '') + (track ? ' · ' + track : '') + vol);
 }
 function updatePlaying(){
   const n = status && status.playing ? status.playing.n : null;

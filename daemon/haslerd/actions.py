@@ -109,6 +109,11 @@ class Actions:
             "ha_scene_by_index": self._ha_scene_by_index,
         }
 
+    @property
+    def cycle_position(self) -> str | None:
+        """Where the PU cycle last put us - e.g. "bluetooth" before a phone connects."""
+        return self._cycle_at
+
     # -- dispatch ---------------------------------------------------------
 
     def dispatch(self, event: Event) -> None:

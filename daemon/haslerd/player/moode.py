@@ -20,6 +20,7 @@ move between versions. Verify them once in Phase 1 and pin the moOde version.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import shlex
@@ -27,6 +28,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable
 
 from .base import Preset, Source
@@ -40,8 +42,13 @@ log = logging.getLogger(__name__)
 # which the router asks directly (SpotifySource.is_active).
 DEFAULT_SOURCE_FLAGS = {
     "bluetooth": "btactive",
-    "airplay": "airplayactv",
+    # moOde's own names (cfg_system). "airplayactv" was a guess that matched
+    # nothing, so AirPlay never registered as the active source.
+    "airplay": "aplactive",
 }
+
+BTMETA_FILE = "/var/local/www/btmeta.json"   # moOde's btmeta.py: {title, artist, ...}
+RENDERER_INFO_S = 3.0                         # bluetoothctl per web poll is too much
 
 DEFAULT_RENDERER_UNITS = {
     "bluetooth": "bluealsa-aplay",
@@ -167,6 +174,7 @@ class MoodePlayer:
         self._muted = False
         self._volume: float | None = None   # mixer percent, post-ceiling
         self._knob: float | None = None     # knob scale 0-100, as last set
+        self._renderer_cache: tuple[float, dict] | None = None
         self._warm_up()
 
     def _warm_up(self) -> None:
@@ -401,6 +409,35 @@ class MoodePlayer:
         except subprocess.TimeoutExpired:
             log.warning("bluetoothctl disconnect did not answer; carrying on")
 
+    def renderer_info(self) -> dict:
+        """Who is connected over Bluetooth and what they play - for the web page.
+
+        ``{"device": "Pixel 11", "title": ..., "artist": ...}``, empty fields
+        when nobody is connected. Cached briefly: the page polls every second.
+        """
+        now = self._clock()
+        if self._renderer_cache is not None and now - self._renderer_cache[0] < RENDERER_INFO_S:
+            return self._renderer_cache[1]
+        info = {"device": "", "title": "", "artist": ""}
+        if shutil.which(self.config.bluetoothctl) and self._bluetooth_up():
+            try:
+                out = subprocess.run(
+                    [self.config.bluetoothctl, "devices", "Connected"],
+                    capture_output=True, text=True, timeout=3,
+                ).stdout
+                info["device"] = parse_connected_device(out)
+            except (OSError, subprocess.TimeoutExpired):
+                log.debug("bluetoothctl devices failed", exc_info=True)
+        if info["device"]:
+            try:
+                meta = json.loads(Path(BTMETA_FILE).read_text() or "{}")
+                info["title"] = str(meta.get("title") or "")
+                info["artist"] = str(meta.get("artist") or "")
+            except (OSError, ValueError):
+                pass
+        self._renderer_cache = (now, info)
+        return info
+
     def bluetooth_pair(self, seconds: int) -> None:
         if not shutil.which(self.config.bluetoothctl):
             log.warning("bluetoothctl not found; cannot enter pairing mode")
@@ -459,6 +496,15 @@ class MoodePlayer:
                 self.sources[name].close()
             except Exception:
                 log.debug("closing %s failed", name, exc_info=True)
+
+
+def parse_connected_device(output: str) -> str:
+    """``Device AA:BB:… Pixel 11 Pro XL`` -> ``Pixel 11 Pro XL`` (first one)."""
+    for line in output.splitlines():
+        m = re.match(r"\s*Device\s+(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\s+(.+)$", line)
+        if m:
+            return m.group(1).strip()
+    return ""
 
 
 def bluetooth_pair_commands(seconds: int) -> list[list[str]]:

@@ -111,12 +111,40 @@ class WebApp:
             volume = self.actions.player.get_volume()
         except Exception:
             volume = None
+        source, waiting, renderer = self._source(current)
         return {
             "pressed": pressed,
             "playing": keymap.preset_to_page(current) if current else None,
             "standby": self.actions.standby,
             "volume": None if volume is None else round(volume),
+            # What owns the speaker: radio | spotify | ytm | bluetooth | airplay.
+            # waiting = selected with PU but nothing connected yet.
+            "source": source,
+            "waiting": waiting,
+            "renderer": renderer,
         }
+
+    def _source(self, current: Any) -> tuple[str, bool, dict | None]:
+        player = self.actions.player
+        try:
+            source = player.active_source()
+        except Exception:
+            source = "radio"
+        waiting = False
+        if current is None and source == "radio":
+            # MPD idle and nothing else reporting: if PU parked us on a
+            # renderer, say so rather than "radio".
+            parked = self.actions.cycle_position
+            if parked and parked != "radio":
+                source, waiting = parked, True
+        renderer = None
+        if source == "bluetooth":
+            info = getattr(player, "renderer_info", None)
+            renderer = info() if callable(info) else None
+            if renderer is not None:
+                # Connected but paused is not "waiting for a phone".
+                waiting = not renderer.get("device")
+        return source, waiting, renderer
 
     def stations(self, query: str) -> list[dict]:
         return stations.search(query, self.station_db)
