@@ -268,7 +268,7 @@ safe, which is how the original would have behaved.
 
 The Amp4 Pro is stereo; the Hasler is mono.
 
-- [ ] Speaker on **one channel only** (left), with L+R summed to mono upstream so nothing is lost
+- [x] Speaker on **one channel only** (as wired: the right, R+ / R−), with L+R summed to mono upstream so nothing is lost — key page → Settings → Mono (on by default)
 - [ ] **⚠️ Never wire the speaker across the two + terminals.** Class-D outputs are already
       bridge-tied; connecting across two of them is a dead short that destroys the amplifier.
 

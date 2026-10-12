@@ -12,11 +12,18 @@
 # picked up the next time this runs - haslerd runs it at every start). "off"
 # removes the override and moOde's definition applies again. moOde never
 # touches this file. Players see the change the next time they open the device.
+#
+# Long-running players (MPD, go-librespot, bluealsa-aplay) keep ALSA's config
+# in memory and, on each open, only re-read it if the top-level alsa.conf has
+# changed - a file added to or removed from conf.d goes unnoticed until they
+# restart. So every on/off also bumps alsa.conf's timestamp (contents
+# untouched), which makes each player reload everything at its next open.
 set -eu
 
 MOODE=/etc/alsa/conf.d/_audioout.conf
 OVERRIDE=/etc/alsa/conf.d/zz-hasler-mono.conf
 FALLBACK="plughw:CARD=sndrpihifiberry,DEV=0"
+ALSA_TOP=/usr/share/alsa/alsa.conf
 
 say() { printf '%s\n' "$1"; }
 fail() { say "{\"ok\": false, \"error\": \"$1\"}"; exit 1; }
@@ -52,10 +59,13 @@ off)
     rm -f "$OVERRIDE"
     ;;
 status)
+    say "{\"ok\": true, \"mono\": $(state)}"
+    exit 0
     ;;
 *)
     fail "usage: hasler-audio-mono on|off|status"
     ;;
 esac
 
+[ -e "$ALSA_TOP" ] && touch "$ALSA_TOP"   # make running players reload (see top)
 say "{\"ok\": true, \"mono\": $(state)}"
