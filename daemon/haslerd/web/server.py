@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 from ..actions import Actions
 from ..player.base import Preset
 from . import keymap, stations
+from .wifi import Wifi
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class WebApp:
         sources: dict[str, bool],
         ha: bool,
         station_db: str = stations.MOODE_DB,
+        wifi: Wifi | None = None,
     ) -> None:
         self.actions = actions
         self.panel = panel
@@ -48,6 +50,7 @@ class WebApp:
         self.sources = sources
         self.ha = ha
         self.station_db = station_db
+        self.wifi = wifi or Wifi(db=station_db)
         self.lock = threading.Lock()
         # The descriptor's own layout, for "reset to defaults". Taken before any
         # saved overlay is laid on top.
@@ -193,12 +196,14 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:
             url = urlparse(self.path)
-            if url.path in ("/", "/index.html"):
-                page = STATIC / "index.html"
+            if url.path in ("/", "/index.html", "/wifi"):
+                page = STATIC / ("wifi.html" if url.path == "/wifi" else "index.html")
                 if page.exists():
                     self._send(200, page.read_bytes(), "text/html; charset=utf-8")
                 else:
                     self._send(404, b"page not installed", "text/plain")
+            elif url.path == "/api/wifi":
+                self._guard(lambda: self._json(200, app.wifi.status()))
             elif url.path == "/api/config":
                 self._guard(lambda: self._json(200, app.config()))
             elif url.path == "/api/status":
@@ -224,6 +229,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(play)
             elif path == "/api/stop":
                 self._guard(lambda: (app.stop(), self._json(200, {"ok": True})))
+            elif path == "/api/wifi":
+                def join() -> None:
+                    body = self._body()
+                    app.wifi.join(str(body.get("ssid", "")), str(body.get("password", "")),
+                                  str(body.get("security", "auto")))
+                    self._json(200, {"ok": True})
+                self._guard(join)
             elif path == "/api/reset":
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.reset()}))
             else:

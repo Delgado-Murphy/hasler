@@ -148,8 +148,10 @@ done
 SUDOERS=/etc/sudoers.d/haslerd
 TMP="$(mktemp)"
 cat > "$TMP" <<EOF
-# haslerd: clean shutdown from the panel. Installed by scripts/install.sh.
-$USER_NAME ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff
+# haslerd: clean shutdown from the panel, and joining a new Wi-Fi from the
+# captive portal (the helper takes SSID/password on stdin, writes moOde's
+# network tables, reboots). Installed by scripts/install.sh.
+$USER_NAME ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join
 EOF
 if [[ -f "$SUDOERS" ]] && sudo -n cmp -s "$TMP" "$SUDOERS" 2>/dev/null; then
   :
@@ -162,6 +164,31 @@ else
   warn "visudo (root PATH) missing or rejected the drop-in - not installing $SUDOERS"
 fi
 rm -f "$TMP"
+
+# --- captive portal for the fallback hotspot ----------------------------------
+# moOde starts the "Hasler" hotspot when no known Wi-Fi answers at boot. These
+# make a phone joining it pop up haslerd's Wi-Fi page by itself: every name
+# resolves to the Pi (hotspot only), and the phones' connectivity checks are
+# redirected to http://172.24.1.1:8080/wifi.
+put_file() {   # put_file SRC DEST MODE - install if different, say whether it changed
+  local src="$1" dest="$2" mode="$3"
+  if sudo -n cmp -s "$src" "$dest" 2>/dev/null; then return 1; fi
+  if (( DRY )); then printf '   would install %s -> %s (%s)\n' "$src" "$dest" "$mode"; return 1; fi
+  sudo install -D -m "$mode" -o root -g root "$src" "$dest"
+}
+say "captive portal for the Wi-Fi hotspot"
+put_file "$REPO/scripts/hasler-wifi-join" /usr/local/sbin/hasler-wifi-join 0755 || true
+put_file "$REPO/config/captive/dnsmasq-hotspot.conf" \
+         /etc/NetworkManager/dnsmasq-shared.d/hasler-captive.conf 0644 || true
+if [[ -d /etc/nginx/sites-enabled ]] && put_file "$REPO/config/captive/nginx-captive.conf" \
+         /etc/nginx/sites-enabled/hasler-captive.conf 0644; then
+  if sudo nginx -t >/dev/null 2>&1; then
+    sudo systemctl reload nginx
+  else
+    warn "nginx rejected hasler-captive.conf - removing it; moOde's web UI is unaffected"
+    sudo rm -f /etc/nginx/sites-enabled/hasler-captive.conf
+  fi
+fi
 
 # --- go-librespot ------------------------------------------------------------
 # Spotify presets. A Spotify Connect device haslerd drives over 127.0.0.1:3678.

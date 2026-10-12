@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Hasler Wi-Fi</title>
+<link rel="icon" href="data:,">
+<style>
+:root{--ground:#14110F;--panel:#1C1A17;--line:#3A352E;--cream:#EFE6D2;--muted:#B9B0A0;--dim:#8A8378;--amber:#FFB238;--red:#E5484D;--green:#46D17A}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--ground);color:var(--cream);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-text-size-adjust:100%}
+main{max-width:520px;margin:0 auto;padding:28px 16px 48px}
+h1{font-size:44px;line-height:44px;font-weight:900;letter-spacing:-.03em;margin:0}
+.eyebrow{font:12px/16px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin:0 0 10px}
+.lede{color:var(--muted);margin:12px 0 24px}
+.lede b{color:var(--cream)}
+ul{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
+li+li{border-top:1px solid var(--line)}
+.net{display:flex;align-items:center;gap:12px;width:100%;padding:16px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.net:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.net .name{flex:1;font-weight:600;overflow-wrap:anywhere}
+.bars{display:flex;align-items:flex-end;gap:2px;height:14px;flex-shrink:0}
+.bars i{width:4px;background:var(--line);border-radius:1px}
+.bars i.on{background:var(--cream)}
+.lock{width:14px;flex-shrink:0;color:var(--dim)}
+.form{padding:0 16px 16px;display:flex;flex-direction:column;gap:10px}
+label{font:12px/16px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+input{width:100%;padding:14px;border-radius:6px;border:1px solid var(--line);background:var(--ground);color:var(--cream);font:inherit}
+.row{display:flex;gap:8px;align-items:center}
+.show{background:none;border:0;color:var(--muted);font:14px system-ui;cursor:pointer;padding:8px;white-space:nowrap}
+.go{padding:14px 18px;border:0;border-radius:6px;background:var(--amber);color:#1A1208;font-weight:800;font-size:16px;cursor:pointer}
+.go[disabled]{opacity:.5;cursor:default}
+.err{color:var(--red);font-size:14px;margin:0}
+.other{margin-top:16px}
+.quiet{color:var(--dim);font-size:14px}
+.done{padding:20px;border:2px solid var(--amber);border-radius:8px;background:#FFB2380F}
+.done h2{margin:0 0 8px;font-size:24px}
+.done ol{margin:8px 0 0;padding-left:20px;color:var(--muted)}
+.done li{margin:6px 0}
+code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--cream)}
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Wi-Fi setup</p>
+  <h1>Hasler</h1>
+  <p class="lede" id="lede">Choose the network the radio should use.</p>
+  <div id="app"><p class="quiet">Looking for networks…</p></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const h = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) { if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v === true) e.setAttribute(k, ''); else if (v !== false && v != null) e.setAttribute(k, v); } for (const c of kids.flat()) if (c != null) e.append(c); return e; };
+let open = null;
+
+function bars(signal) {
+  const n = signal >= 75 ? 4 : signal >= 50 ? 3 : signal >= 25 ? 2 : 1;
+  return h('span', {class: 'bars', 'aria-label': 'signal ' + signal + '%'}, [5, 8, 11, 14].map((px, i) => { const b = h('i', {class: i < n ? 'on' : ''}); b.style.height = px + 'px'; return b; }));
+}
+const lock = () => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 14 16'); s.setAttribute('class', 'lock'); s.setAttribute('aria-label', 'needs a password'); s.innerHTML = '<rect x="1" y="7" width="12" height="8" rx="2" fill="currentColor"/><path d="M4 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="2" fill="none"/>'; return s; };
+
+function form(net) {
+  const needsPwd = net.security !== 'none';
+  const pwd = h('input', {type: 'password', id: 'pwd', autocomplete: 'current-password', autocapitalize: 'none', spellcheck: 'false', placeholder: 'Wi-Fi password'});
+  const err = h('p', {class: 'err', role: 'alert'});
+  const go = h('button', {class: 'go', type: 'submit'}, 'Connect');
+  const show = h('button', {class: 'show', type: 'button', onclick: () => { pwd.type = pwd.type === 'password' ? 'text' : 'password'; show.textContent = pwd.type === 'password' ? 'Show' : 'Hide'; }}, 'Show');
+  const f = h('form', {class: 'form', onsubmit: async ev => {
+    ev.preventDefault(); err.textContent = '';
+    if (needsPwd && pwd.value.length < 8) { err.textContent = 'Wi-Fi passwords are at least 8 characters.'; pwd.focus(); return; }
+    go.disabled = true; go.textContent = 'Saving…';
+    try {
+      const r = await fetch('/api/wifi', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ssid: net.ssid, password: needsPwd ? pwd.value : '', security: net.security})});
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.ok) throw new Error(j.error || 'Could not save.');
+      done(net.ssid);
+    } catch (e) { err.textContent = e.message; go.disabled = false; go.textContent = 'Connect'; }
+  }}, needsPwd ? [h('label', {for: 'pwd'}, 'Password'), h('div', {class: 'row'}, pwd, show)] : h('p', {class: 'quiet'}, 'Open network — no password.'), err, go);
+  setTimeout(() => needsPwd && pwd.focus(), 50);
+  return f;
+}
+
+function render(data) {
+  const app = $('#app'); app.textContent = '';
+  if (data.current) $('#lede').replaceChildren('It couldn’t find ', h('b', null, data.current), '. Choose the network the radio should use now.');
+  const list = h('ul');
+  for (const net of data.networks) {
+    const li = h('li');
+    const btn = h('button', {class: 'net', type: 'button', 'aria-expanded': String(open === net.ssid), onclick: () => { open = open === net.ssid ? null : net.ssid; render(data); }},
+      h('span', {class: 'name'}, net.ssid), net.security !== 'none' ? lock() : null, bars(net.signal));
+    li.append(btn);
+    if (open === net.ssid) li.append(form(net));
+    list.append(li);
+  }
+  if (data.networks.length) app.append(list);
+  else app.append(h('p', {class: 'quiet'}, 'No networks in the radio’s last scan — type the name below.'));
+  // A hidden network, or one the scan missed.
+  const name = h('input', {id: 'other', autocapitalize: 'none', spellcheck: 'false', placeholder: 'Network name'});
+  const other = h('div', {class: 'other'}, h('label', {for: 'other'}, 'Other network'), h('div', {class: 'row'}, name,
+    h('button', {class: 'show', type: 'button', onclick: () => { const ssid = name.value.trim(); if (!ssid) return name.focus(); data.networks = [{ssid, signal: 0, security: 'auto'}].concat(data.networks.filter(n => n.ssid !== ssid)); open = ssid; render(data); }}, 'Next')));
+  app.append(other);
+}
+
+function done(ssid) {
+  $('#lede').textContent = '';
+  $('#app').replaceChildren(h('div', {class: 'done', role: 'status'},
+    h('h2', null, 'Restarting onto ', ssid),
+    h('p', {class: 'quiet'}, 'The radio is rebooting. In about a minute:'),
+    h('ol', null,
+      h('li', null, 'Put your phone back on ', h('b', null, ssid), '.'),
+      h('li', null, 'The music comes back on its own; the key page is at ', h('code', null, 'hasler.local:8080'), '.'),
+      h('li', null, 'If the lamp breathes white again, the password didn’t work — join ', h('b', null, 'Hasler'), ' and try again.'))));
+}
+
+fetch('/api/wifi').then(r => r.json()).then(render).catch(() => render({networks: [], current: ''}));
+</script>
+</body>
+</html>
