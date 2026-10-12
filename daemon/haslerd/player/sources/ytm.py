@@ -114,7 +114,8 @@ TOPUP_WITHIN = 5
 # Never let an endless queue grow past this; played songs go from the front.
 QUEUE_CAP = 500
 # Names learned from the catalogue, kept for the tags and the key page.
-META_CAP = 5000
+META_CAP = 20000   # whole libraries are exported to moOde (ytm_playlists)
+TAG_POLL_S = 2.0   # how often tag_queue looks for a changed MPD queue
 
 
 def stream_ok(url: str, timeout: float = 4.0) -> bool:
@@ -163,6 +164,11 @@ class YtmSource:
         probe: Callable[[str], bool] | None = None,
     ) -> None:
         self._mpd = mpd
+        # ytm_playlists.PlaylistSync, attached by build_sources; told about
+        # preset changes via warm().
+        self.playlists: Any = None
+        self._queue_version: str | None = None
+        self._tagger: threading.Thread | None = None
         # stream_ok in production (moode.build_sources); None = trust yt-dlp.
         self._probe = probe
         # YtmCatalog or None. Asked per call whether it is available.
@@ -319,6 +325,61 @@ class YtmSource:
             return None
         return {**meta, "videoId": vid}
 
+    # -- queues haslerd didn't build ---------------------------------------
+
+    def tag_queue(self) -> int:
+        """Name our tracks in a queue someone else loaded (moOde's Playlists).
+
+        A ``YT · …`` playlist loads with MPD's Name tag only. Give each of our
+        URLs its Title/Artist/Album and drop the Name, so moOde treats it like a
+        preset's track. Only rescans when MPD's queue version changes. Returns
+        how many songs were tagged.
+        """
+        if not self._tags_ok:
+            return 0
+        tagged = 0
+        try:
+            with self._mpd_lock:
+                client = self._mpd()
+                version = str(client.status().get("playlist", ""))
+                if version == self._queue_version:
+                    return 0
+                for entry in client.playlistinfo() or []:
+                    file = str(entry.get("file", ""))
+                    if not file.startswith(self.prefix) or entry.get("title"):
+                        continue
+                    vid = file[len(self.prefix):]
+                    with self._cache_lock:
+                        meta = self._meta.get(vid)
+                    if not meta:
+                        continue
+                    songid = entry.get("id")
+                    for tag, key in (("Title", "title"), ("Artist", "artist"), ("Album", "album")):
+                        if meta.get(key):
+                            client.addtagid(songid, tag, meta[key])
+                    if entry.get("name"):
+                        client.cleartagid(songid, "Name")
+                    tagged += 1
+                # Our own tagging bumped the version; remember the new one.
+                self._queue_version = str(client.status().get("playlist", ""))
+        except Exception:
+            log.debug("tag_queue failed", exc_info=True)
+            self._queue_version = None
+        if tagged:
+            log.info("named %d YouTube Music tracks loaded from moOde", tagged)
+        return tagged
+
+    def _start_tagger(self) -> None:
+        if self._tagger is not None:
+            return
+
+        def loop() -> None:
+            while not self._warm_stop.wait(TAG_POLL_S):
+                self.tag_queue()
+
+        self._tagger = threading.Thread(target=loop, name="ytm-tagger", daemon=True)
+        self._tagger.start()
+
     def cover(self, vid: str) -> str:
         """Best cover image for a video id: the catalogue's square album art if
         we have it, else YouTube's own thumbnail (always exists, 4:3)."""
@@ -329,6 +390,8 @@ class YtmSource:
     def close(self) -> None:
         self._warm_stop.set()
         self._warm_kick.set()
+        if self.playlists is not None:
+            self.playlists.close()
         with self._server_lock:
             server, thread = self._server, self._thread
             self._server = self._thread = None
@@ -353,6 +416,9 @@ class YtmSource:
         page does that when presets change.
         """
         self._warm_presets = [p for p in presets if p.source == "ytm"]
+        if self.playlists is not None:
+            self.playlists.update(self._warm_presets)
+        self._start_tagger()
         if self._warm_thread is not None:
             self._warm_kick.set()
             return

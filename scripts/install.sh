@@ -190,6 +190,15 @@ if [[ -d /etc/nginx/sites-enabled ]] && put_file "$REPO/config/captive/nginx-cap
   fi
 fi
 
+# --- moOde: YouTube Music playlists' covers ----------------------------------
+# haslerd writes "YT · …" playlists to MPD's playlist dir (already writable)
+# and their covers to moOde's playlist-covers dir, owned by root. Let the audio
+# group - haslerd runs in it - write there too.
+COVERS=/var/local/www/imagesw/playlist-covers
+if [[ -d "$COVERS" ]] && [[ "$(stat -c %G "$COVERS")" != audio ]]; then
+  run "sudo chgrp audio '$COVERS' && sudo chmod 2775 '$COVERS'"
+fi
+
 # --- moOde: cover art for YouTube Music tracks -------------------------------
 # One line in moOde's mpd.php, so its player shows the album cover for our
 # YouTube tracks (via haslerd's /art/<id>). Re-run after a moOde update.

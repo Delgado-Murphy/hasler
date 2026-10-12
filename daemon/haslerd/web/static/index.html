@@ -191,6 +191,9 @@ input::placeholder{color:#6F695F}
 .yt-item{display:flex;align-items:center;gap:10px;padding:6px;border-radius:6px;cursor:pointer;min-width:0}
 .yt-item[aria-selected="true"],.yt-item:hover{background:#2A2621}
 .yt-item[aria-selected="true"]{box-shadow:inset 2px 0 0 var(--cream)}
+.yt-play{margin-left:auto;flex:0 0 36px;width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:none;color:var(--muted);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center}
+.yt-play:hover,.yt-play:focus-visible{border-color:var(--amber);color:var(--amber)}
+.yt-play[disabled]{opacity:.5;cursor:default}
 .yt-txt{display:flex;flex-direction:column;flex:1;min-width:0;line-height:1.3}
 .yt-title{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .yt-sub{font-size:12.5px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
@@ -881,7 +884,20 @@ function ytmSearch(p, id, nameInp){
         thumb(it.thumb),
         h('span', {class:'yt-txt'},
           h('span', {class:'yt-title'}, it.title || it.name || 'Untitled'),
-          h('span', {class:'yt-sub'}, h('span', {class:'tag'}, ytmTag(it)), it.subtitle || '')));
+          h('span', {class:'yt-sub'}, h('span', {class:'tag'}, ytmTag(it)), it.subtitle || '')),
+        // Play now: hear it without making it a preset (moOde shows it too).
+        h('button', {type:'button', class:'yt-play', 'aria-label':'Play ' + (it.title || 'this') + ' now', title:'Play now',
+          onclick: async e => {
+            e.stopPropagation();
+            const b = e.currentTarget; b.disabled = true; b.textContent = '…';
+            stat.textContent = 'Starting ' + (it.title || 'it') + '…';
+            try {
+              await api('POST', '/api/play', {preset:{name: it.name || it.title || 'YouTube Music', source:'ytm', uri: it.uri, shuffle:false}});
+              stat.textContent = 'Playing ' + (it.title || 'it') + ' — tap the row to keep it on this key.';
+              pollNow();
+            } catch (err) { stat.textContent = 'Couldn’t play it: ' + (err.message || err); }
+            b.disabled = false; b.textContent = '▶';
+          }}, '▶'));
       li.addEventListener('pointerdown', e => e.preventDefault()); // keep focus in the search field
       li.addEventListener('click', () => pick(it));
       list.append(li);

@@ -184,6 +184,13 @@ class WebApp:
         cover = getattr(ytm, "cover", None)
         return cover(vid) if callable(cover) else f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
 
+    def _resync_playlists(self) -> None:
+        """Signing in or out changes what moOde's YT playlists should be."""
+        ytm = (getattr(self.actions.player, "sources", None) or {}).get("ytm")
+        sync = getattr(ytm, "playlists", None)
+        if sync is not None:
+            sync.kick()
+
     def stations(self, query: str) -> list[dict]:
         return stations.search(query, self.station_db)
 
@@ -216,12 +223,16 @@ class WebApp:
         headers = body.get("headers") if isinstance(body, dict) else None
         if not isinstance(headers, str):
             raise ValueError("expected {\"headers\": \"…\"}")
-        return self.catalog.sign_in(headers)
+        account = self.catalog.sign_in(headers)
+        self._resync_playlists()
+        return account
 
     def ytm_sign_out(self) -> dict:
         if not self._ytm_available():
             return {"signed_in": False, "name": ""}
-        return self.catalog.sign_out()
+        account = self.catalog.sign_out()
+        self._resync_playlists()
+        return account
 
     def _rewarm(self) -> None:
         prefetch = getattr(self.actions.player, "prefetch", None)

@@ -162,6 +162,9 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
                 catalog=catalog,
                 probe=stream_ok,
             )
+            if catalog is not None:
+                from .sources.ytm_playlists import PlaylistSync
+                sources["ytm"].playlists = PlaylistSync(sources["ytm"], catalog, state_dir)
         except Exception:
             log.warning("ytm source unavailable; ytm presets will not play", exc_info=True)
     return sources
