@@ -24,7 +24,7 @@ from typing import Any, Callable
 log = logging.getLogger(__name__)
 
 HELPER = "/usr/local/sbin/hasler-audio-mono"
-OVERRIDE = Path("/etc/alsa/conf.d/zz-hasler-mono.conf")
+OVERRIDE = Path("/etc/alsa/conf.d/.hasler-mono")   # the helper's mono marker
 DEFAULT = True          # one speaker: mono unless the owner says otherwise
 
 

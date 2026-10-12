@@ -1,0 +1,70 @@
+#!/usr/bin/python3
+"""hasler-tone GAIN - set the tone knob's treble shelf, in dB.
+
+haslerd runs this (player.tone_commands) each time the tone knob settles:
+centre is flat, fully left is dark (-12 dB above ~2.5 kHz). Boosts are
+halved and the master gain drops by the same amount, so the bright end can
+never push the signal into clipping - or the old speaker past its ceiling.
+
+Two places get the value:
+  * the CamillaDSP config file, so the next stream starts with it (moOde's
+    camilladsp ALSA plugin starts a fresh CamillaDSP per stream);
+  * the running CamillaDSP, over its websocket (port 1234), so it changes
+    now. Nothing playing means nothing to tell - that is fine.
+Never fails loudly: a tone knob must not stop the music.
+"""
+
+import json
+import re
+import sys
+
+CONFIG = "/usr/share/camilladsp/configs/Hasler Tone.yml"
+WS = "ws://127.0.0.1:1234"
+
+
+def gains(raw: float) -> tuple[float, float]:
+    treble = raw / 2 if raw > 0 else raw
+    treble = max(-12.0, min(6.0, treble))
+    return round(treble, 1), (round(-treble, 1) if treble > 0 else 0.0)
+
+
+def set_block_gain(text: str, block: str, gain: float) -> str:
+    # The `gain:` line inside the named filter block (blocks are 2-space keys).
+    pattern = re.compile(r"(^  %s:\n(?:    .*\n|      .*\n)*?      gain: )[-\d.]+" % re.escape(block), re.M)
+    return pattern.sub(lambda m: m.group(1) + str(gain), text, count=1)
+
+
+def main() -> int:
+    try:
+        raw = float(sys.argv[1])
+    except (IndexError, ValueError):
+        print("usage: hasler-tone GAIN_DB", file=sys.stderr)
+        return 2
+    treble, master = gains(raw)
+    try:
+        with open(CONFIG) as f:
+            text = f.read()
+        new = set_block_gain(set_block_gain(text, "Treble", treble), "Master gain", master)
+        if new != text:
+            with open(CONFIG, "w") as f:
+                f.write(new)
+    except OSError as exc:
+        print(f"hasler-tone: config not updated: {exc}", file=sys.stderr)
+    try:
+        import websocket
+
+        ws = websocket.create_connection(WS, timeout=1)
+        ws.send(json.dumps({"PatchConfig": {"filters": {
+            "Treble": {"parameters": {"gain": treble}},
+            "Master gain": {"parameters": {"gain": master}},
+        }}}))
+        ws.recv()
+        ws.close()
+    except Exception:
+        pass   # nothing playing, or CamillaDSP not in the path
+    print(json.dumps({"treble_db": treble, "master_db": master}))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -62,10 +62,10 @@ controls:
   - id: tone
     kind: pot
     channel: 0   # tone wiper, cabinet wire 9 -> A0
-    taper: log
+    taper: linear   # 2026-10-13 sweep: even, 0 .. ~25500
     # TODO(phase-0): first value is the ADC count AT THE DETENT. The switch
     # eats the bottom of the sweep, so the usable range starts above it.
-    range: [0, 26400]
+    range: [0, 25500]
     end_switch:
       id: power
       pin: d8              # PB0 - not d7/PA7, which cannot be an input

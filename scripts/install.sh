@@ -179,6 +179,15 @@ put_file() {   # put_file SRC DEST MODE - install if different, say whether it c
 }
 say "mono switch (one speaker: L+R summed in ALSA; haslerd applies it at start)"
 put_file "$REPO/scripts/hasler-audio-mono" /usr/local/sbin/hasler-audio-mono 0755 || true
+put_file "$REPO/scripts/hasler-tone" /usr/local/bin/hasler-tone 0755 || true
+# Tone knob: CamillaDSP config (seeded once - hasler-tone rewrites its gains),
+# and the DSP route in the audio override.
+CDSP_TONE="/usr/share/camilladsp/configs/Hasler Tone.yml"
+if [[ -d /usr/share/camilladsp/configs && ! -e "$CDSP_TONE" ]]; then
+    install -m 0666 "$REPO/config/camilladsp/Hasler Tone.yml" "$CDSP_TONE"
+    ln -sf "$CDSP_TONE" /usr/share/camilladsp/working_config.yml
+    /usr/local/sbin/hasler-audio-mono dsp-on >/dev/null || true
+fi
 
 say "captive portal for the Wi-Fi hotspot"
 put_file "$REPO/scripts/hasler-wifi-join" /usr/local/sbin/hasler-wifi-join 0755 || true

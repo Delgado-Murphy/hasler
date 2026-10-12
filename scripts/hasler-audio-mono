@@ -2,8 +2,14 @@
 # hasler-audio-mono - sum L+R into both outputs, for a one-speaker cabinet.
 #
 # Run as root by haslerd (sudoers allows exactly this file):
-#     hasler-audio-mono on|off|status
-# Prints one JSON object: {"ok": true, "mono": true|false} or {"ok": false, "error": "..."}.
+#     hasler-audio-mono on|off|status|dsp-on|dsp-off
+# Prints one JSON object: {"ok": true, "mono": bool, "dsp": bool} or {"ok": false, "error": "..."}.
+#
+# dsp-on/dsp-off route _audioout through CamillaDSP (moOde's "camilladsp"
+# ALSA plugin, config "Hasler Tone.yml") so the tone knob can shape the sound
+# live; moOde's own CamillaDSP switch stays off, so its volume handling is
+# untouched. Mono and DSP are independent markers; the override is written
+# whenever either is set.
 #
 # moOde sends MPD, Bluetooth and AirPlay to the ALSA device "_audioout", and
 # haslerd points go-librespot there too. "on" overrides that name with a route
@@ -22,50 +28,65 @@ set -eu
 
 MOODE=/etc/alsa/conf.d/_audioout.conf
 OVERRIDE=/etc/alsa/conf.d/zz-hasler-mono.conf
+MONO_MARK=/etc/alsa/conf.d/.hasler-mono
+DSP_MARK=/etc/alsa/conf.d/.hasler-dsp
 FALLBACK="plughw:CARD=sndrpihifiberry,DEV=0"
 ALSA_TOP=/usr/share/alsa/alsa.conf
 
 say() { printf '%s\n' "$1"; }
 fail() { say "{\"ok\": false, \"error\": \"$1\"}"; exit 1; }
-state() { if [ -e "$OVERRIDE" ]; then echo true; else echo false; fi; }
+flag() { if [ -e "$1" ]; then echo true; else echo false; fi; }
+report() { say "{\"ok\": true, \"mono\": $(flag "$MONO_MARK"), \"dsp\": $(flag "$DSP_MARK")}"; }
 
 [ "$(id -u)" -eq 0 ] || fail "must run as root"
 
+# An override from before the markers existed meant "mono on".
+if [ -e "$OVERRIDE" ] && [ ! -e "$MONO_MARK" ] && [ ! -e "$DSP_MARK" ]; then touch "$MONO_MARK"; fi
+
 case "${1:-}" in
-on)
-    slave=""
-    [ -r "$MOODE" ] && slave=$(sed -n 's/^slave\.pcm *"\([^"]*\)".*/\1/p' "$MOODE" | head -n 1)
-    case "$slave" in
-        ""|_audioout|*'"'*|*'\'*) slave=$FALLBACK ;;
-    esac
+on)      touch "$MONO_MARK" ;;
+off)     rm -f "$MONO_MARK" ;;
+dsp-on)  touch "$DSP_MARK" ;;
+dsp-off) rm -f "$DSP_MARK" ;;
+status)  report; exit 0 ;;
+*)       fail "usage: hasler-audio-mono on|off|status|dsp-on|dsp-off" ;;
+esac
+
+if [ ! -e "$MONO_MARK" ] && [ ! -e "$DSP_MARK" ]; then
+    rm -f "$OVERRIDE"
+else
+    if [ -e "$DSP_MARK" ]; then
+        slave="plug:camilladsp"
+    else
+        slave=""
+        [ -r "$MOODE" ] && slave=$(sed -n 's/^slave\.pcm *"\([^"]*\)".*/\1/p' "$MOODE" | head -n 1)
+        case "$slave" in
+            ""|_audioout|*'"'*|*'\'*) slave=$FALLBACK ;;
+        esac
+    fi
+    if [ -e "$MONO_MARK" ]; then
+        ttable="0.0 0.5; 1.0 0.5; 0.1 0.5; 1.1 0.5"
+        what="Mono: left and right summed, at half level each so nothing clips, into both outputs."
+    else
+        ttable="0.0 1; 1.1 1"
+        what="Stereo (mono is off); this file only routes through CamillaDSP."
+    fi
     tmp=$(mktemp /etc/alsa/conf.d/.hasler-mono.XXXXXX)
     cat > "$tmp" <<EOF
 #########################################
 # Written by haslerd (hasler-audio-mono) - not by moOde.
-# Mono: left and right summed, at half level each so nothing clips, into
-# both outputs. Remove this file (or switch Mono off on the key page) for
-# stereo. Slave copied from $MOODE.
+# $what
+# Into: $slave. Switch Mono off on the key page (and dsp-off) to remove it.
 #########################################
 pcm.!_audioout {
 type route
 slave { pcm "$slave"; channels 2 }
-ttable { 0.0 0.5; 1.0 0.5; 0.1 0.5; 1.1 0.5 }
+ttable { $ttable }
 }
 EOF
     chmod 0644 "$tmp"
     mv -f "$tmp" "$OVERRIDE"
-    ;;
-off)
-    rm -f "$OVERRIDE"
-    ;;
-status)
-    say "{\"ok\": true, \"mono\": $(state)}"
-    exit 0
-    ;;
-*)
-    fail "usage: hasler-audio-mono on|off|status"
-    ;;
-esac
+fi
 
 [ -e "$ALSA_TOP" ] && touch "$ALSA_TOP"   # make running players reload (see top)
-say "{\"ok\": true, \"mono\": $(state)}"
+report
