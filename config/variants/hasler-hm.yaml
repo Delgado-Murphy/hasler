@@ -53,10 +53,11 @@ controls:
   - id: volume
     kind: pot
     channel: 1   # volume wiper, cabinet wire 10 -> A1
-    # The pot is audio taper (2026-10-13 sweep: ~3100 counts at half a turn,
-    # 26150 at full). This curve undoes it, so knob angle -> 0-100 evenly and
-    # the player's dB-linear mapping (volume_floor..volume_limit) does the rest.
-    curve: [[0, 0], [250, 5], [800, 15], [1700, 30], [3100, 50], [6500, 65], [13000, 80], [20500, 90], [26000, 100]]
+    # The pot is audio taper. Measured 2026-10-13 (median counts): quarter 770,
+    # half 3070, full 26200; the rest from an exponential fit through those.
+    # The curve undoes the taper so knob angle -> 0-100 evenly, and the
+    # player's dB-linear mapping (volume_floor..volume_limit) does the rest.
+    curve: [[0, 0], [240, 12.5], [770, 25], [1500, 37.5], [3070, 50], [5000, 62.5], [8500, 75], [15000, 87.5], [26200, 100]]
 
   - id: tone
     kind: pot

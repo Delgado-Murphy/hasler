@@ -870,17 +870,16 @@ function arcPath(r, a0, a1){ const [x0, y0] = pt(r, a0), [x1, y1] = pt(r, a1); r
 function paintKnob(){
   $('kTrack').setAttribute('d', arcPath(46, -135, 135));
   $('kArc').setAttribute('d', K.v > 0 ? arcPath(46, -135, ang(K.v)) : '');
-  if (K.limit < 100){ const [a, b] = pt(51, ang(K.limit)), [c, d] = pt(57, ang(K.limit)); $('kCeil').setAttribute('d', 'M' + a + ' ' + b + 'L' + c + ' ' + d); }
-  else $('kCeil').setAttribute('d', '');
+  $('kCeil').setAttribute('d', '');   // the ceiling lives in the player: knob 100 = volume_limit
   $('kPtr').setAttribute('transform', 'rotate(' + ang(K.v).toFixed(1) + ' 66 66)');
   const knob = $('knob');
   knob.setAttribute('aria-valuenow', String(K.v));
-  knob.setAttribute('aria-valuemax', String(K.limit));
-  knob.setAttribute('aria-valuetext', 'Volume ' + K.v + (K.limit < 100 ? ' of ' + K.limit : ''));
+  knob.setAttribute('aria-valuemax', '100');
+  knob.setAttribute('aria-valuetext', 'Volume ' + K.v);
   $('volLbl').textContent = 'VOLUME · ' + (status && status.volume == null && !K.lastUser ? '—' : K.v);
 }
 function setVol(v){
-  v = Math.round(Math.max(0, Math.min(K.limit, v)));
+  v = Math.round(Math.max(0, Math.min(100, v)));
   K.lastUser = Date.now();
   if (v === K.v) return;
   K.v = v; paintKnob();
@@ -913,7 +912,7 @@ async function flushVol(){
     if (d < 12){ K.ang = a; return; }
     let delta = a - K.ang; if (delta > 180) delta -= 360; if (delta < -180) delta += 360;
     K.ang = a;
-    acc = Math.max(0, Math.min(K.limit, acc + delta * 100 / 270));
+    acc = Math.max(0, Math.min(100, acc + delta * 100 / 270));
     setVol(acc);
   });
   const up = () => { if (!K.drag) return; K.drag = false; K.lastUser = Date.now(); clearTimeout(K.timer); flushVol(); };
@@ -924,13 +923,13 @@ async function flushVol(){
     const m = {ArrowUp:2, ArrowRight:2, ArrowDown:-2, ArrowLeft:-2, PageUp:10, PageDown:-10}[e.key];
     if (m != null){ e.preventDefault(); setVol(K.v + m); }
     else if (e.key === 'Home'){ e.preventDefault(); setVol(0); }
-    else if (e.key === 'End'){ e.preventDefault(); setVol(K.limit); }
+    else if (e.key === 'End'){ e.preventDefault(); setVol(100); }
   });
 })();
 function syncKnob(){
   if (!status) return;
   if (status.volume_limit != null) K.limit = Math.max(1, Math.min(100, +status.volume_limit));
-  if (!K.drag && Date.now() - K.lastUser > 1500 && status.volume != null){ K.v = Math.min(K.limit, Math.round(status.volume)); K.sent = K.v; }
+  if (!K.drag && Date.now() - K.lastUser > 1500 && status.volume != null){ K.v = Math.min(100, Math.round(status.volume)); K.sent = K.v; }
   paintKnob();
 }
 
@@ -1797,7 +1796,7 @@ function renderSettings(){
 async function saveLimit(v){
   try {
     const r = await api('PUT', '/api/settings', {volume_limit:v});
-    if (r.ok){ settings = Object.assign(settings || {}, r.json && r.json.volume_limit != null ? r.json : {volume_limit:v}); K.limit = +settings.volume_limit; if (K.v > K.limit) K.v = K.limit; paintKnob(); toast('Volume ceiling ' + settings.volume_limit); }
+    if (r.ok){ settings = Object.assign(settings || {}, r.json && r.json.volume_limit != null ? r.json : {volume_limit:v}); K.limit = +settings.volume_limit; paintKnob(); toast('Volume ceiling ' + settings.volume_limit); }
     else toast((r.json && r.json.error) || 'Couldn’t change the ceiling.', true);
   } catch (_) { toast('Couldn’t reach the radio.', true); }
 }
