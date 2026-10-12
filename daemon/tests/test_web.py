@@ -214,7 +214,8 @@ class TestPlayAndStatus:
 
     def test_status_reports_pressed_keys_and_what_plays(self, rig):
         app, actions, _, panel = rig
-        panel.digital.set("d2", True)
+        k3 = next(c["pin"] for c in actions.variant.controls if c["id"] == "k3")
+        panel.digital.set(k3, True)
         for t in range(10):
             panel.poll(t * 0.01)
         actions.dispatch(Event("k3", "tap"))
