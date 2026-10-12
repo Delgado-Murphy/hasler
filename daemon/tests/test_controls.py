@@ -262,12 +262,13 @@ class TestVariants:
         for _ in range(5):
             panel.poll(now)
             now += TICK
-        panel.digital.set("d2", True)
+        k3 = next(c["pin"] for c in variant.controls if c["id"] == "k3")
+        panel.digital.set(k3, True)
         events = []
         for _ in range(10):
             events.extend(panel.poll(now))
             now += TICK
-        panel.digital.set("d2", False)
+        panel.digital.set(k3, False)
         for _ in range(10):
             events.extend(panel.poll(now))
             now += TICK

@@ -1,12 +1,12 @@
 # Prototype board — stripboard layout
 
-Velleman ECL1/2 stripboard (39 × 31 holes, strips along the 80 mm side) carrying the
-green MCP23017, the ADS1115 socket, the Pi header P, the cabinet box header J2 and the
-expansion header J3. Paper page "4 · Prototype board", sheet PB3.
+Velleman ECL1/2 stripboard (39 strips along the 80 mm side, 29 holes each; rows 0 and 30 are separate edge pads) carrying the
+green MCP23017, the ADS1115 socket, the Pi header P, and J2 — the 26-pin Hasler connector (pins 1–16 the HM standard, 17–26 expansion). Paper page "4 · Prototype board", sheet PB3.
 
-    PREV=1 PLACE="3 14 0 1 16 1" DYW=1.2 python3 stripboard_layout.py stripboard_layout.json
-    python3 stripboard_render.py      # reads v3.json -> board.svg (rename paths as needed)
+    KMAP=K6,K2,K4 EMAP=EXP1,EXP3,EXP5 UX=27 UY=13 PP="19 2 1" CC="30 3" \
+        python3 stripboard_layout.py stripboard_layout.json
+    python3 stripboard_render.py stripboard_layout.json stripboard.svg
 
 The layout script places the parts, derives the track cuts, routes wire links that never
 overlap, and checks with a union-find that every strip piece carries exactly one net and
-every net is one piece. Output: 73 pins, 26 cuts, 21 links.
+every net is one piece. Keys are mapped to the MCP pin their J2 wire lands on (the descriptor follows). Output: 30 cuts, 24 links.
