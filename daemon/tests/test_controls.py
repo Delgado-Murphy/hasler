@@ -252,8 +252,8 @@ class TestVariants:
 
     def test_hasler_references_seven_keys_and_the_end_switch(self):
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
-        # d7 is skipped on purpose - it is GPA7 on the expander, output-only.
-        assert variant.pin_names() == ["d0", "d1", "d2", "d3", "d4", "d5", "d6", "d8"]
+        # The HAT's J2: end-switch on GPA0, keys on GPB0-6 (d15/GPB7 output-only).
+        assert variant.pin_names() == ["d0", "d8", "d9", "d10", "d11", "d12", "d13", "d14"]
 
     def test_hasler_keys_drive_presets_end_to_end(self):
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
@@ -287,11 +287,11 @@ class TestVariants:
                 events.extend(panel.poll(now))
                 now = round(now + TICK, 6)
 
-        panel.digital.press_only("d1")
+        panel.digital.press_only("d8")       # key 1
         settle(0.2)
         panel.digital.clear()      # the mechanical changeover gap
         settle(0.03)
-        panel.digital.press_only("d2")
+        panel.digital.press_only("d9")       # key 2
         settle(0.2)
 
         assert [e.kind for e in events if e.control == "presets"] == ["select", "select"]

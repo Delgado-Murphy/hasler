@@ -8,35 +8,41 @@
 #                     bank like Q - confirm by metering)
 #   SP                independent latching toggle, does not touch the bank
 # 4 wheels: volume, treble, bass, and a 3-position speaker selector.
+#
+# On the Hasler HAT's J2 (2x13 keyed header, standard IDC numbering) - the
+# proposed Excelsior column of docs/hat/DESIGN.md. Contacts close to GND
+# (J2-2/24). Spare: J2-21/22 (d5/d6) and J2-25 (ADS A3).
 variant: excelsior
 
 io:
+  # addr pinned: the CH224A can answer at 0x22/0x23. int_gpio: INTA, accepted
+  # but not used yet - the panel polls.
   digital: {backend: mcp23017, addr: 0x20, int_gpio: 23}
   analog: {backend: ads1115, addr: 0x48}
 
 controls:
   - id: presets
     kind: interlocked_bank
-    # keys 1-6, Q, Tape. Q is d8 (GPB0), not d7: GPA7 is output-only on the
-    # MCP23017. Tape is d9 (GPB1). Bank position 7 (Tape) plays preset 8.
-    pins: [d1, d2, d3, d4, d5, d6, d8, d9]
-    release: {pin: d0}                      # key 0
+    # keys 1-6 = J2-1,3,4,5,6,7 (GPB0-5), Q = J2-8 (GPB6), Tape = J2-17 (GPA1).
+    # Bank position 7 (Tape) plays preset 8. d7/d15 are output-only, unused.
+    pins: [d8, d9, d10, d11, d12, d13, d14, d1]
+    release: {pin: d0}                      # key 0, J2-14 (GPA0)
     # Must exceed the mechanical changeover gap (outgoing key opens before the
     # incoming one closes) and undershoot a deliberate press of key 0.
     settle_ms: 60
 
-  - {id: sp, kind: latching_toggle, pin: d10}
+  - {id: sp, kind: latching_toggle, pin: d2}   # J2-18
 
   - id: speaker_sel
     kind: rotary_switch
-    pins: [d11, d12]
+    pins: [d3, d4]                          # J2-19, J2-20
     positions: 3
     # TODO(phase-0): confirm the contact pattern per detent by metering.
     map: {"10": 0, "00": 1, "01": 2}
 
-  - {id: volume, kind: pot, channel: 0, taper: log, range: [0, 26400]}
-  - {id: treble, kind: pot, channel: 1, taper: log, range: [0, 26400]}
-  - {id: bass,   kind: pot, channel: 2, taper: log, range: [0, 26400]}
+  - {id: volume, kind: pot, channel: 1, taper: log, range: [0, 26400]}   # J2-10 -> A1
+  - {id: treble, kind: pot, channel: 0, taper: log, range: [0, 26400]}   # J2-9 -> A0
+  - {id: bass,   kind: pot, channel: 2, taper: log, range: [0, 26400]}   # J2-23 -> A2
 
 actions:
   presets.select: {do: preset_by_index}
