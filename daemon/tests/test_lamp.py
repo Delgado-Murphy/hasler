@@ -150,3 +150,20 @@ def test_colour_writes_put_the_firmware_in_static_mode():
     pc.set_rgb(255, 150, 40)
     assert pc._bus.writes[0] == (REG_LED_MODE, 0)
     assert pc._bus.writes[1:] == [(0x02, 255), (0x03, 150), (0x04, 40)]
+
+
+def test_hotspot_outranks_standby_and_offline():
+    from haslerd.main import lamp_state
+    assert lamp_state(True, False, "radio", hotspot=True) == "hotspot"
+    assert lamp_state(False, True, "spotify", hotspot=True) == "hotspot"
+    assert LAMP_STATES["hotspot"]["effect"] == "pulse"
+
+
+def test_connectivity_reports_the_hotspot():
+    from haslerd.net import Connectivity, hotspot_probe
+    c = Connectivity(probe=lambda: False, hotspot=lambda: True, threaded=False)
+    c.poll(0.0)
+    assert (c.online, c.hotspot) == (False, True)
+    # The real probe: we own loopback, nobody here owns moOde's hotspot address.
+    assert hotspot_probe("127.0.0.1") is True
+    assert hotspot_probe("192.0.2.123") is False

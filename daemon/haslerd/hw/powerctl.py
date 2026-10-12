@@ -38,6 +38,10 @@ LAMP_STATES: dict[str, dict] = {
     "dlna":      {"rgb": (220, 0, 200),  "effect": "solid"},
     "standby":   {"rgb": (40, 0, 0),     "effect": "solid"},
     "offline":   {"rgb": (255, 0, 0),    "effect": "flash"},
+    # moOde's fallback hotspot is up: join "Hasler", open http://172.24.1.1.
+    # Slow white breathing - calm, unlike offline's red flash, and unlike any
+    # source colour.
+    "hotspot":   {"rgb": (255, 255, 255), "effect": "pulse"},
     # A key press that failed. Shown briefly over whatever else is going on
     # (see Lamp.flash) - fast, so it is not mistaken for "offline".
     "error":     {"rgb": (255, 40, 0),   "effect": "fast_flash"},

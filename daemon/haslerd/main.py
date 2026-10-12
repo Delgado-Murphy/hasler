@@ -55,12 +55,16 @@ SOURCE_TO_LAMP = {
 LOCAL_SOURCES = ("bluetooth",)
 
 
-def lamp_state(standby: bool, online: bool, source: str) -> str:
+def lamp_state(standby: bool, online: bool, source: str, hotspot: bool = False) -> str:
     """What the lamp should say. Pure, so the priority order is testable.
 
     Standby wins over offline: a knob turned off means a quiet lamp, not a red
     one flashing in the bedroom all night because the router is rebooting.
+    The hotspot outranks both: it means "I can't find your Wi-Fi - come and
+    tell me a new one", which is the one thing the owner has to act on.
     """
+    if hotspot:
+        return "hotspot"
     if standby:
         return "standby"
     if not online and source not in LOCAL_SOURCES:
@@ -278,7 +282,7 @@ def main(argv=None) -> int:
 
             if lamp is not None and now >= next_lamp_tick:
                 next_lamp_tick = now + LAMP_TICK_S
-                lamp.set_state(lamp_state(actions.standby, online, source))
+                lamp.set_state(lamp_state(actions.standby, online, source, connectivity.hotspot))
                 lamp.tick(now)
 
             watchdog.ping(now)

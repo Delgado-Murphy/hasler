@@ -23,12 +23,29 @@ DEFAULT_HOST = "1.1.1.1"
 DEFAULT_PORT = 53
 DEFAULT_INTERVAL_S = 10.0
 DEFAULT_TIMEOUT_S = 2.0
+# moOde's fallback hotspot ("Hasler", started when no known Wi-Fi answers at
+# boot) always puts the Pi at this address.
+HOTSPOT_ADDR = "172.24.1.1"
 
 
 def tcp_probe(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, timeout: float = DEFAULT_TIMEOUT_S) -> bool:
     try:
         with socket.create_connection((host, port), timeout=timeout):
             return True
+    except OSError:
+        return False
+
+
+def hotspot_probe(addr: str = HOTSPOT_ADDR) -> bool:
+    """True while the Pi itself owns the hotspot address.
+
+    Binding to an address only works if one of our interfaces has it, so this
+    answers without shelling out to nmcli or ip.
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind((addr, 0))
+        return True
     except OSError:
         return False
 
@@ -49,9 +66,12 @@ class Connectivity:
         timeout_s: float = DEFAULT_TIMEOUT_S,
         probe: Callable[[], bool] | None = None,
         threaded: bool = True,
+        hotspot: Callable[[], bool] | None = None,
     ) -> None:
         self.interval_s = interval_s
         self.online = True
+        self.hotspot = False
+        self._hotspot = hotspot or hotspot_probe
         self._probe = probe or (lambda: tcp_probe(host, port, timeout_s))
         self._threaded = threaded
         self._next = 0.0
@@ -77,5 +97,12 @@ class Connectivity:
             if online != self.online:
                 log.info("network %s", "back" if online else "down")
             self.online = online
+            try:
+                hotspot = bool(self._hotspot())
+            except Exception:
+                hotspot = False
+            if hotspot != self.hotspot:
+                log.info("Wi-Fi hotspot %s", "up - join 'Hasler', open http://172.24.1.1" if hotspot else "down")
+            self.hotspot = hotspot
         finally:
             self._busy.release()

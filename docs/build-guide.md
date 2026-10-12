@@ -294,3 +294,18 @@ Both are cheap, and both check that the abstraction actually earned its keep:
 2. Wiring the Excelsior should need **nothing but a new YAML** — with the interlocked-bank
    changeover never emitting a spurious "cleared". Watch `panel-probe.py` while cycling stations
    fast; the test suite already covers it, but the real switches are the real test.
+
+## Moving the radio to a new Wi-Fi network
+
+No screen, no keyboard — moOde's fallback hotspot does it.
+
+1. Power the radio up where the old network isn't. moOde tries the saved Wi-Fi for **90 s**, then
+   starts its own hotspot **"Hasler"**. The pilot lamp **breathes white** while it's up.
+2. On a phone, join **Hasler** (password set in moOde → Network → Access Point; this box: see the
+   owner's notes, not this file).
+3. Open **http://172.24.1.1** → Configure → Network → pick the new SSID, enter its password, **Save**.
+4. Reboot (moOde's power menu, or the tone knob held off 5 s, then on). It joins the new network; the
+   lamp goes back to its source colour. The key page is at `http://hasler.local:8080` again.
+
+The hotspot only starts at boot. If the Wi-Fi drops later, the box keeps trying it; power-cycle to get
+the hotspot.
