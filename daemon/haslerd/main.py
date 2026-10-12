@@ -15,6 +15,7 @@ import os
 import signal
 import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -24,7 +25,18 @@ from .actions import Actions
 from .ha.rest import HomeAssistant
 from .hw.gpio_lamp import GpioRgbController
 from .hw.powerctl import Lamp, PowerController
-from .web.server import WebApp, WebServer
+from .web import stations
+from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_limit_from
+
+try:    # Home Assistant's page API; optional so the radio runs without it.
+    from .web.ha_api import HaApi
+except ImportError:
+    HaApi = None
+
+try:    # The curated Browse library; optional likewise.
+    from .web.catalog import Catalog
+except ImportError:
+    Catalog = None
 from .net import Connectivity
 from .player.base import FakePlayer
 from .player.moode import MoodeConfig, MoodePlayer
@@ -36,6 +48,7 @@ log = logging.getLogger("haslerd")
 POLL_HZ = 50.0
 SOURCE_POLL_S = 2.0     # active_source() shells out; no need to ask often
 LAMP_TICK_S = 0.05
+HA_PUBLISH_S = 5.0      # status to Home Assistant at most this often (HaApi throttles too)
 # Long enough for the power switch's debounce to report a knob that is off at
 # boot (EndSwitch assumes "on"), so we never blip a station before going quiet.
 BOOT_SETTLE_S = 0.15
@@ -102,7 +115,22 @@ class Watchdog:
             self._send("WATCHDOG=1")
 
 
-def build(args) -> tuple[Panel, Actions, Lamp | None, dict]:
+def moode_config(config: dict, settings: dict) -> MoodeConfig:
+    """haslerd.yaml's ``moode:`` block, with the web page's saved settings on top.
+
+    A bad saved ``volume_limit`` is ignored (logged), never fatal: the yaml's
+    own ceiling then stands.
+    """
+    spec = dict(config.get("moode") or {})
+    if "volume_limit" in settings:
+        try:
+            spec["volume_limit"] = volume_limit_from(settings["volume_limit"])
+        except ValueError as exc:
+            log.warning("ignoring saved volume_limit %r: %s", settings["volume_limit"], exc)
+    return MoodeConfig(**spec)
+
+
+def build(args) -> tuple[Panel, Actions, Lamp | None, dict, WebServer | None, WebApp]:
     variant = load_variant(args.variant)
     config = {}
     if args.config and Path(args.config).exists():
@@ -111,41 +139,84 @@ def build(args) -> tuple[Panel, Actions, Lamp | None, dict]:
     panel = Panel.from_variant(variant, fake=args.fake)
 
     if args.fake:
-        player = FakePlayer()
-        lamp = None
         # In-memory unless a state file is asked for: a dry run on a laptop
         # should not quietly overwrite what the real box remembers.
         state = StateStore.at(config["state_file"]) if config.get("state_file") else StateStore(None)
     else:
         state = StateStore.at(config.get("state_file"))
-        # The state directory also keeps the YouTube Music sign-in.
-        state_dir = Path(state.path).parent if state.path is not None else None
-        player = MoodePlayer(MoodeConfig(**(config.get("moode") or {})), state_dir=state_dir)
+    # The state directory also keeps the YouTube Music sign-in, the web
+    # page's settings.json and Home Assistant's pairing.
+    state_dir = Path(state.path).parent if state.path is not None else None
+    settings = load_settings(state_dir / SETTINGS_FILE if state_dir is not None else None)
+    if args.fake:
+        player = FakePlayer()
+        lamp = None
+    else:
+        player = MoodePlayer(moode_config(config, settings), state_dir=state_dir)
         lamp = open_lamp(variant.io.get("lamp") or {})
     log.info("state file: %s", state.path or "(in memory)")
 
-    ha = None
-    ha_config = config.get("home_assistant") or {}
-    if ha_config.get("url") and ha_config.get("token"):
-        ha = HomeAssistant(ha_config["url"], ha_config["token"])
-    else:
-        log.info("no Home Assistant transport configured; hold actions are inert")
+    # With HaApi present, its load() (in build_web) owns the one Home
+    # Assistant client - from its saved pairing, else this same yaml block.
+    ha = None if HaApi is not None else yaml_ha(config)
 
     actions = Actions(variant, player, ha=ha, state=state)
-    web = build_web(config, actions, panel, state, ha is not None)
+    web, app = build_web(config, actions, panel, state, ha is not None)
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))
     if lamp is not None:
         actions.on_play_error = lambda _exc: lamp.flash("error", time.monotonic())
-    return panel, actions, lamp, config, web
+    return panel, actions, lamp, config, web, app
 
 
-def build_web(config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool) -> WebServer | None:
+def yaml_ha(config: dict) -> HomeAssistant | None:
+    """The Home Assistant client haslerd.yaml describes, or None."""
+    ha_config = config.get("home_assistant") or {}
+    if ha_config.get("url") and ha_config.get("token"):
+        return HomeAssistant(ha_config["url"], ha_config["token"])
+    log.info("no Home Assistant transport configured; hold actions are inert")
+    return None
+
+
+def build_browse(actions: Actions, state_dir: Path | None) -> object | None:
+    """The curated Browse library, or None if its module or data won't load."""
+    if Catalog is None:
+        return None
+    ytm = (getattr(actions.player, "sources", None) or {}).get("ytm")
+    try:
+        return Catalog(
+            ytm_catalog=getattr(ytm, "catalog", None),
+            radio_search=lambda q: stations.search(q),
+            data_dir=state_dir,
+        )
+    except Exception:
+        log.exception("browse catalogue unavailable")
+        return None
+
+
+def build_ha_api(actions: Actions, state_dir: Path | None, config: dict) -> object | None:
+    """Home Assistant's page API (pairing, status publishing), or None."""
+    if HaApi is None:
+        return None
+    try:
+        ha_api = HaApi(actions, state_dir, config.get("home_assistant"))
+        ha_api.load()
+    except Exception:
+        log.exception("Home Assistant API unavailable")
+        return None
+    return ha_api
+
+
+def build_web(
+    config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool
+) -> tuple[WebServer | None, WebApp]:
     """The key page, with the owner's saved layout laid over the descriptor.
 
     ``keys.yaml`` lives next to state.json; ``web: {enabled: false}`` turns the
-    page off but still honours a saved layout.
+    page off but still honours a saved layout (and Home Assistant still gets
+    its status). Returns (server or None, the app) - the main loop publishes
+    ``app.status()`` to Home Assistant through ``app.ha_api``.
     """
     spec = config.get("web") or {}
     if config.get("keys_file"):
@@ -156,17 +227,62 @@ def build_web(config: dict, actions: Actions, panel: Panel, state: StateStore, h
         keys_file = None
     sources = getattr(actions.player, "sources", None)
     available = {name: (sources is None or name in sources) for name in ("radio", "spotify", "ytm")}
-    app = WebApp(actions, panel, keys_file, available, ha)
+    state_dir = Path(state.path).parent if state.path is not None else None
+    ha_api = build_ha_api(actions, state_dir, config)
+    if ha_api is None and HaApi is not None and actions.ha is None:
+        # HaApi is installed but broke: fall back to the yaml's client.
+        actions.ha = yaml_ha(config)
+        ha = actions.ha is not None
+    ha_flag = (lambda: bool(ha_api.connected)) if ha_api is not None else ha
+    app = WebApp(
+        actions, panel, keys_file, available, ha_flag,
+        settings_file=state_dir / SETTINGS_FILE if state_dir is not None else None,
+        browse=build_browse(actions, state_dir),
+    )
+    app.ha_api = ha_api
+    if ha_api is not None:
+        app.extra_routes.append(ha_api)
     app.load_saved()
     if not spec.get("enabled", True):
-        return None
+        return None, app
     server = WebServer(app, host=spec.get("host", "0.0.0.0"), port=int(spec.get("port", 8080)))
     try:
         server.start()
     except OSError:
         log.exception("key page could not listen on port %s; carrying on without it", server.port)
-        return None
-    return server
+        return None, app
+    return server, app
+
+
+class HaPublisher:
+    """Pushes ``app.status()`` to Home Assistant, off the panel loop.
+
+    ``status()`` shells out (amixer, moOde) and HA may be slow, so each
+    publish runs on a short-lived thread; a tick while one is still running is
+    skipped rather than queued. Never raises into the loop.
+    """
+
+    def __init__(self, app: WebApp | None, period_s: float = HA_PUBLISH_S) -> None:
+        self.ha_api = getattr(app, "ha_api", None)
+        self.app = app
+        self.period_s = period_s
+        self._next = 0.0
+        self._thread: threading.Thread | None = None
+
+    def tick(self, now: float) -> None:
+        if self.ha_api is None or now < self._next:
+            return
+        self._next = now + self.period_s
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._thread = threading.Thread(target=self._publish, name="ha-publish", daemon=True)
+        self._thread.start()
+
+    def _publish(self) -> None:
+        try:
+            self.ha_api.publish(self.app.status())
+        except Exception:
+            log.debug("Home Assistant publish failed", exc_info=True)
 
 
 def open_lamp(spec: dict) -> Lamp | None:
@@ -229,7 +345,8 @@ def main(argv=None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
 
-    panel, actions, lamp, config, web = build(args)
+    panel, actions, lamp, config, web, app = build(args)
+    publisher = HaPublisher(app)
     connectivity = build_connectivity(config)
     log.info("haslerd up: %s, %d controls", actions.variant.name, len(panel.controls))
 
@@ -287,6 +404,7 @@ def main(argv=None) -> int:
                 lamp.set_state(lamp_state(actions.standby, online, source, connectivity.hotspot))
                 lamp.tick(now)
 
+            publisher.tick(now)
             watchdog.ping(now)
             time.sleep(max(0.0, period - (time.monotonic() - now)))
     finally:
