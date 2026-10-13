@@ -39,9 +39,14 @@
             100102 -138776  100000 -138000  100000 -100000  185000 -100000
             185000 -138000)
     )
+    (plane GND (polygon In1.GND 0  100300 -100300  184700 -100300  184700 -138000  184608 -138699
+            184338 -139350  183909 -139909  183350 -140338  182699 -140608
+            182000 -140700  103000 -140700  102301 -140608  101650 -140338
+            101091 -139909  100662 -139350  100392 -138699  100300 -138000
+            100300 -100300))
     (via "Via[0-3]_600:300_um" "Via[0-3]_800:400_um")
     (rule
-      (width 200)
+      (width 150)
       (clearance 150)
       (clearance 37.5 (type smd_smd))
     )
@@ -54,8 +59,8 @@
     (component TestPoint:TestPoint_Pad_D1.0mm
       (place TP14 153400.000000 -104800.000000 front 0.000000 (PN A1))
       (place TP13 149800.000000 -104800.000000 front 0.000000 (PN A0))
-      (place TP12 166247.553000 -128600.000000 front 0.000000 (PN EN))
-      (place TP11 175200.000000 -101346.272000 front 0.000000 (PN PG))
+      (place TP12 175950.000000 -127900.000000 front 0.000000 (PN EN))
+      (place TP11 175950.000000 -108600.000000 front 0.000000 (PN PG))
       (place TP10 146200.000000 -104800.000000 front 0.000000 (PN INT))
       (place TP9 142600.000000 -104800.000000 front 0.000000 (PN SCL))
       (place TP8 139000.000000 -104800.000000 front 0.000000 (PN SDA))
@@ -64,11 +69,11 @@
       (place TP5 146200.000000 -101600.000000 front 0.000000 (PN 3V3A))
       (place TP4 142600.000000 -101600.000000 front 0.000000 (PN 3V3))
       (place TP3 139000.000000 -101600.000000 front 0.000000 (PN 5V))
-      (place TP2 183655.002000 -131600.000000 front 0.000000 (PN 20V))
-      (place TP1 183600.000000 -117000.000000 front 0.000000 (PN VBUS))
+      (place TP2 166300.000000 -131300.000000 front 0.000000 (PN 20V))
+      (place TP1 170200.000000 -113600.000000 front 0.000000 (PN VBUS))
     )
     (component "Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal"
-      (place J5 132400.000000 -103000.000000 front 180.000000 (PN Qwiic))
+      (place J5 132800.000000 -103100.000000 front 180.000000 (PN Qwiic))
     )
     (component Connector_PinHeader_2.54mm:PinHeader_2x08_P2.54mm_Vertical
       (place J4 109000.000000 -104600.000000 front 90.000000 (PN "Debug / expansion"))
@@ -77,71 +82,74 @@
       (place J2 128600.000000 -137300.000000 front 90.000000 (PN "Hasler J2"))
     )
     (component Resistor_SMD:R_0603_1608Metric
-      (place R22 155800.000000 -122180.001000 front 0.000000 (PN 100Ω))
-      (place R21 152200.000000 -122180.001000 front 0.000000 (PN 100Ω))
-      (place R20 148600.000000 -122180.001000 front 0.000000 (PN 220Ω))
+      (place R22 155800.000000 -121930.001000 front 0.000000 (PN 100Ω))
+      (place R21 152200.000000 -121930.001000 front 0.000000 (PN 100Ω))
+      (place R20 148600.000000 -121930.001000 front 0.000000 (PN 220Ω))
       (place R13 154200.000000 -114600.000000 front 90.000000 (PN 10k))
       (place R12 123000.000000 -119000.000000 front 90.000000 (PN 10k))
       (place R11 111600.000000 -115000.000000 front 90.000000 (PN 1k))
-      (place R10 182251.249000 -128480.000000 front 90.000000 (PN 10k))
-      (place R9 179600.000000 -116729.999000 front 0.000000 (PN 10k))
-      (place R8 179827.499000 -126575.000000 front 0.000000 (PN 4.7k))
-      (place R7 166200.000000 -125410.000000 front 90.000000 (PN 100k))
-      (place R6 175400.000000 -121600.000000 front 90.000000 (PN 4.7k))
-      (place R5 173700.000000 -121540.001000 front 90.000000 (PN 5.1k))
-      (place R4 172000.000000 -121540.001000 front 90.000000 (PN 33k))
-      (place R3 165975.001000 -121600.000000 front 90.000000 (PN 6.8k))
-      (place R2 175310.001000 -110800.000000 front 0.000000 (PN 10k))
-      (place R1 171200.000000 -110600.000000 front 0.000000 (PN 120k))
+      (place R10 167700.000000 -105300.000000 front 90.000000 (PN 10k))
+      (place R9 176200.000000 -119600.000000 front 90.000000 (PN 4.7k))
+      (place R8 177800.000000 -119600.000000 front 90.000000 (PN 2.2k))
+      (place R7 174000.000000 -128100.000000 front 90.000000 (PN 100k))
+      (place R15 169200.000000 -128100.000000 front 90.000000 (PN 4.7k))
+      (place R6 167600.000000 -128100.000000 front 90.000000 (PN 5.1k))
+      (place R5 166000.000000 -128100.000000 front 90.000000 (PN 33k))
+      (place R16 175400.000000 -124600.000000 front 90.000000 (PN 1M))
+      (place R14 173800.000000 -124600.000000 front 90.000000 (PN 10k))
+      (place R4 172200.000000 -124600.000000 front 90.000000 (PN 33k))
+      (place R3 170600.000000 -124600.000000 front 90.000000 (PN 6.8k))
+      (place R2 166000.000000 -105300.000000 front 90.000000 (PN 10k))
+      (place R1 171600.000000 -108600.000000 front 90.000000 (PN 120k))
     )
     (component Capacitor_SMD:C_0402_1005Metric
-      (place C37 146250.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C36 145000.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C35 143750.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C34 142500.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C33 141250.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C32 140000.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C31 138750.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C30 137500.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C29 136250.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C28 135000.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C27 133750.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C26 132500.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C25 131250.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C24 130000.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C23 128750.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C22 127500.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C21 126250.000000 -122050.000000 front 90.000000 (PN 100nF))
-      (place C20 125000.000000 -122050.000000 front 90.000000 (PN 100nF))
+      (place C37 146250.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C36 145000.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C35 143750.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C34 142500.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C33 141250.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C32 140000.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C31 138750.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C30 137500.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C29 136250.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C28 135000.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C27 133750.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C26 132500.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C25 131250.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C24 130000.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C23 128750.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C22 127500.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C21 126250.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C20 125000.000000 -121850.000000 front 90.000000 (PN 100nF))
       (place C15 143920.001000 -114000.000000 front 90.000000 (PN 100nF))
       (place C14 126400.000000 -116200.000000 front 90.000000 (PN 100nF))
       (place C12 108400.000000 -122000.000000 front 90.000000 (PN 100nF))
     )
     (component Resistor_SMD:R_Array_Convex_4x0603
-      (place RN9 154000.000000 -125000.000000 front 0.000000 (PN 4x10k))
-      (place RN8 150400.000000 -125000.000000 front 0.000000 (PN 4x10k))
-      (place RN7 146800.000000 -125000.000000 front 0.000000 (PN 4x10k))
-      (place RN6 143200.000000 -125000.000000 front 0.000000 (PN 4x10k))
-      (place RN5 139600.000000 -125000.000000 front 0.000000 (PN 4x1k))
-      (place RN4 136000.000000 -125000.000000 front 0.000000 (PN 4x1k))
-      (place RN3 132400.000000 -125000.000000 front 0.000000 (PN 4x1k))
-      (place RN2 128800.000000 -125000.000000 front 0.000000 (PN 4x1k))
-      (place RN1 125200.000000 -125000.000000 front 0.000000 (PN 4x1k))
+      (place RN9 154000.000000 -124750.000000 front 0.000000 (PN 4x10k))
+      (place RN8 150400.000000 -124750.000000 front 0.000000 (PN 4x10k))
+      (place RN7 146800.000000 -124750.000000 front 0.000000 (PN 4x10k))
+      (place RN6 143200.000000 -124750.000000 front 0.000000 (PN 4x10k))
+      (place RN5 139600.000000 -124750.000000 front 0.000000 (PN 4x1k))
+      (place RN4 136000.000000 -124750.000000 front 0.000000 (PN 4x1k))
+      (place RN3 132400.000000 -124750.000000 front 0.000000 (PN 4x1k))
+      (place RN2 128800.000000 -124750.000000 front 0.000000 (PN 4x1k))
+      (place RN1 125200.000000 -124750.000000 front 0.000000 (PN 4x1k))
     )
     (component "Package_TO_SOT_SMD:SOT-23-6"
-      (place U12 158900.000000 -129100.000000 front 90.000000 (PN "SRV05-4"))
-      (place U11 152400.000000 -129100.000000 front 90.000000 (PN "SRV05-4"))
-      (place U10 145900.000000 -129100.000000 front 90.000000 (PN "SRV05-4"))
-      (place U9 139400.000000 -129100.000000 front 90.000000 (PN "SRV05-4"))
-      (place U8 132900.000000 -129100.000000 front 90.000000 (PN "SRV05-4"))
-      (place U7 126400.000000 -129100.000000 front 90.000000 (PN "SRV05-4"))
+      (place U12 158900.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
+      (place U11 152400.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
+      (place U10 145900.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
+      (place U9 139400.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
+      (place U8 132900.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
+      (place U7 126400.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
     )
     (component "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm"
       (place JP6 156600.000000 -114600.000000 front 90.000000 (PN RDY_GPIO24))
       (place JP5 117000.000000 -119000.000000 front 90.000000 (PN INT_GPIO23))
       (place JP7 120000.000000 -119000.000000 front 90.000000 (PN RST_GPIO25))
-      (place JP10 167000.000000 -110749.999000 front 90.000000 (PN PD_SDA))
-      (place JP9 166495.000000 -107250.000000 front 90.000000 (PN PD_SCL))
+      (place JP10 169400.000000 -108600.000000 front 90.000000 (PN PD_SDA))
+      (place JP9 166600.000000 -108600.000000 front 90.000000 (PN PD_SCL))
     )
     (component "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm::1"
       (place JP8 149500.000000 -118200.000000 front 0.000000 (PN ADDR_GND))
@@ -150,12 +158,11 @@
       (place C16 145350.001000 -114000.000000 front 90.000000 (PN 1uF))
       (place C10 108400.000000 -115000.000000 front 90.000000 (PN 1uF))
       (place C9 101600.000000 -115000.000000 front 90.000000 (PN 1uF))
-      (place C6 183924.999000 -125912.500000 front 90.000000 (PN 100nF))
-      (place C5 169600.000000 -113330.000000 front 0.000000 (PN 100nF))
-      (place C4 173350.000000 -124740.001000 front 90.000000 (PN 100nF))
-      (place C3 171676.250000 -125200.000000 front 90.000000 (PN 100nF))
-      (place C2 174235.000000 -113330.000000 front 0.000000 (PN 1uF))
-      (place C1 166510.000000 -103400.000000 front 90.000000 (PN 1uF))
+      (place C6 183400.000000 -126500.000000 front 90.000000 (PN 100nF))
+      (place C5 167200.000000 -113600.000000 front 0.000000 (PN 100nF))
+      (place C4 172400.000000 -128100.000000 front 90.000000 (PN 1nF))
+      (place C3 170800.000000 -128100.000000 front 90.000000 (PN 1nF))
+      (place C2 173200.000000 -113600.000000 front 0.000000 (PN 1uF))
     )
     (component "Package_SO:VSSOP-10_3x3mm_P0.5mm"
       (place U2 149500.000000 -114600.000000 front 0.000000 (PN ADS1115))
@@ -166,7 +173,7 @@
       (place JP2 117000.000000 -113644.999000 front 90.000000 (PN A0))
     )
     (component "Package_SO:SSOP-28_5.3x10.2mm_P0.65mm"
-      (place U1 133600.000000 -116150.000000 front 90.000000 (PN MCP23017))
+      (place U1 133600.000000 -116050.000000 front 90.000000 (PN MCP23017))
     )
     (component Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical
       (place J1 108369.999000 -110190.000000 back 90.000000 (PN "Amp4 top header"))
@@ -174,11 +181,12 @@
     (component Capacitor_SMD:C_0805_2012Metric
       (place C13 101540.001000 -122000.000000 front 90.000000 (PN 10uF))
       (place C11 105000.000000 -122000.000000 front 0.000000 (PN 10uF))
+      (place C1 173800.000000 -108600.000000 front 90.000000 (PN 1uF))
     )
     (component LED_SMD:LED_0603_1608Metric
       (place D7 111600.000000 -118600.000000 front 90.000000 (PN 3V3))
-      (place D6 183400.000000 -121000.000000 front 90.000000 (PN OUT))
-      (place D2 183924.999000 -113000.000000 front 90.000000 (PN PD))
+      (place D6 167700.000000 -102000.000000 front 90.000000 (PN OUT))
+      (place D2 166000.000000 -102000.000000 front 90.000000 (PN PD))
     )
     (component "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm::1"
       (place JP1 105059.999000 -119000.000000 front 0.000000 (PN 3V3A_SRC))
@@ -190,34 +198,34 @@
       (place J6 167400.000000 -136400.000000 front 0.000000 (PN "To Amp4 DC in"))
     )
     (component Diode_SMD:D_SMA
-      (place D5 176221.406000 -128210.000000 front 0.000000 (PN SMAJ22A))
-      (place D1 179455.000000 -113975.001000 front 0.000000 (PN SMAJ22A))
+      (place D5 180600.000000 -130100.000000 front 0.000000 (PN SMAJ22A))
+      (place D1 180600.000000 -113700.000000 front 0.000000 (PN SMAJ22A))
     )
     (component Capacitor_SMD:C_1206_3216Metric
-      (place C8 169980.001000 -130000.000000 front 0.000000 (PN 10uF))
+      (place C8 171300.000000 -130949.999000 front 0.000000 (PN 10uF))
     )
     (component Capacitor_SMD:CP_Elec_8x10
-      (place C7 178600.000000 -134600.000000 front 0.000000 (PN 220uF))
+      (place C7 179300.000000 -136400.000000 front 0.000000 (PN 220uF))
     )
     (component "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-      (place Q1 179600.000000 -121400.000000 front 90.000000 (PN AO4407A))
+      (place Q1 181500.000000 -120800.000000 front 90.000000 (PN AO4407A))
     )
     (component "Diode_SMD:D_SOD-323"
-      (place D4 175710.000000 -117565.000000 front 90.000000 (PN BZT52C15S))
-      (place D3 168600.000000 -126000.000000 front 90.000000 (PN BZT52C15S))
+      (place D4 174400.000000 -119600.000000 front 90.000000 (PN BZT52C15S))
+      (place D3 177300.000000 -123000.000000 front 90.000000 (PN BZT52C15S))
     )
     (component "Package_TO_SOT_SMD:SOT-23"
-      (place Q2 176213.749000 -125780.001000 front 0.000000 (PN 2N7002))
-      (place U5 168812.500000 -121990.000000 front 0.000000 (PN AZ431AN))
+      (place Q2 179500.000000 -126500.000000 front 0.000000 (PN 2N7002))
+      (place U5 167600.000000 -124600.000000 front 0.000000 (PN AZ431AN))
     )
     (component "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm::1"
-      (place U4 169600.000000 -117000.000000 front 0.000000 (PN LM393))
+      (place U4 169500.000000 -119600.000000 front 0.000000 (PN LM393))
     )
     (component "Package_SO:SSOP-10-1EP_3.9x4.9mm_P1mm_EP2.1x3.3mm"
-      (place U3 171200.000000 -106200.000000 front 0.000000 (PN CH224A))
+      (place U3 172600.000000 -103200.000000 front 0.000000 (PN CH224A))
     )
     (component "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12"
-      (place J3 182350.000000 -106200.000000 front 0.000000 (PN "USB-C PD in"))
+      (place J3 182350.000000 -106200.000000 front 90.000000 (PN "USB-C PD in"))
     )
   )
   (library
@@ -1475,13 +1483,16 @@
       (pins U3-6 J3-B5)
     )
     (net DIV_OV
-      (pins U4-2 C4-1 R6-1 R5-2)
+      (pins U4-2 C4-1 R15-1 R6-2)
+    )
+    (net DIV_OVT
+      (pins R6-1 R5-2)
     )
     (net DIV_UV
-      (pins U4-5 C3-1 R5-1 R4-2)
+      (pins U4-5 C3-1 R16-2 R14-1 R4-2)
     )
     (net EN
-      (pins TP12-1 Q2-1 D3-1 R7-2 U4-1 U4-7)
+      (pins TP12-1 Q2-1 D3-1 R7-2 U4-1 U4-7 R16-1)
     )
     (net GATE_PULL
       (pins R8-1 Q2-3)
@@ -1492,8 +1503,8 @@
         C20-2 U12-2 U11-2 U10-2 U9-2 U8-2 U7-2 JP8-2 C16-2 C15-2 U2-3 JP4-1 JP3-1
         JP2-1 C14-2 U1-10 J1-6 J1-9 J1-14 J1-20 J1-25 J1-30 J1-34 J1-39 C13-2 D7-1
         C12-2 C11-2 C10-2 C9-2 U6-1 J6-2 D6-1 D5-2 C8-2 C7-2 Q2-2 D3-2 C5-2 U4-4 C4-2
-        C3-2 R6-2 U5-3 D1-2 C2-2 C1-2 R1-2 U3-11 J3-A1 J3-A12 J3-B1 J3-B12 J3-S1 J3-S1@1
-        J3-S1@2 J3-S1@3)
+        C3-2 R15-2 R14-2 U5-3 D1-2 C2-2 C1-2 R1-2 U3-11 J3-A1 J3-A12 J3-B1 J3-B12
+        J3-S1 J3-S1@1 J3-S1@2 J3-S1@3)
     )
     (net GPIO12
       (pins J4-11 J1-32)
@@ -1709,8 +1720,8 @@
       (pins U3-4 J3-A6 J3-B6)
     )
     (net VBUS
-      (pins TP1-1 Q1-1 Q1-2 Q1-3 D4-1 R9-1 R7-1 C5-1 U4-8 R4-1 R3-1 R2-1 D1-1 C2-1
-        C1-1 U3-1 U3-8 J3-A4 J3-A9 J3-B4 J3-B9)
+      (pins TP1-1 Q1-1 Q1-2 Q1-3 D4-1 R9-1 R7-1 C5-1 U4-8 R5-1 R4-1 R3-1 R2-1 D1-1
+        C2-1 C1-1 U3-1 U3-8 J3-A4 J3-A9 J3-B4 J3-B9)
     )
     (net VOUT
       (pins TP2-1 J6-1 R10-1 D5-1 C8-1 C7-1 C6-2 Q1-5 Q1-6 Q1-7 Q1-8)
@@ -1718,28 +1729,37 @@
     (net VREF
       (pins U4-3 U4-6 U5-1 U5-2 R3-2)
     )
-    (class kicad_default ADS_ADDR ADS_RDY CC1 CC2 DIV_OV DIV_UV EN GATE_PULL
-      GPIO12 GPIO13 GPIO16 GPIO17 GPIO22 GPIO23 GPIO24 GPIO25 GPIO26 GPIO27
-      GPIO5 GPIO6 J_A0 J_A1 J_A2 J_A3 J_K1 J_K2 J_K3 J_K4 J_K5 J_K6 J_LB J_LG
-      J_LR J_PU J_TSW J_X1 J_X2 J_X3 J_X4 J_X5 J_X6 LED_3V3 LED_OUT LED_PD
-      MCP_A0 MCP_A1 MCP_A2 MCP_INTA MCP_RST M_A0 M_A1 M_A2 M_A3 M_K1 M_K2
-      M_K3 M_K4 M_K5 M_K6 M_PU M_TSW M_X1 M_X2 M_X3 M_X4 M_X5 M_X6 PD_CFG1
+    (class kicad_default ADS_ADDR ADS_RDY CC1 CC2 DIV_OV DIV_OVT DIV_UV EN
+      GATE_PULL GPIO12 GPIO13 GPIO16 GPIO17 GPIO22 GPIO23 GPIO24 GPIO25 GPIO26
+      GPIO27 GPIO5 GPIO6 J_A0 J_A1 J_A2 J_A3 J_K1 J_K2 J_K3 J_K4 J_K5 J_K6
+      J_LB J_LG J_LR J_PU J_TSW J_X1 J_X2 J_X3 J_X4 J_X5 J_X6 LED_3V3 LED_OUT
+      LED_PD MCP_A0 MCP_A1 MCP_A2 MCP_INTA MCP_RST M_A0 M_A1 M_A2 M_A3 M_K1
+      M_K2 M_K3 M_K4 M_K5 M_K6 M_PU M_TSW M_X1 M_X2 M_X3 M_X4 M_X5 M_X6 PD_CFG1
       PD_PG PD_SCL PD_SDA PGATE RXD SCL SDA TXD USB_DM USB_DP VREF
       (circuit
         (use_via "Via[0-3]_600:300_um")
       )
       (rule
-        (width 200)
+        (width 150)
         (clearance 150)
       )
     )
-    (class Power GND VBUS VOUT
+    (class Power VBUS VOUT
       (circuit
         (use_via "Via[0-3]_800:400_um")
       )
       (rule
         (width 1000)
-        (clearance 200)
+        (clearance 250)
+      )
+    )
+    (class Gnd GND
+      (circuit
+        (use_via "Via[0-3]_600:300_um")
+      )
+      (rule
+        (width 300)
+        (clearance 150)
       )
     )
     (class Rail +3V3 +5V 3V3A LDO_OUT
@@ -1748,7 +1768,7 @@
       )
       (rule
         (width 400)
-        (clearance 200)
+        (clearance 150)
       )
     )
   )

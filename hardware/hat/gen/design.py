@@ -252,6 +252,13 @@ for pin, sig, _ in ANA:
 for pin, sig, _, _ in LAMP:
     J2[pin] = "J_" + sig
 assert sorted(J2) == list(range(1, 27)), sorted(J2)
+# What the cabinet wire on each J2 pin is (HM / Excelsior), for the silkscreen legend.
+J2_LABELS = {1: "K1 / key 1", 2: "GND", 3: "K2 / key 2", 4: "K3 / key 3", 5: "K4 / key 4",
+             6: "K5 / key 5", 7: "K6 / key 6", 8: "PU / Q", 9: "tone / treble", 10: "volume",
+             11: "pots GND", 12: "3V3A (pots, LED +)", 13: "LED red", 14: "tone sw / key 0",
+             15: "LED green", 16: "LED blue", 17: "- / Tape", 18: "- / SP", 19: "- / spk a",
+             20: "- / spk b", 21: "spare", 22: "spare", 23: "- / bass", 24: "GND",
+             25: "spare analog", 26: "3V3A"}
 part("J2", "Connector_Generic:Conn_02x13_Odd_Even", "Hasler J2",
      "Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical",
      {str(k): v for k, v in J2.items()}, "C5156668", B, mpn="DC3-2.54-26PAS",
@@ -281,7 +288,8 @@ for i in (1, 2):
 # Nets that need a PWR_FLAG for ERC (driven from off-sheet: USB, the Pi, the amp).
 PWR_FLAGS = ["VBUS", "GND", "+5V", "+3V3", "VOUT", "3V3A"]
 
-POWER_NETS = {"VBUS", "VOUT", "GND"}           # wide tracks
+POWER_NETS = {"VBUS", "VOUT"}                  # up to 3 A: wide tracks
+GND_NETS = {"GND"}                             # plane on In1, vias down from every pad
 RAIL_NETS = {"+5V", "+3V3", "3V3A", "LDO_OUT"}
 
 

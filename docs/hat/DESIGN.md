@@ -23,17 +23,23 @@ So the HAT:
 - plugs its **2×20 socket (8.5 mm, J1)** onto the Amp4's offset top header — the HAT's own
   header position is 5.4 mm inboard of the HAT spec's, its **outline and mounting holes
   are the HAT spec's**;
-- is **cut short at y = 15** (65 × 41 mm instead of 65 × 56): the terminal strip and jack stay
-  uncovered and reachable with a screwdriver, the stack stays low. Two M2.5 holes at
-  (3.5, 52.5) and (61.5, 52.5) — the other two would land over the terminals;
+- is **cut short at y = 15**: the terminal strip and jack stay uncovered and reachable with a
+  screwdriver, the stack stays low. Two M2.5 holes at (3.5, 52.5) and (61.5, 52.5) — the other
+  two would land over the terminals;
+- is **85 mm long** (the Pi's full length, not the HAT's 65): the HAT sits ~23 mm above the Pi's
+  board and the Pi's USB/Ethernet jacks top out at ~16 mm, so the board runs over them and the
+  **USB-C sits on that edge, flush with the Pi's port face** — every cable leaves one side of the
+  cabinet. The power section lives in that extension. The far end is 20 mm past the last
+  standoff: strain-relieve the USB-C cable to the cabinet rather than letting it hang;
+- 4 layers (In1 solid GND), 1.6 mm, **black solder mask, white silkscreen**, ENIG;
 - carries no HAT ID EEPROM: the Amp4 Pro has one on ID_SD/ID_SC and two would collide.
 
 ## Power
 
 ```
-USB-C ─ CH224A (asks 20 V) ─ VBUS ─┬─ SMBJ22A ─ GND
-                                   ├─ window 10.9 V < VBUS < 22.7 V (LM393 + AZ431 2.5 V ref)
-                                   └─ AO4407A P-FET ── VOUT ─┬─ 220 µF/35 V + 10 µF + SMBJ22A
+USB-C ─ CH224A (asks 20 V) ─ VBUS ─┬─ SMAJ22A ─ GND
+                                   ├─ window 10.75 V < VBUS < 22.8 V (LM393 + AZ431 2.5 V ref)
+                                   └─ AO4407A P-FET ── VOUT ─┬─ 220 µF/35 V + 10 µF + SMAJ22A
                                         (gate from window)   └─ J6 screw terminal → Amp4 power terminal
 Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12/26, lamp anode)
 ```
@@ -43,11 +49,18 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
 - Budget at 20 V: Pi 4B ~15 W worst case + amp at volume into one speaker ~30 W peak
   → < 50 W, inside a 65 W charger (3.25 A).
 - CH224A: CFG1 = 120 kΩ → **20 V**. 28 V needs 210 kΩ or an I²C write; the window opens the
-  FET only between ~10.9 V and ~22.7 V, so a 12 V or 15 V charger still plays and nothing
-  above 22.7 V reaches the amp (absolute max 24 V). CH224A also has built-in OVP.
+  FET only between 10.75 V and 22.8 V (tolerances: 10.6–11.2 V, 22.1–23.4 V), so a 12 V or
+  15 V charger still plays and nothing above 22.8 V reaches the amp (absolute max 24 V).
+  **Never configure 28 V**: the amp is safe, but D1 would clamp the charger continuously and the
+  USB-C receptacle is rated 20 V. (The CH224A's own "OVP" is only a 32 V reset, not protection.)
+- UV and OV have separate dividers; 1 MΩ from EN back to the UV tap gives ~0.35 V hysteresis
+  so a sagging supply can't make the FET chatter. 1 nF on each tap: spikes filtered, ~5 µs lag.
+- Soft start: 100 nF gate–drain (C6) → ~3–7 A into the bulk cap instead of ~30 A when the FET
+  opens mid PD transition, which could otherwise trip the charger's OCP into a boot loop.
+- **Don't also plug a supply into the Amp4's barrel jack**: VOUT would back-feed VBUS through
+  the FET's body diode.
 - Its I²C status port (0x22/0x23 — inside the MCP23017's 0x20–0x27 range) is on solder
   jumpers JP9/JP10, **open** as shipped. Close them only with `addr: 0x20` pinned.
-- Optional soft start: C_SS footprint (gate–drain), not fitted. The bench build runs without.
 - LEDs: **PD** (yellow, CH224A power-good), **OUT** (green, switched rail live),
   **3V3** (red, 3V3A).
 
@@ -119,6 +132,10 @@ I²C map: 0x20 MCP23017 (A0–A2 to GND via JP2–JP4) · 0x48 ADS1115 (ADDR to 
 - **J5** Qwiic / STEMMA QT (3.3 V I²C) for a future sensor or display.
 - Test points (labelled): VBUS, VOUT, 5V, 3V3, 3V3A, GND ×2, SDA, SCL, INT, PG, EN, A0, A1.
 - JP1 chooses 3V3A's source: XC6206 (default) or the Pi's 3V3 — to tell a noisy LDO from a
-  noisy pot.
+  noisy pot. **Cut 1–2 before bridging 2–3**, or the LDO fights the Pi's 3V3.
+- `int_gpio: 23` is wired (JP5) but the daemon still polls; using the interrupt is a software
+  change (INTCON/GPINTEN + an edge watch on GPIO 23).
+- The AZ431's SOT-23 pinout (1 REF, 2 K, 3 A) differs from the TL431DBZ's in KiCad's library;
+  the project symbol `hasler:AZ431_SOT23` carries the right one. Same trap as J2.
 - Solder jumpers for every address, interrupt and reset line, so any of them can be
   disconnected while debugging.
