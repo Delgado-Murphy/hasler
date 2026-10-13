@@ -446,3 +446,32 @@ class TestVolumeFloor:
 
     def test_floor_zero_is_the_plain_mapping(self):
         assert scale_volume(50, 70, 0) == scale_volume(50, 70) == 35
+
+
+class TestKnobUnmutes:
+    def _player(self, monkeypatch, switch=True):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append(cmd[5:])
+            if not switch and "unmute" in cmd:
+                raise subprocess.CalledProcessError(1, cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        monkeypatch.setattr("haslerd.player.moode.subprocess.run", run)
+        return MoodePlayer(MoodeConfig(source_flags={}, volume_limit=90, volume_floor=40), sources={}), calls
+
+    def test_turning_up_unmutes_the_mixer(self, monkeypatch):
+        player, calls = self._player(monkeypatch)
+        player.set_volume(50)
+        assert calls == [["65%", "unmute"]]
+
+    def test_knob_at_zero_leaves_the_switch_alone(self, monkeypatch):
+        player, calls = self._player(monkeypatch)
+        player.set_volume(0)
+        assert calls == [["0%"]]
+
+    def test_mixer_without_switch_still_gets_the_level(self, monkeypatch):
+        player, calls = self._player(monkeypatch, switch=False)
+        player.set_volume(50)
+        assert calls == [["65%", "unmute"], ["65%"]]

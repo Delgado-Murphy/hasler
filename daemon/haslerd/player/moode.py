@@ -288,7 +288,16 @@ class MoodePlayer:
 
     def set_volume(self, value: float) -> None:
         percent = scale_volume(value, self.config.volume_limit, self.config.volume_floor)
-        self._amixer(f"{percent}%")
+        if percent > 0:
+            # Turning the knob up always un-mutes: the switch may have been
+            # left off by moOde, a standby or a restart, and a level on a
+            # muted mixer is silence that looks like music.
+            try:
+                self._amixer(f"{percent}%", "unmute")
+            except subprocess.CalledProcessError:
+                self._amixer(f"{percent}%")   # a mixer without a mute switch
+        else:
+            self._amixer(f"{percent}%")
         self._volume = float(percent)
         self._knob = max(0.0, min(100.0, float(value)))
         if self._muted and percent > 0:
