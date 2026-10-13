@@ -63,7 +63,9 @@ FIXED = {
     # eFuse: IN/OUT are two 0.3 mm strips 0.2 mm apart (fp x -/+0.25), fed from their ends only:
     # IN from the top end (D1 above), OUT from the bottom end (D5 below). Control pins 1-4 left,
     # 7-10 right.
-    "U4": (80.6, 19.6, 0), "C5": (78.2, 17.5, 90),
+    "U4": (80.6, 19.6, 0),
+    "C5": (79.2, 16.6, 0),            # IN ceramic: its VBUS pad on the 0.8 mm run into the IN strip
+    "C17": (82.2, 22.05, 0),          # OUT ceramic: its VOUT pad on the run out of the OUT strip
     "C8": (71.3, 30.95, 0), "TP2": (70.0, 35.0, 0), "D5": (81.55, 28.15, 270),  # upright under the drains
     "C7": (79.3, 36.4, 0),
     "J6": (4.6, 36.4, 0),             # bottom-left: wire entry down, ~25 mm to the Amp4 power terminal
@@ -116,10 +118,10 @@ NEAR["TP3"] = ("lft", 11.0, 12.4, 0)   # 5V, at the LDO input (J4 pin 1 also car
 # eFuse dividers left of it (EN/UVLO, OVLO, PGTH, PG pull-up), timing parts right of it
 NEAR.update({
     "R3": ("pwr", 77.0, 21.8, 90), "R4": ("pwr", 75.4, 21.8, 90), "R5": ("pwr", 73.8, 21.8, 90),
-    "R6": ("pwr", 72.2, 21.8, 90), "R7": ("pwr", 70.6, 21.8, 90),
+    "R6": ("pwr", 72.2, 21.8, 90), "R7": ("pwr", 70.6, 21.8, 90), "R16": ("pwr", 69.0, 21.8, 90),
     "R8": ("pwr", 77.0, 25.2, 90), "R9": ("pwr", 75.4, 25.2, 90), "R15": ("pwr", 73.8, 25.2, 90),
     "TP12": ("pwr", 71.6, 25.2, 0),
-    "C4": ("pwr", 83.6, 17.2, 90), "R14": ("pwr", 83.6, 19.6, 90), "C3": ("pwr", 83.2, 22.6, 0),
+    "C4": ("pwr", 83.6, 17.2, 90), "R14": ("pwr", 83.6, 19.6, 90), "C3": ("pwr", 83.3, 23.6, 0),
 })
 TOP_TPS = ["TP4", "TP5", "TP6", "TP7", "TP8", "TP9", "TP10", "TP13", "TP14"]
 for i, ref in enumerate(TOP_TPS):
@@ -400,6 +402,9 @@ def place():
     hop(board, "/VBUS", ("U3", "1"), ("U3", "8"), pcbnew.B_Cu, w=0.3)
     hop(board, "/CC1", ("U3", "7"), ("J3", "A5"), pcbnew.In2_Cu)
     hop(board, "/USB_DP", ("U3", "4"), ("J3", "B6"), pcbnew.In2_Cu)   # D+ to the chip's far side
+    cu_ = Copper(board)
+    for x_, y_ in STRAP_VIAS:
+        print("VBUS strap: second via: %s" % double_via(cu_, board.FindNet("/VBUS").GetNetCode(), x_, y_))
     # the LEDs straight down to their resistors (1.7 mm), before anything can cross the gap
     preroute(board, "/LED_PD", ("D2", "2"), ("R2", "2"), 0.2)
     preroute(board, "/LED_OUT", ("D6", "2"), ("R10", "2"), 0.2)
@@ -420,6 +425,8 @@ def place():
     for p_, q_ in zip(loop, loop[1:]):
         cu.track(net, pcbnew.F_Cu, p_, q_, 0.15, locked=True)
     preroute(board, "/VOUT", ("D5", "1"), ("C7", "1"), 0.8)
+    for c_, u_ in (("C41", "U10"), ("C42", "U11")):   # the two that otherwise route long
+        preroute(board, "/3V3A", (c_, "1"), (u_, "5"), 0.25, required=False)
     # GND fan-out before routing. Not the USB-C: its GND pins sit beside VBUS at 0.5 mm pitch
     # (VBUS must route first), and its plated shell tabs already reach the plane.
     n, failed = stitch_gnd(Copper(board), locked=True, skip=("J3",))
@@ -487,6 +494,7 @@ def vbus_strap(board, w=0.9):
         cu.track(net, pcbnew.F_Cu, (px, py), (x, y), 0.5, locked=True)
         cu.via(net, x, y, locked=True)
         ends.append((x, y))
+    STRAP_VIAS[:] = ends              # doubled later, once the CC/D+ hops have their vias
     (ax, ay), (bx, by) = ends
     # Under the pad row first (nothing else is on B.Cu beneath the receptacle), so the strip
     # just behind the pads stays free for CC1/CC2/D+/D-'s vias on their way to the CH224A.
@@ -520,10 +528,25 @@ def vbus_strap(board, w=0.9):
             cu.track(net, pcbnew.F_Cu, (dx, dy), (x, y), 0.6, locked=True)
             for p, q in zip(leg, leg[1:]):
                 cu.track(net, pcbnew.B_Cu, p, q, w, locked=True)
-            print("VBUS: second path J3 -> D1 on B.Cu")
+            print("VBUS: second path J3 -> D1 on B.Cu, second via: %s" % double_via(cu, net, x, y))
             break
     else:
         print("VBUS: no room for the second J3 -> D1 path")
+
+
+STRAP_VIAS = []
+
+
+def double_via(cu, net, x, y, w=0.6, locked=True):
+    """A second via beside the one at (x, y), joined to it on the top and bottom layers."""
+    for vx, vy in ring(x, y, 0.0, steps=(0.8, 0.95, 1.1), n=24):
+        if cu.fits("pt", (vx, vy), None, VIA_D / 2, net) and \
+                all(cu.path_fits(net, l, [(x, y), (vx, vy)], w) for l in (pcbnew.F_Cu, pcbnew.B_Cu)):
+            cu.via(net, vx, vy, locked=locked)
+            for l in (pcbnew.F_Cu, pcbnew.B_Cu):
+                cu.track(net, l, (x, y), (vx, vy), w, locked=locked)
+            return True
+    return False
 
 
 def efuse_power(board, w=0.8):
@@ -637,7 +660,33 @@ def vout_trunk(board, net, w=1.6):
         seg(a, b, pcbnew.B_Cu)
 
 
-def add_zone(board, net, layer, priority=0, inset=0.3, thermal=False):
+def efuse_copper(board, cu):
+    """The eFuse has no exposed pad: its IN and OUT strips are the heat path (TI 8.4.1). A small
+    VBUS pour above the IN end and a VOUT pour below the OUT end, on the top and bottom layers,
+    stitched with vias. The pours fill around everything else with clearance."""
+    u = board.FindFootprintByReference("U4")
+    ux, uy = mm(u.GetPosition().x) - OX, mm(u.GetPosition().y) - OY
+    for netname, rect in (("/VBUS", (ux - 2.7, uy - 4.8, ux - 0.1, uy - 1.25)),
+                          ("/VOUT", (ux + 0.1, uy + 1.25, ux + 1.8, uy + 6.4))):
+        net = board.FindNet(netname)
+        for layer in (pcbnew.F_Cu, pcbnew.B_Cu):
+            z = add_zone(board, net, layer, priority=1, rect=rect)
+            z.SetPadConnection(pcbnew.ZONE_CONNECTION_FULL)
+        n = 0
+        x0, y0, x1, y1 = rect
+        y = y0 + 0.6
+        while y < y1 - 0.5 and n < 4:
+            x = x0 + 0.6
+            while x < x1 - 0.5 and n < 4:
+                if cu.fits("pt", (OX + x, OY + y), None, VIA_D / 2 + 0.05, net.GetNetCode()):
+                    cu.via(net.GetNetCode(), OX + x, OY + y)
+                    n += 1
+                x += 0.9
+            y += 0.9
+        print("eFuse heat copper %s: 2 pours, %d vias" % (netname, n))
+
+
+def add_zone(board, net, layer, priority=0, inset=0.3, thermal=False, rect=None):
     z = pcbnew.ZONE(board)
     z.SetLayer(layer)
     z.SetNetCode(net.GetNetCode())
@@ -650,7 +699,8 @@ def add_zone(board, net, layer, priority=0, inset=0.3, thermal=False):
     z.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_ALWAYS)
     ol = z.Outline()
     ol.NewOutline()
-    for x, y in ((0, 0), (W, 0), (W, H), (0, H)):     # the filler clips to the outline
+    x0, y0, x1, y1 = rect or (0, 0, W, H)               # the filler clips to the outline
+    for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
         ol.Append(pcbnew.FromMM(OX + x), pcbnew.FromMM(OY + y))
     ol.Outline(0).SetClosed(True)
     board.Add(z)
@@ -1403,6 +1453,7 @@ def finish():
     gnd = board.FindNet("/GND")
     for layer in (pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.B_Cu):
         add_zone(board, gnd, layer, thermal=True)   # spokes on THT pads: J1 is hand-soldered
+    efuse_copper(board, cu)
     silkscreen(board)
     fill(board)
     board.Save(PCB)

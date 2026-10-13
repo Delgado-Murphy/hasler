@@ -13,10 +13,11 @@ KPY=$KICAD/Frameworks/Python.framework/Versions/Current/bin/python3
 CLI=$KICAD/MacOS/kicad-cli
 : "${FREEROUTING_JAR:?set FREEROUTING_JAR}" "${JAVA:=java}" "${PASSES:=100}"
 
+python3 gen/make_fp.py .
 python3 gen/make_sch.py .
 $CLI sch erc --severity-all --exit-code-violations -o build/erc.rpt hasler-hat.kicad_sch >/dev/null
 $KPY gen/make_pcb.py place . > build/place.log 2>&1 || { grep -v Fontconfig build/place.log | tail -5; exit 1; }
-grep -E 'overlaps|fan-out|placed|eFuse|VBUS:|preroute' build/place.log || true
+grep -E 'overlaps|fan-out|placed|eFuse|VBUS|preroute' build/place.log || true
 
 # signals only
 python3 - <<'EOF'
@@ -38,7 +39,7 @@ rm -f build/hasler-hat.ses
 grep -E 'Optimization stage completed' build/freerouting.log | sed -E 's/.*final score: ([^,]*\)).*/routing: \1/'
 
 $KPY gen/make_pcb.py finish . > build/finish.log 2>&1 || { grep -v Fontconfig build/finish.log | tail -5; exit 1; }
-grep -E 'widened|stitched|grid|gap pass|grid pass|brought|final pass|solid GND|finished' build/finish.log || true
+grep -E 'widened|stitched|grid|gap pass|grid pass|no progress|heat copper|brought|final pass|solid GND|finished' build/finish.log || true
 # DRC (all severities, schematic parity) must be clean before any fab file is written
 if ! $CLI pcb drc --schematic-parity --severity-all --exit-code-violations -o build/drc.rpt \
         hasler-hat.kicad_pcb >/dev/null; then

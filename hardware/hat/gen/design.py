@@ -36,7 +36,7 @@ LCSC = {
     "100k": "C25803", "120k": "C25808", "2.2k": "C4190", "1M": "C22935",
     "4x10k": "C29718", "4x1k": "C20197",
     "100nF": "C14663", "100nF/16V": "C1525", "1nF": "C1588", "1uF/X7R": "C28323", "1uF/25V": "C52923", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
-    "220uF/35V": "C970697", "2M": "C22976", "2.2nF/50V": "C1604", "22nF": "C1532",
+    "220uF/35V": "C970697", "2M": "C22976", "12k": "C22790", "2.2nF/50V": "C1604", "22nF": "C1532",
 }
 
 COMPONENTS = []
@@ -100,22 +100,26 @@ part("U4", "hasler:TPS259474", "TPS259474ARPWR", "hasler:TI_RPW0010A_VQFN-HR-10_
       "7": "EF_DVDT", "8": "GND", "9": "EF_ILM", "10": "EF_TMR"},
      "C3662807", B, desc="eFuse 2.7-23 V 5.5 A, OVLO, circuit breaker, PG, auto-retry")
 C("C5", "1uF", "VBUS", "GND", B)                         # at IN (VBUS total ~3 uF, PD allows 10)
-R("R3", "1M", "VBUS", "EF_EN", B)                       # UVLO: 1.2 V x 1120/120 = 11.2 V on,
-R("R4", "120k", "EF_EN", "GND", B)                      #   1.09 V x 9.33 = 10.2 V off (>= 350k on top: TI)
-R("R5", "2M", "VBUS", "EF_OV", B)                       # OVLO: 1.2 V x 2110/110 = 23.0 V off,
-R("R6", "100k", "EF_OV", "EF_OVB", B)                   #   1.09 V x 19.2 = 20.9 V on again
-R("R7", "10k", "EF_OVB", "GND", B)
+R("R3", "1M", "VBUS", "EF_EN", B)                       # UVLO: 1.2 V x 1132/132 = 10.3 V on (9.9-10.7 V
+R("R4", "120k", "EF_EN", "EF_ENB", B)                   #   worst case: above 9 V +5 %, below 12 V -5 %),
+R("R16", "12k", "EF_ENB", "GND", B)                     #   1.09 V x 8.58 = 9.4 V off (>= 350k on top: TI)
+R("R5", "2M", "VBUS", "EF_OV", B)                       # OVLO: 1.2 V x 2112/112 = 22.6 V off (21.7-23.7 V
+R("R6", "100k", "EF_OV", "EF_OVB", B)                   #   worst case incl. 1 % and pin leakage; PD 20 V
+R("R7", "12k", "EF_OVB", "GND", B)                      #   +5 % = 21 V), 1.09 V x 18.9 = 20.6 V on again
 R("R8", "1M", "VOUT", "EF_PGTH", B)                     # PG once VOUT > 11.2 V
 R("R9", "120k", "EF_PGTH", "GND", B)
-R("R15", "10k", "+3V3", "EF_PG", B)                     # PG is open drain, <= 5 V: to the Pi's 3V3
+R("R15", "100k", "+3V3", "EF_PG", B)                    # PG is open drain, <= 5 V: to the Pi's 3V3
 part("R14", "Device:R", "1k", "Resistor_SMD:R_0402_1005Metric", {"1": "EF_ILM", "2": "GND"}, "C11702", B)
                                                         # ILIM = 3334 / 1k = 3.3 A (65 W charger: 3.25 A)
 C("C4", "22nF", "EF_TMR", "GND", B, fp=C0402)                   # overcurrent blanking 1.51 V x 22 nF / 1.8 uA = 18 ms
-C("C3", "2.2nF/50V", "EF_DVDT", "GND", B)               # dV/dt 2000/2200 = 0.9 V/ms: 0.9 A into 1000 uF
+C("C3", "2.2nF/50V", "EF_DVDT", "GND", B)               # dV/dt ~1.0 V/ms at 20 V (0.36-1.7 over IdVdt)
+C("C17", "1uF", "VOUT", "GND", B)                        # ceramic right at OUT (TI 8.3.1)
 
 # ------------------------------------------------------------- out to amp
 B = "out"
-C("C7", "220uF/35V", "VOUT", "GND", B, fp="Capacitor_SMD:CP_Elec_8x10")
+C("C7", "220uF/35V", "VOUT", "GND", B, fp="Capacitor_SMD:CP_Elec_8x10", dnp=True)   # not fitted: the
+# eFuse charges whatever sits on VOUT at its dV/dt, and the Amp4 has its own input capacitor;
+# 220 uF more only doubles the start-up heating in U4. The pads stay for an amp that needs it.
 COMPONENTS[-1]["lib_id"] = "Device:C_Polarized"
 C("C8", "10uF/50V", "VOUT", "GND", B, fp=C1206)
 part("D5", "Device:D_Zener", "SMAJ22A", SMA, {"1": "VOUT", "2": "GND"}, "C283896", B)

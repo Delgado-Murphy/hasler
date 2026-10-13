@@ -29,6 +29,10 @@
 
 Cheap insurance against a failure that would be miserable to diagnose from inside a closed cabinet.
 
+> **With the Hasler HAT** (`hardware/hat/`) skip this section: the HAT's eFuse, TVS and USB-C PD
+> input replace it, and an extra 220–470 µF at the amp would only add to the eFuse's start-up
+> heating (`docs/hat/DESIGN.md`, Power).
+
 | Item | Qty | Why |
 |---|---|---|
 | **220–470 µF / 35 V electrolytic** | 1 | Across the **Amp4 Pro's DC input**, at the amp end. Without the Power Controller this is the main protection: it soaks up plug/unplug transients |

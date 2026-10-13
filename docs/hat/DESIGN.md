@@ -45,8 +45,8 @@ So the HAT:
 
 ```
 USB-C ─ CH224A (asks 20 V) ─ VBUS ─┬─ SMAJ22A ─ GND
-                                   └─ TPS259474A eFuse ── VOUT ─┬─ 220 µF/35 V + 10 µF + SMAJ22A
-                    on 11.2–23 V, 0.9 V/ms, 3.3 A, no back-feed │
+                                   └─ TPS259474A eFuse ── VOUT ─┬─ 1 µF + 10 µF + SMAJ22A (220 µF pads, not fitted)
+                    on 10.3–22.6 V, 1 V/ms, 3.3 A, no back-feed │
                                                                 └─ J6 (bottom-left) → Amp4 power terminal
 Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12/26, lamp anode)
 ```
@@ -66,36 +66,48 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
   start, the inrush and the FET's stress scaled with the Amp4's unknown input capacitance, and
   the slow turn-off left an over-voltage on the amp for ~50 ms. The eFuse, all thresholds from
   its 1.20 V rising / 1.09 V falling references (datasheet SLVSFC9C):
-  - **UVLO** (EN/UVLO, R3 1 M / R4 120 k): on above **11.2 V**, off below 10.2 V. A 5 V or 9 V
-    contract never reaches the amp; 12 and 15 V do.
-  - **OVLO** (R5 2 M / R6 100 k + R7 10 k): off above **23.0 V** (22.7–23.5 V with tolerances)
-    within **1.2 µs**, back on below 20.9 V. The amp's absolute maximum is 24 V.
-  - **dV/dt** (C3 2.2 nF): VOUT ramps at **~0.9 V/ms** (0.35–1.6 V/ms over the dV/dt current's
-    spread), ~22 ms to 20 V. Inrush = C × dV/dt whatever is on VOUT: 0.2 A into the HAT's
-    230 µF, ~0.9 A even with 1000 µF at the amp.
+  - **UVLO** (EN/UVLO, R3 1 M / R4 120 k + R16 12 k): on above **10.3 V** (9.9–10.7 V worst
+    case with the reference, 1 % resistors and pin leakage), off below 9.4 V. A 5 V or 9 V
+    contract (≤ 9.45 V) never reaches the amp; 12 V (≥ 11.4 V) and 15 V do.
+  - **OVLO** (R5 2 M / R6 100 k + R7 12 k): off above **22.6 V** (21.7–23.7 V worst case) within
+    **1.2 µs**, back on below 20.6 V. A 20 V contract is ≤ 21 V (21.5 V transient), and the
+    amp's absolute maximum is 24 V.
+  - **dV/dt** (C3 2.2 nF): VOUT ramps at **~1.0 V/ms** at 20 V (0.36–1.7 V/ms over the dV/dt
+    current's spread), ~20 ms to 20 V. The eFuse dissipates (VIN − VOUT) × the charging current
+    plus whatever the amp and Pi start drawing during the ramp, and it has no power limit of its
+    own: TI's Fig 8-3 gives ~400 ms to thermal shutdown at 5 W, ~7 ms at 10 W. So the HAT
+    **doesn't fit the 220 µF C7** (its pads stay): on VOUT there's only 11 µF of ceramic plus the
+    Amp4's own input capacitor (~100–220 µF, an 8 mm can), ~0.2 A and a few watts at most. Check
+    it on the first board (ORDERING.md, bring-up); if the eFuse hiccups at power-up, slow the
+    ramp (C3 4.7 nF) — it's an 0603.
   - **Current**: circuit breaker at **3.3 A** (R14 1 k, ±10 %, about a 65 W charger's 3.25 A),
     with an 18 ms blanking window (C4 22 nF) so the amp's peaks up to 6.6 A pass; above that,
     or for longer, it trips and retries (auto-retry variant). Fast trip at 2 × ILIM.
   - **True reverse-current blocking**: VOUT can't back-feed VBUS, so a supply on the Amp4's
     barrel jack, or the bulk cap after unplugging, can't reach the USB-C side.
-  - **PG** (open drain, pulled up to the Pi's 3V3 by R15) goes high when VOUT > 11.2 V (R8 1 M /
-    R9 120 k on PGTH) and the switch is fully on: test point **PG** (TP12).
-  - Thermal shutdown at 154 °C. RON 28 mΩ: ~0.3 W at 3 A.
+  - **PG** (open drain, pulled up to the Pi's 3V3 by R15 100 k) goes high when VOUT > ~11.2 V
+    (R8 1 M / R9 120 k on PGTH; up to ~1 V higher with pin leakage) and the switch is fully on:
+    test point **PG** (TP12) only.
+  - Thermal shutdown at 154 °C. RON 28 mΩ (45 max): ~0.25 W at 2.25 A.
   - IN/OUT are two 0.3 mm strips 0.2 mm apart, reachable only at their ends: IN is fed from the
     top end (D1, the TVS, above), OUT leaves from the bottom end (D5 below), each through a
-    0.3 mm neck that widens to 0.8 mm once clear of the package.
-- Its I²C status port (0x22/0x23 — inside the MCP23017's 0x20–0x27 range) is on solder
+    0.3 mm neck that widens to 0.8 mm once clear of the package. Having no exposed pad, the
+    package sheds its heat through those strips: a small VBUS pour above and a VOUT pour below,
+    on the top and bottom layers, stitched with vias, carry it away. C5 (1 µF) sits on the IN run
+    and C17 (1 µF) on the OUT run, right at the strips (TI 8.4.1).
+  - **Back-feed limit**: VOUT may be at most 21 V above VIN. With no USB-C, a supply on the
+    Amp4's barrel jack above ~20 V would exceed that: leave the jack empty while the HAT is on.
+- The CH224A's I²C status port (0x22/0x23 — inside the MCP23017's 0x20–0x27 range) is on solder
   jumpers JP9/JP10, **open** as shipped. Close them only with `addr: 0x20` pinned.
-- VBUS capacitance at attach: C1 + C2 + C5 ≈ 3 µF (USB PD allows 10 µF); the eFuse keeps the bulk
-  caps off VBUS.
+- VBUS capacitance at attach: C1 + C2 + C5 ≈ 3 µF (USB PD allows 10 µF); the eFuse keeps VOUT's
+  capacitance off VBUS.
 - SMAJ22A on both sides: standoff 22 V, breakdown 24.4 V, so it doesn't conduct below the OVLO
   point. Its clamping voltage at full surge current (35.5 V) is above the eFuse's 28 V absolute
   maximum: it's protection against ringing and ESD, not against a lightning-class surge.
 - LEDs: **PD** (yellow, CH224A power-good), **20V** (green, the switched rail is live — it reads
   12 or 15 V on a lower contract), **3V3A** (red, the cabinet rail).
-- Don't fit the extra 220–470 µF that `docs/hardware.md` describes at the amp's DC input: the HAT
-  carries its own bulk capacitor and TVS. (It's harmless with the eFuse — the inrush stays under
-  1 A — but it's no longer needed.)
+- **Don't fit the extra 220–470 µF** that `docs/hardware.md` describes at the amp's DC input: it
+  would multiply the eFuse's start-up heating (see dV/dt). The HAT has the TVS and the eFuse.
 
 ## J2 — the Hasler connector
 
@@ -199,14 +211,14 @@ I²C map: 0x20 MCP23017 (A0–A2 to GND via JP2–JP4) · 0x48 ADS1115 (ADDR to 
 - GND: In1 is a solid plane. Every SMD GND pad is fanned out to it with its own via *before*
   autorouting; GND is poured on the other three layers and stitched to the plane on a 1.6 mm grid
   (laid after the signals are joined, so its vias don't take the gap-closer's spots). Through-hole
-  GND pads have **thermal spokes** on every layer (J1 is hand-soldered); J1 pins 6 and 39 and J2
-  pin 11 join solid, where DRC found a spoke landing on a scrap of pour.
+  GND pads have **thermal spokes** on every layer (J1 is hand-soldered); J1 pins 6, 14 and 34,
+  J2 pin 24 and J4 pin 16 join solid, where DRC found a spoke landing on a scrap of pour.
 - **No tracks or vias within 3 mm of the mounting holes** (rule areas): the M2.5 heads and metal
   standoffs (Ø ~5.8 mm) only touch GND. (The first layout ran SDA 1.7 mm from H2.)
 - Signals: Freerouting (DSN/SES round trip), then a gap-closer, a power-track widening pass and a
-  minimum-width pass in `make_pcb.py`. Tracks are 0.127 mm or wider, except six short router
-  necks (0.09–0.112 mm, JLC's minimum is 0.09) between pads where nothing wider fits. The routed
-  board is the artifact; re-running the router gives a different layout — `build.sh` refuses to
+  minimum-width pass in `make_pcb.py`. Tracks are 0.127 mm or wider, except two short router
+  necks (0.112 mm; JLC's minimum is 0.09) between pads. The routed board is the artifact;
+  re-running the router gives a different layout — `build.sh` refuses to
   write fab files unless DRC is clean.
 - Silkscreen: text ≥ 1.0 mm high (JLC's minimum; some lines use narrower characters to fit),
   every line ≥ 0.15 mm. J2's pin 1 is marked with a "1" inboard, because the library marker sits
@@ -242,8 +254,10 @@ turn-on — a larger Miller capacitor plus a gate–source capacitor on the disc
 inrush depend on the Amp4's unknown input capacitance and slowed over-voltage turn-off to
 ~50 ms. So the window and the FET became the **TPS259474A eFuse** (see Power). It also asked
 for a second VBUS path from J3 to D1 (done), and shorter routes from C40–C42 to their ESD
-arrays' VCC pins: pre-routing those choked the router in that row, so they stay as the router
-lays them (~11–15 mm); each SRV05-4 has its own VCC–GND zener, the capacitors only help it.
+arrays' VCC pins: every one is now within 6 mm of copper of its pin (C41 and C42 pre-routed).
+A third round (two reviewers) checked the eFuse: its thresholds were re-centred for resistor
+tolerance (UVLO 10.3 V so a 12 V −5 % supply starts, OVLO 22.6 V), C7 came off the BOM to keep
+the eFuse's start-up heating low, and C5/C17 now sit on the IN/OUT runs with small heat pours.
 
 Left as they are, noted: no gating of the eFuse on the CH224A's PG (the UVLO and the 0.9 V/ms
 ramp keep it off VBUS until the contract has settled for any normal charger); no third support near J2 (hold it when plugging in); J4
@@ -259,5 +273,5 @@ Everything under `hardware/hat/` is generated from `hardware/hat/gen/design.py`:
 
 Needs KiCad 9 (its kicad-cli and Python; the scripts expect it in /Applications, as on macOS),
 the system `python3` for the schematic, and Freerouting 2.4 (github.com/freerouting/freerouting
-releases, the `-executable.jar`) on Java 25. ~5 minutes. It stops before writing fab files if
+releases, the `-executable.jar`) on Java 25. ~25 minutes (routing ~2, finishing ~15). It stops before writing fab files if
 DRC isn't clean.
