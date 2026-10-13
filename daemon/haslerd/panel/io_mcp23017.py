@@ -18,11 +18,18 @@ CQRobot board defaults to 0x27, the common green breakout to 0x20. ``addr:
 auto`` probes the chip's whole range (0x20-0x27) at start and takes the one
 board that answers, so swapping boards needs no config edit. Two answering is
 an error - better a clear refusal than reading the wrong one.
+
+**Reset recovery.** A supply dip or ESD on the cabinet ribbon can reset the
+chip, and its registers go back to power-on defaults: IPOL = 0, so every open
+contact reads as pressed. About once a second ``read`` reads IPOLA/IPOLB back
+and, if they are not what was written, re-runs the setup. An I2C error there
+is logged and retried on the next check, never raised into the poll loop.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 
 log = logging.getLogger(__name__)
 
@@ -34,6 +41,7 @@ GPIOA, GPIOB = 0x12, 0x13
 # Logical pin index -> port bit. d0-d7 = GPA0-7, d8-d15 = GPB0-7.
 OUTPUT_ONLY = {7: "GPA7", 15: "GPB7"}
 ADDR_RANGE = range(0x20, 0x28)     # A0-A2 select one of these eight
+CHECK_S = 1.0                      # how often read() looks for a chip reset
 
 
 def find_addr(bus) -> int:
@@ -81,6 +89,7 @@ class Mcp23017Digital:
         bus: int = 1,
         int_gpio: int | None = None,
         bus_factory=None,
+        clock=time.monotonic,
     ) -> None:
         check_pins(names)
         if bus_factory is None:
@@ -95,12 +104,37 @@ class Mcp23017Digital:
         self.addr = addr
         self.names = list(names)
         self.int_gpio = int_gpio
+        self._clock = clock
+        self._configure()
+        self._next_check = clock() + CHECK_S
+
+    def _configure(self) -> None:
         for direction, polarity, pullup in ((IODIRA, IPOLA, GPPUA), (IODIRB, IPOLB, GPPUB)):
-            self._bus.write_byte_data(addr, direction, 0xFF)  # all inputs
-            self._bus.write_byte_data(addr, pullup, 0xFF)     # pull-ups on
-            self._bus.write_byte_data(addr, polarity, 0xFF)   # closed contact reads 1
+            self._bus.write_byte_data(self.addr, direction, 0xFF)  # all inputs
+            self._bus.write_byte_data(self.addr, pullup, 0xFF)     # pull-ups on
+            self._bus.write_byte_data(self.addr, polarity, 0xFF)   # closed contact reads 1
+
+    def _check_reset(self) -> None:
+        """Re-run the setup if the chip has reset since; see the module docstring."""
+        try:
+            ipol = (
+                self._bus.read_byte_data(self.addr, IPOLA),
+                self._bus.read_byte_data(self.addr, IPOLB),
+            )
+            if ipol != (0xFF, 0xFF):
+                log.warning(
+                    "mcp23017: IPOL reads 0x%02x/0x%02x, not 0xff/0xff - chip reset? "
+                    "configuring it again", *ipol
+                )
+                self._configure()
+        except OSError as exc:
+            log.warning("mcp23017: reset check failed, retrying in %.0f s: %s", CHECK_S, exc)
 
     def read(self) -> dict[str, bool]:
+        now = self._clock()
+        if now >= self._next_check:
+            self._next_check = now + CHECK_S
+            self._check_reset()
         a = self._bus.read_byte_data(self.addr, GPIOA)
         b = self._bus.read_byte_data(self.addr, GPIOB)
         word = a | (b << 8)
