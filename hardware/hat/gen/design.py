@@ -108,14 +108,14 @@ R("R16", "12k", "EF_ENB", "EF_ENJ", B)
 part("JP11", "Jumper:SolderJumper_2_Open", "UVLO_10V", SJ2O, {"1": "EF_ENJ", "2": "GND"}, None, B)
 R("R5", "2M", "VBUS", "EF_OV", B)                       # OVLO: 1.2 V x 2112/112 = 22.6 V off (21.7-23.7 V
 R("R6", "100k", "EF_OV", "EF_OVB", B)                   #   worst case incl. 1 % and pin leakage; PD 20 V
-R("R7", "12k", "EF_OVB", "GND", B)                      #   +5 % = 21 V), 1.09 V x 18.9 = 20.6 V on again
+R("R7", "12k", "EF_OVB", "GND", B)                      #   +5 % = 21 V), 1.09 V x 18.86 = 20.55 V on again
 R("R8", "1M", "VOUT", "EF_PGTH", B)                     # PG once VOUT > 11.2 V
 R("R9", "120k", "EF_PGTH", "GND", B)
 R("R15", "100k", "+3V3", "EF_PG", B)                    # PG is open drain, <= 5 V: to the Pi's 3V3
 part("R14", "Device:R", "1k", "Resistor_SMD:R_0402_1005Metric", {"1": "EF_ILM", "2": "GND"}, "C11702", B)
                                                         # ILIM = 3334 / 1k = 3.3 A (65 W charger: 3.25 A)
 C("C4", "22nF", "EF_TMR", "GND", B, fp=C0402)                   # overcurrent blanking 1.51 V x 22 nF / 1.8 uA = 18 ms
-C("C3", "2.2nF/50V", "EF_DVDT", "GND", B)               # dV/dt ~1.0 V/ms at 20 V (0.36-1.7 over IdVdt)
+C("C3", "2.2nF/50V", "EF_DVDT", "GND", B)               # dV/dt ~1.0 V/ms at 20 V (0.3-1.75 worst case over IdVdt)
 C("C17", "1uF", "VOUT", "GND", B)                        # ceramic right at OUT (TI 8.3.1)
 
 # ------------------------------------------------------------- out to amp

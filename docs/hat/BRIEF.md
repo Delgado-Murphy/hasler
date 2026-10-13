@@ -9,7 +9,8 @@ everything the prototype board does. Written 2026-10-13 from the working bench b
 - **Pi 4B** + **HiFiBerry Amp4 Pro** (TAS5756 DAC/amp, I²C `0x4d`, I²S on GPIO 18–21,
   hardware mute on **GPIO 4**). The amp powers the Pi from its own 5 V rail. Its DC input
   is fed from a USB-C PD trigger at **20 V** (amp absolute max **24 V**). See
-  `docs/hardware.md` (power, protection: bulk cap + SMAJ/SMBJ22A TVS at the amp input).
+  `docs/hardware.md` (power, protection: bulk cap + SMAJ/SMBJ22A TVS at the amp input). *(Superseded on the
+  HAT: no extra bulk cap; see DESIGN.md, Power.)*
 - **Prototype board** (`docs/prototype/`, Paper page "4 · Prototype board"):
   - **MCP23017** (green breakout, I²C `0x20`, A0–A2 to GND, RST pulled up): keys,
     PU, the tone knob's end switch. **PA7/PB7 cannot be inputs** (silicon erratum) — don't use them.

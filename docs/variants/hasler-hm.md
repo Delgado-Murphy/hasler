@@ -328,7 +328,7 @@ points — a `curve` beats a guessed taper every time:
     kind: pot
     channel: 1
     curve: [[<AT THE DETENT>, 0], [<25%>, 25], [<50%>, 50], [<75%>, 75], [<fully CW>, 100]]
-    end_switch: {id: power, pin: d7, off_hold_ms: 5000}
+    end_switch: {id: power, pin: d8, off_hold_ms: 5000}
 ```
 
 And paste the `pins:` array printed by `panel-probe.py --identify`.

@@ -52,7 +52,7 @@ for name, got_v, doc in (("UVLO on", 1.2 * uv, 10.3), ("UVLO off", 1.09 * uv, 9.
                          ("OVLO off", 1.2 * ov, 22.6), ("OVLO on", 1.09 * ov, 20.55),
                          ("PG", 1.2 * pg, 11.2), ("ILIM", 3334 / ohm("R14"), 3.3)):
     if abs(got_v - doc) > 0.05:
-        fail.append("%s: design gives %.2f, docs say %.1f" % (name, got_v, doc))
+        fail.append("%s: design gives %.2f, docs say %g" % (name, got_v, doc))
 if [c["ref"] for c in design.COMPONENTS if c["dnp"]] != ["C7"]:
     fail.append("DNP set changed: update ORDERING.md")
 

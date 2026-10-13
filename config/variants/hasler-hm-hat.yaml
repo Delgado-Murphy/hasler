@@ -8,7 +8,8 @@
 #
 # Deploy this only once the HAT is fitted: point haslerd.service's --variant here.
 # Until then hasler-hm.yaml (the prototype stripboard's mapping) stays live; this
-# file on the stripboard would read the end-switch open and shut the Pi down.
+# file on the stripboard would read the keys on the wrong pins and the end switch as
+# off (standby at boot; no shutdown, since it never reads on).
 variant: hasler-hm
 
 io:

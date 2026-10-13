@@ -629,6 +629,38 @@ def hop(board, netname, a, b, layer, w=0.2):
         cu.track(net, layer, p, q, w, locked=True)
 
 
+def via_link(board, netname, a, b, layer, w=0.2):
+    """Like hop, but ends on the existing via of b's net nearest pad b (for a pad with no
+    room left beside it for a via of its own)."""
+    cu = Copper(board)
+    net = board.FindNet(netname).GetNetCode()
+    pb = board.FindFootprintByReference(b[0]).FindPadByNumber(b[1])
+    bx0, by0 = mm(pb.GetPosition().x), mm(pb.GetPosition().y)
+    vias = [t for t in board.GetTracks() if t.GetClass() == "PCB_VIA" and t.GetNetCode() == net]
+    v = min(vias, key=lambda t: math.hypot(mm(t.GetPosition().x) - bx0, mm(t.GetPosition().y) - by0))
+    bx, by = mm(v.GetPosition().x), mm(v.GetPosition().y)
+    assert math.hypot(bx - bx0, by - by0) < 2.0, "via_link %s: no via near %s.%s" % (netname, *b)
+    pad = board.FindFootprintByReference(a[0]).FindPadByNumber(a[1])
+    bb = pad.GetBoundingBox()
+    px, py = mm(pad.GetPosition().x), mm(pad.GetPosition().y)
+    half = max(mm(bb.GetWidth()), mm(bb.GetHeight())) / 2
+    for x, y in ring(px, py, half, steps=(0.4, 0.55, 0.7, 0.9, 1.1, 1.4, 1.8), n=32,
+                     prefer=math.atan2(by - py, bx - px)):
+        if cu.fits("pt", (x, y), None, VIA_D / 2, net) and \
+                cu.path_fits(net, pcbnew.F_Cu, [(px, py), (x, y)], w):
+            break
+    else:
+        raise RuntimeError("via_link %s: no via beside %s.%s" % (netname, *a))
+    path = grid_route(cu, net, layer, (x, y), [(bx, by)], w=w,
+                      window=max(6.0, 2.4 * math.hypot(bx - x, by - y)))
+    assert path, "via_link %s: no route on %s" % (netname, board.GetLayerName(layer))
+    cu.track(net, pcbnew.F_Cu, (px, py), (x, y), w, locked=True)
+    cu.via(net, x, y, locked=True)
+    for p, q in zip(path, path[1:]):
+        cu.track(net, layer, p, q, w, locked=True)
+    return sum(math.hypot(q[0] - p[0], q[1] - p[1]) for p, q in zip(path, path[1:]))
+
+
 def preroute(board, netname, a, b, w, required=True):
     """A locked track between two pads before autorouting, for a link the router would
     otherwise lose in a tight spot (straight, L, or maze on the top layer)."""
@@ -1486,6 +1518,13 @@ def finish():
     board = pcbnew.LoadBoard(PCB)
     ok, left = min_width(Copper(board))
     print("tracks brought up to %.3f mm: %d, no room: %d" % (MIN_W, ok, left))
+    # C1 (the CH224A's VHV/VBUS cap) is fed from J3's side by the router: give it a short
+    # bottom-layer link to pin 8 as well, once everything else is in place
+    try:
+        n = via_link(board, "/VBUS", ("C1", "1"), ("U3", "8"), pcbnew.B_Cu, w=0.4)
+        print("C1 -> U3.8 VBUS link on B.Cu: %.1f mm" % n)
+    except (AssertionError, RuntimeError) as e:
+        print("C1 -> U3.8 VBUS link:", e)
     fill(board)
     board.Save(PCB)
     for i in range(3):

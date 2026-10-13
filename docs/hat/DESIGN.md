@@ -57,7 +57,7 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
   → < 50 W, inside a 65 W charger (3.25 A).
 - CH224A: CFG1 = 120 kΩ → **20 V**. 28 V needs 210 kΩ or an I²C write. Whether the CH224A
   falls back to 12/15 V when a charger has no 20 V isn't in its datasheet: test it (the eFuse
-  passes 12 and 15 V). **Never configure 28 V**: the eFuse's absolute maximum is 28 V, D1 would
+  passes any contract, 5–20 V, as shipped). **Never configure 28 V**: the eFuse's absolute maximum is 28 V, D1 would
   clamp the charger continuously, and the USB-C receptacle is rated 20 V. (The CH224A's own
   "OVP" is only a 32 V reset, not protection.)
 - **3V3A is current-limited** (BRIEF must-have 4: a 3V3–GND short at a pot killed the bench
@@ -85,9 +85,20 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
     Amp4's start-up voltage isn't published. Starting at 5 V, the same load costs U4 well under
     1 W.
     The price: a 5 V-only charger, or one that never gets to a contract, feeds the amp 5 V (the
-    Pi then browns out; nothing is damaged), and the load draws through the PD voltage change
-    (PD asks a sink to idle at 2.5 W then; chargers in practice don't check — it is what a PD
-    trigger board feeding the amp directly does).
+    Pi may boot-loop on the amp's buck in dropout: unplug it; repeated brown-outs can corrupt
+    the SD card), and the load and the Amp4's ~231 µF sit on VBUS through the PD voltage change,
+    beyond PD's 2.5 W standby (pSnkStdby) and 100 µF (cSnkBulkPd) for a sink. Chargers tolerate
+    this in practice — it is what a PD trigger board feeding the amp directly does. The inrush
+    on that step is set by the charger's slew: ~0.2–1.2 A at a typical 1–5 V/ms into 231 µF,
+    still fine at 20 V/ms; a charger slewing at 25–30 V/ms (PD's maximum) would fast-trip U4
+    (ISC ≈ 6.6 A) and drop into the case below. The Pi may also log one "under-voltage
+    occurred" (`vcgencmd get_throttled` 0x50000) from the brief 5 V phase: harmless.
+    **After any eFuse trip at 20 V** (breaker, thermal or OVLO) the auto-retry starts again from
+    0 V with 20 V on its input, the slow linear case above, and can loop: if the 20V LED blinks,
+    re-plug the USB-C (VBUS drops to 0 and the next start is at 5 V again).
+    EN/UVLO sits on R3 1 M alone at 20 V: TI's note allows a ≥ 350 k pull-up to IN above 5 V
+    (the pin clamps internally; ~15 µA here). Optional bench check: EF_EN reads a few volts,
+    below 6.5 V, with VBUS at 20 V.
   - **JP11 bridged: UVLO 10.3 V** (R3 1 M / R4 120 k + R16 12 k; 9.9–10.7 V worst case with
     the reference, 1 % resistors and pin leakage; off below 9.35 V). A 5 V or 9 V contract then
     never reaches the amp, but U4 does the linear 0 → 20 V start-up above; use it only if
@@ -96,7 +107,7 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
     **1.2 µs**, back on below 20.55 V (19.7 V worst case: a charger sitting at 20.5–21 V after an
     over-voltage trip may need a re-plug). A 20 V contract is ≤ 21 V (21.5 V transient), and the
     amp's absolute maximum is 24 V. The OVLO works in both JP11 settings.
-  - **dV/dt** (C3 2.2 nF): VOUT ramps at **~1.0 V/ms** (0.3–1.75 V/ms over the dV/dt current's
+  - **dV/dt** (C3 2.2 nF): VOUT ramps at **~1.0 V/ms** (0.3–1.75 V/ms worst case over the dV/dt current's
     spread): ~5 ms to 5 V as shipped. On VOUT: 11 µF of ceramic plus the Amp4's own input
     capacitor, **measured 220 µF / 35 V**. **C7 (220 µF) is not fitted** (its pads stay): it adds
     nothing the Amp4's can doesn't, and with JP11 bridged it would double U4's start-up heat.
@@ -104,7 +115,7 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
     U4 and makes the start-up heating worse.
   - **Current**: circuit breaker at **3.3 A** (R14 1 k, ±10 %, about a 65 W charger's 3.25 A),
     with an 18 ms blanking window (C4 22 nF) so the amp's peaks up to 6.6 A pass; above that,
-    or for longer, it trips and retries (auto-retry variant). Fast trip at 2 × ILIM.
+    or for longer, it trips and retries (auto-retry variant). Fast trip at 2 × ILIM (≈ 6.6 A, ISCGain 201 %).
   - **True reverse-current blocking**: VOUT can't back-feed VBUS, so a supply on the Amp4's
     barrel jack, or the Amp4's own input capacitor after unplugging, can't reach the USB-C side.
   - **PG** (open drain, pulled up to the Pi's 3V3 by R15 100 k) goes high when VOUT > ~11.2 V
@@ -121,13 +132,14 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
     Amp4's barrel jack above ~20 V would exceed that: leave the jack empty while the HAT is on.
 - The CH224A's I²C status port (0x22/0x23 — inside the MCP23017's 0x20–0x27 range) is on solder
   jumpers JP9/JP10, **open** as shipped. Close them only with `addr: 0x20` pinned.
-- VBUS capacitance at attach: C1 + C2 + C5 ≈ 3 µF (USB PD allows 10 µF); the eFuse keeps VOUT's
-  capacitance off VBUS.
+- VBUS capacitance at attach: C1 + C2 + C5 ≈ 3 µF (USB PD allows 10 µF); the dV/dt ramp keeps
+  VOUT's capacitance's inrush to ~0.23 A as U4 turns on. Once it is on (JP11 open), the Amp4's
+  capacitance is on VBUS: see the turn-on bullet above.
 - SMAJ22A on both sides: standoff 22 V, breakdown 24.4 V, so it doesn't conduct below the OVLO
   point. Its clamping voltage at full surge current (35.5 V) is above the eFuse's 28 V absolute
   maximum: it's protection against ringing and ESD, not against a lightning-class surge.
-- LEDs: **PD** (yellow, CH224A power-good), **20V** (green, the switched rail is live — it reads
-  12 or 15 V on a lower contract), **3V3A** (red, the cabinet rail).
+- LEDs: **PD** (yellow, CH224A power-good), **20V** (green, the switched rail is live — as shipped
+  it also lights, dimly, at the charger's 5 V before the contract, and on any lower contract), **3V3A** (red, the cabinet rail).
 - **Don't fit the extra 220–470 µF** that `docs/hardware.md` describes at the amp's DC input: it
   would multiply the eFuse's start-up heating (see dV/dt). The HAT has the TVS and the eFuse.
 
@@ -293,10 +305,12 @@ re-checked everything. No wiring errors. Changed:
 - **the eFuse's turn-on** (JP11, see Power): a start-up model with the Amp4's measured 220 µF
   and the Pi booting part-way up the ramp showed U4 could overheat and restart for ever at a
   10.3 V UVLO, at any ramp rate; it now switches on at the charger's 5 V;
-- C1 (the CH224A's VHV/VBUS capacitor) moved right under the chip (it was ~20 mm of copper away);
-- C7's pads get no paste; the Gerber zip leaves out KiCad's job file (it numbers the inner
-  layers wrongly) and the drill maps; the bottom silkscreen's eFuse line and the `JLCJLCJLCJLC`
-  placeholder (order with "Remove Mark");
+- C1 (the CH224A's VHV/VBUS capacitor) moved right beside the chip, just below its pins (it was ~20 mm of copper away);
+- C7 stays marked DNP (KiCad still puts paste on its pads: a little solder on two bare pads,
+  harmless); the Gerber zip leaves out KiCad's job file (it numbers the inner
+  layers wrongly) and the drill maps; the bottom silkscreen's eFuse line now reads "eFuse OV 22.6V 3.3A" / "JP11
+  shut: UV 10.3V" (it said 11.2–23 V), and the `JLCJLCJLCJLC` placeholder is gone (order with
+  "Remove Mark");
 - master's 3V3A requirement (current-limited cabinet rail) is documented: the LDO is it;
 - the daemon: no shutdown from an end switch that has read "off" since boot (an unplugged
   ribbon), and the MCP23017's registers are re-written if the chip resets.

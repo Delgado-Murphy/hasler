@@ -164,6 +164,11 @@ class TestEndSwitch:
         events = run(c, [(1.0, {"d7": True}), (4.0, {"d7": False}), (1.0, {"d7": True})])
         assert [str(e) for e in events] == ["power.off", "power.on"]
 
+    def test_a_one_sample_glitch_does_not_arm(self):
+        c = EndSwitch("power", "d7", off_hold_s=5.0)
+        events = run(c, [(1.0, {"d7": False}), (0.01, {"d7": True}), (10.0, {"d7": False})], tick=0.01)
+        assert [str(e) for e in events] == ["power.off"]
+
     def test_unarmed_off_is_logged_once(self, caplog):
         c = EndSwitch("power", "d7", off_hold_s=5.0)
         with caplog.at_level("INFO", logger="haslerd.panel.controls"):

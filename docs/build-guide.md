@@ -86,6 +86,9 @@ appears on the network from a phone and plays.
 
 ### Power bring-up
 
+> **With the Hasler HAT** skip this section: follow `hardware/hat/ORDERING.md`, Bring-up.
+> Don't add the 220–470 µF cap (`docs/hat/DESIGN.md`, Power).
+
 Order matters. Do these in sequence, with a meter.
 
 1. [ ] **Configure the HW-398**: bridge the **20 V** pad to the resistor immediately next to it.

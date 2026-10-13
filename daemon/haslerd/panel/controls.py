@@ -202,13 +202,19 @@ class EndSwitch(Control):
         self._off_at = 0.0
         self._off_held_fired = False
         self._armed = False
+        self._on_since: float | None = None
         self._unarmed_logged = False
 
     def update(self, now, digital, analog):
         events: list[Event] = []
         raw = digital.get(self.pin, False)
         changed = self._settled.update(now, raw)
-        if raw and self._settled.committed:
+        # arm once the switch has read on for a debounce time (not on one sample)
+        if not raw:
+            self._on_since = None
+        elif self._on_since is None:
+            self._on_since = now
+        elif now - self._on_since >= self._settled._settle:
             self._armed = True
         if changed:
             if self._settled.committed:

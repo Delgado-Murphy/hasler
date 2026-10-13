@@ -93,13 +93,14 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 
 0. **Before any power**, with a meter on resistance: VBUS–GND (TP VBUS), VOUT–GND (TP 20V),
    5V–GND, 3V3–GND and 3V3A–GND must not read a short (the 10 µF caps read low at first, then
-   climb). Check JP11 is **open** (as shipped).
+   climb). Check JP11 (silkscreen "10V", left of PG in the power column) is **open** (as shipped).
 1. **The eFuse, with a bench supply** (current limit ~0.5 A; with nothing on J6 it draws only a
    few mA) on TP VBUS and GND, nothing else connected. Ramp 0 → 24 V slowly:
-   - the green **20V** LED lights from ~3 V (JP11 open: U4 turns on with the charger's first
-     5 V), and TP 20V follows TP VBUS;
-   - TP **PG** goes high once VOUT passes ~11.2 V and a Pi powers its 3V3 (it's pulled up
-     there; on the bench, read it as "not pulled low");
+   - the green **20V** LED glows faintly from ~3 V and brightens as the voltage rises (JP11
+     open: U4 turns on with the charger's first 5 V), and TP 20V follows TP VBUS;
+   - TP **PG** can only be read with 3V3 present (R15 pulls it up there): feed TP 3V3 from a
+     3.3 V supply, or check it in step 4 with the Pi up — it reads 3.3 V once VOUT passes
+     ~11.2 V;
    - above ~22.6 V it goes out at once (OVLO), and comes back below ~20.5 V.
 
    If you have a scope, step the supply 0 → 5 V and watch TP 20V: a ~5 ms ramp, not a jump.
@@ -120,7 +121,12 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 4. Stack Pi + Amp4 Pro + HAT on **11 mm M2.5 standoffs** (two, at the header-side holes).
    Plug the HAT's USB-C last. **Watch the start-up**: the 20V LED comes on at once and stays on
    while the Pi boots, and TP 20V settles at 20 V. If it blinks every ~0.1 s instead (the eFuse
-   restarting), unplug and look for a short on VOUT first. Don't fit C7 or slow the ramp with C3:
+   restarting), re-plug the USB-C first (a restart at 20 V can loop; a fresh plug starts at
+   5 V); only if it persists, unplug and look for a short on VOUT.
+   If you have a scope, watch TP VBUS and TP 20V at plug-in, amp and Pi attached: a 5 V
+   plateau of ~0.1–0.5 s, then the 5 → 20 V step (slower than ~15 V/ms) with no dip on TP 20V.
+   If VBUS falls to 0 during the step, the charger reset or tripped: try another charger (bridge
+   JP11 only as a last resort). Don't fit C7 or slow the ramp with C3:
    both make the eFuse's start-up heating worse. Then:
    - `i2cdetect -y 1` should show `20` (MCP23017), `48` (ADS1115) and `4d` (UU once the amp
      driver loads);
@@ -172,5 +178,5 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
   Amp4 clearances against HiFiBerry's STEP model, the eFuse thresholds with tolerances, a
   start-up thermal model, drills against pads, and the fab files regenerated from the board.
   Their findings are fixed in this revision (see `docs/hat/DESIGN.md`, "Review").
-- Renders: `renders/hasler-hat-top*.png`, `renders/hasler-hat-bottom*.png` (they draw C7, which
-  is not fitted).
+- Renders: `renders/hasler-hat-top*.png`, `renders/hasler-hat-bottom*.png` (C7 shows as bare
+  pads: not fitted).
