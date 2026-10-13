@@ -31,6 +31,9 @@ So the HAT:
   **USB-C sits on that edge, flush with the Pi's port face** — every cable leaves one side of the
   cabinet. The power section lives in that extension. The far end is 20 mm past the last
   standoff: strain-relieve the USB-C cable to the cabinet rather than letting it hang;
+- has a **notch in its bottom edge** (x 15.5–26, from y_up 8.5 down) over the Amp4's 8 mm
+  electrolytic, which HiFiBerry's model draws lying down but stands ~12 mm on a real board —
+  taller than the HAT's underside (~11 mm above the amp);
 - 4 layers (In1 solid GND), 1.6 mm, **black solder mask, white silkscreen**, ENIG;
 - carries no HAT ID EEPROM: the Amp4 Pro has one on ID_SD/ID_SC and two would collide.
 
@@ -40,7 +43,7 @@ So the HAT:
 USB-C ─ CH224A (asks 20 V) ─ VBUS ─┬─ SMAJ22A ─ GND
                                    ├─ window 10.75 V < VBUS < 22.8 V (LM393 + AZ431 2.5 V ref)
                                    └─ AO4407A P-FET ── VOUT ─┬─ 220 µF/35 V + 10 µF + SMAJ22A
-                                        (gate from window)   └─ J6 screw terminal → Amp4 power terminal
+                                        (gate from window)   └─ J6 (bottom-left) → Amp4 power terminal
 Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12/26, lamp anode)
 ```
 
@@ -103,9 +106,11 @@ on pins 1–16, 17–26 stay empty.
 
 GPA7 / GPB7 (d7 / d15) are not connected — output-only on current MCP23017 silicon.
 
-Every cabinet line: SRV05-4 ESD array at the connector → 1 kΩ series → (digital) 10 kΩ pull-up
-to 3V3 + 100 nF to GND, (analog) 100 nF to GND. Lamp lines keep their resistors (220/100/100 Ω)
-as the series element. Contact closed = low; the daemon's IPOL inversion makes it read 1.
+Every cabinet line: SRV05-4 ESD array at the connector, a 10 kΩ pull-up to 3V3 on the cabinet
+side (digital lines), then 1 kΩ series and 100 nF to GND at the MCP/ADC. A closed contact reads
+~0 V at the MCP; the MCP's own ~100 k pull-ups (always on in the daemon) sit behind the 1 k and
+don't matter. Lamp lines keep their resistors (220/100/100 Ω) as the series element. Contact
+closed = low; the daemon's IPOL inversion makes it read 1.
 
 ## Pi header use (J1, via the Amp4's top header)
 
@@ -139,3 +144,30 @@ I²C map: 0x20 MCP23017 (A0–A2 to GND via JP2–JP4) · 0x48 ADS1115 (ADDR to 
   the project symbol `hasler:AZ431_SOT23` carries the right one. Same trap as J2.
 - Solder jumpers for every address, interrupt and reset line, so any of them can be
   disconnected while debugging.
+
+## Layout and routing
+
+- Power column on the right (over the Pi's ports): USB-C → CH224A → window → P-FET → bulk cap.
+  VOUT reaches **J6 at the bottom-left** (next to the notch, ~25 mm from the Amp4's power
+  terminal) on a locked 1.6 mm bottom-layer trunk along the board edge under J2.
+- Narrowest copper on the power paths, as built: USB-C → TVS → P-FET source 0.6 mm (set by the
+  USB-C's 0.5 mm-pitch pads, a few mm long), drains → bulk cap 0.8 mm, drains → TVS 1.2 mm,
+  bulk cap → J6 1.6 mm. Fine for the ~1 A typical / 2.5 A peak this board sees.
+- GND: In1 is a solid plane. Every SMD GND pad is fanned out to it with its own via *before*
+  autorouting; GND is poured on the other three layers and stitched to the plane on a 1.6 mm grid.
+- Signals: Freerouting (DSN/SES round trip), then a gap-closer and a power-track widening pass in
+  `make_pcb.py`. The routed board is the artifact; re-running the router gives a different (also
+  valid) layout — check DRC after any rebuild.
+- DRC: **0 violations, 0 unconnected, schematic parity clean** (kicad-cli, all severities). One
+  check is off on purpose — `silk_edge_clearance`: the library silkscreen of the parts that sit on
+  the edge (USB-C, J6, J2's key side, C7 by the corner) runs past the outline, and the fab clips
+  silkscreen at the outline anyway.
+
+## Rebuilding
+
+Everything under `hardware/hat/` is generated from `hardware/hat/gen/design.py`:
+
+    cd hardware/hat
+    FREEROUTING_JAR=/path/freerouting-2.4.1.jar JAVA=/path/java25/bin/java gen/build.sh
+
+Needs KiCad 9 (its kicad-cli and Python) and Freerouting 2.4 on Java 25. ~5 minutes.

@@ -23,7 +23,8 @@ from `gen/design.py`. Design decisions: `docs/hat/DESIGN.md`.
 | Silkscreen | White |
 | Surface finish | ENIG (flat pads for the SSOP/VSSOP; HASL works too) |
 | Min via hole / diameter | 0.3 / 0.6 mm (standard, no extra charge) |
-| Remove order number | **Specify a location** — the `JLCJLCJLCJLC` text on the bottom silkscreen |
+| Remove order number | **Specify a location**: the `JLCJLCJLCJLC` text on the bottom silkscreen |
+| Edge | One notch in the bottom edge (over the Amp4's capacitor): it's in the outline, no extra option |
 
 ## Assembly options
 
@@ -56,11 +57,12 @@ from `gen/design.py`. Design decisions: `docs/hat/DESIGN.md`.
 
 ## Bring-up (bench, before the cabinet)
 
-1. **No Pi, no amp.** Plug USB-C from a 65 W PD charger. The yellow **PD** LED lights. Then:
+1. **No Pi, no amp.** Plug USB-C from a 65 W PD charger into J3 (right edge, the Pi's port side).
+   The yellow **PD** LED lights. Then:
    - TP **VBUS** reads 20 V;
    - the green **20V** LED lights;
    - TP **20V** (VOUT) reads 20 V;
-   - J6 reads 20 V, + on the left pin.
+   - J6 (bottom-left, by the notch) reads 20 V, + on the left pin (marked on the silkscreen).
    A 5 V-only USB supply must leave 20V dark.
 2. Fit J6's pigtail to the Amp4 Pro's power terminal (+ to +). **Leave the Amp4's barrel jack
    empty.**
@@ -77,7 +79,8 @@ from `gen/design.py`. Design decisions: `docs/hat/DESIGN.md`.
 - J4 (2×8): 5V, 3V3, GND, I²C, UART (GPIO 14/15), GPIO 5/6/12/13/16/26, 3V3A. The pinout is
   printed next to the left corner branding.
 - Qwiic (J5): 3.3 V I²C.
-- Test points on every rail, I²C, INT, PG, EN and the two pot wipers. All are labelled.
+- Test points on every rail, I²C, INT, PG, EN and the two pot wipers, all labelled. 5V is by
+  the LDO at the left; VBUS, 20V, PG and EN are in the power column.
 - Solder jumpers (labelled):
   - JP1: 3V3A from the LDO or the Pi. Cut 1–2 before bridging 2–3.
   - JP2–JP4: MCP23017 address.
@@ -87,3 +90,12 @@ from `gen/design.py`. Design decisions: `docs/hat/DESIGN.md`.
   - JP8: ADS1115 ADDR.
   - JP9/JP10: the CH224A's I²C (open; it answers at 0x22/0x23, inside the MCP's range).
 - The J2 pinout, with HM and Excelsior signals, is on the bottom silkscreen.
+
+## Checks already done
+
+- ERC 0, DRC 0 (all severities, schematic parity), 0 unconnected. `silk_edge_clearance` is off
+  on purpose (see `docs/hat/DESIGN.md`).
+- Every IC pinout and polarity was checked against its LCSC datasheet by an independent review.
+  Those found the AZ431's SOT-23 pinout differs from KiCad's TL431 symbol; the project uses its
+  own symbol.
+- Renders: `renders/hasler-hat-top.png`, `renders/hasler-hat-bottom.png`.
