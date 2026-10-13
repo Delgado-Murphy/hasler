@@ -44,8 +44,8 @@ from `gen/design.py`. Design decisions: `docs/hat/DESIGN.md`.
   - the + of C7;
   - the USB-C (J3): its contacts on the pads, its mouth out of the right edge, ~1 mm over it
     (on purpose: flush with the Pi's USB/Ethernet jacks). Checked in JLC's preview 2026-10-13.
-- The through-hole connectors (J1, J2, J4, J6) have their KiCad origin at pin 1; JLC places
-  by body centre, so `make_fab.py` writes their pad centre and turns the 2-row headers 270°.
+- The through-hole connectors (J1, J2, J4, J6) have their KiCad origin at pin 1, and JLC's USB-C
+  model sits 1.5 mm off KiCad's; `make_fab.py` writes the pad centre for all five and turns the 2-row headers 270°.
   Checked in JLC's 3D preview on 2026-10-13: all four sit on their pads, J2's key faces the edge.
 - Extended parts each carry JLC's one-off feeder fee; there are about 17 of them.
 

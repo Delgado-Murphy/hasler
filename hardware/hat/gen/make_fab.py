@@ -32,9 +32,9 @@ ROTATIONS = [
     # JLC draws pin headers/sockets lying along X; KiCad's stand along Y
     (r"^IDC-Header_2x", 270), (r"^PinHeader_2x", 270), (r"^PinSocket_2x", 270),
 ]
-# Footprints whose origin is pin 1, not the body: JLC places by centre, so the CPL
-# gives the centre of their pads instead.
-PIN1_ORIGIN = r"^(IDC-Header_|PinHeader_|PinSocket_|TerminalBlock_)"
+# Footprints whose origin is not the body centre (pin 1 on the headers, the contact row
+# on the HRO USB-C): JLC places by centre, so the CPL gives the centre of their pads.
+OFF_CENTRE = r"^(IDC-Header_|PinHeader_|PinSocket_|TerminalBlock_|USB_C_Receptacle_HRO_)"
 
 
 def pad_centres():
@@ -111,7 +111,7 @@ def cpl():
                     rot += add
                     break
             x, y = row["PosX"], row["PosY"]
-            if re.match(PIN1_ORIGIN, row["Package"]):
+            if re.match(OFF_CENTRE, row["Package"]):
                 x, y = ("%.4f" % v for v in centres[ref])
             w.writerow([ref, x, y, "Top" if row["Side"] == "top" else "Bottom",
                         "%g" % (rot % 360)])
