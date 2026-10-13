@@ -218,21 +218,25 @@ for n in range(6):
     part("U%d" % (7 + n), "Power_Protection:SRV05-4", "SRV05-4", SOT23_6, pins, "C13612", B,
          mpn="SRV05-4.TCT")
 
-SERIES = [s for s in ESD_ORDER if not s.startswith("L")]          # 18 lines, 1k each
-for n in range(5):
+# Lines in fours: one 1k series array per group (digital groups, then the analog one).
+DIG_GROUPS = [["K1", "K2", "K3", "K4"], ["K5", "K6", "PU", "TSW"], ["X1", "X2", "X3", "X4"], ["X5", "X6"]]
+ANA_GROUP = ["A0", "A1", "A2", "A3"]
+SERIES = [s for g in DIG_GROUPS for s in g] + ANA_GROUP          # 18 lines, 1k each
+for n, grp in enumerate(DIG_GROUPS + [ANA_GROUP]):                # RN1-4 digital, RN5 analog
     pins = {}
-    for k, sig in enumerate(SERIES[4 * n:4 * n + 4]):
+    for k, sig in enumerate(grp):
         pins[str(k + 1)] = "J_" + sig          # R_Pack04: Rk = pins k / 9-k
         pins[str(8 - k)] = "M_" + sig
     part("RN%d" % (1 + n), "Device:R_Pack04", "4x1k", RARR, pins, LCSC["4x1k"], B,
          mpn="4D03WGJ0102T5E")
 
-PULL = [d[1] for d in DIG]                                         # 14 digital, 10k up
-for n in range(4):
+# RN6-9: 10k pull-ups on the cabinet side of the 1k, beside the ESD arrays: the ribbon gets
+# its bias right at the connector, and the MCP side of each line is just 1k + 100 nF + pin.
+for n, grp in enumerate(DIG_GROUPS):
     pins = {}
-    for k, sig in enumerate(PULL[4 * n:4 * n + 4]):
+    for k, sig in enumerate(grp):
         pins[str(k + 1)] = "+3V3"
-        pins[str(8 - k)] = "M_" + sig
+        pins[str(8 - k)] = "J_" + sig
     part("RN%d" % (6 + n), "Device:R_Pack04", "4x10k", RARR, pins, LCSC["4x10k"], B,
          mpn="4D03WGJ0103T5E")
 

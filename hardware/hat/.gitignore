@@ -4,3 +4,5 @@ fp-info-cache
 _autosave-*
 *.lck
 gen/__pycache__/
+build/
+fab/gerber/

@@ -34,16 +34,17 @@
     )
     (boundary
       (path pcb 0  185000 -138000  184898 -138776  184598 -139500  184121 -140121
-            183500 -140598  182776 -140898  182000 -141000  103000 -141000
+            183500 -140598  182776 -140898  182000 -141000  126000 -141000
+            126000 -133500  125966 -133241  125866 -133000  125707 -132793
+            125500 -132634  125259 -132534  125000 -132500  116500 -132500
+            116241 -132534  116000 -132634  115793 -132793  115634 -133000
+            115534 -133241  115500 -133500  115500 -141000  103000 -141000
             102224 -140898  101500 -140598  100879 -140121  100402 -139500
             100102 -138776  100000 -138000  100000 -100000  185000 -100000
             185000 -138000)
     )
-    (plane GND (polygon In1.GND 0  100300 -100300  184700 -100300  184700 -138000  184608 -138699
-            184338 -139350  183909 -139909  183350 -140338  182699 -140608
-            182000 -140700  103000 -140700  102301 -140608  101650 -140338
-            101091 -139909  100662 -139350  100392 -138699  100300 -138000
-            100300 -100300))
+    (plane /GND (polygon In1.GND 0  100000 -100000  185000 -100000  185000 -141000  100000 -141000
+            100000 -100000))
     (via "Via[0-3]_600:300_um" "Via[0-3]_800:400_um")
     (rule
       (width 150)
@@ -57,19 +58,19 @@
       (place H1 103500.000000 -103500.000000 front 0.000000 (PN M2.5))
     )
     (component TestPoint:TestPoint_Pad_D1.0mm
-      (place TP14 153400.000000 -104800.000000 front 0.000000 (PN A1))
-      (place TP13 149800.000000 -104800.000000 front 0.000000 (PN A0))
+      (place TP14 149800.000000 -104800.000000 front 0.000000 (PN A1))
+      (place TP13 146200.000000 -104800.000000 front 0.000000 (PN A0))
       (place TP12 175950.000000 -127900.000000 front 0.000000 (PN EN))
       (place TP11 175950.000000 -108600.000000 front 0.000000 (PN PG))
-      (place TP10 146200.000000 -104800.000000 front 0.000000 (PN INT))
-      (place TP9 142600.000000 -104800.000000 front 0.000000 (PN SCL))
-      (place TP8 139000.000000 -104800.000000 front 0.000000 (PN SDA))
-      (place TP7 153400.000000 -101600.000000 front 0.000000 (PN GND))
-      (place TP6 149800.000000 -101600.000000 front 0.000000 (PN GND))
-      (place TP5 146200.000000 -101600.000000 front 0.000000 (PN 3V3A))
-      (place TP4 142600.000000 -101600.000000 front 0.000000 (PN 3V3))
-      (place TP3 139000.000000 -101600.000000 front 0.000000 (PN 5V))
-      (place TP2 166300.000000 -131300.000000 front 0.000000 (PN 20V))
+      (place TP10 142600.000000 -104800.000000 front 0.000000 (PN INT))
+      (place TP9 139000.000000 -104800.000000 front 0.000000 (PN SCL))
+      (place TP8 153400.000000 -101600.000000 front 0.000000 (PN SDA))
+      (place TP7 149800.000000 -101600.000000 front 0.000000 (PN GND))
+      (place TP6 146200.000000 -101600.000000 front 0.000000 (PN GND))
+      (place TP5 142600.000000 -101600.000000 front 0.000000 (PN 3V3A))
+      (place TP4 139000.000000 -101600.000000 front 0.000000 (PN 3V3))
+      (place TP3 111000.000000 -112346.273000 front 0.000000 (PN 5V))
+      (place TP2 170000.000000 -135000.000000 front 0.000000 (PN 20V))
       (place TP1 170200.000000 -113600.000000 front 0.000000 (PN VBUS))
     )
     (component "Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal"
@@ -79,15 +80,15 @@
       (place J4 109000.000000 -104600.000000 front 90.000000 (PN "Debug / expansion"))
     )
     (component "Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical"
-      (place J2 128600.000000 -137300.000000 front 90.000000 (PN "Hasler J2"))
+      (place J2 131900.000000 -137300.000000 front 90.000000 (PN "Hasler J2"))
     )
     (component Resistor_SMD:R_0603_1608Metric
-      (place R22 155800.000000 -121930.001000 front 0.000000 (PN 100Ω))
-      (place R21 152200.000000 -121930.001000 front 0.000000 (PN 100Ω))
-      (place R20 148600.000000 -121930.001000 front 0.000000 (PN 220Ω))
-      (place R13 154200.000000 -114600.000000 front 90.000000 (PN 10k))
+      (place R22 162600.000000 -118600.000000 front 90.000000 (PN 100Ω))
+      (place R21 159179.999000 -120400.000000 front 0.000000 (PN 100Ω))
+      (place R20 159000.000000 -118600.000000 front 0.000000 (PN 220Ω))
+      (place R13 158000.000000 -113600.000000 front 90.000000 (PN 10k))
       (place R12 123000.000000 -119000.000000 front 90.000000 (PN 10k))
-      (place R11 111600.000000 -115000.000000 front 90.000000 (PN 1k))
+      (place R11 111600.000000 -115067.544000 front 90.000000 (PN 1k))
       (place R10 167700.000000 -105300.000000 front 90.000000 (PN 10k))
       (place R9 176200.000000 -119600.000000 front 90.000000 (PN 4.7k))
       (place R8 177800.000000 -119600.000000 front 90.000000 (PN 2.2k))
@@ -103,59 +104,57 @@
       (place R1 171600.000000 -108600.000000 front 90.000000 (PN 120k))
     )
     (component Capacitor_SMD:C_0402_1005Metric
-      (place C37 146250.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C36 145000.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C35 143750.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C34 142500.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C33 141250.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C32 140000.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C31 138750.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C30 137500.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C29 136250.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C28 135000.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C27 133750.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C26 132500.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C25 131250.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C24 130000.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C23 128750.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C22 127500.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C21 126250.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C20 125000.000000 -121850.000000 front 90.000000 (PN 100nF))
-      (place C15 143920.001000 -114000.000000 front 90.000000 (PN 100nF))
-      (place C14 126400.000000 -116200.000000 front 90.000000 (PN 100nF))
+      (place C37 157000.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C36 155700.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C35 146600.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C34 134800.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C33 154400.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C32 153100.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C31 151800.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C30 150500.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C29 149200.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C28 147900.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C27 133500.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C26 132199.999000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C25 130900.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C24 129600.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C23 128300.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C22 127000.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C21 125700.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C20 124400.000000 -121850.000000 front 90.000000 (PN 100nF))
+      (place C15 153500.000000 -116600.000000 front 0.000000 (PN 100nF))
+      (place C14 147000.000000 -118000.000000 front 90.000000 (PN 100nF))
       (place C12 108400.000000 -122000.000000 front 90.000000 (PN 100nF))
     )
     (component Resistor_SMD:R_Array_Convex_4x0603
-      (place RN9 154000.000000 -124750.000000 front 0.000000 (PN 4x10k))
-      (place RN8 150400.000000 -124750.000000 front 0.000000 (PN 4x10k))
-      (place RN7 146800.000000 -124750.000000 front 0.000000 (PN 4x10k))
-      (place RN6 143200.000000 -124750.000000 front 0.000000 (PN 4x10k))
-      (place RN5 139600.000000 -124750.000000 front 0.000000 (PN 4x1k))
-      (place RN4 136000.000000 -124750.000000 front 0.000000 (PN 4x1k))
-      (place RN3 132400.000000 -124750.000000 front 0.000000 (PN 4x1k))
-      (place RN2 128800.000000 -124750.000000 front 0.000000 (PN 4x1k))
-      (place RN1 125200.000000 -124750.000000 front 0.000000 (PN 4x1k))
+      (place RN9 154150.000000 -128900.000000 front 0.000000 (PN 4x10k))
+      (place RN8 146850.000000 -128900.000000 front 0.000000 (PN 4x10k))
+      (place RN7 139550.000000 -128900.000000 front 0.000000 (PN 4x10k))
+      (place RN6 132250.000000 -128900.000000 front 0.000000 (PN 4x10k))
+      (place RN5 144000.000000 -124600.000000 front 90.000000 (PN 4x1k))
+      (place RN4 158000.000000 -124600.000000 front 90.000000 (PN 4x1k))
+      (place RN3 151000.000000 -124600.000000 front 90.000000 (PN 4x1k))
+      (place RN2 137000.000000 -124600.000000 front 90.000000 (PN 4x1k))
+      (place RN1 130000.000000 -124600.000000 front 90.000000 (PN 4x1k))
     )
     (component "Package_TO_SOT_SMD:SOT-23-6"
-      (place U12 158900.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
-      (place U11 152400.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
-      (place U10 145900.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
-      (place U9 139400.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
-      (place U8 132900.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
-      (place U7 126400.000000 -128850.000000 front 90.000000 (PN "SRV05-4"))
+      (place U12 161450.000000 -128900.000000 front 90.000000 (PN "SRV05-4"))
+      (place U11 157800.000000 -128900.000000 front 90.000000 (PN "SRV05-4"))
+      (place U10 150500.000000 -128900.000000 front 90.000000 (PN "SRV05-4"))
+      (place U9 143200.000000 -128900.000000 front 90.000000 (PN "SRV05-4"))
+      (place U8 135900.000000 -128900.000000 front 90.000000 (PN "SRV05-4"))
+      (place U7 128600.000000 -128900.000000 front 90.000000 (PN "SRV05-4"))
     )
     (component "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm"
-      (place JP6 156600.000000 -114600.000000 front 90.000000 (PN RDY_GPIO24))
+      (place JP6 160600.000000 -113600.000000 front 90.000000 (PN RDY_GPIO24))
+      (place JP8 148830.001000 -113600.000000 front 90.000000 (PN ADDR_GND))
       (place JP5 117000.000000 -119000.000000 front 90.000000 (PN INT_GPIO23))
       (place JP7 120000.000000 -119000.000000 front 90.000000 (PN RST_GPIO25))
       (place JP10 169400.000000 -108600.000000 front 90.000000 (PN PD_SDA))
       (place JP9 166600.000000 -108600.000000 front 90.000000 (PN PD_SCL))
     )
-    (component "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm::1"
-      (place JP8 149500.000000 -118200.000000 front 0.000000 (PN ADDR_GND))
-    )
     (component Capacitor_SMD:C_0603_1608Metric
-      (place C16 145350.001000 -114000.000000 front 90.000000 (PN 1uF))
+      (place C16 153500.000000 -118400.000000 front 0.000000 (PN 1uF))
       (place C10 108400.000000 -115000.000000 front 90.000000 (PN 1uF))
       (place C9 101600.000000 -115000.000000 front 90.000000 (PN 1uF))
       (place C6 183400.000000 -126500.000000 front 90.000000 (PN 100nF))
@@ -165,7 +164,7 @@
       (place C2 173200.000000 -113600.000000 front 0.000000 (PN 1uF))
     )
     (component "Package_SO:VSSOP-10_3x3mm_P0.5mm"
-      (place U2 149500.000000 -114600.000000 front 0.000000 (PN ADS1115))
+      (place U2 153500.000000 -113600.000000 front 0.000000 (PN ADS1115))
     )
     (component "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm"
       (place JP4 123000.000000 -113644.999000 front 90.000000 (PN A2))
@@ -173,7 +172,7 @@
       (place JP2 117000.000000 -113644.999000 front 90.000000 (PN A0))
     )
     (component "Package_SO:SSOP-28_5.3x10.2mm_P0.65mm"
-      (place U1 133600.000000 -116050.000000 front 90.000000 (PN MCP23017))
+      (place U1 141000.000000 -116750.000000 front 180.000000 (PN MCP23017))
     )
     (component Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical
       (place J1 108369.999000 -110190.000000 back 90.000000 (PN "Amp4 top header"))
@@ -195,7 +194,7 @@
       (place U6 105000.000000 -115000.000000 front 0.000000 (PN XC6206P332MR))
     )
     (component "TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-2-3.5-H_1x02_P3.50mm_Horizontal"
-      (place J6 167400.000000 -136400.000000 front 0.000000 (PN "To Amp4 DC in"))
+      (place J6 104600.000000 -136400.000000 front 0.000000 (PN "To Amp4 DC in"))
     )
     (component Diode_SMD:D_SMA
       (place D5 180600.000000 -130100.000000 front 0.000000 (PN SMAJ22A))
@@ -208,7 +207,7 @@
       (place C7 179300.000000 -136400.000000 front 0.000000 (PN 220uF))
     )
     (component "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-      (place Q1 181500.000000 -120800.000000 front 90.000000 (PN AO4407A))
+      (place Q1 181500.000000 -120800.000000 front -90.000000 (PN AO4407A))
     )
     (component "Diode_SMD:D_SOD-323"
       (place D4 174400.000000 -119600.000000 front 90.000000 (PN BZT52C15S))
@@ -258,10 +257,10 @@
             911.6 2805.62  1225.47 2683.41  1523.37 2526.23  1801.41 2336.11
             2055.97 2115.54  2283.72 1867.39  2481.7 1594.89  2647.32 1301.6
             2778.44 991.346  2873.34 668.165  2930.77 336.275  2950 0))
-      (keepout "" (circle F.Cu 3200))
-      (keepout "" (circle In1.GND 3200))
-      (keepout "" (circle In2.Sig 3200))
-      (keepout "" (circle B.Cu 3200))
+      (keepout "" (circle F.Cu 3100))
+      (keepout "" (circle In1.GND 3100))
+      (keepout "" (circle In2.Sig 3100))
+      (keepout "" (circle B.Cu 3100))
     )
     (image TestPoint:TestPoint_Pad_D1.0mm
       (outline (path signal 120  700 0  681.131 -161.431  625.543 -314.159  536.231 -449.951
@@ -508,48 +507,6 @@
       (outline (path signal 50  1650 -1250  1650 1250))
       (pin Cust[T]Pad_1000.000000x500.000000_1500.000000x1000.000000_19_um_BD66147BA5415864FF86D5BB75C674D5 1 -650 0)
       (pin Cust[T]Pad_1000.000000x500.000000_1500.000000x1000.000000_19_um_86772D42E08000F807F2952CF30D331A 2 650 0)
-    )
-    (image "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm::1"
-      (outline (path signal 0  -150 750  150 750  150 -750  -150 -750))
-      (outline (path signal 120  -1400 -300  -1400 300))
-      (outline (path signal 120  -700 1000  700 1000))
-      (outline (path signal 120  700 -1000  -700 -1000))
-      (outline (path signal 120  1400 300  1400 -300))
-      (outline (path signal 0  -700 1055.43  -677.039 1055.43  -644.567 1022.96  -644.567 977.039
-            -677.039 944.567  -700 944.567  -700 940  -842.414 923.954  -977.686 876.62
-            -1099.03 800.372  -1200.37 699.034  -1276.62 577.686  -1323.95 442.414
-            -1340 300  -1344.57 300  -1344.57 277.039  -1377.04 244.567
-            -1422.96 244.567  -1455.43 277.039  -1455.43 300  -1460 300
-            -1445.4 448.269  -1402.15 590.84  -1331.92 722.234  -1237.4 837.401
-            -1122.23 931.917  -990.84 1002.15  -848.269 1045.4  -700 1060))
-      (outline (path signal 0  -1344.57 -277.039  -1344.57 -300  -1340 -300  -1323.95 -442.414
-            -1276.62 -577.686  -1200.37 -699.034  -1099.03 -800.372  -977.686 -876.62
-            -842.414 -923.954  -700 -940  -700 -944.567  -677.039 -944.567
-            -644.567 -977.039  -644.567 -1022.96  -677.039 -1055.43  -700 -1055.43
-            -700 -1060  -848.269 -1045.4  -990.84 -1002.15  -1122.23 -931.917
-            -1237.4 -837.401  -1331.92 -722.234  -1402.15 -590.84  -1445.4 -448.269
-            -1460 -300  -1455.43 -300  -1455.43 -277.039  -1422.96 -244.567
-            -1377.04 -244.567))
-      (outline (path signal 0  848.269 1045.4  990.839 1002.15  1122.23 931.917  1237.4 837.401
-            1331.92 722.233  1402.15 590.839  1445.4 448.269  1460 300  1455.43 300
-            1455.43 277.039  1422.96 244.567  1377.04 244.567  1344.57 277.039
-            1344.57 300  1340 300  1323.95 442.413  1276.62 577.686  1200.37 699.033
-            1099.03 800.372  977.686 876.62  842.413 923.954  700 940  700 944.567
-            677.039 944.567  644.567 977.039  644.567 1022.96  677.039 1055.43
-            700 1055.43  700 1060))
-      (outline (path signal 0  1455.43 -277.039  1455.43 -300  1460 -300  1445.4 -448.269
-            1402.15 -590.839  1331.92 -722.233  1237.4 -837.401  1122.23 -931.917
-            990.839 -1002.15  848.269 -1045.4  700 -1060  700 -1055.43  677.039 -1055.43
-            644.567 -1022.96  644.567 -977.039  677.039 -944.567  700 -944.567
-            700 -940  842.413 -923.954  977.686 -876.62  1099.03 -800.372
-            1200.37 -699.033  1276.62 -577.686  1323.95 -442.413  1340 -300
-            1344.57 -300  1344.57 -277.039  1377.04 -244.567  1422.96 -244.567))
-      (outline (path signal 50  -1650 1250  -1650 -1250))
-      (outline (path signal 50  -1650 1250  1650 1250))
-      (outline (path signal 50  1650 -1250  -1650 -1250))
-      (outline (path signal 50  1650 -1250  1650 1250))
-      (pin Cust[T]Pad_1000.000000x500.000000_1000.000000x1500.000000_19_um_BD66147BA5415864FF86D5BB75C674D5 1 -650 0)
-      (pin Cust[T]Pad_1000.000000x500.000000_1000.000000x1500.000000_19_um_86772D42E08000F807F2952CF30D331A 2 650 0)
     )
     (image Capacitor_SMD:C_0603_1608Metric
       (outline (path signal 120  -140.58 510  140.58 510))
@@ -1098,14 +1055,14 @@
       (pin Oval[A]Pad_1000.000000x1600.000000_um S1@1 -4320 -1050)
       (pin Oval[A]Pad_1000.000000x2100.000000_um S1@2 4320 3130)
       (pin Oval[A]Pad_1000.000000x1600.000000_um S1@3 4320 -1050)
-      (keepout "" (circle F.Cu 1150 -2890 2600))
-      (keepout "" (circle In1.GND 1150 -2890 2600))
-      (keepout "" (circle In2.Sig 1150 -2890 2600))
-      (keepout "" (circle B.Cu 1150 -2890 2600))
-      (keepout "" (circle F.Cu 1150 2890 2600))
-      (keepout "" (circle In1.GND 1150 2890 2600))
-      (keepout "" (circle In2.Sig 1150 2890 2600))
-      (keepout "" (circle B.Cu 1150 2890 2600))
+      (keepout "" (circle F.Cu 1050 -2890 2600))
+      (keepout "" (circle In1.GND 1050 -2890 2600))
+      (keepout "" (circle In2.Sig 1050 -2890 2600))
+      (keepout "" (circle B.Cu 1050 -2890 2600))
+      (keepout "" (circle F.Cu 1050 2890 2600))
+      (keepout "" (circle In1.GND 1050 2890 2600))
+      (keepout "" (circle In2.Sig 1050 2890 2600))
+      (keepout "" (circle B.Cu 1050 2890 2600))
     )
     (padstack Round[T]Pad_1000.000000_um
       (shape (circle F.Cu 1000))
@@ -1252,14 +1209,6 @@
             -500.951 475))
       (attach off)
     )
-    (padstack Cust[T]Pad_1000.000000x500.000000_1000.000000x1500.000000_19_um_BD66147BA5415864FF86D5BB75C674D5
-      (shape (polygon F.Cu 0  -500 250  -495.722 315.263  -461.94 441.342  -396.677 554.381
-            -304.381 646.677  -191.342 711.94  -65.263 745.722  0 750  500 750
-            500 -750  0 -750  -65.263 -745.722  -191.342 -711.94  -304.381 -646.677
-            -396.677 -554.381  -461.94 -441.342  -495.722 -315.263  -500 -250
-            -500 250))
-      (attach off)
-    )
     (padstack Cust[T]Pad_1000.000000x500.000000_1500.000000x1000.000000_19_um_BD66147BA5415864FF86D5BB75C674D5
       (shape (polygon F.Cu 0  -500 250  -495.722 315.263  -461.94 441.342  -396.677 554.381
             -304.381 646.677  -191.342 711.94  -65.263 745.722  0 750  500 750
@@ -1282,13 +1231,6 @@
             550 -750  0 -750  -65.263 -745.722  -191.342 -711.94  -304.381 -646.677
             -396.677 -554.381  -461.94 -441.342  -495.722 -315.263  -500 -250
             -500 250))
-      (attach off)
-    )
-    (padstack Cust[T]Pad_1000.000000x500.000000_1000.000000x1500.000000_19_um_86772D42E08000F807F2952CF30D331A
-      (shape (polygon F.Cu 0  -500 750  0 750  65.263 745.722  191.342 711.94  304.381 646.677
-            396.677 554.381  461.94 441.342  495.722 315.263  500 250  500 -250
-            495.722 -315.263  461.94 -441.342  396.677 -554.381  304.381 -646.677
-            191.342 -711.94  65.263 -745.722  0 -750  -500 -750  -500 750))
       (attach off)
     )
     (padstack Cust[T]Pad_1000.000000x500.000000_1500.000000x1000.000000_19_um_86772D42E08000F807F2952CF30D331A
@@ -1458,46 +1400,46 @@
     )
   )
   (network
-    (net +3V3
+    (net /+3V3
       (pins TP4-1 J5-2 J4-2 RN9-1 RN9-2 RN8-1 RN8-2 RN8-3 RN8-4 RN7-1 RN7-2 RN7-3
         RN7-4 RN6-1 RN6-2 RN6-3 RN6-4 R12-1 JP4-3 JP3-3 JP2-3 C14-1 U1-9 J1-1 J1-17
         C13-1 JP1-3)
     )
-    (net +5V
+    (net /+5V
       (pins TP3-1 J4-1 J1-2 J1-4 C9-1 U6-3)
     )
-    (net 3V3A
+    (net /3V3A
       (pins TP5-1 J4-15 J2-12 J2-26 U12-5 U11-5 U10-5 U9-5 U8-5 U7-5 R13-1 C16-1 C15-1
         U2-8 R11-1 C12-1 C11-1 JP1-2)
     )
-    (net ADS_ADDR
+    (net /ADS_ADDR
       (pins JP8-1 U2-1)
     )
-    (net ADS_RDY
+    (net /ADS_RDY
       (pins JP6-1 R13-2 U2-2)
     )
-    (net CC1
+    (net /CC1
       (pins U3-7 J3-A5)
     )
-    (net CC2
+    (net /CC2
       (pins U3-6 J3-B5)
     )
-    (net DIV_OV
+    (net /DIV_OV
       (pins U4-2 C4-1 R15-1 R6-2)
     )
-    (net DIV_OVT
+    (net /DIV_OVT
       (pins R6-1 R5-2)
     )
-    (net DIV_UV
+    (net /DIV_UV
       (pins U4-5 C3-1 R16-2 R14-1 R4-2)
     )
-    (net EN
+    (net /EN
       (pins TP12-1 Q2-1 D3-1 R7-2 U4-1 U4-7 R16-1)
     )
-    (net GATE_PULL
+    (net /GATE_PULL
       (pins R8-1 Q2-3)
     )
-    (net GND
+    (net /GND
       (pins TP7-1 TP6-1 J5-1 J4-3 J4-4 J4-16 J2-2 J2-11 J2-24 C37-2 C36-2 C35-2 C34-2
         C33-2 C32-2 C31-2 C30-2 C29-2 C28-2 C27-2 C26-2 C25-2 C24-2 C23-2 C22-2 C21-2
         C20-2 U12-2 U11-2 U10-2 U9-2 U8-2 U7-2 JP8-2 C16-2 C15-2 U2-3 JP4-1 JP3-1
@@ -1506,236 +1448,337 @@
         C3-2 R15-2 R14-2 U5-3 D1-2 C2-2 C1-2 R1-2 U3-11 J3-A1 J3-A12 J3-B1 J3-B12
         J3-S1 J3-S1@1 J3-S1@2 J3-S1@3)
     )
-    (net GPIO12
+    (net /GPIO12
       (pins J4-11 J1-32)
     )
-    (net GPIO13
+    (net /GPIO13
       (pins J4-12 J1-33)
     )
-    (net GPIO16
+    (net /GPIO16
       (pins J4-13 J1-36)
     )
-    (net GPIO17
+    (net /GPIO17
       (pins R20-2 J1-11)
     )
-    (net GPIO22
+    (net /GPIO22
       (pins R21-2 J1-15)
     )
-    (net GPIO23
+    (net /GPIO23
       (pins JP5-2 J1-16)
     )
-    (net GPIO24
+    (net /GPIO24
       (pins JP6-2 J1-18)
     )
-    (net GPIO25
+    (net /GPIO25
       (pins JP7-2 J1-22)
     )
-    (net GPIO26
+    (net /GPIO26
       (pins J4-14 J1-37)
     )
-    (net GPIO27
+    (net /GPIO27
       (pins R22-2 J1-13)
     )
-    (net GPIO5
+    (net /GPIO5
       (pins J4-9 J1-29)
     )
-    (net GPIO6
+    (net /GPIO6
       (pins J4-10 J1-31)
     )
-    (net J_A0
-      (pins J2-9 RN2-4 U8-6)
+    (net /J_A0
+      (pins J2-9 RN5-1 U8-6)
     )
-    (net J_A1
-      (pins J2-10 RN3-1 U9-1)
+    (net /J_A1
+      (pins J2-10 RN5-2 U9-1)
     )
-    (net J_A2
-      (pins J2-23 RN5-1 U11-6)
+    (net /J_A2
+      (pins J2-23 RN5-3 U11-6)
     )
-    (net J_A3
-      (pins J2-25 RN5-2 U12-1)
+    (net /J_A3
+      (pins J2-25 RN5-4 U12-1)
     )
-    (net J_K1
-      (pins J2-1 RN1-1 U7-1)
+    (net /J_K1
+      (pins J2-1 RN6-8 RN1-1 U7-1)
     )
-    (net J_K2
-      (pins J2-3 RN1-2 U7-3)
+    (net /J_K2
+      (pins J2-3 RN6-7 RN1-2 U7-3)
     )
-    (net J_K3
-      (pins J2-4 RN1-3 U7-4)
+    (net /J_K3
+      (pins J2-4 RN6-6 RN1-3 U7-4)
     )
-    (net J_K4
-      (pins J2-5 RN1-4 U7-6)
+    (net /J_K4
+      (pins J2-5 RN6-5 RN1-4 U7-6)
     )
-    (net J_K5
-      (pins J2-6 RN2-1 U8-1)
+    (net /J_K5
+      (pins J2-6 RN7-8 RN2-1 U8-1)
     )
-    (net J_K6
-      (pins J2-7 RN2-2 U8-3)
+    (net /J_K6
+      (pins J2-7 RN7-7 RN2-2 U8-3)
     )
-    (net J_LB
+    (net /J_LB
       (pins J2-16 R22-1 U10-1)
     )
-    (net J_LG
+    (net /J_LG
       (pins J2-15 R21-1 U9-6)
     )
-    (net J_LR
+    (net /J_LR
       (pins J2-13 R20-1 U9-3)
     )
-    (net J_PU
-      (pins J2-8 RN2-3 U8-4)
+    (net /J_PU
+      (pins J2-8 RN7-6 RN2-3 U8-4)
     )
-    (net J_TSW
-      (pins J2-14 RN3-2 U9-4)
+    (net /J_TSW
+      (pins J2-14 RN7-5 RN2-4 U9-4)
     )
-    (net J_X1
-      (pins J2-17 RN3-3 U10-3)
+    (net /J_X1
+      (pins J2-17 RN8-8 RN3-1 U10-3)
     )
-    (net J_X2
-      (pins J2-18 RN3-4 U10-4)
+    (net /J_X2
+      (pins J2-18 RN8-7 RN3-2 U10-4)
     )
-    (net J_X3
-      (pins J2-19 RN4-1 U10-6)
+    (net /J_X3
+      (pins J2-19 RN8-6 RN3-3 U10-6)
     )
-    (net J_X4
-      (pins J2-20 RN4-2 U11-1)
+    (net /J_X4
+      (pins J2-20 RN8-5 RN3-4 U11-1)
     )
-    (net J_X5
-      (pins J2-21 RN4-3 U11-3)
+    (net /J_X5
+      (pins J2-21 RN9-8 RN4-1 U11-3)
     )
-    (net J_X6
-      (pins J2-22 RN4-4 U11-4)
+    (net /J_X6
+      (pins J2-22 RN9-7 RN4-2 U11-4)
     )
-    (net LDO_OUT
+    (net /LDO_OUT
       (pins JP1-1 C10-1 U6-2)
     )
-    (net LED_3V3
+    (net /LED_3V3
       (pins D7-2 R11-2)
     )
-    (net LED_OUT
+    (net /LED_OUT
       (pins D6-2 R10-2)
     )
-    (net LED_PD
+    (net /LED_PD
       (pins D2-2 R2-2)
     )
-    (net MCP_A0
+    (net /MCP_A0
       (pins JP2-2 U1-15)
     )
-    (net MCP_A1
+    (net /MCP_A1
       (pins JP3-2 U1-16)
     )
-    (net MCP_A2
+    (net /MCP_A2
       (pins JP4-2 U1-17)
     )
-    (net MCP_INTA
+    (net /MCP_INTA
       (pins TP10-1 JP5-1 U1-20)
     )
-    (net MCP_RST
+    (net /MCP_RST
       (pins JP7-1 R12-2 U1-18)
     )
-    (net M_A0
-      (pins TP13-1 C27-1 RN2-5 U2-4)
+    (net /M_A0
+      (pins TP13-1 C34-1 RN5-8 U2-4)
     )
-    (net M_A1
-      (pins TP14-1 C28-1 RN3-8 U2-5)
+    (net /M_A1
+      (pins TP14-1 C35-1 RN5-7 U2-5)
     )
-    (net M_A2
-      (pins C36-1 RN5-8 U2-6)
+    (net /M_A2
+      (pins C36-1 RN5-6 U2-6)
     )
-    (net M_A3
-      (pins C37-1 RN5-7 U2-7)
+    (net /M_A3
+      (pins C37-1 RN5-5 U2-7)
     )
-    (net M_K1
-      (pins C20-1 RN6-8 RN1-8 U1-1)
+    (net /M_K1
+      (pins C20-1 RN1-8 U1-1)
     )
-    (net M_K2
-      (pins C21-1 RN6-7 RN1-7 U1-2)
+    (net /M_K2
+      (pins C21-1 RN1-7 U1-2)
     )
-    (net M_K3
-      (pins C22-1 RN6-6 RN1-6 U1-3)
+    (net /M_K3
+      (pins C22-1 RN1-6 U1-3)
     )
-    (net M_K4
-      (pins C23-1 RN6-5 RN1-5 U1-4)
+    (net /M_K4
+      (pins C23-1 RN1-5 U1-4)
     )
-    (net M_K5
-      (pins C24-1 RN7-8 RN2-8 U1-5)
+    (net /M_K5
+      (pins C24-1 RN2-8 U1-5)
     )
-    (net M_K6
-      (pins C25-1 RN7-7 RN2-7 U1-6)
+    (net /M_K6
+      (pins C25-1 RN2-7 U1-6)
     )
-    (net M_PU
-      (pins C26-1 RN7-6 RN2-6 U1-7)
+    (net /M_PU
+      (pins C26-1 RN2-6 U1-7)
     )
-    (net M_TSW
-      (pins C29-1 RN7-5 RN3-7 U1-21)
+    (net /M_TSW
+      (pins C27-1 RN2-5 U1-21)
     )
-    (net M_X1
-      (pins C30-1 RN8-8 RN3-6 U1-22)
+    (net /M_X1
+      (pins C28-1 RN3-8 U1-22)
     )
-    (net M_X2
-      (pins C31-1 RN8-7 RN3-5 U1-23)
+    (net /M_X2
+      (pins C29-1 RN3-7 U1-23)
     )
-    (net M_X3
-      (pins C32-1 RN8-6 RN4-8 U1-24)
+    (net /M_X3
+      (pins C30-1 RN3-6 U1-24)
     )
-    (net M_X4
-      (pins C33-1 RN8-5 RN4-7 U1-25)
+    (net /M_X4
+      (pins C31-1 RN3-5 U1-25)
     )
-    (net M_X5
-      (pins C34-1 RN9-8 RN4-6 U1-26)
+    (net /M_X5
+      (pins C32-1 RN4-8 U1-26)
     )
-    (net M_X6
-      (pins C35-1 RN9-7 RN4-5 U1-27)
+    (net /M_X6
+      (pins C33-1 RN4-7 U1-27)
     )
-    (net PD_CFG1
+    (net /PD_CFG1
       (pins R1-1 U3-9)
     )
-    (net PD_PG
+    (net /PD_PG
       (pins TP11-1 D2-1 U3-10)
     )
-    (net PD_SCL
+    (net /PD_SCL
       (pins JP9-1 U3-2)
     )
-    (net PD_SDA
+    (net /PD_SDA
       (pins JP10-1 U3-3)
     )
-    (net PGATE
+    (net /PGATE
       (pins C6-1 Q1-4 D4-2 R9-2 R8-2)
     )
-    (net RXD
+    (net /RXD
       (pins J4-8 J1-10)
     )
-    (net SCL
+    (net /SCL
       (pins TP9-1 J5-4 J4-6 U2-10 U1-12 J1-5 JP9-2)
     )
-    (net SDA
+    (net /SDA
       (pins TP8-1 J5-3 J4-5 U2-9 U1-13 J1-3 JP10-2)
     )
-    (net TXD
+    (net /TXD
       (pins J4-7 J1-8)
     )
-    (net USB_DM
+    (net /USB_DM
       (pins U3-5 J3-A7 J3-B7)
     )
-    (net USB_DP
+    (net /USB_DP
       (pins U3-4 J3-A6 J3-B6)
     )
-    (net VBUS
+    (net /VBUS
       (pins TP1-1 Q1-1 Q1-2 Q1-3 D4-1 R9-1 R7-1 C5-1 U4-8 R5-1 R4-1 R3-1 R2-1 D1-1
         C2-1 C1-1 U3-1 U3-8 J3-A4 J3-A9 J3-B4 J3-B9)
     )
-    (net VOUT
+    (net /VOUT
       (pins TP2-1 J6-1 R10-1 D5-1 C8-1 C7-1 C6-2 Q1-5 Q1-6 Q1-7 Q1-8)
     )
-    (net VREF
+    (net /VREF
       (pins U4-3 U4-6 U5-1 U5-2 R3-2)
     )
-    (class kicad_default ADS_ADDR ADS_RDY CC1 CC2 DIV_OV DIV_OVT DIV_UV EN
-      GATE_PULL GPIO12 GPIO13 GPIO16 GPIO17 GPIO22 GPIO23 GPIO24 GPIO25 GPIO26
-      GPIO27 GPIO5 GPIO6 J_A0 J_A1 J_A2 J_A3 J_K1 J_K2 J_K3 J_K4 J_K5 J_K6
-      J_LB J_LG J_LR J_PU J_TSW J_X1 J_X2 J_X3 J_X4 J_X5 J_X6 LED_3V3 LED_OUT
-      LED_PD MCP_A0 MCP_A1 MCP_A2 MCP_INTA MCP_RST M_A0 M_A1 M_A2 M_A3 M_K1
-      M_K2 M_K3 M_K4 M_K5 M_K6 M_PU M_TSW M_X1 M_X2 M_X3 M_X4 M_X5 M_X6 PD_CFG1
-      PD_PG PD_SCL PD_SDA PGATE RXD SCL SDA TXD USB_DM USB_DP VREF
+    (net "unconnected-(J1-Pin_12-Pad12)"
+      (pins J1-12)
+    )
+    (net "unconnected-(J1-Pin_19-Pad19)"
+      (pins J1-19)
+    )
+    (net "unconnected-(J1-Pin_21-Pad21)"
+      (pins J1-21)
+    )
+    (net "unconnected-(J1-Pin_23-Pad23)"
+      (pins J1-23)
+    )
+    (net "unconnected-(J1-Pin_24-Pad24)"
+      (pins J1-24)
+    )
+    (net "unconnected-(J1-Pin_26-Pad26)"
+      (pins J1-26)
+    )
+    (net "unconnected-(J1-Pin_27-Pad27)"
+      (pins J1-27)
+    )
+    (net "unconnected-(J1-Pin_28-Pad28)"
+      (pins J1-28)
+    )
+    (net "unconnected-(J1-Pin_35-Pad35)"
+      (pins J1-35)
+    )
+    (net "unconnected-(J1-Pin_38-Pad38)"
+      (pins J1-38)
+    )
+    (net "unconnected-(J1-Pin_40-Pad40)"
+      (pins J1-40)
+    )
+    (net "unconnected-(J1-Pin_7-Pad7)"
+      (pins J1-7)
+    )
+    (net "unconnected-(J3-SBU1-PadA8)"
+      (pins J3-A8)
+    )
+    (net "unconnected-(J3-SBU2-PadB8)"
+      (pins J3-B8)
+    )
+    (net "unconnected-(RN4-R3.1-Pad3)"
+      (pins RN4-3)
+    )
+    (net "unconnected-(RN4-R3.2-Pad6)"
+      (pins RN4-6)
+    )
+    (net "unconnected-(RN4-R4.1-Pad4)"
+      (pins RN4-4)
+    )
+    (net "unconnected-(RN4-R4.2-Pad5)"
+      (pins RN4-5)
+    )
+    (net "unconnected-(RN9-R3.1-Pad3)"
+      (pins RN9-3)
+    )
+    (net "unconnected-(RN9-R3.2-Pad6)"
+      (pins RN9-6)
+    )
+    (net "unconnected-(RN9-R4.1-Pad4)"
+      (pins RN9-4)
+    )
+    (net "unconnected-(RN9-R4.2-Pad5)"
+      (pins RN9-5)
+    )
+    (net "unconnected-(U1-GPA7-Pad28)"
+      (pins U1-28)
+    )
+    (net "unconnected-(U1-GPB7-Pad8)"
+      (pins U1-8)
+    )
+    (net "unconnected-(U1-INTB-Pad19)"
+      (pins U1-19)
+    )
+    (net "unconnected-(U1-NC-Pad11)"
+      (pins U1-11)
+    )
+    (net "unconnected-(U1-NC-Pad14)"
+      (pins U1-14)
+    )
+    (net "unconnected-(U12-IO2-Pad3)"
+      (pins U12-3)
+    )
+    (net "unconnected-(U12-IO3-Pad4)"
+      (pins U12-4)
+    )
+    (net "unconnected-(U12-IO4-Pad6)"
+      (pins U12-6)
+    )
+    (class kicad_default /ADS_ADDR /ADS_RDY /CC1 /CC2 /DIV_OV /DIV_OVT /DIV_UV
+      /EN /GATE_PULL /GPIO12 /GPIO13 /GPIO16 /GPIO17 /GPIO22 /GPIO23 /GPIO24
+      /GPIO25 /GPIO26 /GPIO27 /GPIO5 /GPIO6 /J_A0 /J_A1 /J_A2 /J_A3 /J_K1
+      /J_K2 /J_K3 /J_K4 /J_K5 /J_K6 /J_LB /J_LG /J_LR /J_PU /J_TSW /J_X1 /J_X2
+      /J_X3 /J_X4 /J_X5 /J_X6 /LED_3V3 /LED_OUT /LED_PD /MCP_A0 /MCP_A1 /MCP_A2
+      /MCP_INTA /MCP_RST /M_A0 /M_A1 /M_A2 /M_A3 /M_K1 /M_K2 /M_K3 /M_K4 /M_K5
+      /M_K6 /M_PU /M_TSW /M_X1 /M_X2 /M_X3 /M_X4 /M_X5 /M_X6 /PD_CFG1 /PD_PG
+      /PD_SCL /PD_SDA /PGATE /RXD /SCL /SDA /TXD /USB_DM /USB_DP /VREF "unconnected-(J1-Pin_12-Pad12)"
+      "unconnected-(J1-Pin_19-Pad19)" "unconnected-(J1-Pin_21-Pad21)" "unconnected-(J1-Pin_23-Pad23)"
+      "unconnected-(J1-Pin_24-Pad24)" "unconnected-(J1-Pin_26-Pad26)" "unconnected-(J1-Pin_27-Pad27)"
+      "unconnected-(J1-Pin_28-Pad28)" "unconnected-(J1-Pin_35-Pad35)" "unconnected-(J1-Pin_38-Pad38)"
+      "unconnected-(J1-Pin_40-Pad40)" "unconnected-(J1-Pin_7-Pad7)" "unconnected-(J3-SBU1-PadA8)"
+      "unconnected-(J3-SBU2-PadB8)" "unconnected-(RN4-R3.1-Pad3)" "unconnected-(RN4-R3.2-Pad6)"
+      "unconnected-(RN4-R4.1-Pad4)" "unconnected-(RN4-R4.2-Pad5)" "unconnected-(RN9-R3.1-Pad3)"
+      "unconnected-(RN9-R3.2-Pad6)" "unconnected-(RN9-R4.1-Pad4)" "unconnected-(RN9-R4.2-Pad5)"
+      "unconnected-(U1-GPA7-Pad28)" "unconnected-(U1-GPB7-Pad8)" "unconnected-(U1-INTB-Pad19)"
+      "unconnected-(U1-NC-Pad11)" "unconnected-(U1-NC-Pad14)" "unconnected-(U12-IO2-Pad3)"
+      "unconnected-(U12-IO3-Pad4)" "unconnected-(U12-IO4-Pad6)"
       (circuit
         (use_via "Via[0-3]_600:300_um")
       )
@@ -1744,16 +1787,16 @@
         (clearance 150)
       )
     )
-    (class Power VBUS VOUT
+    (class Power /VBUS /VOUT
       (circuit
-        (use_via "Via[0-3]_800:400_um")
+        (use_via "Via[0-3]_600:300_um")
       )
       (rule
-        (width 1000)
-        (clearance 250)
+        (width 250)
+        (clearance 150)
       )
     )
-    (class Gnd GND
+    (class Gnd /GND
       (circuit
         (use_via "Via[0-3]_600:300_um")
       )
@@ -1762,16 +1805,165 @@
         (clearance 150)
       )
     )
-    (class Rail +3V3 +5V 3V3A LDO_OUT
+    (class Rail /+3V3 /+5V /3V3A /LDO_OUT
       (circuit
         (use_via "Via[0-3]_600:300_um")
       )
       (rule
-        (width 400)
+        (width 300)
         (clearance 150)
       )
     )
   )
   (wiring
+    (wire (path F.Cu 300  171600 -107775  171600 -106750)(net /GND)(type fix))
+    (wire (path F.Cu 300  173800 -107650  173800 -106375)(net /GND)(type fix))
+    (wire (path F.Cu 300  173975 -113600  175000 -113600)(net /GND)(type fix))
+    (wire (path F.Cu 300  182600 -113700  183873 -112427)(net /GND)(type fix))
+    (wire (path F.Cu 300  168538 -124600  169825 -124600)(net /GND)(type fix))
+    (wire (path F.Cu 300  173800 -123775  173800 -122750)(net /GND)(type fix))
+    (wire (path F.Cu 300  169200 -127275  169200 -126250)(net /GND)(type fix))
+    (wire (path F.Cu 300  170800 -127325  170800 -126300)(net /GND)(type fix))
+    (wire (path F.Cu 300  172400 -127325  172400 -126300)(net /GND)(type fix))
+    (wire (path F.Cu 300  167025 -121505  165947 -122583)(net /GND)(type fix))
+    (wire (path F.Cu 300  167975 -113600  169000 -113600)(net /GND)(type fix))
+    (wire (path F.Cu 300  177300 -121950  176699 -121349)(net /GND)(type fix))
+    (wire (path F.Cu 300  178562 -127450  177652 -128360)(net /GND)(type fix))
+    (wire (path F.Cu 300  172775 -130950  174225 -130950)(net /GND)(type fix))
+    (wire (path F.Cu 300  167700 -102788  168425 -103512)(net /GND)(type fix))
+    (wire (path F.Cu 300  103862 -114050  103005 -113193)(net /GND)(type fix))
+    (wire (path F.Cu 300  101600 -114225  101600 -113200)(net /GND)(type fix))
+    (wire (path F.Cu 300  108400 -114225  108400 -113200)(net /GND)(type fix))
+    (wire (path F.Cu 300  105950 -122000  107225 -122000)(net /GND)(type fix))
+    (wire (path F.Cu 300  108400 -121520  108400 -120660)(net /GND)(type fix))
+    (wire (path F.Cu 300  111600 -119388  111600 -120412)(net /GND)(type fix))
+    (wire (path F.Cu 300  101540 -121050  101540 -119775)(net /GND)(type fix))
+    (wire (path F.Cu 300  144600 -115125  146025 -115125)(net /GND)(type fix))
+    (wire (path F.Cu 300  147000 -117520  147000 -116660)(net /GND)(type fix))
+    (wire (path F.Cu 300  117000 -114920  117000 -116220)(net /GND)(type fix))
+    (wire (path F.Cu 300  120000 -114920  120000 -116220)(net /GND)(type fix))
+    (wire (path F.Cu 300  123000 -114920  123000 -116220)(net /GND)(type fix))
+    (wire (path F.Cu 300  151300 -113600  150025 -113600)(net /GND)(type fix))
+    (wire (path F.Cu 300  153980 -116600  154840 -116600)(net /GND)(type fix))
+    (wire (path F.Cu 300  154275 -118400  155300 -118400)(net /GND)(type fix))
+    (wire (path F.Cu 300  148830 -112950  148830 -111650)(net /GND)(type fix))
+    (wire (path F.Cu 300  128600 -130038  128914 -131209)(net /GND)(type fix))
+    (wire (path F.Cu 300  135900 -130038  135900 -131250)(net /GND)(type fix))
+    (wire (path F.Cu 300  143200 -130038  143200 -131250)(net /GND)(type fix))
+    (wire (path F.Cu 300  150500 -130038  150500 -131250)(net /GND)(type fix))
+    (wire (path F.Cu 300  157800 -130038  157800 -131250)(net /GND)(type fix))
+    (wire (path F.Cu 300  161450 -130038  161450 -131250)(net /GND)(type fix))
+    (wire (path F.Cu 300  124400 -121370  124400 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  125700 -121370  125700 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  127000 -121370  127000 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  128300 -121370  128300 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  129600 -121370  129600 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  130900 -121370  130900 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  132200 -121370  132200 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  133500 -121370  133500 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  147900 -121370  147900 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  149200 -121370  149200 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  150500 -121370  150500 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  151800 -121370  151800 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  153100 -121370  153100 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  154400 -121370  154400 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  134800 -121370  134800 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  146600 -121370  146600 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  155700 -121370  155700 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  157000 -121370  157000 -120510)(net /GND)(type fix))
+    (wire (path F.Cu 300  134300 -105100  134962 -106247)(net /GND)(type fix))
+    (wire (path F.Cu 300  146200 -101600  147250 -101600)(net /GND)(type fix))
+    (wire (path F.Cu 300  149800 -101600  150850 -101600)(net /GND)(type fix))
+    (wire (path F.Cu 500  182135 -118325  180865 -118325)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  183405 -118325  182135 -118325)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  178600 -113700  182135 -118325)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  178535 -113580  178600 -113700)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  177035 -112080  178535 -113580)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  177035 -109180  177035 -112080)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  177135 -109080  177035 -109180)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  177135 -108880  177135 -109080)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  177335 -108680  177135 -108880)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  178235 -108680  177335 -108680)(net /VBUS)(type fix))
+    (wire (path F.Cu 500  178305 -108650  178235 -108680)(net /VBUS)(type fix))
+    (wire (path F.Cu 300  175238 -103200  178305 -103750)(net /VBUS)(type fix))
+    (wire (path B.Cu 1600  104600 -131200  104600 -136400)(net /VOUT)(type fix))
+    (wire (path B.Cu 1600  127400 -131200  104600 -131200)(net /VOUT)(type fix))
+    (wire (path B.Cu 1600  127400 -138300  127400 -131200)(net /VOUT)(type fix))
+    (wire (path B.Cu 1600  128600 -139500  127400 -138300)(net /VOUT)(type fix))
+    (wire (path B.Cu 1600  166500 -139500  128600 -139500)(net /VOUT)(type fix))
+    (wire (path B.Cu 1600  166500 -136400  166500 -139500)(net /VOUT)(type fix))
+    (wire (path B.Cu 1600  170300 -136400  166500 -136400)(net /VOUT)(type fix))
+    (wire (path B.Cu 1600  172500 -136400  170300 -136400)(net /VOUT)(type fix))
+    (wire (path F.Cu 1600  176050 -136400  170300 -136400)(net /VOUT)(type fix))
+    (via "Via[0-3]_600:300_um"  172000 -103800 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  172000 -103200 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  172000 -102600 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  171600 -106750 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  173800 -106375 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  175000 -113600 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  183873 -112427 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  169825 -124600 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  173800 -122750 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  169200 -126250 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  170800 -126300 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  172400 -126300 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  165947 -122583 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  169000 -113600 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  176699 -121349 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  177652 -128360 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  181950 -137000 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  181950 -136400 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  181950 -135800 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  174225 -130950 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  182000 -130700 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  182000 -130100 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  182000 -129500 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  168425 -103512 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  103005 -113193 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  101600 -113200 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  108400 -113200 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  107225 -122000 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  108400 -120660 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  111600 -120412 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  101540 -119775 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  146025 -115125 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  147000 -116660 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  117000 -116220 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  120000 -116220 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  123000 -116220 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  150025 -113600 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  154840 -116600 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  155300 -118400 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  148830 -111650 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  128914 -131209 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  135900 -131250 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  143200 -131250 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  150500 -131250 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  157800 -131250 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  161450 -131250 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  124400 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  125700 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  127000 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  128300 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  129600 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  130900 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  132200 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  133500 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  147900 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  149200 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  150500 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  151800 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  153100 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  154400 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  134800 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  146600 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  155700 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  157000 -120510 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  134962 -106247 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  147250 -101600 (net /GND)(type fix))
+    (via "Via[0-3]_600:300_um"  150850 -101600 (net /GND)(type fix))
+    (via "Via[0-3]_800:400_um"  170300 -136400 (net /VOUT)(type fix))
+    (via "Via[0-3]_800:400_um"  171400 -136400 (net /VOUT)(type fix))
+    (via "Via[0-3]_800:400_um"  172500 -136400 (net /VOUT)(type fix))
   )
 )
