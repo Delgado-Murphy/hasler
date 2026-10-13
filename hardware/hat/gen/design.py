@@ -13,17 +13,18 @@ COMPANY = "Delgado & Murphy"
 # Footprints
 R0603 = "Resistor_SMD:R_0603_1608Metric"
 C0603 = "Capacitor_SMD:C_0603_1608Metric"
+C0402 = "Capacitor_SMD:C_0402_1005Metric"
 C0805 = "Capacitor_SMD:C_0805_2012Metric"
 C1206 = "Capacitor_SMD:C_1206_3216Metric"
 RARR = "Resistor_SMD:R_Array_Convex_4x0603"
 LED0603 = "LED_SMD:LED_0603_1608Metric"
-SOD123 = "Diode_SMD:D_SOD-123"
-SMB = "Diode_SMD:D_SMB"
+SOD323 = "Diode_SMD:D_SOD-323"
+SMA = "Diode_SMD:D_SMA"
 SOT23 = "Package_TO_SOT_SMD:SOT-23"
 SOT23_3 = "Package_TO_SOT_SMD:SOT-23-3"
 SOT23_6 = "Package_TO_SOT_SMD:SOT-23-6"
 SOIC8 = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
-TP = "TestPoint:TestPoint_Pad_D1.5mm"
+TP = "TestPoint:TestPoint_Pad_D1.0mm"
 SJ2B = "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm"
 SJ2O = "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm"
 SJ3 = "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm"
@@ -32,9 +33,9 @@ SJ3 = "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm"
 LCSC = {
     "10k": "C25804", "1k": "C21190", "100R": "C22775", "220R": "C22962",
     "4.7k": "C23162", "5.1k": "C23186", "6.8k": "C23212", "33k": "C4216",
-    "100k": "C25803", "120k": "C25808",
+    "100k": "C25803", "120k": "C25808", "2.2k": "C4190", "1M": "C22935",
     "4x10k": "C29718", "4x1k": "C20197",
-    "100nF": "C14663", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
+    "100nF": "C14663", "100nF/16V": "C1525", "1nF": "C1588", "1uF/X7R": "C28323", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
     "220uF/35V": "C970697",
 }
 
@@ -78,10 +79,10 @@ part("U3", "hasler:CH224A", "CH224A",
       "5": "USB_DM", "6": "CC2", "7": "CC1", "8": "VBUS", "9": "PD_CFG1", "10": "PD_PG"},
      "C42459160", B, desc="USB PD sink, 120k on CFG1 = 20 V")
 R("R1", "120k", "PD_CFG1", "GND", B)                    # 20 V request (210k would be 28 V!)
-C("C1", "1uF", "VBUS", "GND", B)                        # VHV
+C("C1", "1uF/X7R", "VBUS", "GND", B, fp=C0805)            # VHV: X7R keeps its 1 uF at 20 V
 C("C2", "1uF", "VBUS", "GND", B)                        # connector side, USB PD: <= 10 uF
-part("D1", "Device:D_Zener", "SMBJ22A", SMB, {"1": "VBUS", "2": "GND"},
-     "C113993", B, desc="TVS 22 V standoff, unidirectional")
+part("D1", "Device:D_Zener", "SMAJ22A", SMA, {"1": "VBUS", "2": "GND"},
+     "C283896", B, desc="TVS 22 V standoff, unidirectional")
 R("R2", "10k", "VBUS", "LED_PD", B)
 part("D2", "Device:LED", "PD", LED0603, {"1": "PD_PG", "2": "LED_PD"}, "C2287", B,
      mpn="KT-0603Y", desc="yellow: PD contract made")
@@ -92,13 +93,17 @@ part("JP10", "Jumper:SolderJumper_2_Open", "PD_SDA", SJ2O, {"1": "PD_SDA", "2": 
 B = "window"
 R("R3", "6.8k", "VBUS", "VREF", B)
 part("U5", "hasler:AZ431_SOT23", "AZ431AN", SOT23,
-     {"1": "VREF", "2": "VREF", "3": "GND"}, "C84138", B, mpn="AZ431AN-ATRE1",
+     {"1": "VREF", "2": "VREF", "3": "GND"}, "C92573", B, mpn="AZ431AN-ATRG1",
      desc="2.5 V shunt ref (SOT23: 1 REF, 2 K, 3 A)")
-R("R4", "33k", "VBUS", "DIV_UV", B)
-R("R5", "5.1k", "DIV_UV", "DIV_OV", B)
-R("R6", "4.7k", "DIV_OV", "GND", B)
-C("C3", "100nF", "DIV_UV", "GND", B)
-C("C4", "100nF", "DIV_OV", "GND", B)
+# Separate dividers, so the UV hysteresis (R16 from EN) cannot drag the OV threshold.
+R("R4", "33k", "VBUS", "DIV_UV", B)                     # UV: 2.50 V x 43/10 = 10.75 V
+R("R14", "10k", "DIV_UV", "GND", B)
+R("R16", "1M", "EN", "DIV_UV", B)                       # ~0.35 V hysteresis once on
+R("R5", "33k", "VBUS", "DIV_OVT", B)                    # OV: 2.50 V x 42.8/4.7 = 22.8 V
+R("R6", "5.1k", "DIV_OVT", "DIV_OV", B)
+R("R15", "4.7k", "DIV_OV", "GND", B)
+C("C3", "1nF", "DIV_UV", "GND", B)                      # 1 nF: filters spikes, ~5 us lag
+C("C4", "1nF", "DIV_OV", "GND", B)
 # LM393: unit A = over-voltage (VBUS < 22.7 V releases), unit B = under-voltage
 part("U4", "Comparator:LM393", "LM393", SOIC8,
      {"1": "EN", "2": "DIV_OV", "3": "VREF",          # A: + ref, - divider
@@ -107,30 +112,30 @@ part("U4", "Comparator:LM393", "LM393", SOIC8,
      "C7955", B, mpn="LM393DR2G")
 C("C5", "100nF", "VBUS", "GND", B)
 R("R7", "100k", "VBUS", "EN", B)
-part("D3", "Device:D_Zener", "BZT52C15", SOD123, {"1": "EN", "2": "GND"}, "C173427", B)
+part("D3", "Device:D_Zener", "BZT52C15S", SOD323, {"1": "EN", "2": "GND"}, "C17283", B)
 part("Q2", "Transistor_FET:2N7002", "2N7002", SOT23,
      {"1": "EN", "2": "GND", "3": "GATE_PULL"}, "C8545", B)
-R("R8", "4.7k", "GATE_PULL", "PGATE", B)
-R("R9", "10k", "VBUS", "PGATE", B)
-part("D4", "Device:D_Zener", "BZT52C15", SOD123, {"1": "VBUS", "2": "PGATE"}, "C173427", B)
+R("R8", "2.2k", "GATE_PULL", "PGATE", B)                # Vgs = -0.68 x VBUS when on
+R("R9", "4.7k", "VBUS", "PGATE", B)
+part("D4", "Device:D_Zener", "BZT52C15S", SOD323, {"1": "VBUS", "2": "PGATE"}, "C17283", B)
 part("Q1", "Transistor_FET:IRF7404", "AO4407A", SOIC8,
      {"1": "VBUS", "2": "VBUS", "3": "VBUS", "4": "PGATE",
       "5": "VOUT", "6": "VOUT", "7": "VOUT", "8": "VOUT"},
      "C16072", B, desc="P-FET 30 V 12 A, Vgs +-25 V")
-C("C6", "100nF", "PGATE", "VOUT", B, dnp=True)         # optional soft start
+C("C6", "100nF", "PGATE", "VOUT", B)                    # soft start: ~3-7 A into C7, not 30 A
 
 # ------------------------------------------------------------- out to amp
 B = "out"
 C("C7", "220uF/35V", "VOUT", "GND", B, fp="Capacitor_SMD:CP_Elec_8x10")
 COMPONENTS[-1]["lib_id"] = "Device:C_Polarized"
 C("C8", "10uF/50V", "VOUT", "GND", B, fp=C1206)
-part("D5", "Device:D_Zener", "SMBJ22A", SMB, {"1": "VOUT", "2": "GND"}, "C113993", B)
+part("D5", "Device:D_Zener", "SMAJ22A", SMA, {"1": "VOUT", "2": "GND"}, "C283896", B)
 R("R10", "10k", "VOUT", "LED_OUT", B)
 part("D6", "Device:LED", "OUT", LED0603, {"1": "GND", "2": "LED_OUT"}, "C965804", B,
      mpn="XL-1608UGC-04", desc="green: 20 V to the amp")
 part("J6", "Connector:Screw_Terminal_01x02", "To Amp4 DC in",
-     "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal",
-     {"1": "VOUT", "2": "GND"}, "C474952", B, mpn="KF128-5.08-2P")
+     "TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-2-3.5-H_1x02_P3.50mm_Horizontal",
+     {"1": "VOUT", "2": "GND"}, "C474892", B, mpn="KF350-3.5-2P")
 
 # ------------------------------------------------------- 3V3A (cabinet rail)
 B = "3v3a"
@@ -142,7 +147,7 @@ part("JP1", "Jumper:SolderJumper_3_Bridged12", "3V3A_SRC", SJ3,
      {"1": "LDO_OUT", "2": "3V3A", "3": "+3V3"}, None, B,
      desc="1-2 LDO (default), 2-3 Pi 3V3")
 C("C11", "10uF", "3V3A", "GND", B, fp=C0805)
-C("C12", "100nF", "3V3A", "GND", B)
+C("C12", "100nF/16V", "3V3A", "GND", B, fp=C0402)
 R("R11", "1k", "3V3A", "LED_3V3", B)
 part("D7", "Device:LED", "3V3", LED0603, {"1": "GND", "2": "LED_3V3"}, "C2286", B,
      mpn="KT-0603R", desc="red: 3V3A")
@@ -176,9 +181,9 @@ mcp = {"9": "+3V3", "10": "GND", "12": "SCL", "13": "SDA", "15": "MCP_A0", "16":
        "17": "MCP_A2", "18": "MCP_RST", "20": "MCP_INTA"}
 for _, sig, num, _ in DIG:
     mcp[num] = "M_" + sig
-part("U1", "Interface_Expansion:MCP23017_SO", "MCP23017", "Package_SO:SOIC-28W_7.5x17.9mm_P1.27mm",
-     mcp, "C47023", B, mpn="MCP23017-E/SO")
-C("C14", "100nF", "+3V3", "GND", B)
+part("U1", "Interface_Expansion:MCP23017_SO", "MCP23017", "Package_SO:SSOP-28_5.3x10.2mm_P0.65mm",
+     mcp, "C506653", B, mpn="MCP23017-E/SS")
+C("C14", "100nF/16V", "+3V3", "GND", B, fp=C0402)
 for i, a in enumerate(("MCP_A0", "MCP_A1", "MCP_A2")):
     part("JP%d" % (2 + i), "Jumper:SolderJumper_3_Bridged12", "A%d" % i, SJ3,
          {"1": "GND", "2": a, "3": "+3V3"}, None, B, desc="1-2 GND (0x20)")
@@ -193,7 +198,7 @@ for _, sig, num in ANA:
     ads[num] = "M_" + sig
 part("U2", "Analog_ADC:ADS1115IDGS", "ADS1115", "Package_SO:VSSOP-10_3x3mm_P0.5mm",
      ads, "C37593", B, mpn="ADS1115IDGSR")
-C("C15", "100nF", "3V3A", "GND", B)
+C("C15", "100nF/16V", "3V3A", "GND", B, fp=C0402)
 C("C16", "1uF", "3V3A", "GND", B)
 part("JP8", "Jumper:SolderJumper_2_Bridged", "ADDR_GND", SJ2B, {"1": "ADS_ADDR", "2": "GND"}, None, B,
      desc="ADDR to GND = 0x48")
@@ -232,7 +237,7 @@ for n in range(4):
          mpn="4D03WGJ0103T5E")
 
 for k, sig in enumerate(SERIES):
-    C("C%d" % (20 + k), "100nF", "M_" + sig, "GND", B)
+    C("C%d" % (20 + k), "100nF/16V", "M_" + sig, "GND", B, fp=C0402)
 
 for k, (_, sig, gpio, val) in enumerate(LAMP):
     R("R%d" % (20 + k), val, "J_" + sig, gpio, B)
