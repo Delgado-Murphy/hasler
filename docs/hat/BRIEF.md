@@ -71,6 +71,10 @@ the end switch disabled and PU muted (local edits, not in git).
 3. J2 as above, plus whatever the Excelsior needs.
 4. Clean 3.3 V for the pots and the ADC reference; ESD/series protection on the cabinet
    lines (60-year-old wiring, long ribbon).
+   **The 3.3 V that leaves for the cabinet (J2 pin 12) must be current-limited** (PTC fuse
+   or a load switch with current limit, or its own small LDO) so a short at a pot can't
+   collapse the Pi's 3.3 V rail. This happened on the bench on 2026-10-13: while the volume
+   pot was being reworked, a 3V3-GND short killed the Pi 4's 3.3 V regulator.
 5. Stacks with the Amp4 Pro (which already occupies the Pi's header and has its own
    EEPROM): check its pass-through header, height, and the DC jack / speaker terminal
    positions so nothing collides. Leave GPIO 2/3 (shared I²C), 4, 18–21 to the amp.
