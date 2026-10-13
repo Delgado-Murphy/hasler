@@ -148,6 +148,28 @@ class TestEndSwitch:
         events = run(c, [(0.2, {"d7": True}), (1.0, {"d7": False}), (0.5, {"d7": True})])
         assert [str(e) for e in events] == ["power.off", "power.on"]
 
+    def test_off_since_boot_never_shuts_down(self):
+        # An unplugged ribbon reads exactly like the knob turned off.
+        c = EndSwitch("power", "d7", off_hold_s=5.0)
+        events = run(c, [(600.0, {"d7": False})], tick=0.05)
+        assert [str(e) for e in events] == ["power.off"]
+
+    def test_on_then_off_past_the_hold_shuts_down(self):
+        c = EndSwitch("power", "d7", off_hold_s=5.0)
+        events = run(c, [(1.0, {"d7": False}), (1.0, {"d7": True}), (6.0, {"d7": False})])
+        assert [str(e) for e in events] == ["power.off", "power.on", "power.off", "power.off_held"]
+
+    def test_on_then_off_short_of_the_hold_does_not(self):
+        c = EndSwitch("power", "d7", off_hold_s=5.0)
+        events = run(c, [(1.0, {"d7": True}), (4.0, {"d7": False}), (1.0, {"d7": True})])
+        assert [str(e) for e in events] == ["power.off", "power.on"]
+
+    def test_unarmed_off_is_logged_once(self, caplog):
+        c = EndSwitch("power", "d7", off_hold_s=5.0)
+        with caplog.at_level("INFO", logger="haslerd.panel.controls"):
+            run(c, [(1.0, {"d7": False}), (0.1, {"d7": False}), (1.0, {"d7": False})])
+        assert len([r for r in caplog.records if "not armed" in r.message]) == 1
+
 
 class TestRotarySwitch:
     def test_pattern_map_from_metering(self):

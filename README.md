@@ -51,6 +51,7 @@ for private ones. Setup: [build guide, Phase 3c](docs/build-guide.md#phase-3c--s
 | `scripts/install.sh` | idempotent installer: haslerd, go-librespot, yt-dlp + deno. `--dry-run` first |
 | `scripts/panel-probe.py` | live view of the panel. Wire against this |
 | `docs/hardware.md` | bill of materials, GPIO map, and the two steps that can destroy something |
+| `hardware/hat/` | the Hasler HAT PCB: KiCad project generated from `gen/design.py`; order with `ORDERING.md`, decisions and rebuild in `docs/hat/DESIGN.md` |
 
 ## Wiring the panel
 

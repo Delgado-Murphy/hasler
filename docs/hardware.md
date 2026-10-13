@@ -8,7 +8,7 @@
 | **HiFiBerry Amp4 Pro** | DAC + amp, ~2×30 W | Hardware ALSA mixer — that is what makes one volume knob control radio, Bluetooth, AirPlay and Spotify alike. Powers the Pi from its own 5 V rail |
 | ~~HiFiBerry Power Controller v1.1~~ | **dropped** | Not used in this build. The lamp went to Pi GPIO instead (below); the power-path and JP1 notes further down only apply if it comes back |
 | **HW-398 PD trigger** | 20 V from a USB-C charger | Fastsoc FS312. Bridge the **20 V** pad only |
-| **RGB LED, 4-wire** | pilot lamp | Pi header pins 13–16 (GPIO 27/22/23 + GND), three resistors — see *Pilot lamp* |
+| **RGB LED, 4-wire** | pilot lamp | Pi header pins 11/15/13 (GPIO 17 red, 22 green, 27 blue) + common, three resistors — see *Pilot lamp* |
 | Hasler HM cabinet | keys, pots, speaker | 7 momentary keys, volume + tone pots, elliptical speaker |
 
 ## Buy now — Stage 1, makes it play
@@ -246,11 +246,13 @@ haslerd drives the lamp with software PWM (`io.lamp` in `hasler-hm.yaml`).
 | Header pin | Pi | LED leg | Series resistor (on the board) |
 |---|---|---|---|
 | 11 | GPIO 17 | red | **220 Ω** |
-| 13 | GPIO 27 | green | **100 Ω** |
-| 15 | GPIO 22 | blue | **100 Ω** |
+| 15 | GPIO 22 | green | **100 Ω** |
+| 13 | GPIO 27 | blue | **100 Ω** |
 | — | board GND rail | common (**common cathode**, long leg) | — |
 | — | board 3V3 rail | common (**common anode** only — move jumper J1) | — |
 
+- **Confirm the cabinet wire colours with a meter.** The code drives green on GPIO 22 and blue on
+  GPIO 27; if the lamp shows them swapped, change `pins:` under `io.lamp` in the variant YAML.
 - **Which type?** Meter in diode mode, red probe on the long leg: colours glow → common anode; glow
   only with the black probe there → common cathode. Set `common:` to match. Backwards just inverts the
   colours (off becomes white); nothing breaks.
