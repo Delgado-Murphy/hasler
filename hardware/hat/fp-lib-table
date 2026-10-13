@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "hasler")(type "KiCad")(uri "${KIPRJMOD}/hasler.pretty")(options "")(descr "Hasler HAT project footprints (TI RPW0010A)"))
+)

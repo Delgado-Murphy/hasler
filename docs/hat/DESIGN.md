@@ -45,9 +45,9 @@ So the HAT:
 
 ```
 USB-C ─ CH224A (asks 20 V) ─ VBUS ─┬─ SMAJ22A ─ GND
-                                   ├─ window 10.8 V < VBUS < 22.8 V (LM393 + AZ431 2.5 V ref)
-                                   └─ AO4407A P-FET ── VOUT ─┬─ 220 µF/35 V + 10 µF + SMAJ22A
-                    (gate from window, slow ramp)            └─ J6 (bottom-left) → Amp4 power terminal
+                                   └─ TPS259474A eFuse ── VOUT ─┬─ 220 µF/35 V + 10 µF + SMAJ22A
+                    on 11.2–23 V, 0.9 V/ms, 3.3 A, no back-feed │
+                                                                └─ J6 (bottom-left) → Amp4 power terminal
 Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12/26, lamp anode)
 ```
 
@@ -55,38 +55,47 @@ Amp4 Pro's own 5 V ─ Pi 5 V pins ─ XC6206 LDO ─ 3V3A (pots, ADC, J2 pin 12
   A second 5 V source on the HAT would fight the amp's regulator on the Pi's 5 V pins.
 - Budget at 20 V: Pi 4B ~15 W worst case + amp at volume into one speaker ~30 W peak
   → < 50 W, inside a 65 W charger (3.25 A).
-- CH224A: CFG1 = 120 kΩ → **20 V**. 28 V needs 210 kΩ or an I²C write; the window opens the
-  FET only between 10.8 V and 22.8 V (UV 2.5 V × 43/10 = 10.75 V, 10.83 V with R16's load;
-  OV 2.5 V × 42.8/4.7 = 22.77 V; tolerances ~10.6–11.2 V and 22.1–23.4 V), so a 12 V or 15 V
-  supply would play and nothing above 22.8 V reaches the amp (absolute max 24 V). Whether the
-  CH224A falls back to 12/15 V when a charger has no 20 V isn't in its datasheet: test it.
-  **Never configure 28 V**: the amp is safe, but D1 would clamp the charger continuously and the
-  USB-C receptacle is rated 20 V. (The CH224A's own "OVP" is only a 32 V reset, not protection.)
-- UV and OV have separate dividers; 1 MΩ from EN back to the UV tap gives ~0.3 V hysteresis
-  (on at 10.83 V, off below ~10.5 V) so a sagging supply can't make the FET chatter. 1 nF on
-  each tap: spikes filtered, ~4–8 µs lag. OV has no hysteresis (a 20 V contract never sits at
-  22.8 V).
-- Turn-on, three parts (changed after review: the first version's 100 nF alone let ~7–16 A
-  into the bulk caps and let a fast VBUS edge turn the FET on by itself):
-  - **C18, 1 µF on EN** (with R7's 100 k): the FET waits ~10 ms after the window opens, so it
-    doesn't load VBUS mid PD transition (the sink should stay at standby until PS_RDY).
-  - **C6, 470 nF gate–drain** (Miller): on the plateau the gate current is
-    (VBUS − 3 V)/R8 − 3 V/R9, 3–7 mA, so VOUT ramps at ~6–15 V/ms: ~1.4–3.5 A into C7 + C8
-    (230 µF), plus the Amp4's own input caps in proportion (their value is unknown) — inside a
-    65 W charger's 3.25 A, instead of the 7–16 A the first version allowed.
-  - **C17, 10 µF gate–source**: with the FET off, C6 holds the gate at VOUT, so a fast rise of
-    the source (hot-plug, the 5 → 20 V step, up to 30 V/ms in PD) would pull Vgs past the
-    threshold. With Cgs ≫ C6 only ~5 % of a step reaches Vgs. It also slows turn-off: UV/OV
-    take tens of ms to open the FET, which is fine for unplugging; fast transients are the
-    TVS diodes' job.
-  
-  Measure the ramp on the bench (ORDERING.md, bring-up 1).
-- **Don't also plug a supply into the Amp4's barrel jack**: VOUT would back-feed VBUS through
-  the FET's body diode.
+- CH224A: CFG1 = 120 kΩ → **20 V**. 28 V needs 210 kΩ or an I²C write. Whether the CH224A
+  falls back to 12/15 V when a charger has no 20 V isn't in its datasheet: test it (the eFuse
+  passes 12 and 15 V). **Never configure 28 V**: the eFuse's absolute maximum is 28 V, D1 would
+  clamp the charger continuously, and the USB-C receptacle is rated 20 V. (The CH224A's own
+  "OVP" is only a 32 V reset, not protection.)
+- **The switch is a TI TPS259474A eFuse** (U4, LCSC C3662807; TI RPW VQFN-HR 2 × 2 mm, footprint
+  `hasler:TI_RPW0010A_VQFN-HR-10_2x2mm_P0.45mm` after TI's land pattern). It replaced the
+  first design's LM393/AZ431 window and discrete P-FET after review: with a Miller-capacitor soft
+  start, the inrush and the FET's stress scaled with the Amp4's unknown input capacitance, and
+  the slow turn-off left an over-voltage on the amp for ~50 ms. The eFuse, all thresholds from
+  its 1.20 V rising / 1.09 V falling references (datasheet SLVSFC9C):
+  - **UVLO** (EN/UVLO, R3 1 M / R4 120 k): on above **11.2 V**, off below 10.2 V. A 5 V or 9 V
+    contract never reaches the amp; 12 and 15 V do.
+  - **OVLO** (R5 2 M / R6 100 k + R7 10 k): off above **23.0 V** (22.7–23.5 V with tolerances)
+    within **1.2 µs**, back on below 20.9 V. The amp's absolute maximum is 24 V.
+  - **dV/dt** (C3 2.2 nF): VOUT ramps at **~0.9 V/ms** (0.35–1.6 V/ms over the dV/dt current's
+    spread), ~22 ms to 20 V. Inrush = C × dV/dt whatever is on VOUT: 0.2 A into the HAT's
+    230 µF, ~0.9 A even with 1000 µF at the amp.
+  - **Current**: circuit breaker at **3.3 A** (R14 1 k, ±10 %, about a 65 W charger's 3.25 A),
+    with an 18 ms blanking window (C4 22 nF) so the amp's peaks up to 6.6 A pass; above that,
+    or for longer, it trips and retries (auto-retry variant). Fast trip at 2 × ILIM.
+  - **True reverse-current blocking**: VOUT can't back-feed VBUS, so a supply on the Amp4's
+    barrel jack, or the bulk cap after unplugging, can't reach the USB-C side.
+  - **PG** (open drain, pulled up to the Pi's 3V3 by R15) goes high when VOUT > 11.2 V (R8 1 M /
+    R9 120 k on PGTH) and the switch is fully on: test point **PG** (TP12).
+  - Thermal shutdown at 154 °C. RON 28 mΩ: ~0.3 W at 3 A.
+  - IN/OUT are two 0.3 mm strips 0.2 mm apart, reachable only at their ends: IN is fed from the
+    top end (D1, the TVS, above), OUT leaves from the bottom end (D5 below), each through a
+    0.3 mm neck that widens to 0.8 mm once clear of the package.
 - Its I²C status port (0x22/0x23 — inside the MCP23017's 0x20–0x27 range) is on solder
   jumpers JP9/JP10, **open** as shipped. Close them only with `addr: 0x20` pinned.
-- LEDs: **PD** (yellow, CH224A power-good), **20V** (green, switched rail live — it reads 12 or
-  15 V on a lower contract), **3V3A** (red, the cabinet rail). Silkscreen labels: PD, 20V, 3V3A.
+- VBUS capacitance at attach: C1 + C2 + C5 ≈ 3 µF (USB PD allows 10 µF); the eFuse keeps the bulk
+  caps off VBUS.
+- SMAJ22A on both sides: standoff 22 V, breakdown 24.4 V, so it doesn't conduct below the OVLO
+  point. Its clamping voltage at full surge current (35.5 V) is above the eFuse's 28 V absolute
+  maximum: it's protection against ringing and ESD, not against a lightning-class surge.
+- LEDs: **PD** (yellow, CH224A power-good), **20V** (green, the switched rail is live — it reads
+  12 or 15 V on a lower contract), **3V3A** (red, the cabinet rail).
+- Don't fit the extra 220–470 µF that `docs/hardware.md` describes at the amp's DC input: the HAT
+  carries its own bulk capacitor and TVS. (It's harmless with the eFuse — the inrush stays under
+  1 A — but it's no longer needed.)
 
 ## J2 — the Hasler connector
 
@@ -162,23 +171,27 @@ I²C map: 0x20 MCP23017 (A0–A2 to GND via JP2–JP4) · 0x48 ADS1115 (ADDR to 
   noisy pot. **Cut 1–2 before bridging 2–3**, or the LDO fights the Pi's 3V3.
 - `int_gpio: 23` is wired (JP5) but the daemon still polls; using the interrupt is a software
   change (INTCON/GPINTEN + an edge watch on GPIO 23).
-- The AZ431's SOT-23 pinout (1 REF, 2 K, 3 A) differs from the TL431DBZ's in KiCad's library;
-  the project symbol `hasler:AZ431_SOT23` carries the right one. Same trap as J2.
+- The eFuse (TI RPW package) has no KiCad library footprint: `hardware/hat/hasler.pretty` holds
+  one built from TI's land pattern and checked against JLC's own (C3662807). Same kind of trap
+  as J2: check pin 1 in JLC's preview.
 - Solder jumpers for every address, interrupt and reset line, so any of them can be
   disconnected while debugging.
 
 ## Layout and routing
 
-- Power column on the right (over the Pi's ports): USB-C → CH224A → window → P-FET → bulk cap.
+- Power column on the right (over the Pi's ports): USB-C → CH224A → TVS → eFuse → bulk cap.
   VOUT reaches **J6 at the bottom-left** (next to the notch, ~25 mm from the Amp4's power
   terminal) on a locked 1.6 mm bottom-layer trunk along the board edge under J2.
 - The USB-C's two VBUS pad pairs (A4/B9, A9/B4) sit either side of CC and D+/D- at 0.5 mm pitch.
   Each drops through a via right behind it onto a **1.0–1.2 mm bottom-layer strap under the
   pad row**, so all four contacts share the current (the first layout joined one pair through
-  0.25 mm). Copper on the main path, as built: pads → TVS → P-FET 0.6–0.8 mm on top (0.6 is set
+  0.25 mm), and a second bottom-layer path runs from that strap to a via beside D1, in parallel
+  with the top-layer run. Copper on the main path, as built: pads → TVS → eFuse 0.6–0.8 mm on top
+  (0.6 is set
   by the pad pitch, a few mm), drains → bulk cap / TVS 0.8–1.2 mm, bulk cap → J6 1.6 mm. Fine
   for the ~1 A typical / 2.5 A peak this board sees. The 0.19–0.25 mm VBUS/VOUT branches only
-  feed the window, LEDs and test points.
+  feed the eFuse's dividers, the LEDs and the test points. The eFuse's IN/OUT strips are fed
+  through 0.3 mm necks at their ends (the package allows nothing wider), widening to 0.8 mm.
 - Laid by hand and locked before the autorouter: the VBUS strap, the CH224A's VHV ↔ VBUS link
   (pins 1 and 8 are on opposite sides of the chip, bottom layer), CC1 and D+ (they cross CC2 and
   D− between chip and receptacle: inner layer), and the loop joining J3's two D+ pads round the
@@ -217,15 +230,23 @@ schematic and docs) went through rev A before ordering. Fixed in this revision:
   sat on the standing can);
 - the drill files' origin (they were ~100 mm off the Gerbers), C7's polarity in the CPL and the
   resistor arrays' pin 1;
-- the turn-on (C6 470 nF, C17, C18 above), R13's pull-up to the Pi's 3V3, decoupling at every
+- R13's pull-up to the Pi's 3V3, decoupling at every
   ESD array, the VBUS strap, thermal spokes, the mounting-hole keepouts, silkscreen sizes and
   J2's pin-1 mark;
 - `hasler-hm.yaml` stays the stripboard's mapping (the HAT's is `hasler-hm-hat.yaml`), the
   lamp driver's default pins no longer include GPIO 23 (the MCP's INTA), `build.sh` stops on
   DRC errors, and ORDERING.md's bring-up gained the pre-power, window-ramp and wiring checks.
 
-Left as they are, noted: no second FET against back-feed (the barrel-jack warning stands); no
-gating of the FET on the CH224A's PG; no third support near J2 (hold it when plugging in); J4
+A second round (three reviewers, same day) checked those fixes. It found the first fix for the
+turn-on — a larger Miller capacitor plus a gate–source capacitor on the discrete P-FET — made the
+inrush depend on the Amp4's unknown input capacitance and slowed over-voltage turn-off to
+~50 ms. So the window and the FET became the **TPS259474A eFuse** (see Power). It also asked
+for a second VBUS path from J3 to D1 (done), and shorter routes from C40–C42 to their ESD
+arrays' VCC pins: pre-routing those choked the router in that row, so they stay as the router
+lays them (~11–15 mm); each SRV05-4 has its own VCC–GND zener, the capacitors only help it.
+
+Left as they are, noted: no gating of the eFuse on the CH224A's PG (the UVLO and the 0.9 V/ms
+ramp keep it off VBUS until the contract has settled for any normal charger); no third support near J2 (hold it when plugging in); J4
 keeps 5 V on pin 1; no ESD diodes on D+/D− (the CH224A only uses them for BC1.2 detection);
 pot readings may jitter a few counts with the lamp pulsing (shared 3V3A wire).
 

@@ -36,7 +36,7 @@ LCSC = {
     "100k": "C25803", "120k": "C25808", "2.2k": "C4190", "1M": "C22935",
     "4x10k": "C29718", "4x1k": "C20197",
     "100nF": "C14663", "100nF/16V": "C1525", "1nF": "C1588", "1uF/X7R": "C28323", "1uF/25V": "C52923", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
-    "220uF/35V": "C970697", "470nF/50V": "C13967",
+    "220uF/35V": "C970697", "2M": "C22976", "2.2nF/50V": "C1604", "22nF": "C1532",
 }
 
 COMPONENTS = []
@@ -89,43 +89,29 @@ part("D2", "Device:LED", "PD", LED0603, {"1": "PD_PG", "2": "LED_PD"}, "C2287", 
 part("JP9", "Jumper:SolderJumper_2_Open", "PD_SCL", SJ2O, {"1": "PD_SCL", "2": "SCL"}, None, B)
 part("JP10", "Jumper:SolderJumper_2_Open", "PD_SDA", SJ2O, {"1": "PD_SDA", "2": "SDA"}, None, B)
 
-# ------------------------------------------------- window 10.8 V .. 22.8 V
-B = "window"
-R("R3", "6.8k", "VBUS", "VREF", B)
-part("U5", "hasler:AZ431_SOT23", "AZ431AN", SOT23,
-     {"1": "VREF", "2": "VREF", "3": "GND"}, "C92573", B, mpn="AZ431AN-ATRG1",
-     desc="2.5 V shunt ref (SOT23: 1 REF, 2 K, 3 A)")
-# Separate dividers, so the UV hysteresis (R16 from EN) cannot drag the OV threshold.
-R("R4", "33k", "VBUS", "DIV_UV", B)                     # UV: 2.50 V x 43/10 = 10.75 V (10.83 with R16)
-R("R14", "10k", "DIV_UV", "GND", B)
-R("R16", "1M", "EN", "DIV_UV", B)                       # hysteresis: off again below ~10.5 V
-R("R5", "33k", "VBUS", "DIV_OVT", B)                    # OV: 2.50 V x 42.8/4.7 = 22.8 V
-R("R6", "5.1k", "DIV_OVT", "DIV_OV", B)
-R("R15", "4.7k", "DIV_OV", "GND", B)
-C("C3", "1nF", "DIV_UV", "GND", B)                      # 1 nF: filters spikes, ~5 us lag
-C("C4", "1nF", "DIV_OV", "GND", B)
-# LM393: unit A = over-voltage (VBUS < 22.8 V releases), unit B = under-voltage
-part("U4", "Comparator:LM393", "LM393", SOIC8,
-     {"1": "EN", "2": "DIV_OV", "3": "VREF",          # A: + ref, - divider
-      "5": "DIV_UV", "6": "VREF", "7": "EN",          # B: + divider, - ref
-      "8": "VBUS", "4": "GND"},
-     "C7955", B, mpn="LM393DR2G")
-C("C5", "100nF", "VBUS", "GND", B)
-R("R7", "100k", "VBUS", "EN", B)
-part("D3", "Device:D_Zener", "BZT52C15S", SOD323, {"1": "EN", "2": "GND"}, "C17283", B)
-C("C18", "1uF/25V", "EN", "GND", B, fp=C0402)                       # EN rises over ~10 ms: FET waits out the PD transition
-part("Q2", "Transistor_FET:2N7002", "2N7002", SOT23,
-     {"1": "EN", "2": "GND", "3": "GATE_PULL"}, "C8545", B)
-R("R8", "2.2k", "GATE_PULL", "PGATE", B)                # Vgs = -0.68 x VBUS when on
-R("R9", "4.7k", "VBUS", "PGATE", B)
-part("D4", "Device:D_Zener", "BZT52C15S", SOD323, {"1": "VBUS", "2": "PGATE"}, "C17283", B)
-part("Q1", "Transistor_FET:IRF7404", "AO4407A", SOIC8,
-     {"1": "VBUS", "2": "VBUS", "3": "VBUS", "4": "PGATE",
-      "5": "VOUT", "6": "VOUT", "7": "VOUT", "8": "VOUT"},
-     "C16072", B, desc="P-FET 30 V 12 A, Vgs +-25 V")
-C("C6", "470nF/50V", "PGATE", "VOUT", B, fp=C0805)      # soft start (Miller): 6-15 V/ms, ~1.4-3.5 A into C7 + C8
-C("C17", "10uF", "PGATE", "VBUS", B, fp=C0805)          # Cgs >> C6: a fast VBUS edge can't couple
-                                                        # through C6 and turn the FET on by itself
+# ------------------------------------------------ eFuse: window, inrush, current limit
+# TI TPS259474A (auto-retry, circuit breaker, PG): adjustable UVLO and OVLO (1.2 us),
+# dV/dt-controlled start-up whatever the load capacitance, true reverse-current blocking
+# (the Amp4's barrel jack can no longer back-feed the USB-C), thermal shutdown. IN 2.7-23 V,
+# 28 V absolute. Thresholds: VUVLO = VOVLO = VPGTH = 1.20 V rising / 1.09 V falling.
+B = "efuse"
+part("U4", "hasler:TPS259474", "TPS259474ARPWR", "hasler:TI_RPW0010A_VQFN-HR-10_2x2mm_P0.45mm",
+     {"1": "EF_EN", "2": "EF_OV", "3": "EF_PG", "4": "EF_PGTH", "5": "VBUS", "6": "VOUT",
+      "7": "EF_DVDT", "8": "GND", "9": "EF_ILM", "10": "EF_TMR"},
+     "C3662807", B, desc="eFuse 2.7-23 V 5.5 A, OVLO, circuit breaker, PG, auto-retry")
+C("C5", "1uF", "VBUS", "GND", B)                         # at IN (VBUS total ~3 uF, PD allows 10)
+R("R3", "1M", "VBUS", "EF_EN", B)                       # UVLO: 1.2 V x 1120/120 = 11.2 V on,
+R("R4", "120k", "EF_EN", "GND", B)                      #   1.09 V x 9.33 = 10.2 V off (>= 350k on top: TI)
+R("R5", "2M", "VBUS", "EF_OV", B)                       # OVLO: 1.2 V x 2110/110 = 23.0 V off,
+R("R6", "100k", "EF_OV", "EF_OVB", B)                   #   1.09 V x 19.2 = 20.9 V on again
+R("R7", "10k", "EF_OVB", "GND", B)
+R("R8", "1M", "VOUT", "EF_PGTH", B)                     # PG once VOUT > 11.2 V
+R("R9", "120k", "EF_PGTH", "GND", B)
+R("R15", "10k", "+3V3", "EF_PG", B)                     # PG is open drain, <= 5 V: to the Pi's 3V3
+part("R14", "Device:R", "1k", "Resistor_SMD:R_0402_1005Metric", {"1": "EF_ILM", "2": "GND"}, "C11702", B)
+                                                        # ILIM = 3334 / 1k = 3.3 A (65 W charger: 3.25 A)
+C("C4", "22nF", "EF_TMR", "GND", B, fp=C0402)                   # overcurrent blanking 1.51 V x 22 nF / 1.8 uA = 18 ms
+C("C3", "2.2nF/50V", "EF_DVDT", "GND", B)               # dV/dt 2000/2200 = 0.9 V/ms: 0.9 A into 1000 uF
 
 # ------------------------------------------------------------- out to amp
 B = "out"
@@ -286,7 +272,7 @@ part("J5", "Connector_Generic:Conn_01x04", "Qwiic",
 for i, (net, label) in enumerate([
         ("VBUS", "VBUS"), ("VOUT", "20V"), ("+5V", "5V"), ("+3V3", "3V3"), ("3V3A", "3V3A"),
         ("GND", "GND"), ("GND", "GND"), ("SDA", "SDA"), ("SCL", "SCL"), ("MCP_INTA", "INT"),
-        ("PD_PG", "PG"), ("EN", "EN"), ("M_A0", "A0"), ("M_A1", "A1")]):
+        ("PD_PG", "PD"), ("EF_PG", "PG"), ("M_A0", "A0"), ("M_A1", "A1")]):
     TPt("TP%d" % (1 + i), net, label)
 
 for i in (1, 2):
@@ -294,7 +280,7 @@ for i in (1, 2):
          {}, None, "mech")
 
 # Nets that need a PWR_FLAG for ERC (driven from off-sheet: USB, the Pi, the amp).
-PWR_FLAGS = ["VBUS", "GND", "+5V", "+3V3", "VOUT", "3V3A"]
+PWR_FLAGS = ["VBUS", "GND", "+5V", "+3V3", "3V3A"]     # VOUT: driven by the eFuse
 
 POWER_NETS = {"VBUS", "VOUT"}                  # up to 3 A: wide tracks
 GND_NETS = {"GND"}                             # plane on In1, vias down from every pad

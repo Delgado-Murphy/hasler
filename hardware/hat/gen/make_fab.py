@@ -26,7 +26,8 @@ FAB = os.path.join(OUT, "fab")
 
 # Footprint-name regex -> degrees added for JLC (after kicad-jlcpcb-tools' table).
 ROTATIONS = [
-    (r"^SOT-23", 180), (r"^SOIC-", 270), (r"^SSOP-", 270), (r"^VSSOP-", 270),
+    (r"^SOT-23", 180),     # SOT-23, SOT-23-3 and SOT-23-6 alike (checked against JLC's footprints)
+    (r"^SOIC-", 270), (r"^SSOP-", 270), (r"^VSSOP-", 270),
     # RVT 8x10 (C970697): JLC has + on the left like KiCad, so no offset (checked by pad match)
     (r"^R_Array_Convex_4x0603", 270),
     # (the HRO USB-C needs no offset: checked in JLC's 3D preview, mouth out of the edge)

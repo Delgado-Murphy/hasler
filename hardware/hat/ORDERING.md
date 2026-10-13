@@ -35,22 +35,23 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 
 - **PCBA type:** Standard. **Assembly side: Top.** All SMD parts are on the top.
 - **J1 (the 2×20 socket) is hand-soldered** — see below. It is in the BOM and CPL (on the
-  `Bottom` layer), so a top-side order leaves it out by itself: the BOM step shows 42 lines
-  with J1 unselected or missing. Buy five sockets yourself: LCSC **C5124634**, or any 2×20,
+  `Bottom` layer), so a top-side order leaves it out by itself: the BOM step shows 43 lines
+  (44 with J1). Buy five sockets yourself: LCSC **C5124634**, or any 2×20,
   2.54 mm female header **8.5 mm tall** (the height sets the gap over the Amp4).
 - JLC fits J2 (2×13 box header), J4 (2×8 header) and J6 (screw terminal) from the top.
 - **Confirm parts placement: Yes** (€0.40): JLC's engineers check every position and rotation
   and you approve before assembly.
-- **Not fitted by design:** test points, solder jumpers, mounting holes (copper only). Nothing is DNP.
+- **Not fitted by design:** test points, solder jumpers, mounting holes (bare unplated holes). Nothing is DNP.
 - **Check the placement preview** (2D and 3D) before paying. `make_fab.py` turns KiCad's
   orientations into JLC's and was checked part by part against JLC's own footprints and in
   JLC's preview on 2026-10-13:
-  - SOT-23 +180°, SOT-23-6 / SOIC / SSOP / VSSOP +270°, 4×0603 resistor arrays +270°,
+  - SOT-23 / SOT-23-3 / SOT-23-6 +180°, SOIC / SSOP / VSSOP +270°, 4×0603 resistor arrays +270°,
     the 220 µF electrolytic and the USB-C 0°;
   - J1, J2, J4, J6 (KiCad origin on pin 1) and J3 (JLC's model 1.5 mm off KiCad's origin) are
     placed by the centre of their pads; the 2-row headers turn 270°.
   
-  Look at: pin 1 of U1–U4 and U7–U12; the cathode marks of D1, D3–D5; the **+ of C7 on the left
+  Look at: pin 1 of U1–U4 and U7–U12 (U4 is the 2 × 2 mm eFuse: pin 1 top-left, its two long
+  IN/OUT pads vertical in the middle); the cathode marks of D1 and D5; the **+ of C7 on the left
   pad** (toward J6 and the notch); J2's key toward the board edge; J3's contacts on their pads
   and its mouth out of the right edge, ~1 mm over it (on purpose: flush with the Pi's ports).
   JLC numbers the KT-0603 LEDs (D2, D7) pin 1 = anode, so their pin-1 dot lands on the anode:
@@ -76,7 +77,8 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
   without missing them).
 - Keep it square: plug it onto the **unpowered** Amp4 Pro's header with the HAT on its
   standoffs, then solder.
-- The pins are ~1.4 mm from U1/U2's fine-pitch pads: fine tip, a strip of Kapton over them.
+- The pins are 1.26 mm from U1's fine-pitch pads (and ~0.8–0.9 mm from TP3, J5 and the JP2–JP4
+  jumpers): fine tip, a strip of Kapton over them.
 - GND pins have thermal spokes on every layer except J1 pins 6 and 39, which join the pour solid
   (DRC couldn't give them two good spokes). Give those two a little longer.
 
@@ -85,14 +87,15 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 0. **Before any power**, with a meter on resistance: VBUS–GND (TP VBUS), VOUT–GND (TP 20V),
    5V–GND, 3V3–GND and 3V3A–GND must not read a short (the big caps read low at first, then
    climb).
-1. **The window, with a bench supply** (current limit ~100 mA) on TP VBUS and GND, nothing
-   else connected. Ramp 0 → 24 V:
-   - the green **20V** LED lights at ~10.8 V (after ~10–20 ms), stays lit to ~22.8 V, goes out
-     above it, and comes back below it;
-   - coming down, it goes out below ~10.5 V.
+1. **The eFuse, with a bench supply** (current limit ~0.5 A: the start-up inrush is ~0.2 A) on
+   TP VBUS and GND, nothing else connected. Ramp 0 → 24 V slowly:
+   - the green **20V** LED lights once VBUS passes ~11.2 V (VOUT ramps up behind it at ~1 V/ms)
+     and TP **PG** goes high once a Pi powers its 3V3 (it's pulled up there; on the bench, read it
+     as "not pulled low");
+   - above ~23 V it goes out at once (OVLO), and comes back below ~20.9 V;
+   - coming down, it goes out below ~10.2 V.
    
-   If you have a scope, watch TP 20V when the supply steps 5 → 20 V: it should ramp over a few
-   ms, not jump.
+   If you have a scope, step the supply 5 → 20 V and watch TP 20V: a ~20 ms ramp, not a jump.
 2. **USB-C, still no Pi, no amp.** Plug a 65 W PD charger into J3 (right edge, the Pi's port
    side). The yellow **PD** LED lights. Then:
    - TP **VBUS** and TP **20V** (VOUT) read 20 V, and the green **20V** LED is lit;
@@ -101,9 +104,9 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
    A 5 V-only USB supply must leave 20V dark. A 12 V or 15 V PD charger: the window passes
    both, but whether the CH224A falls back to them when 20 V isn't offered is untested — try it.
 3. **Unplug the USB-C.** Make a pigtail for J6, check its polarity with the meter, and fit it
-   to the Amp4 Pro's power terminal (+ to +). **Leave the Amp4's barrel jack empty** (it would
-   back-feed the USB-C side through the FET), and **never use the Pi's own USB-C power port**
-   while it's stacked (it would back-feed the amp's 5 V).
+   to the Amp4 Pro's power terminal (+ to +). Leave the Amp4's barrel jack empty (the eFuse
+   blocks back-feed into the USB-C side, but two supplies on the amp gain nothing), and **never
+   use the Pi's own USB-C power port** while it's stacked (it would back-feed the amp's 5 V).
 4. Stack Pi + Amp4 Pro + HAT on **11 mm M2.5 standoffs** (two, at the header-side holes).
    Plug the HAT's USB-C last. Boot. Then:
    - `i2cdetect -y 1` should show `20` (MCP23017), `48` (ADS1115) and `4d` (UU once the amp

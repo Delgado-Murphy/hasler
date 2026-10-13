@@ -16,7 +16,7 @@ CLI=$KICAD/MacOS/kicad-cli
 python3 gen/make_sch.py .
 $CLI sch erc --severity-all --exit-code-violations -o build/erc.rpt hasler-hat.kicad_sch >/dev/null
 $KPY gen/make_pcb.py place . > build/place.log 2>&1 || { grep -v Fontconfig build/place.log | tail -5; exit 1; }
-grep -E 'overlaps|fan-out|placed' build/place.log || true
+grep -E 'overlaps|fan-out|placed|eFuse|VBUS:|preroute' build/place.log || true
 
 # signals only
 python3 - <<'EOF'

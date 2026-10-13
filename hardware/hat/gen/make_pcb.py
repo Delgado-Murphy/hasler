@@ -54,21 +54,16 @@ FIXED = {
     "H1": (3.5, 3.5, 0), "H2": (61.5, 3.5, 0),
     "J5": (32.8, 3.1, 180),           # Qwiic, mouth to the top edge
     # power column (x 65..85, over the Pi's USB/Ethernet), rows following the power
-    # flow: USB-C/CH224A -> TVS -> window -> P-FET -> bulk/TVS -> J6. Hand-placed.
-    "D2": (66.0, 2.0, 90), "D6": (67.7, 2.0, 90), "U3": (72.6, 3.2, 0),
+    # flow: USB-C/CH224A -> TVS -> eFuse -> bulk/TVS -> J6. Hand-placed.
+    "D2": (66.0, 2.0, 270), "D6": (67.7, 2.0, 270), "U3": (72.6, 3.2, 0),   # LED pad 2 down to its resistor
     "R2": (66.0, 5.3, 90), "R10": (67.7, 5.3, 90),
     "JP9": (66.6, 8.6, 90), "JP10": (69.4, 8.6, 90), "R1": (71.6, 8.6, 90), "C1": (73.8, 8.6, 90),
     "TP11": (75.95, 8.6, 0),
-    "C5": (67.2, 13.6, 0), "TP1": (70.2, 13.6, 0), "C2": (73.2, 13.6, 0), "D1": (80.6, 13.7, 0),
-    "U4": (69.5, 19.6, 0), "D4": (74.4, 19.6, 90), "R9": (76.2, 19.6, 90), "R8": (77.8, 19.3, 90),
-    "Q1": (81.5, 20.8, 270),          # sources (1-3) up toward USB-C/D1, drains (5-8) down to VOUT
-    "U5": (67.6, 24.6, 0), "R3": (70.6, 24.6, 90), "R4": (72.2, 24.6, 90), "R14": (73.8, 24.6, 90),
-    "R16": (75.4, 24.6, 90), "D3": (77.3, 22.7, 90),
-    "R5": (66.0, 28.1, 90), "R6": (67.6, 28.1, 90), "R15": (69.2, 28.1, 90), "C3": (70.8, 28.1, 90),
-    "C4": (72.4, 28.1, 90), "R7": (74.0, 28.1, 90), "TP12": (75.9, 30.5, 0),
-    "Q2": (78.0, 26.55, 90), "C6": (76.0, 16.6, 0),  # C6 by the gate network
-    "C17": (75.9, 12.8, 90),          # gate-source, beside D1 (VBUS) above the gate network
-    "C18": (67.0, 30.4, 0),           # EN delay (0402: EN never exceeds 15 V): a slow node, any spot on the net will do
+    "TP1": (70.2, 13.6, 0), "C2": (73.2, 13.6, 0), "D1": (80.6, 13.7, 0),
+    # eFuse: IN/OUT are two 0.3 mm strips 0.2 mm apart (fp x -/+0.25), fed from their ends only:
+    # IN from the top end (D1 above), OUT from the bottom end (D5 below). Control pins 1-4 left,
+    # 7-10 right.
+    "U4": (80.6, 19.6, 0), "C5": (78.2, 17.5, 90),
     "C8": (71.3, 30.95, 0), "TP2": (70.0, 35.0, 0), "D5": (81.55, 28.15, 270),  # upright under the drains
     "C7": (79.3, 36.4, 0),
     "J6": (4.6, 36.4, 0),             # bottom-left: wire entry down, ~25 mm to the Amp4 power terminal
@@ -118,6 +113,14 @@ NEAR = {  # ref: (zone, x, y, rotation)
     "R20": ("mid", 59.0, 18.6, 0), "R21": ("mid", 59.0, 20.4, 0), "R22": ("mid", 62.6, 18.6, 90),
 }
 NEAR["TP3"] = ("lft", 11.0, 12.4, 0)   # 5V, at the LDO input (J4 pin 1 also carries it)
+# eFuse dividers left of it (EN/UVLO, OVLO, PGTH, PG pull-up), timing parts right of it
+NEAR.update({
+    "R3": ("pwr", 77.0, 21.8, 90), "R4": ("pwr", 75.4, 21.8, 90), "R5": ("pwr", 73.8, 21.8, 90),
+    "R6": ("pwr", 72.2, 21.8, 90), "R7": ("pwr", 70.6, 21.8, 90),
+    "R8": ("pwr", 77.0, 25.2, 90), "R9": ("pwr", 75.4, 25.2, 90), "R15": ("pwr", 73.8, 25.2, 90),
+    "TP12": ("pwr", 71.6, 25.2, 0),
+    "C4": ("pwr", 83.6, 17.2, 90), "R14": ("pwr", 83.6, 19.6, 90), "C3": ("pwr", 83.2, 22.6, 0),
+})
 TOP_TPS = ["TP4", "TP5", "TP6", "TP7", "TP8", "TP9", "TP10", "TP13", "TP14"]
 for i, ref in enumerate(TOP_TPS):
     NEAR[ref] = ("top", 39.6 + 3.6 * (i % 5), 1.4 if i < 5 else 4.4, 0)
@@ -142,7 +145,8 @@ def schematic_nets():
 
 def load_fp(fpid):
     lib, name = fpid.split(":")
-    fp = pcbnew.FootprintLoad(FPLIB + lib + ".pretty", name)
+    path = os.path.join(OUT, "hasler.pretty") if lib == "hasler" else FPLIB + lib + ".pretty"
+    fp = pcbnew.FootprintLoad(path, name)
     fp.SetFPID(pcbnew.LIB_ID(lib, name))
     return fp
 
@@ -389,15 +393,21 @@ def place():
     # locked; widen_power() takes the power ones as wide as their surroundings allow.
     preroute(board, "/VBUS", ("U3", "8"), ("J3", "A9"), 0.3)
     preroute(board, "/VBUS", ("J3", "A4"), ("D1", "1"), 0.5)
-    preroute(board, "/VBUS", ("D1", "1"), ("Q1", "2"), 0.5)
-    preroute(board, "/VBUS", ("Q1", "1"), ("Q1", "2"), 0.5)
-    preroute(board, "/VBUS", ("Q1", "2"), ("Q1", "3"), 0.5)
+    efuse_power(board)
     vbus_strap(board)
     # CH224A: VHV (pin 1) and VBUS (pin 8) are on opposite sides of the chip; CC1 has to
     # cross CC2 between the chip and the receptacle. Both under the top layer, laid first.
     hop(board, "/VBUS", ("U3", "1"), ("U3", "8"), pcbnew.B_Cu, w=0.3)
     hop(board, "/CC1", ("U3", "7"), ("J3", "A5"), pcbnew.In2_Cu)
     hop(board, "/USB_DP", ("U3", "4"), ("J3", "B6"), pcbnew.In2_Cu)   # D+ to the chip's far side
+    # the LEDs straight down to their resistors (1.7 mm), before anything can cross the gap
+    preroute(board, "/LED_PD", ("D2", "2"), ("R2", "2"), 0.2)
+    preroute(board, "/LED_OUT", ("D6", "2"), ("R10", "2"), 0.2)
+    # the CH224A's I2C pins to their jumpers, and the MCP-ADS SDA link: short local runs the
+    # router tends to leave in this corner
+    preroute(board, "/PD_SCL", ("U3", "2"), ("JP9", "1"), 0.15, required=False)
+    preroute(board, "/PD_SDA", ("U3", "3"), ("JP10", "1"), 0.15, required=False)
+    preroute(board, "/SDA", ("U1", "13"), ("U2", "9"), 0.15, required=False)
     # The receptacle's two D+ pads sit either side of a D- pad: join them round the pad tips
     j3 = board.FindFootprintByReference("J3")
     cu = Copper(board)
@@ -409,9 +419,6 @@ def place():
     assert cu.path_fits(net, pcbnew.F_Cu, loop, 0.15), "D+ loop round the J3 pad tips"
     for p_, q_ in zip(loop, loop[1:]):
         cu.track(net, pcbnew.F_Cu, p_, q_, 0.15, locked=True)
-    for a_, b_ in (("5", "6"), ("6", "7"), ("7", "8")):
-        preroute(board, "/VOUT", ("Q1", a_), ("Q1", b_), 0.6)
-    preroute(board, "/VOUT", ("Q1", "7"), ("D5", "1"), 0.8)
     preroute(board, "/VOUT", ("D5", "1"), ("C7", "1"), 0.8)
     # GND fan-out before routing. Not the USB-C: its GND pins sit beside VBUS at 0.5 mm pitch
     # (VBUS must route first), and its plated shell tabs already reach the plane.
@@ -492,6 +499,67 @@ def vbus_strap(board, w=0.9):
         raise RuntimeError("vbus_strap: no room on B.Cu")
     for p, q in zip(path, path[1:]):
         cu.track(net, pcbnew.B_Cu, p, q, w, locked=True)
+    # ...and a second path to D1 (the TVS, then the eFuse) on B.Cu, in parallel with the
+    # top-layer run from the A4/B9 pads, which can only be 0.6 mm wide between J3's pins
+    d1 = board.FindFootprintByReference("D1").FindPadByNumber("1")
+    dx, dy = mm(d1.GetPosition().x), mm(d1.GetPosition().y)
+    half = max(mm(d1.GetBoundingBox().GetWidth()), mm(d1.GetBoundingBox().GetHeight())) / 2
+    for x, y in ring(dx, dy, half, steps=(0.4, 0.6, 0.8, 1.0, 1.3), n=32, prefer=math.atan2(by - dy, bx - dx)):
+        if not (cu.fits("pt", (x, y), None, VIA_D / 2, net) and
+                cu.path_fits(net, pcbnew.F_Cu, [(dx, dy), (x, y)], 0.6)):
+            continue
+        leg = None
+        for cand in ([(bx, by), (x, y)], [(bx, by), (bx, y), (x, y)], [(bx, by), (x, by), (x, y)]):
+            if cu.path_fits(net, pcbnew.B_Cu, cand, w):
+                leg = cand
+                break
+        if leg is None:
+            leg = grid_route(cu, net, pcbnew.B_Cu, (bx, by), [(x, y)], w=w, window=10.0)
+        if leg:
+            cu.via(net, x, y, locked=True)
+            cu.track(net, pcbnew.F_Cu, (dx, dy), (x, y), 0.6, locked=True)
+            for p, q in zip(leg, leg[1:]):
+                cu.track(net, pcbnew.B_Cu, p, q, w, locked=True)
+            print("VBUS: second path J3 -> D1 on B.Cu")
+            break
+    else:
+        print("VBUS: no room for the second J3 -> D1 path")
+
+
+def efuse_power(board, w=0.8):
+    """The eFuse's IN and OUT pads are 0.3 mm strips 0.2 mm apart, reachable only at their ends.
+    IN leaves the strip end facing D1 (VBUS), OUT the end facing D5 (VOUT): a 0.3 mm neck along
+    the strip axis to clear the package, then w mm to the target, all locked before routing."""
+    cu = Copper(board)
+    u = board.FindFootprintByReference("U4")
+    for num, netname, target in (("5", "/VBUS", ("D1", "1")), ("6", "/VOUT", ("D5", "1"))):
+        net = board.FindNet(netname).GetNetCode()
+        pad = u.FindPadByNumber(num)
+        bb = pad.GetBoundingBox()
+        px, py = mm(pad.GetPosition().x), mm(pad.GetPosition().y)
+        assert mm(bb.GetHeight()) > mm(bb.GetWidth()), "U4 strips are expected to run along y"
+        tp = board.FindFootprintByReference(target[0]).FindPadByNumber(target[1]).GetPosition()
+        tx, ty = mm(tp.x), mm(tp.y)
+        sgn = -1 if ty < py else 1                      # leave from the end facing the target
+        end = mm(bb.GetTop()) if sgn < 0 else mm(bb.GetBottom())
+        a, b = (px, end - sgn * 0.15), (px, end + sgn * 0.55)
+        assert cu.path_fits(net, pcbnew.F_Cu, [a, b], 0.3), "U4 %s neck" % netname
+        cu.track(net, pcbnew.F_Cu, a, b, 0.3, locked=True)
+        for ww in (w, 0.6, 0.5):
+            path = None
+            for cand in ([b, (tx, ty)], [b, (b[0], ty), (tx, ty)], [b, (tx, b[1]), (tx, ty)]):
+                if cu.path_fits(net, pcbnew.F_Cu, cand, ww):
+                    path = cand
+                    break
+            if path is None:
+                path = grid_route(cu, net, pcbnew.F_Cu, b, [(tx, ty)], w=ww,
+                                  window=max(8.0, 2.4 * math.hypot(tx - b[0], ty - b[1])))
+            if path:
+                break
+        assert path, "U4 %s to %s" % (netname, target)
+        for p_, q_ in zip(path, path[1:]):
+            cu.track(net, pcbnew.F_Cu, p_, q_, ww, locked=True)
+        print("eFuse %s: neck 0.3 mm, then %.1f mm to %s.%s" % (netname, ww, *target))
 
 
 def hop(board, netname, a, b, layer, w=0.2):
@@ -524,7 +592,7 @@ def hop(board, netname, a, b, layer, w=0.2):
         cu.track(net, layer, p, q, w, locked=True)
 
 
-def preroute(board, netname, a, b, w):
+def preroute(board, netname, a, b, w, required=True):
     """A locked track between two pads before autorouting, for a link the router would
     otherwise lose in a tight spot (straight, L, or maze on the top layer)."""
     cu = Copper(board)
@@ -539,6 +607,9 @@ def preroute(board, netname, a, b, w):
     else:
         path = grid_route(cu, net, pcbnew.F_Cu, s, [e], w=w,
                           window=max(8.0, 2.4 * math.hypot(e[0] - s[0], e[1] - s[1])))
+    if not path and not required:
+        print("preroute %s-%s: no room, left to the router" % (a, b))
+        return
     assert path, "preroute %s-%s failed (%.2f,%.2f -> %.2f,%.2f)" % (a, b, s[0] - OX, s[1] - OY,
                                                                     e[0] - OX, e[1] - OY)
     for p, q in zip(path, path[1:]):
@@ -667,13 +738,13 @@ def silkscreen(board):
     for ref, lab in labels.items():
         x, y = fp_xy(board, ref)
         text(board, lab, x, y + 1.5, T, just="center")
-    for ref, lab, dx, dy in (("TP1", "VBUS", 0, 1.6), ("TP2", "20V", 0, -1.5), ("TP11", "PG", 0, 1.6),
-                             ("TP12", "EN", 0, -1.55)):
+    for ref, lab, dx, dy in (("TP1", "VBUS", 0, 1.6), ("TP2", "20V", 0, -1.5), ("TP11", "PD", 0, 1.6),
+                             ("TP12", "PG", 0, -1.55)):
         x, y = fp_xy(board, ref)
         text(board, lab, x + dx, y + dy, T, just="center")
 
     # --- LEDs and connectors
-    text(board, "PD 20V", 65.15, 0.95, T, just="right")             # D2, D6 left to right
+    text(board, "PD 20V", 64.35, 2.1, T, just="center", angle=90, wf=0.6)   # D2, D6; clear of H2's head
     x, y = fp_xy(board, "D7")
     text(board, "3V3A", x + 1.55, y, T, just="center", angle=90)
     text(board, "QWIIC", 37.3, 3.2, T, just="center", angle=90)
@@ -689,7 +760,7 @@ def silkscreen(board):
     for ref, lab, dx, dy, ang in (("JP2", "A0", 0, 3.0, 0), ("JP3", "A1", 0, 3.0, 0), ("JP4", "A2", 0, 3.0, 0),
                                   ("JP5", "INT", 0, 3.0, 0), ("JP7", "RST", 0, 3.0, 0),
                                   ("JP6", "RDY", 0, 3.0, 0), ("JP8", "ADDR", -1.7, 0, 90),
-                                  ("JP9", "PD", 1.4, 3.0, 0)):
+                                  ("JP9", "PD I2C", 1.4, 3.0, 0)):
         x, y = fp_xy(board, ref)
         text(board, lab, x + dx, y + dy, T, just="center", angle=ang)
 
@@ -701,7 +772,7 @@ def silkscreen(board):
         text(board, "%2d %s" % (a, design.J2_LABELS[a]), 62.0, 13.9 + 1.58 * i, T, layer=B)
         text(board, "%2d %s" % (b, design.J2_LABELS[b]), 46.0, 13.9 + 1.58 * i, T, layer=B)
     notes = ["J6 -> Amp4 power in,", "+ to +. Amp4 DC jack", "stays empty.",
-             "Never 28 V (R1 120k).", "Window 10.8-22.8 V.", "",
+             "Never 28 V (R1 120k).", "eFuse 11.2-23 V 3.3 A", "",
              "I2C MCP23017 0x20", "ADS1115 0x48", "AMP 0x4D", "CH224A 0x22 JP9/10"]
     for i, line in enumerate(notes):
         if line:
@@ -1126,9 +1197,40 @@ def close_gaps(cu, gaps):
                     break
         if not done:   # last resort: maze a stub to any free via spot nearby, then maze the far leg
             done = _maze_hop(cu, net, w, (ax, ay, al), (bx, by, bl)) or \
-                _maze_hop(cu, net, w, (bx, by, bl), (ax, ay, al))
+                _maze_hop(cu, net, w, (bx, by, bl), (ax, ay, al)) or \
+                _two_via(cu, net, w, (ax, ay, al), (bx, by, bl))
         fixed += done
     return fixed
+
+
+def _two_via(cu, net, w, a, b):
+    """Both ends on the top layer and no way between them there: a via beside each end and a
+    maze route between the vias on In2, else B.Cu."""
+    (x0, y0, l0), (x1, y1, l1) = a, b
+    if pcbnew.F_Cu not in l0 or pcbnew.F_Cu not in l1:
+        return False
+
+    def spots(x, y):
+        return [p for p in ring(x, y, 0.3, steps=(0.6, 0.9, 1.3, 1.8, 2.4), n=24)
+                if cu.fits("pt", p, None, VIA_D / 2, net) and cu.path_fits(net, pcbnew.F_Cu, [(x, y), p], w)]
+    sa, sb = spots(x0, y0)[:3], spots(x1, y1)[:12]
+    if not sa or not sb:
+        return False
+    for layer in (pcbnew.In2_Cu, pcbnew.B_Cu):
+        for pa in sa:
+            pth = grid_route(cu, net, layer, pa, sb, w=w,
+                             window=max(6.0, 2.4 * math.hypot(x1 - pa[0], y1 - pa[1])))
+            if not pth:
+                continue
+            pb = pth[-1]
+            cu.track(net, pcbnew.F_Cu, (x0, y0), pa, w)
+            cu.via(net, *pa)
+            for p, q in zip(pth, pth[1:]):
+                cu.track(net, layer, p, q, w)
+            cu.via(net, *pb)
+            cu.track(net, pcbnew.F_Cu, pb, (x1, y1), w)
+            return True
+    return False
 
 
 def _maze_hop(cu, net, w, a, b):
@@ -1263,10 +1365,15 @@ def fill(board):
 
 
 def gap_passes(tag, rounds=6):
+    history = []
     for i in range(rounds):
         rpt = drc_report(PCB)
         gaps = rpt["unconnected_items"]
         if not gaps:
+            break
+        history.append(len(gaps))
+        if len(history) >= 3 and history[-1] >= history[-3]:
+            print("%s: no progress in two passes, stopping at %d" % (tag, len(gaps)))
             break
         board = pcbnew.LoadBoard(PCB)
         cu = Copper(board)

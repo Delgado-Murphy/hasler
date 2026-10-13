@@ -66,21 +66,25 @@ def ch224a():
             body, unit]
 
 
-def az431(tl431):
-    """TL431DBZ's drawing with the AZ431 SOT23 pinout: 1 REF, 2 K, 3 A."""
-    s = copy.deepcopy(tl431)
-    s[1] = Str("AZ431_SOT23")
-    renum = {"K": "2", "REF": "1", "A": "3"}
-    for sub in find(s, "symbol"):
-        sub[1] = Str(sub[1].replace("TL431DBZ", "AZ431_SOT23"))
-        for p in find(sub, "pin"):
-            first(p, "number")[1] = Str(renum[first(p, "name")[1]])
-    for p in find(s, "property"):
-        if p[1] == "Value":
-            p[2] = Str("AZ431_SOT23")
-        if p[1] == "Description":
-            p[2] = Str("2.5 V shunt reference, SOT23 pinout 1 REF / 2 K / 3 A (Diodes AZ431)")
-    return s
+def tps259474():
+    L, Rx = -12.7, 12.7
+    pins = [("5", "IN", "power_in", L, 7.62, 0), ("1", "EN/UVLO", "input", L, 2.54, 0),
+            ("2", "OVLO", "input", L, 0, 0), ("4", "PGTH", "input", L, -2.54, 0),
+            ("6", "OUT", "power_out", Rx, 7.62, 180), ("3", "PG", "open_collector", Rx, 2.54, 180),
+            ("7", "DVDT", "passive", Rx, -2.54, 180), ("9", "ILM", "passive", Rx, -5.08, 180),
+            ("10", "ITIMER", "passive", Rx, -7.62, 180),
+            ("8", "GND", "power_in", 0, -12.7, 90)]
+    body = ["symbol", Str("TPS259474_0_1"),
+            ["rectangle", ["start", -10.16, 10.16], ["end", 10.16, -10.16],
+             ["stroke", ["width", 0.254], ["type", "default"]], ["fill", ["type", "background"]]]]
+    unit = ["symbol", Str("TPS259474_1_1")] + [pin(n, nm, t, x, y, a) for n, nm, t, x, y, a in pins]
+    return ["symbol", Str("TPS259474"), ["exclude_from_sim", "no"], ["in_bom", "yes"], ["on_board", "yes"],
+            prop("Reference", "U", 0, 11.43), prop("Value", "TPS259474", 0, -13.97),
+            prop("Footprint", "hasler:TI_RPW0010A_VQFN-HR-10_2x2mm_P0.45mm", hide=True),
+            prop("Datasheet", "https://www.ti.com/lit/ds/symlink/tps25947.pdf", hide=True),
+            prop("Description", "eFuse 2.7-23 V 5.5 A, adjustable OVLO, circuit breaker, PG (TI RPW, VQFN-HR 2x2)",
+                 hide=True),
+            body, unit]
 
 
 _libcache = {}
@@ -109,9 +113,7 @@ def kicad_symbol(lib_id):
     return s
 
 
-_tl = parse(open(KLIB + "Reference_Voltage.kicad_sym").read())[0]
-HASLER = {"CH224A": ch224a(),
-          "AZ431_SOT23": az431([s for s in find(_tl, "symbol") if s[1] == "TL431DBZ"][0])}
+HASLER = {"CH224A": ch224a(), "TPS259474": tps259474()}
 
 
 def write_lib():
@@ -168,7 +170,7 @@ def bbox(sym, unit):
 
 BLOCKS = [  # (key, title, column, width mm)
     ("power", "USB-C PD in (CH224A, 20 V)", 0, 150),
-    ("window", "Window 10.9-22.7 V and load switch", 0, 150),
+    ("efuse", "eFuse TPS259474: on 11.2-23 V, 0.9 V/ms, 3.3 A", 0, 150),
     ("out", "20 V to the Amp4 Pro", 0, 150),
     ("3v3a", "3V3A - cabinet and ADC rail", 0, 150),
     ("pi", "Pi header (via the Amp4's top header)", 1, 120),
@@ -329,7 +331,7 @@ def main():
         "Generated from hardware/hat/gen/design.py - edit that, not this sheet.",
         "J2 numbering is the IDC standard (DIN 41651): pin 1 next to the key slot, odd/even rows alternate.",
         "A female IDC plug lands ribbon wire n on pin n. The HM's 16-wire ribbon goes in a 26-way plug flush to pin 1.",
-        "AZ431 SOT23 pinout is 1 REF / 2 K / 3 A - NOT the TL431DBZ's. Symbol hasler:AZ431_SOT23.",
+        "U4 TPS259474 in TI's RPW (VQFN-HR 2x2): footprint hasler:TI_RPW0010A_VQFN-HR-10_2x2mm_P0.45mm.",
         "MCP23017 GPA7/GPB7 are output-only on current silicon: left unconnected.",
     ]
     for i, n in enumerate(notes):
