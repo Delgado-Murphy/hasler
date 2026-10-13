@@ -54,11 +54,12 @@ FIXED = {
     "H1": (3.5, 3.5, 0), "H2": (61.5, 3.5, 0),
     "J5": (32.8, 3.1, 180),           # Qwiic, mouth to the top edge
     # power column (x 65..85, over the Pi's USB/Ethernet), rows following the power
-    # flow: USB-C/CH224A -> TVS -> eFuse -> bulk/TVS -> J6. Hand-placed.
+    # flow: USB-C/CH224A -> TVS -> eFuse -> TVS (C7 pads, not fitted) -> J6. Hand-placed.
     "D2": (66.0, 2.0, 270), "D6": (67.7, 2.0, 270), "U3": (72.6, 3.2, 0),   # LED pad 2 down to its resistor
     "R2": (66.0, 5.3, 90), "R10": (67.7, 5.3, 90),
-    "JP9": (66.6, 8.6, 90), "JP10": (69.4, 8.6, 90), "R1": (71.6, 8.6, 90), "C1": (73.8, 8.6, 90),
-    "TP11": (75.95, 8.6, 0),
+    "C1": (72.6, 6.9, 180),           # VHV/VBUS decoupling right under U3, VBUS pad toward pin 8
+    "JP9": (66.6, 9.6, 90), "JP10": (69.4, 9.6, 90), "R1": (71.6, 9.6, 90),
+    "TP11": (75.95, 9.6, 0),
     "TP1": (70.2, 13.6, 0), "C2": (73.2, 13.6, 0), "D1": (80.6, 13.7, 0),
     # eFuse: IN/OUT are two 0.3 mm strips 0.2 mm apart (fp x -/+0.25), fed from their ends only:
     # IN from the top end (D1 above), OUT from the bottom end (D5 below). Control pins 1-4 left,
@@ -66,7 +67,7 @@ FIXED = {
     "U4": (80.6, 19.6, 0),
     "C5": (79.2, 16.6, 0),            # IN ceramic: its VBUS pad on the 0.8 mm run into the IN strip
     "C17": (82.2, 22.05, 0),          # OUT ceramic: its VOUT pad on the run out of the OUT strip
-    "C8": (71.3, 30.95, 0), "TP2": (70.0, 35.0, 0), "D5": (81.55, 28.15, 270),  # upright under the drains
+    "C8": (71.3, 30.95, 0), "TP2": (70.0, 35.0, 0), "D5": (81.55, 28.15, 270),  # upright below U4's OUT strip
     "C7": (79.3, 36.4, 0),
     "J6": (4.6, 36.4, 0),             # bottom-left: wire entry down, ~25 mm to the Amp4 power terminal
     # logic: the MCP23017 upright, pin-1 end (all GPA/GPB pins) facing the line rows
@@ -119,6 +120,7 @@ NEAR["TP3"] = ("lft", 11.0, 12.4, 0)   # 5V, at the LDO input (J4 pin 1 also car
 NEAR.update({
     "R3": ("pwr", 77.0, 21.8, 90), "R4": ("pwr", 75.4, 21.8, 90), "R5": ("pwr", 73.8, 21.8, 90),
     "R6": ("pwr", 72.2, 21.8, 90), "R7": ("pwr", 70.6, 21.8, 90), "R16": ("pwr", 69.0, 21.8, 90),
+    "JP11": ("pwr", 67.0, 21.8, 90),
     "R8": ("pwr", 77.0, 25.2, 90), "R9": ("pwr", 75.4, 25.2, 90), "R15": ("pwr", 73.8, 25.2, 90),
     "TP12": ("pwr", 71.6, 25.2, 0),
     "C4": ("pwr", 83.6, 17.2, 90), "R14": ("pwr", 83.6, 19.6, 90), "C3": ("pwr", 83.3, 23.6, 0),
@@ -427,6 +429,18 @@ def place():
     preroute(board, "/VOUT", ("D5", "1"), ("C7", "1"), 0.8)
     for c_, u_ in (("C41", "U10"), ("C42", "U11")):   # the two that otherwise route long
         preroute(board, "/3V3A", (c_, "1"), (u_, "5"), 0.25, required=False)
+    try:   # and join those two ESD supply islands to each other underneath, so neither hangs off
+        hop(board, "/3V3A", ("C41", "1"), ("C42", "1"), pcbnew.In2_Cu, w=0.25)
+    except (AssertionError, RuntimeError) as e:
+        print("3V3A C41-C42 hop:", e)
+    try:   # RDY leaves the ADS1115 on the far side from its pull-up and jumper: go under the chip
+        hop(board, "/ADS_RDY", ("U2", "2"), ("JP6", "1"), pcbnew.In2_Cu)
+    except (AssertionError, RuntimeError) as e:
+        print("ADS_RDY hop:", e)
+    try:   # SDA from the MCP/ADS pair up to the Qwiic / header side, under the J1 field
+        hop(board, "/SDA", ("U1", "13"), ("J5", "3"), pcbnew.In2_Cu, w=0.15)
+    except (AssertionError, RuntimeError) as e:
+        print("SDA hop:", e)
     # GND fan-out before routing. Not the USB-C: its GND pins sit beside VBUS at 0.5 mm pitch
     # (VBUS must route first), and its plated shell tabs already reach the plane.
     n, failed = stitch_gnd(Copper(board), locked=True, skip=("J3",))
@@ -810,7 +824,7 @@ def silkscreen(board):
     for ref, lab, dx, dy, ang in (("JP2", "A0", 0, 3.0, 0), ("JP3", "A1", 0, 3.0, 0), ("JP4", "A2", 0, 3.0, 0),
                                   ("JP5", "INT", 0, 3.0, 0), ("JP7", "RST", 0, 3.0, 0),
                                   ("JP6", "RDY", 0, 3.0, 0), ("JP8", "ADDR", -1.7, 0, 90),
-                                  ("JP9", "PD I2C", 1.4, 3.0, 0)):
+                                  ("JP9", "PD I2C", 1.4, 2.4, 0), ("JP11", "10V", 0, 2.6, 0)):
         x, y = fp_xy(board, ref)
         text(board, lab, x + dx, y + dy, T, just="center", angle=ang)
 
@@ -822,14 +836,18 @@ def silkscreen(board):
         text(board, "%2d %s" % (a, design.J2_LABELS[a]), 62.0, 13.9 + 1.58 * i, T, layer=B)
         text(board, "%2d %s" % (b, design.J2_LABELS[b]), 46.0, 13.9 + 1.58 * i, T, layer=B)
     notes = ["J6 -> Amp4 power in,", "+ to +. Amp4 DC jack", "stays empty.",
-             "Never 28 V (R1 120k).", "eFuse 11.2-23 V 3.3 A", "",
+             "Never 28 V (R1 120k).", "eFuse OV 22.6V 3.3A", "JP11 shut: UV 10.3V",
              "I2C MCP23017 0x20", "ADS1115 0x48", "AMP 0x4D", "CH224A 0x22 JP9/10"]
     for i, line in enumerate(notes):
         if line:
             text(board, line, 74.6, 12.2 + 1.6 * i, T, layer=B, just="center")
     text(board, design.COMPANY.upper(), 74.6, 28.6, 1.3, layer=B, just="center", bold=True)
     text(board, "Hasler HAT rev %s  2026" % design.REV, 74.6, 30.5, T, layer=B, just="center")
-    text(board, "JLCJLCJLCJLC", 74.6, 32.4, T, layer=B, just="center")
+    # easter egg, bottom, under the Amp4 (seen only with the HAT off): the eFuse blocks reverse current
+    for i, line in enumerate(("REVERSE THE POLARITY", "OF THE NEUTRON FLOW", "", "(U4 won't let you)",
+                              "", "Bigger on the inside.")):
+        if line:
+            text(board, line, 15.5, 16.0 + 1.6 * i, T, layer=B, just="center")
 
 
 # ----------------------------------------------- copper model and finishing passes

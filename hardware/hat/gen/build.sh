@@ -48,3 +48,4 @@ if ! $CLI pcb drc --schematic-parity --severity-all --exit-code-violations -o bu
 fi
 echo "DRC: clean"
 $KPY gen/make_fab.py .
+python3 gen/check.py    # netlist, committed BOM/CPL and the documented thresholds

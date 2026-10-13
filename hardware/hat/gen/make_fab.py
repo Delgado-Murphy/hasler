@@ -67,10 +67,12 @@ def gerbers():
     run("pcb", "export", "gerbers", "--layers", layers, "--subtract-soldermask",
         "--use-drill-file-origin", "-o", g + "/", PCB)
     run("pcb", "export", "drill", "--format", "excellon", "--drill-origin", "plot",
-        "--excellon-separate-th", "--generate-map", "--map-format", "gerberx2", "-o", g + "/", PCB)
+        "--excellon-separate-th", "-o", g + "/", PCB)
     z = os.path.join(FAB, "hasler-hat-gerbers.zip")
     with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
         for n in sorted(os.listdir(g)):
+            if n.endswith(".gbrjob"):      # KiCad 9.0.1 numbers the inner layers wrongly in it
+                continue
             f.write(os.path.join(g, n), n)
     return z
 

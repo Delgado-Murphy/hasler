@@ -24,9 +24,11 @@ from `gen/design.py` (`gen/build.sh` runs them all). Design decisions: `docs/hat
 | Surface finish | ENIG (flat pads for the SSOP/VSSOP; HASL works too) |
 | Via covering | Plugged (JLC's default for 4 layers, free) |
 | Min via hole / diameter | 0.3 / 0.6 mm (standard, no extra charge) |
-| Mark on PCB | Remove Mark (default). If you'd rather have the order number, "specify a location": the `JLCJLCJLCJLC` text on the bottom silkscreen |
+| Mark on PCB | **Remove Mark** (the board has no placeholder for the order number) |
 | Confirm production file | Yes (€0.94): JLC's engineers check the files and you approve before fabrication |
 | Edge | One notch in the bottom edge (over the Amp4's capacitor): it's in the outline, no extra option |
+| Edge rails | The board is under JLC's 70 mm assembly minimum and has parts near every edge, so JLC adds rails: **on the two 85 mm sides only** (never left/right: the USB-C overhangs the right edge), tab-routed rather than V-cut, with fiducials on the rails. If the order form asks, pick that; otherwise say it in the order note |
+| Via-in-pad | Three GND vias sit in the CH224A's exposed pad. If "Epoxy filled & capped" is offered free or cheap, take it; "Plugged" is acceptable (low-power part, GND pad) |
 
 After the upload, open JLC's **Gerber viewer** once and check that the drill holes sit in their
 pads (the drill files and Gerbers share the board's bottom-left origin).
@@ -51,12 +53,15 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
   - J1, J2, J4, J6 (KiCad origin on pin 1) and J3 (JLC's model 1.5 mm off KiCad's origin) are
     placed by the centre of their pads; the 2-row headers turn 270°.
   
-  Look at: pin 1 of U1–U4 and U7–U12 (U4 is the 2 × 2 mm eFuse: pin 1 top-left, its two long
+  Look at: pin 1 of U1–U4, U6 and U7–U12 (U4 is the 2 × 2 mm eFuse: pin 1 top-left, its two long
   IN/OUT pads vertical in the middle); the cathode marks of D1 and D5; J2's key toward the board edge; J3's contacts on their pads
   and its mouth out of the right edge, ~1 mm over it (on purpose: flush with the Pi's ports).
   JLC numbers the KT-0603 LEDs (D2, D7) pin 1 = anode, so their pin-1 dot lands on the anode:
   the polarity is right, don't let anyone "correct" it.
 - Extended parts each carry JLC's one-off loading fee; there are 13 (J1 excluded).
+- In the placement confirmation, check that J3's four shell legs get soldered (JLC lists the
+  receptacle as SMD; the legs carry the plug's force), and that C4 and R14 (the eFuse's timer
+  and current-limit parts, 0402 next to the GND pour) aren't tombstoned in the photos.
 
 ## Before you order
 
@@ -87,44 +92,51 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 ## Bring-up (bench, before the cabinet)
 
 0. **Before any power**, with a meter on resistance: VBUS–GND (TP VBUS), VOUT–GND (TP 20V),
-   5V–GND, 3V3–GND and 3V3A–GND must not read a short (the big caps read low at first, then
-   climb).
-1. **The eFuse, with a bench supply** (current limit ~0.5 A: the start-up inrush is ~0.2 A) on
-   TP VBUS and GND, nothing else connected. Ramp 0 → 24 V slowly:
-   - the green **20V** LED lights once VBUS passes ~10.3 V (VOUT ramps up behind it at ~1 V/ms)
-     and TP **PG** goes high once a Pi powers its 3V3 (it's pulled up there; on the bench, read it
-     as "not pulled low");
-   - above ~22.6 V it goes out at once (OVLO), and comes back below ~20.6 V;
-   - coming down, it goes out below ~9.4 V.
-   
-   If you have a scope, step the supply 5 → 20 V and watch TP 20V: a ~20 ms ramp, not a jump.
+   5V–GND, 3V3–GND and 3V3A–GND must not read a short (the 10 µF caps read low at first, then
+   climb). Check JP11 is **open** (as shipped).
+1. **The eFuse, with a bench supply** (current limit ~0.5 A; with nothing on J6 it draws only a
+   few mA) on TP VBUS and GND, nothing else connected. Ramp 0 → 24 V slowly:
+   - the green **20V** LED lights from ~3 V (JP11 open: U4 turns on with the charger's first
+     5 V), and TP 20V follows TP VBUS;
+   - TP **PG** goes high once VOUT passes ~11.2 V and a Pi powers its 3V3 (it's pulled up
+     there; on the bench, read it as "not pulled low");
+   - above ~22.6 V it goes out at once (OVLO), and comes back below ~20.5 V.
+
+   If you have a scope, step the supply 0 → 5 V and watch TP 20V: a ~5 ms ramp, not a jump.
 2. **USB-C, still no Pi, no amp.** Plug a 65 W PD charger into J3 (right edge, the Pi's port
    side). The yellow **PD** LED lights. Then:
    - TP **VBUS** and TP **20V** (VOUT) read 20 V, and the green **20V** LED is lit;
    - J6 (bottom-left, by the notch) reads 20 V, + on the left pin (marked on the silkscreen).
 
-   A 5 V-only USB supply must leave 20V dark. A 12 V or 15 V PD charger: the eFuse passes
-   both, but whether the CH224A falls back to them when 20 V isn't offered is untested — try it.
+   A 5 V-only USB supply lights 20V at 5 V (as shipped, the eFuse turns on before the PD
+   contract; see DESIGN.md, Power): use a PD charger. A 12 V or 15 V PD charger: the eFuse
+   passes both, but whether the CH224A falls back to them when 20 V isn't offered is untested —
+   try it.
 3. **Unplug the USB-C.** Make a pigtail for J6, check its polarity with the meter, and fit it
    to the Amp4 Pro's power terminal (+ to +). **Leave the Amp4's barrel jack empty**: the eFuse
    blocks back-feed, but only up to 21 V across it, so a 24 V supply there with the USB-C
    unplugged would exceed its rating. And **never
    use the Pi's own USB-C power port** while it's stacked (it would back-feed the amp's 5 V).
 4. Stack Pi + Amp4 Pro + HAT on **11 mm M2.5 standoffs** (two, at the header-side holes).
-   Plug the HAT's USB-C last. **Watch the start-up**: the 20V LED should come on once and stay
-   on while the Pi boots. If it blinks every ~0.1 s (the eFuse overheating while it charges the
-   amp's capacitor and restarting), unplug and fit C3 = 4.7 nF (0603) for a slower ramp; if the
-   amp turned out to need C7, fit it only with that slower ramp. Then:
+   Plug the HAT's USB-C last. **Watch the start-up**: the 20V LED comes on at once and stays on
+   while the Pi boots, and TP 20V settles at 20 V. If it blinks every ~0.1 s instead (the eFuse
+   restarting), unplug and look for a short on VOUT first. Don't fit C7 or slow the ramp with C3:
+   both make the eFuse's start-up heating worse. Then:
    - `i2cdetect -y 1` should show `20` (MCP23017), `48` (ADS1115) and `4d` (UU once the amp
      driver loads);
    - TP 3V3A reads 3.3 V and the red **3V3A** LED is lit.
-5. Point `haslerd.service`'s `--variant` at `config/variants/hasler-hm-hat.yaml` (pins d8–d14,
+5. Re-crimp the HM ribbon into a 26-way plug flush to pin 1 and plug it into J2 **first**, then
+   point `haslerd.service`'s `--variant` at `config/variants/hasler-hm-hat.yaml` (pins d8–d14,
    d0 for the tone switch, `addr: 0x20`). `hasler-hm.yaml` stays the prototype stripboard's
-   mapping until then: the HAT file on the stripboard would read the end switch open and shut
-   the Pi down. Re-crimp the HM ribbon into a 26-way plug flush to pin 1 and plug it into J2.
+   mapping until then. (The daemon on this branch only arms the end-switch shutdown after it has
+   read the switch on once, so an unplugged ribbon no longer halts the Pi; older builds would.)
    Run `scripts/panel-probe.py --variant config/variants/hasler-hm-hat.yaml`.
 6. Support J2 with a finger when you push the IDC plug in: the board is held along its header
-   edge only, ~30 mm away.
+   edge only, ~30 mm away. A ~6–7 mm silicone bumper glued under the HAT's far end (around the
+   power column), resting on the Pi's USB-jack shells, stops it flexing.
+7. **If it won't start** (20V blinking with nothing shorted, the Pi rebooting at power-up): check
+   JP11 is open. The other way round, if you'd rather never feed the amp 5 V or 9 V and the amp
+   turns out to start late enough, bridge JP11 for a 10.3 V turn-on (see DESIGN.md first).
 
 ## Debug aids on the board
 
@@ -133,17 +145,20 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
   **Pin 1 is 5 V**: never connect a USB-UART's 5 V, and keep jumpers off pins 1–2.
 - Qwiic (J5): 3.3 V I²C. The Pi already has 1.8 k pull-ups on the bus: take them off a
   Qwiic module if you can (two sets of pull-ups is over the I²C spec's 3 mA).
-- Test points on every rail, I²C, INT, PG, EN and the two pot wipers, all labelled. 5V is by
+- Test points on every rail, I²C, INT, PD, PG and the two pot wipers, all labelled. 5V is by
   the LDO at the left; VBUS, 20V, PD (the CH224A's power-good) and PG (the eFuse's) are in the
   power column.
 - Solder jumpers (labelled):
-  - JP1: 3V3A from the LDO or the Pi. Cut 1–2 before bridging 2–3.
+  - JP1: 3V3A from the LDO or the Pi. Cut 1–2 before bridging 2–3. The LDO is the cabinet
+    rail's current limit (a pot short once killed the bench Pi's 3.3 V regulator): 2–3 is bench
+    only, never with the cabinet connected.
   - JP2–JP4: MCP23017 address (never leave one cut and unbridged: the pin would float).
   - JP5: INT → GPIO 23.
   - JP6: RDY → GPIO 24.
   - JP7: RST ← GPIO 25 (open).
   - JP8: ADS1115 ADDR (must not float: if you cut it, bridge another address).
   - JP9/JP10: the CH224A's I²C (open; it answers at 0x22/0x23, inside the MCP's range).
+  - JP11: the eFuse's turn-on (open: with the charger's 5 V; bridged: above 10.3 V).
 - The J2 pinout, with HM and Excelsior signals, is on the bottom silkscreen.
 - Keep `POWER_OFF_ON_HALT=0` (the Pi's default): the lamp anode is on 3V3A, which the amp keeps
   up, so a halted Pi with its 3V3 off would have a little current flow into GPIO 17/22/27.
@@ -152,8 +167,10 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 
 - ERC 0; DRC 0 violations, 0 unconnected, schematic parity clean (all severities). The rules
   set to ignore, and why, are in `docs/hat/DESIGN.md`.
-- A five-reviewer pass (power, logic/pinout, layout/mechanics, fab data, schematic/docs) on
-  2026-10-13: every IC pinout and polarity against its datasheet, every CPL rotation against
-  JLC's own footprint, the Amp4 clearances against HiFiBerry's STEP model. Their findings are
-  fixed in this revision (see `docs/hat/DESIGN.md`, "Review").
-- Renders: `renders/hasler-hat-top.png`, `renders/hasler-hat-bottom.png`.
+- Four review rounds on 2026-10-13 (five, three, two and five reviewers): every IC pinout and
+  polarity against its datasheet, every CPL rotation and pad against JLC's own footprints, the
+  Amp4 clearances against HiFiBerry's STEP model, the eFuse thresholds with tolerances, a
+  start-up thermal model, drills against pads, and the fab files regenerated from the board.
+  Their findings are fixed in this revision (see `docs/hat/DESIGN.md`, "Review").
+- Renders: `renders/hasler-hat-top*.png`, `renders/hasler-hat-bottom*.png` (they draw C7, which
+  is not fitted).

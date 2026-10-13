@@ -18,24 +18,20 @@ C0805 = "Capacitor_SMD:C_0805_2012Metric"
 C1206 = "Capacitor_SMD:C_1206_3216Metric"
 RARR = "Resistor_SMD:R_Array_Convex_4x0603"
 LED0603 = "LED_SMD:LED_0603_1608Metric"
-SOD323 = "Diode_SMD:D_SOD-323"
 SMA = "Diode_SMD:D_SMA"
-SOT23 = "Package_TO_SOT_SMD:SOT-23"
 SOT23_3 = "Package_TO_SOT_SMD:SOT-23-3"
 SOT23_6 = "Package_TO_SOT_SMD:SOT-23-6"
-SOIC8 = "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm"
 TP = "TestPoint:TestPoint_Pad_D1.0mm"
 SJ2B = "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm"
 SJ2O = "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm"
 SJ3 = "Jumper:SolderJumper-3_P1.3mm_Bridged12_RoundedPad1.0x1.5mm"
 
-# LCSC part numbers (JLCPCB). "base" = JLC basic part, the rest extended.
+# LCSC part numbers (JLCPCB).
 LCSC = {
     "10k": "C25804", "1k": "C21190", "100R": "C22775", "220R": "C22962",
-    "4.7k": "C23162", "5.1k": "C23186", "6.8k": "C23212", "33k": "C4216",
-    "100k": "C25803", "120k": "C25808", "2.2k": "C4190", "1M": "C22935",
+    "100k": "C25803", "120k": "C25808", "1M": "C22935",
     "4x10k": "C29718", "4x1k": "C20197",
-    "100nF": "C14663", "100nF/16V": "C1525", "1nF": "C1588", "1uF/X7R": "C28323", "1uF/25V": "C52923", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
+    "100nF/16V": "C1525", "1uF/X7R": "C28323", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
     "220uF/35V": "C970697", "2M": "C22976", "12k": "C22790", "2.2nF/50V": "C1604", "22nF": "C1532",
 }
 
@@ -79,7 +75,7 @@ part("U3", "hasler:CH224A", "CH224A",
       "5": "USB_DM", "6": "CC2", "7": "CC1", "8": "VBUS", "9": "PD_CFG1", "10": "PD_PG"},
      "C42459160", B, desc="USB PD sink, 120k on CFG1 = 20 V")
 R("R1", "120k", "PD_CFG1", "GND", B)                    # 20 V request (210k would be 28 V!)
-C("C1", "1uF/X7R", "VBUS", "GND", B, fp=C0805)            # VHV: X7R keeps its 1 uF at 20 V
+C("C1", "1uF/X7R", "VBUS", "GND", B, fp=C0805)            # VHV/VBUS pins, right under U3: X7R keeps its 1 uF at 20 V
 C("C2", "1uF", "VBUS", "GND", B)                        # connector side, USB PD: <= 10 uF
 part("D1", "Device:D_Zener", "SMAJ22A", SMA, {"1": "VBUS", "2": "GND"},
      "C283896", B, desc="TVS 22 V standoff, unidirectional")
@@ -89,7 +85,7 @@ part("D2", "Device:LED", "PD", LED0603, {"1": "PD_PG", "2": "LED_PD"}, "C2287", 
 part("JP9", "Jumper:SolderJumper_2_Open", "PD_SCL", SJ2O, {"1": "PD_SCL", "2": "SCL"}, None, B)
 part("JP10", "Jumper:SolderJumper_2_Open", "PD_SDA", SJ2O, {"1": "PD_SDA", "2": "SDA"}, None, B)
 
-# ------------------------------------------------ eFuse: window, inrush, current limit
+# ------------------------------------------------ eFuse: over-voltage, inrush, current limit
 # TI TPS259474A (auto-retry, circuit breaker, PG): adjustable UVLO and OVLO (1.2 us),
 # dV/dt-controlled start-up whatever the load capacitance, true reverse-current blocking
 # (the Amp4's barrel jack can no longer back-feed the USB-C), thermal shutdown. IN 2.7-23 V,
@@ -100,9 +96,16 @@ part("U4", "hasler:TPS259474", "TPS259474ARPWR", "hasler:TI_RPW0010A_VQFN-HR-10_
       "7": "EF_DVDT", "8": "GND", "9": "EF_ILM", "10": "EF_TMR"},
      "C3662807", B, desc="eFuse 2.7-23 V 5.5 A, OVLO, circuit breaker, PG, auto-retry")
 C("C5", "1uF", "VBUS", "GND", B)                         # at IN (VBUS total ~3 uF, PD allows 10)
-R("R3", "1M", "VBUS", "EF_EN", B)                       # UVLO: 1.2 V x 1132/132 = 10.3 V on (9.9-10.7 V
-R("R4", "120k", "EF_EN", "EF_ENB", B)                   #   worst case: above 9 V +5 %, below 12 V -5 %),
-R("R16", "12k", "EF_ENB", "GND", B)                     #   1.09 V x 8.58 = 9.4 V off (>= 350k on top: TI)
+# EN/UVLO. JP11 open (as shipped): EN is pulled up by R3 alone (TI allows >= 350k to IN), so U4
+# turns on with the charger's first 5 V, before the PD contract, and the 5 -> 20 V step happens
+# with U4 already fully on: no linear start-up from 0 to 20 V into a load that starts drawing
+# part-way up the ramp (the Amp4's buck and the Pi, which can overheat U4: see DESIGN.md).
+# JP11 bridged: UVLO 1.2 V x 1132/132 = 10.3 V on (9.9-10.7 V worst case), 1.09 V x 8.58 =
+# 9.35 V off: no 5 V / 9 V to the amp, at the price of that linear start-up.
+R("R3", "1M", "VBUS", "EF_EN", B)
+R("R4", "120k", "EF_EN", "EF_ENB", B)
+R("R16", "12k", "EF_ENB", "EF_ENJ", B)
+part("JP11", "Jumper:SolderJumper_2_Open", "UVLO_10V", SJ2O, {"1": "EF_ENJ", "2": "GND"}, None, B)
 R("R5", "2M", "VBUS", "EF_OV", B)                       # OVLO: 1.2 V x 2112/112 = 22.6 V off (21.7-23.7 V
 R("R6", "100k", "EF_OV", "EF_OVB", B)                   #   worst case incl. 1 % and pin leakage; PD 20 V
 R("R7", "12k", "EF_OVB", "GND", B)                      #   +5 % = 21 V), 1.09 V x 18.9 = 20.6 V on again

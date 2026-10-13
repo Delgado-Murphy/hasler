@@ -3,6 +3,10 @@
 fp-info-cache
 _autosave-*
 *.lck
-gen/__pycache__/
 build/
 fab/gerber/
+*.kicad_pcb-bak
+*.kicad_sch-bak
+*.bak
+\#auto_saved_files\#
+fab/pos-raw.csv
