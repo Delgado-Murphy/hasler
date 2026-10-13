@@ -57,14 +57,14 @@ FIXED = {
     "JP9": (66.6, 8.6, 90), "JP10": (69.4, 8.6, 90), "R1": (71.6, 8.6, 90), "C1": (73.8, 8.6, 90),
     "TP11": (75.95, 8.6, 0),
     "C5": (67.2, 13.6, 0), "TP1": (70.2, 13.6, 0), "C2": (73.2, 13.6, 0), "D1": (80.6, 13.7, 0),
-    "U4": (69.5, 19.6, 0), "D4": (74.4, 19.6, 90), "R9": (76.2, 19.6, 90), "R8": (77.8, 19.6, 90),
+    "U4": (69.5, 19.6, 0), "D4": (74.4, 19.6, 90), "R9": (76.2, 19.6, 90), "R8": (77.8, 19.3, 90),
     "Q1": (81.5, 20.8, 270),          # sources (1-3) up toward USB-C/D1, drains (5-8) down to VOUT
     "U5": (67.6, 24.6, 0), "R3": (70.6, 24.6, 90), "R4": (72.2, 24.6, 90), "R14": (73.8, 24.6, 90),
-    "R16": (75.4, 24.6, 90), "D3": (77.3, 23.0, 90),
+    "R16": (75.4, 24.6, 90), "D3": (77.3, 22.7, 90),
     "R5": (66.0, 28.1, 90), "R6": (67.6, 28.1, 90), "R15": (69.2, 28.1, 90), "C3": (70.8, 28.1, 90),
-    "C4": (72.4, 28.1, 90), "R7": (74.0, 28.1, 90), "TP12": (75.95, 27.9, 0),
-    "Q2": (79.5, 26.5, 0), "C6": (83.4, 26.5, 90),
-    "C8": (71.3, 30.95, 0), "TP2": (70.0, 35.0, 0), "D5": (80.6, 30.1, 0),
+    "C4": (72.4, 28.1, 90), "R7": (74.0, 28.1, 90), "TP12": (75.9, 30.5, 0),
+    "Q2": (78.0, 26.55, 90), "C6": (76.0, 16.6, 0),  # C6 by the gate network
+    "C8": (71.3, 30.95, 0), "TP2": (70.0, 35.0, 0), "D5": (81.55, 28.15, 270),  # upright under the drains
     "C7": (79.3, 36.4, 0),
     "J6": (4.6, 36.4, 0),             # bottom-left: wire entry down, ~25 mm to the Amp4 power terminal
     # logic: the MCP23017 upright, pin-1 end (all GPA/GPB pins) facing the line rows
@@ -254,6 +254,7 @@ def place():
             ns.SetNetclassPatternAssignment("/" + n, name)
 
     ds.SetBoardThickness(pcbnew.FromMM(1.6))
+    ds.m_TentViasFront = ds.m_TentViasBack = True       # no mask openings on vias
 
     # outline, 3 mm corner radius on the two free corners
     pts = outline()
@@ -372,6 +373,10 @@ def place():
     preroute(board, "/VBUS", ("D1", "1"), ("Q1", "2"), 0.5)
     preroute(board, "/VBUS", ("Q1", "1"), ("Q1", "2"), 0.5)
     preroute(board, "/VBUS", ("Q1", "2"), ("Q1", "3"), 0.5)
+    for a_, b_ in (("5", "6"), ("6", "7"), ("7", "8")):
+        preroute(board, "/VOUT", ("Q1", a_), ("Q1", b_), 0.6)
+    preroute(board, "/VOUT", ("Q1", "7"), ("D5", "1"), 0.8)
+    preroute(board, "/VOUT", ("D5", "1"), ("C7", "1"), 0.8)
     # GND fan-out before routing. Not the USB-C: its GND pins sit beside VBUS at 0.5 mm pitch
     # (VBUS must route first), and its plated shell tabs already reach the plane.
     n, failed = stitch_gnd(Copper(board), locked=True, skip=("J3",))
@@ -513,13 +518,13 @@ def silkscreen(board):
     F, B = pcbnew.F_SilkS, pcbnew.B_SilkS
 
     # --- branding and the J4 pin map, top, left corner (above J6, left of the notch)
-    text(board, design.COMPANY.upper(), 1.0, 23.6, 1.0, bold=True)
-    text(board, "HASLER HAT rev %s  2026" % design.REV, 1.0, 25.1, 0.8)
+    text(board, design.COMPANY.upper(), 1.0, 24.3, 1.0, bold=True)
+    text(board, "HASLER HAT rev %s  2026" % design.REV, 1.0, 25.8, 0.8)
     j4 = ["1 5V    2 3V3   3 GND  4 GND", "5 SDA   6 SCL   7 TXD  8 RXD",
           "9 G5   10 G6   11 G12 12 G13", "13 G16 14 G26 15 3V3A 16 GND"]
-    text(board, "J4", 1.0, 26.8, 0.8, bold=True)
+    text(board, "J4", 1.0, 27.3, 0.8, bold=True)
     for i, s in enumerate(j4):
-        text(board, s, 1.0, 28.0 + 1.05 * i, 0.8)
+        text(board, s, 1.0, 28.4 + 0.98 * i, 0.8)
 
     # --- test points (top strip): label between / under the rows
     x, y = fp_xy(board, "TP3")
@@ -530,20 +535,20 @@ def silkscreen(board):
         x, y = fp_xy(board, ref)
         text(board, s, x, y + (1.6 if y < 3 else 1.55), 0.8, just="center")
     for ref, s, dx, dy in (("TP1", "VBUS", 0, 1.6), ("TP2", "20V", 0, -1.5), ("TP11", "PG", 0, 1.6),
-                           ("TP12", "EN", 0, 1.6)):
+                           ("TP12", "EN", 0, -1.55)):
         x, y = fp_xy(board, ref)
         text(board, s, x + dx, y + dy, 0.8, just="center")
 
     # --- LEDs and connectors
-    text(board, "PD 20V", 65.15, 2.0, 0.8, just="right")            # D2, D6 left to right
+    text(board, "PD 20V", 65.15, 0.9, 0.8, just="right")            # D2, D6 left to right
     x, y = fp_xy(board, "D7")
     text(board, "3V3A", x + 1.1, y, 0.8)
     text(board, "QWIIC", 37.4, 3.2, 0.8, just="center", angle=90)
     x, y = fp_xy(board, "J6")
-    text(board, "+20V GND", x + 1.75, 32.4, 0.8, just="center")
+    text(board, "+20V GND", x + 1.75, 32.65, 0.8, just="center")
 
     # --- jumpers
-    for ref, s, dx, dy, ang in (("JP1", "3V3A: LDO|PI", 0, 1.9, 0),
+    for ref, s, dx, dy, ang in (("JP1", "LDO|PI", -3.5, -0.5, 90),
                                 ("JP2", "A0", 0, 3.0, 0), ("JP3", "A1", 0, 3.0, 0), ("JP4", "A2", 0, 3.0, 0),
                                 ("JP5", "INT", 0, 3.0, 0), ("JP7", "RST", 0, 3.0, 0),
                                 ("JP6", "RDY", 0, 3.0, 0), ("JP8", "ADDR", 0, -1.9, 0),
@@ -551,20 +556,21 @@ def silkscreen(board):
         x, y = fp_xy(board, ref)
         text(board, s, x + dx, y + dy, 0.8, just="center", angle=ang)
 
-    # --- bottom: J2 map, warnings, branding, order-number placeholder
-    text(board, "J2  HASLER  (IDC, DIN 41651 - wire 1 = stripe = pin 1, key slot to the edge)",
-         62.0, 13.2, 0.8, layer=B, just="left")
-    rows = [(p, design.J2_LABELS[p]) for p in range(1, 27)]
+    # --- bottom: J2 map (middle), notes and branding (under the power column), order number
+    text(board, "J2 (IDC) wire 1 = pin 1", 53.0, 12.9, 0.8, layer=B, just="center")
     for i in range(13):
-        a, b = rows[2 * i], rows[2 * i + 1]
-        text(board, "%2d %s" % a, 62.0, 14.6 + 1.15 * i, 0.8, layer=B)
-        text(board, "%2d %s" % b, 44.0, 14.6 + 1.15 * i, 0.8, layer=B)
-    text(board, design.COMPANY.upper(), 84.0, 1.8, 1.6, layer=B, bold=True)
-    text(board, "Hasler HAT rev %s - USB-C PD 20 V for the Amp4 Pro" % design.REV, 84.0, 3.8, 0.8, layer=B)
-    text(board, "J6 -> Amp4 Pro power terminal, + to +. Do not also use the Amp4 DC jack.", 84.0, 5.2, 0.8, layer=B)
-    text(board, "Never configure 28 V (CH224A). Window passes 10.8-22.8 V only.", 84.0, 6.6, 0.8, layer=B)
-    text(board, "I2C: MCP23017 0x20  ADS1115 0x48  AMP 0x4D  CH224A 0x22 (JP9/10)", 84.0, 8.0, 0.8, layer=B)
-    text(board, "JLCJLCJLCJLC", 84.0, 39.6, 0.8, layer=B)
+        a, b = 2 * i + 1, 2 * i + 2
+        text(board, "%2d %s" % (a, design.J2_LABELS[a]), 61.5, 14.3 + 1.25 * i, 0.8, layer=B)
+        text(board, "%2d %s" % (b, design.J2_LABELS[b]), 44.0, 14.3 + 1.25 * i, 0.8, layer=B)
+    notes = ["J6 -> Amp4 Pro power terminal,", "+ to +. Leave the Amp4 DC", "jack empty.",
+             "Never set the CH224A to 28 V.", "Window passes 10.8-22.8 V.", "",
+             "I2C  MCP23017 0x20", "ADS1115 0x48  AMP 0x4D", "CH224A 0x22 (JP9/JP10)"]
+    for i, s in enumerate(notes):
+        if s:
+            text(board, s, 74.5, 13.0 + 1.3 * i, 0.8, layer=B, just="center")
+    text(board, design.COMPANY.upper(), 74.5, 27.6, 1.3, layer=B, just="center", bold=True)
+    text(board, "Hasler HAT rev %s  2026" % design.REV, 74.5, 29.6, 0.9, layer=B, just="center")
+    text(board, "JLCJLCJLCJLC", 74.5, 32.0, 0.8, layer=B, just="center")
 
 
 # ----------------------------------------------- copper model and finishing passes
@@ -1081,6 +1087,9 @@ def finish():
     shutil.copy(os.path.join(OUT, "build", "placed.kicad_pcb"), PCB)
     board = pcbnew.LoadBoard(PCB)
     assert pcbnew.ImportSpecctraSES(board, os.path.join(OUT, "build", "hasler-hat.ses")), "SES import failed"
+    # Gerber/drill/position origin at the board's bottom-left corner: positive coordinates
+    board.GetDesignSettings().SetAuxOrigin(V(0, H))
+    board.GetDesignSettings().SetGridOrigin(V(0, H))
     cu = Copper(board)
     print("power segments widened:", widen_power(cu))
     n, failed = stitch_gnd(cu)
@@ -1109,6 +1118,7 @@ def finish():
         if not fixed:
             break
     set_stackup(PCB)
+    set_rule_severities()
     print("finished: %d unconnected left" % len(drc_report(PCB)["unconnected_items"]))
 
 
@@ -1130,6 +1140,18 @@ STACKUP = """		(stackup
 			(dielectric_constraints no)
 		)
 """
+
+
+def set_rule_severities():
+    """One DRC check off, on purpose: library silkscreen of parts that sit on the board edge
+    by design (USB-C, J6, J2's key side, C7 by the corner) runs past the outline; the fab
+    clips silkscreen at the outline anyway. Everything else stays on."""
+    import json
+    pro = os.path.join(OUT, "hasler-hat.kicad_pro")
+    d = json.load(open(pro))
+    ds = d.setdefault("board", {}).setdefault("design_settings", {})
+    ds.setdefault("rule_severities", {})["silk_edge_clearance"] = "ignore"
+    json.dump(d, open(pro, "w"), indent=2)
 
 
 def set_stackup(path):

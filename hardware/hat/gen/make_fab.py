@@ -57,7 +57,8 @@ def bom():
     for c in design.COMPONENTS:
         if not c["lcsc"] or c["dnp"]:
             continue
-        key = (c["lcsc"], c["value"], c["footprint"].split(":")[1])
+        comment = c["mpn"] if c["mpn"] != c["value"] else c["value"]
+        key = (c["lcsc"], comment, c["footprint"].split(":")[1])
         groups.setdefault(key, []).append(c["ref"])
     path = os.path.join(FAB, "hasler-hat-bom.csv")
     with open(path, "w", newline="") as f:
