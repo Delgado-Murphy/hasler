@@ -1,6 +1,6 @@
 """Fabrication outputs for JLCPCB: Gerbers + drill (zipped), BOM and CPL CSVs.
 
-    python3 make_fab.py ..      # writes ../fab/
+    <KiCad python3> make_fab.py ..      # writes ../fab/ (needs pcbnew)
 
 Needs kicad-cli (KiCad 9). The BOM comes from design.py, so it lists exactly the
 parts with an LCSC number, minus DNP. The CPL comes from KiCad's position file,
@@ -29,7 +29,28 @@ ROTATIONS = [
     (r"^SOT-23", 180), (r"^SOIC-", 270), (r"^SSOP-", 270), (r"^VSSOP-", 270),
     (r"^CP_Elec_", 180), (r"^R_Array_Convex_4x0603", 90),
     (r"^USB_C_Receptacle_HRO_TYPE-C-31-M-12", 180),
+    # JLC draws pin headers/sockets lying along X; KiCad's stand along Y
+    (r"^IDC-Header_2x", 270), (r"^PinHeader_2x", 270), (r"^PinSocket_2x", 270),
 ]
+# Footprints whose origin is pin 1, not the body: JLC places by centre, so the CPL
+# gives the centre of their pads instead.
+PIN1_ORIGIN = r"^(IDC-Header_|PinHeader_|PinSocket_|TerminalBlock_)"
+
+
+def pad_centres():
+    """ref -> (x, y) pad-bounding-box centre, mm, relative to the aux origin, y up."""
+    import pcbnew
+    b = pcbnew.LoadBoard(PCB)
+    ox, oy = [pcbnew.ToMM(v) for v in b.GetDesignSettings().GetAuxOrigin()]
+    out = {}
+    for f in b.GetFootprints():
+        ps = [p.GetPosition() for p in f.Pads()]
+        if not ps:
+            continue
+        xs = [pcbnew.ToMM(p.x) for p in ps]
+        ys = [pcbnew.ToMM(p.y) for p in ps]
+        out[f.GetReference()] = ((min(xs) + max(xs)) / 2 - ox, oy - (min(ys) + max(ys)) / 2)
+    return out
 
 
 def run(*args):
@@ -75,6 +96,7 @@ def cpl():
     run("pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both",
         "--use-drill-file-origin", "-o", raw, PCB)
     keep = {c["ref"] for c in design.COMPONENTS if c["lcsc"] and not c["dnp"]}
+    centres = pad_centres()
     path = os.path.join(FAB, "hasler-hat-cpl.csv")
     with open(raw) as f, open(path, "w", newline="") as g:
         w = csv.writer(g)
@@ -88,7 +110,10 @@ def cpl():
                 if re.match(pat, row["Package"]):
                     rot += add
                     break
-            w.writerow([ref, row["PosX"], row["PosY"], "Top" if row["Side"] == "top" else "Bottom",
+            x, y = row["PosX"], row["PosY"]
+            if re.match(PIN1_ORIGIN, row["Package"]):
+                x, y = ("%.4f" % v for v in centres[ref])
+            w.writerow([ref, x, y, "Top" if row["Side"] == "top" else "Bottom",
                         "%g" % (rot % 360)])
     os.remove(raw)
     return path

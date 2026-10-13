@@ -41,4 +41,4 @@ $KPY gen/make_pcb.py finish . > build/finish.log 2>&1 || { grep -v Fontconfig bu
 grep -E 'widened|stitched|grid|gap pass|finished' build/finish.log
 $CLI pcb drc --schematic-parity --severity-all -o build/drc.rpt hasler-hat.kicad_pcb >/dev/null || true
 grep -E '^\[' build/drc.rpt | sort | uniq -c | sort -rn || echo "DRC: no violations"
-python3 gen/make_fab.py .
+$KPY gen/make_fab.py .

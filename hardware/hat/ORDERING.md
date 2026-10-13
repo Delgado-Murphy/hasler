@@ -43,6 +43,9 @@ from `gen/design.py`. Design decisions: `docs/hat/DESIGN.md`.
   - the cathode bands of D1, D5 (SMAJ22A), D3, D4 (zeners) and the LEDs D2, D6, D7;
   - the + of C7;
   - the USB-C (J3): its mouth must face out of the right edge.
+- The through-hole connectors (J1, J2, J4, J6) have their KiCad origin at pin 1; JLC places
+  by body centre, so `make_fab.py` writes their pad centre and turns the 2-row headers 270°.
+  Checked in JLC's 3D preview on 2026-10-13: all four sit on their pads, J2's key faces the edge.
 - Extended parts each carry JLC's one-off feeder fee; there are about 17 of them.
 
 ## Before you order
