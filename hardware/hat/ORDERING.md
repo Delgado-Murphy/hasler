@@ -38,11 +38,12 @@ from `gen/design.py`. Design decisions: `docs/hat/DESIGN.md`.
 - **Not fitted by design:** test points, solder jumpers, mounting holes (copper only). Nothing is DNP.
 - **Check every rotation in JLC's placement preview** before paying. KiCad and JLC orient
   footprints differently; `make_fab.py` applies the usual offsets (SOT-23, SOIC/SSOP/VSSOP,
-  resistor arrays, the electrolytic and the USB-C), but verify these by eye:
+  resistor arrays, the electrolytic; the USB-C needs none), but verify these by eye:
   - pin 1 of U1 (MCP23017), U2 (ADS1115), U3 (CH224A), U4 (LM393), U7–U12 (SRV05-4);
   - the cathode bands of D1, D5 (SMAJ22A), D3, D4 (zeners) and the LEDs D2, D6, D7;
   - the + of C7;
-  - the USB-C (J3): its mouth must face out of the right edge.
+  - the USB-C (J3): its contacts on the pads, its mouth out of the right edge, ~1 mm over it
+    (on purpose: flush with the Pi's USB/Ethernet jacks). Checked in JLC's preview 2026-10-13.
 - The through-hole connectors (J1, J2, J4, J6) have their KiCad origin at pin 1; JLC places
   by body centre, so `make_fab.py` writes their pad centre and turns the 2-row headers 270°.
   Checked in JLC's 3D preview on 2026-10-13: all four sit on their pads, J2's key faces the edge.

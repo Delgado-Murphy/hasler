@@ -28,7 +28,7 @@ FAB = os.path.join(OUT, "fab")
 ROTATIONS = [
     (r"^SOT-23", 180), (r"^SOIC-", 270), (r"^SSOP-", 270), (r"^VSSOP-", 270),
     (r"^CP_Elec_", 180), (r"^R_Array_Convex_4x0603", 90),
-    (r"^USB_C_Receptacle_HRO_TYPE-C-31-M-12", 180),
+    # (the HRO USB-C needs no offset: checked in JLC's 3D preview, mouth out of the edge)
     # JLC draws pin headers/sockets lying along X; KiCad's stand along Y
     (r"^IDC-Header_2x", 270), (r"^PinHeader_2x", 270), (r"^PinSocket_2x", 270),
 ]
