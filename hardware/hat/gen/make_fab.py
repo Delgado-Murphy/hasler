@@ -27,7 +27,8 @@ FAB = os.path.join(OUT, "fab")
 # Footprint-name regex -> degrees added for JLC (after kicad-jlcpcb-tools' table).
 ROTATIONS = [
     (r"^SOT-23", 180), (r"^SOIC-", 270), (r"^SSOP-", 270), (r"^VSSOP-", 270),
-    (r"^CP_Elec_", 180), (r"^R_Array_Convex_4x0603", 90),
+    # RVT 8x10 (C970697): JLC has + on the left like KiCad, so no offset (checked by pad match)
+    (r"^R_Array_Convex_4x0603", 270),
     # (the HRO USB-C needs no offset: checked in JLC's 3D preview, mouth out of the edge)
     # JLC draws pin headers/sockets lying along X; KiCad's stand along Y
     (r"^IDC-Header_2x", 270), (r"^PinHeader_2x", 270), (r"^PinSocket_2x", 270),
@@ -64,7 +65,7 @@ def gerbers():
     layers = "F.Cu,In1.Cu,In2.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts"
     run("pcb", "export", "gerbers", "--layers", layers, "--subtract-soldermask",
         "--use-drill-file-origin", "-o", g + "/", PCB)
-    run("pcb", "export", "drill", "--format", "excellon", "--drill-origin", "absolute",
+    run("pcb", "export", "drill", "--format", "excellon", "--drill-origin", "plot",
         "--excellon-separate-th", "--generate-map", "--map-format", "gerberx2", "-o", g + "/", PCB)
     z = os.path.join(FAB, "hasler-hat-gerbers.zip")
     with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
