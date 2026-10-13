@@ -27,6 +27,8 @@ OUT = os.path.abspath(sys.argv[2] if len(sys.argv) > 2 else os.path.join(os.path
 PCB = os.path.join(OUT, "hasler-hat.kicad_pcb")
 OX, OY = 100.0, 100.0          # board origin on the KiCad sheet
 VIA_D, VIA_DRILL, CLR = 0.6, 0.3, 0.2
+MIN_W = 0.127                  # tracks are brought up to this where they fit (JLC's minimum: 0.09)
+SHAVE_MIN = 0.12               # ...and a track a hair too close to a pad is shaved no further than this
 W, H = 85.0, 41.0
 
 
@@ -42,10 +44,11 @@ def mm(v):
 # ref: (x, y, rotation, side). Fixed parts first; "near" parts are legalized.
 J1_PIN1 = (8.37, 10.19)       # Amp4 top header: inner row, SD-card end (DESIGN.md)
 J2_PIN1 = (31.9, 37.3)        # odd row on the board-edge side, key slot facing the edge
-# Notch in the bottom edge over the Amp4 Pro's 8 mm electrolytic (HAT x ~17-25, y_up ~14-22):
-# standing, it is taller than the HAT's underside (~11 mm above the amp). Generous enough
-# for it standing or lying down.
-NOTCH = (15.5, 32.5, 26.0)    # x0, y0, x1 (open to the bottom edge)
+# Notch in the bottom edge over the Amp4 Pro's 8 mm electrolytic. Its leads are at HAT x 15.13
+# and 18.93, y_up 18.2 (holes in HiFiBerry's STEP), so standing it covers x ~12.9-21.2,
+# y_up ~14.0-22.4, and it is taller than the HAT's underside (~11 mm above the amp).
+# ~1.1-1.4 mm of margin all round.
+NOTCH = (11.5, 32.5, 22.5)    # x0, y0, x1 (open to the bottom edge)
 
 FIXED = {
     "H1": (3.5, 3.5, 0), "H2": (61.5, 3.5, 0),
@@ -64,6 +67,8 @@ FIXED = {
     "R5": (66.0, 28.1, 90), "R6": (67.6, 28.1, 90), "R15": (69.2, 28.1, 90), "C3": (70.8, 28.1, 90),
     "C4": (72.4, 28.1, 90), "R7": (74.0, 28.1, 90), "TP12": (75.9, 30.5, 0),
     "Q2": (78.0, 26.55, 90), "C6": (76.0, 16.6, 0),  # C6 by the gate network
+    "C17": (75.9, 12.8, 90),          # gate-source, beside D1 (VBUS) above the gate network
+    "C18": (67.0, 30.4, 0),           # EN delay (0402: EN never exceeds 15 V): a slow node, any spot on the net will do
     "C8": (71.3, 30.95, 0), "TP2": (70.0, 35.0, 0), "D5": (81.55, 28.15, 270),  # upright under the drains
     "C7": (79.3, 36.4, 0),
     "J6": (4.6, 36.4, 0),             # bottom-left: wire entry down, ~25 mm to the Amp4 power terminal
@@ -75,6 +80,13 @@ FIXED = {
 # Row behind J2: ESD arrays (upright) interleaved with the 10k pull-up arrays (cabinet side)
 for i, ref in enumerate(("U7", "RN6", "U8", "RN7", "U9", "RN8", "U10", "RN9", "U11", "U12")):
     FIXED[ref] = (28.6 + 3.65 * i, 28.9, 90 if ref.startswith("U") else 0)
+# ESD arrays' VCC bypass (C38-C43 for U7-U12): in the gaps of the 1k row just above them,
+# U7's to its left, U12's above it (its neighbour is U11, not an array)
+# (upright, against the side nearest their array, so each gap keeps a 2 mm routing channel)
+for ref, xy, rot in zip(("C38", "C39", "C40", "C41", "C42", "C43"),
+                        ((25.8, 27.8), (34.5, 24.9), (41.5, 24.9), (48.5, 24.9), (55.5, 24.9), (61.5, 25.0)),
+                        (90, 90, 90, 90, 90, 0)):
+    FIXED[ref] = (xy[0], xy[1], rot)
 # 1k series arrays, spaced out under the MCP: pins 1-4 (cabinet) down, 5-8 (MCP) up
 for i, ref in enumerate(("RN1", "RN2", "RN5", "RN3", "RN4")):
     FIXED[ref] = (30.0 + 7.0 * i, 24.6, 90)
@@ -108,7 +120,7 @@ NEAR = {  # ref: (zone, x, y, rotation)
 NEAR["TP3"] = ("lft", 11.0, 12.4, 0)   # 5V, at the LDO input (J4 pin 1 also carries it)
 TOP_TPS = ["TP4", "TP5", "TP6", "TP7", "TP8", "TP9", "TP10", "TP13", "TP14"]
 for i, ref in enumerate(TOP_TPS):
-    NEAR[ref] = ("top", 39.0 + 3.6 * (i % 5), 1.6 if i < 5 else 4.8, 0)
+    NEAR[ref] = ("top", 39.6 + 3.6 * (i % 5), 1.4 if i < 5 else 4.4, 0)
 
 
 def schematic_nets():
@@ -365,6 +377,13 @@ def place():
             r.SetLayer(pcbnew.B_Fab if fp.IsFlipped() else pcbnew.F_Fab)
         fp.Value().SetVisible(False)
 
+    for fp in fps.values():   # JLC: silkscreen lines >= 0.15 mm
+        for g in fp.GraphicalItems():
+            if g.GetLayer() in (pcbnew.F_SilkS, pcbnew.B_SilkS) and g.GetClass() != "PCB_TEXT" \
+                    and mm(g.GetWidth()) < 0.15:
+                g.SetWidth(pcbnew.FromMM(0.15))
+    for ref in ("H1", "H2"):  # screw heads / metal standoffs: no tracks or vias under them
+        hole_keepout(board, *fp_xy(board, ref))
     vout_trunk(board, nets["/VOUT"])
     # Links the router would lose in tight spots, and the VBUS power path, laid first and
     # locked; widen_power() takes the power ones as wide as their surroundings allow.
@@ -373,6 +392,23 @@ def place():
     preroute(board, "/VBUS", ("D1", "1"), ("Q1", "2"), 0.5)
     preroute(board, "/VBUS", ("Q1", "1"), ("Q1", "2"), 0.5)
     preroute(board, "/VBUS", ("Q1", "2"), ("Q1", "3"), 0.5)
+    vbus_strap(board)
+    # CH224A: VHV (pin 1) and VBUS (pin 8) are on opposite sides of the chip; CC1 has to
+    # cross CC2 between the chip and the receptacle. Both under the top layer, laid first.
+    hop(board, "/VBUS", ("U3", "1"), ("U3", "8"), pcbnew.B_Cu, w=0.3)
+    hop(board, "/CC1", ("U3", "7"), ("J3", "A5"), pcbnew.In2_Cu)
+    hop(board, "/USB_DP", ("U3", "4"), ("J3", "B6"), pcbnew.In2_Cu)   # D+ to the chip's far side
+    # The receptacle's two D+ pads sit either side of a D- pad: join them round the pad tips
+    j3 = board.FindFootprintByReference("J3")
+    cu = Copper(board)
+    net = board.FindNet("/USB_DP").GetNetCode()
+    b6, a6 = j3.FindPadByNumber("B6"), j3.FindPadByNumber("A6")
+    xl = mm(j3.FindPadByNumber("A7").GetBoundingBox().GetRight()) + 0.15 + 0.075 + 0.03
+    loop = [(mm(b6.GetPosition().x), mm(b6.GetPosition().y)), (xl, mm(b6.GetPosition().y)),
+            (xl, mm(a6.GetPosition().y)), (mm(a6.GetPosition().x), mm(a6.GetPosition().y))]
+    assert cu.path_fits(net, pcbnew.F_Cu, loop, 0.15), "D+ loop round the J3 pad tips"
+    for p_, q_ in zip(loop, loop[1:]):
+        cu.track(net, pcbnew.F_Cu, p_, q_, 0.15, locked=True)
     for a_, b_ in (("5", "6"), ("6", "7"), ("7", "8")):
         preroute(board, "/VOUT", ("Q1", a_), ("Q1", b_), 0.6)
     preroute(board, "/VOUT", ("Q1", "7"), ("D5", "1"), 0.8)
@@ -392,6 +428,100 @@ def place():
 
 VOUT_TRUNK = [(70.3, 36.4), (66.5, 36.4), (66.5, 39.5), (28.6, 39.5), (27.4, 38.3), (27.4, 31.2),
               (4.6, 31.2), (4.6, 36.4)]   # B.Cu: under J2's pins along the edge, over the notch
+
+
+def hole_keepout(board, cx, cy, r=3.0):
+    """Rule area around a mounting hole: no tracks or vias within r (M2.5 head / hex standoff
+    reach ~2.9 mm), on every copper layer. The GND pour may still fill it."""
+    z = pcbnew.ZONE(board)
+    z.SetIsRuleArea(True)
+    z.SetDoNotAllowTracks(True)
+    z.SetDoNotAllowVias(True)
+    z.SetDoNotAllowPads(False)
+    z.SetDoNotAllowCopperPour(False)
+    z.SetDoNotAllowFootprints(False)
+    ls = pcbnew.LSET()
+    for l in (pcbnew.F_Cu, pcbnew.In1_Cu, pcbnew.In2_Cu, pcbnew.B_Cu):
+        ls.AddLayer(l)
+    z.SetLayerSet(ls)
+    ol = z.Outline()
+    ol.NewOutline()
+    for i in range(24):
+        a = 2 * math.pi * i / 24
+        ol.Append(pcbnew.FromMM(OX + cx + r * math.cos(a)), pcbnew.FromMM(OY + cy + r * math.sin(a)))
+    ol.Outline(0).SetClosed(True)
+    board.Add(z)
+
+
+def vbus_strap(board, w=0.9):
+    """The USB-C's two VBUS pad pairs (A9/B4 and A4/B9) sit either side of CC and D+/D- at
+    0.5 mm pitch, so on the top layer they can only be joined by a thin track. Drop each to
+    the bottom layer through a via right behind it and join them there, w mm wide."""
+    cu = Copper(board)
+    net = board.FindNet("/VBUS").GetNetCode()
+    j3 = board.FindFootprintByReference("J3")
+    ends = []
+    for num in ("A9", "A4"):
+        pad = [p for p in j3.Pads() if p.GetNumber() == num][0]
+        bb = pad.GetBoundingBox()
+        px, py = mm(pad.GetPosition().x), mm(pad.GetPosition().y)
+        x_in = mm(bb.GetLeft())                       # the inboard end of the pad (mouth is +x)
+        for dx in (0.45, 0.6, 0.8, 1.0, 1.2):
+            for dy in (0.0, -0.15, 0.15, -0.3, 0.3):
+                x, y = x_in - dx, py + dy
+                if cu.fits("pt", (x, y), None, VIA_D / 2, net) and \
+                        cu.path_fits(net, pcbnew.F_Cu, [(px, py), (x, y)], 0.5):
+                    break
+            else:
+                continue
+            break
+        else:
+            raise RuntimeError("vbus_strap: no via spot behind J3.%s" % num)
+        cu.track(net, pcbnew.F_Cu, (px, py), (x, y), 0.5, locked=True)
+        cu.via(net, x, y, locked=True)
+        ends.append((x, y))
+    (ax, ay), (bx, by) = ends
+    # Under the pad row first (nothing else is on B.Cu beneath the receptacle), so the strip
+    # just behind the pads stays free for CC1/CC2/D+/D-'s vias on their way to the CH224A.
+    ux = mm(j3.FindPadByNumber("A5").GetPosition().x) + 0.1
+    under = [(ax, ay), (ux, ay + 0.8), (ux, by - 0.8), (bx, by)]
+    for path in (under, [(ax, ay), (bx, by)], [(ax, ay), (ax, by), (bx, by)], [(ax, ay), (bx, ay), (bx, by)]):
+        if cu.path_fits(net, pcbnew.B_Cu, path, w):
+            break
+    else:
+        raise RuntimeError("vbus_strap: no room on B.Cu")
+    for p, q in zip(path, path[1:]):
+        cu.track(net, pcbnew.B_Cu, p, q, w, locked=True)
+
+
+def hop(board, netname, a, b, layer, w=0.2):
+    """A locked two-via link between pads a and b through `layer`, for a connection that can't
+    stay on the top layer (it has to cross another, or get to the far side of a chip)."""
+    cu = Copper(board)
+    net = board.FindNet(netname).GetNetCode()
+    ends = []
+    for ref, num in (a, b):
+        pad = board.FindFootprintByReference(ref).FindPadByNumber(num)
+        bb = pad.GetBoundingBox()
+        px, py = mm(pad.GetPosition().x), mm(pad.GetPosition().y)
+        half = max(mm(bb.GetWidth()), mm(bb.GetHeight())) / 2
+        c = pad.GetParentFootprint().GetPosition()
+        out = math.atan2(py - mm(c.y), px - mm(c.x))            # away from the part first
+        for x, y in ring(px, py, half, steps=(0.4, 0.55, 0.7, 0.9, 1.1, 1.4, 1.8), n=32, prefer=out):
+            if cu.fits("pt", (x, y), None, VIA_D / 2, net) and \
+                    cu.path_fits(net, pcbnew.F_Cu, [(px, py), (x, y)], w):
+                break
+        else:
+            raise RuntimeError("hop %s: no via beside %s.%s" % (netname, ref, num))
+        cu.track(net, pcbnew.F_Cu, (px, py), (x, y), w, locked=True)
+        cu.via(net, x, y, locked=True)
+        ends.append((x, y))
+    (ax, ay), (bx, by) = ends
+    path = grid_route(cu, net, layer, (ax, ay), [(bx, by)], w=w,
+                      window=max(6.0, 2.4 * math.hypot(bx - ax, by - ay)))
+    assert path, "hop %s %s-%s: no route on %s" % (netname, a, b, board.GetLayerName(layer))
+    for p, q in zip(path, path[1:]):
+        cu.track(net, layer, p, q, w, locked=True)
 
 
 def preroute(board, netname, a, b, w):
@@ -451,6 +581,7 @@ def add_zone(board, net, layer, priority=0, inset=0.3, thermal=False):
     ol.NewOutline()
     for x, y in ((0, 0), (W, 0), (W, H), (0, H)):     # the filler clips to the outline
         ol.Append(pcbnew.FromMM(OX + x), pcbnew.FromMM(OY + y))
+    ol.Outline(0).SetClosed(True)
     board.Add(z)
     return z
 
@@ -490,11 +621,12 @@ def rounded_rect(x0, y0, x1, y1, r):
 
 # ------------------------------------------------------------------ finish
 
-def text(board, s, x, y, size=0.8, layer=pcbnew.F_SilkS, bold=False, just="left", angle=0):
+def text(board, s, x, y, size=1.0, layer=pcbnew.F_SilkS, bold=False, just="left", angle=0, wf=1.0):
+    """wf < 1 narrows the characters (JLC's minimum is on the height, 1.0 mm)."""
     t = pcbnew.PCB_TEXT(board)
     t.SetText(s)
     t.SetLayer(layer)
-    t.SetTextSize(pcbnew.VECTOR2I_MM(size, size))
+    t.SetTextSize(pcbnew.VECTOR2I_MM(size * wf, size))
     t.SetTextThickness(pcbnew.FromMM(max(0.15, size * (0.2 if bold else 0.15))))
     t.SetHorizJustify({"left": pcbnew.GR_TEXT_H_ALIGN_LEFT, "center": pcbnew.GR_TEXT_H_ALIGN_CENTER,
                        "right": pcbnew.GR_TEXT_H_ALIGN_RIGHT}[just])
@@ -512,65 +644,71 @@ def fp_xy(board, ref):
 
 
 def silkscreen(board):
+    """Curated labels. JLC's minimum is 1.0 mm text height, 0.15 mm stroke: nothing smaller."""
     for fp in board.GetFootprints():
         r = fp.Reference()
         r.SetLayer(pcbnew.B_Fab if fp.IsFlipped() else pcbnew.F_Fab)
     F, B = pcbnew.F_SilkS, pcbnew.B_SilkS
+    T = 1.0
 
     # --- branding and the J4 pin map, top, left corner (above J6, left of the notch)
-    text(board, design.COMPANY.upper(), 1.0, 24.3, 1.0, bold=True)
-    text(board, "HASLER HAT rev %s  2026" % design.REV, 1.0, 25.8, 0.8)
-    j4 = ["1 5V    2 3V3   3 GND  4 GND", "5 SDA   6 SCL   7 TXD  8 RXD",
-          "9 G5   10 G6   11 G12 12 G13", "13 G16 14 G26 15 3V3A 16 GND"]
-    text(board, "J4", 1.0, 27.3, 0.8, bold=True)
-    for i, s in enumerate(j4):
-        text(board, s, 1.0, 28.4 + 0.98 * i, 0.8)
+    text(board, design.COMPANY.upper(), 1.0, 24.3, 1.1, bold=True)
+    text(board, "HASLER HAT rev %s  2026" % design.REV, 1.0, 25.65, T)
+    j4 = ["J4  1 5V   2 3V3  3 GND  4 GND", "    5 SDA  6 SCL  7 TXD  8 RXD",
+          "    9 G5  10 G6  11 G12 12 G13", "   13 G16 14 G26 15 3V3A 16 GND"]
+    for i, line in enumerate(j4):
+        text(board, line, 1.0, 27.0 + 1.2 * i, T, wf=0.75)
 
     # --- test points (top strip): label between / under the rows
     x, y = fp_xy(board, "TP3")
-    text(board, "5V", x + 1.3, y, 0.8)
+    text(board, "5V", x + 1.3, y, T)
     labels = {"TP4": "3V3", "TP5": "3V3A", "TP6": "GND", "TP7": "GND",
               "TP8": "SDA", "TP9": "SCL", "TP10": "INT", "TP13": "A0", "TP14": "A1"}
-    for ref, s in labels.items():
+    for ref, lab in labels.items():
         x, y = fp_xy(board, ref)
-        text(board, s, x, y + (1.6 if y < 3 else 1.55), 0.8, just="center")
-    for ref, s, dx, dy in (("TP1", "VBUS", 0, 1.6), ("TP2", "20V", 0, -1.5), ("TP11", "PG", 0, 1.6),
-                           ("TP12", "EN", 0, -1.55)):
+        text(board, lab, x, y + 1.5, T, just="center")
+    for ref, lab, dx, dy in (("TP1", "VBUS", 0, 1.6), ("TP2", "20V", 0, -1.5), ("TP11", "PG", 0, 1.6),
+                             ("TP12", "EN", 0, -1.55)):
         x, y = fp_xy(board, ref)
-        text(board, s, x + dx, y + dy, 0.8, just="center")
+        text(board, lab, x + dx, y + dy, T, just="center")
 
     # --- LEDs and connectors
-    text(board, "PD 20V", 65.15, 0.9, 0.8, just="right")            # D2, D6 left to right
+    text(board, "PD 20V", 65.15, 0.95, T, just="right")             # D2, D6 left to right
     x, y = fp_xy(board, "D7")
-    text(board, "3V3A", x + 1.1, y, 0.8)
-    text(board, "QWIIC", 37.4, 3.2, 0.8, just="center", angle=90)
+    text(board, "3V3A", x + 1.55, y, T, just="center", angle=90)
+    text(board, "QWIIC", 37.3, 3.2, T, just="center", angle=90)
     x, y = fp_xy(board, "J6")
-    text(board, "+20V GND", x + 1.75, 32.65, 0.8, just="center")
+    text(board, "+20V GND", x + 1.75, 32.0, T, just="center")
+    # J2 pin 1: the library's marker sits past the board edge, so mark it inboard as well
+    text(board, "1", 25.0, 37.3, T, bold=True, just="center")
 
     # --- jumpers
-    for ref, s, dx, dy, ang in (("JP1", "LDO|PI", -3.5, -0.5, 90),
-                                ("JP2", "A0", 0, 3.0, 0), ("JP3", "A1", 0, 3.0, 0), ("JP4", "A2", 0, 3.0, 0),
-                                ("JP5", "INT", 0, 3.0, 0), ("JP7", "RST", 0, 3.0, 0),
-                                ("JP6", "RDY", 0, 3.0, 0), ("JP8", "ADDR", 0, -1.9, 0),
-                                ("JP9", "PD", 1.4, 3.0, 0)):
+    x, y = fp_xy(board, "JP1")            # 3V3A source: pad 1 = LDO, pad 3 = the Pi's 3V3
+    text(board, "1 LDO", x + 2.4, y - 0.6, T, wf=0.6)
+    text(board, "3 PI", x + 2.4, y + 0.6, T, wf=0.6)
+    for ref, lab, dx, dy, ang in (("JP2", "A0", 0, 3.0, 0), ("JP3", "A1", 0, 3.0, 0), ("JP4", "A2", 0, 3.0, 0),
+                                  ("JP5", "INT", 0, 3.0, 0), ("JP7", "RST", 0, 3.0, 0),
+                                  ("JP6", "RDY", 0, 3.0, 0), ("JP8", "ADDR", -1.7, 0, 90),
+                                  ("JP9", "PD", 1.4, 3.0, 0)):
         x, y = fp_xy(board, ref)
-        text(board, s, x + dx, y + dy, 0.8, just="center", angle=ang)
+        text(board, lab, x + dx, y + dy, T, just="center", angle=ang)
 
     # --- bottom: J2 map (middle), notes and branding (under the power column), order number
-    text(board, "J2 (IDC) wire 1 = pin 1", 53.0, 12.9, 0.8, layer=B, just="center")
+    # 1.6 mm pitch: descenders (p, y, g) and brackets reach ~0.4 mm below the line
+    text(board, "J2 IDC: wire 1 = pin 1", 46.0, 12.35, T, layer=B, just="center")
     for i in range(13):
         a, b = 2 * i + 1, 2 * i + 2
-        text(board, "%2d %s" % (a, design.J2_LABELS[a]), 61.5, 14.3 + 1.25 * i, 0.8, layer=B)
-        text(board, "%2d %s" % (b, design.J2_LABELS[b]), 44.0, 14.3 + 1.25 * i, 0.8, layer=B)
-    notes = ["J6 -> Amp4 Pro power terminal,", "+ to +. Leave the Amp4 DC", "jack empty.",
-             "Never set the CH224A to 28 V.", "Window passes 10.8-22.8 V.", "",
-             "I2C  MCP23017 0x20", "ADS1115 0x48  AMP 0x4D", "CH224A 0x22 (JP9/JP10)"]
-    for i, s in enumerate(notes):
-        if s:
-            text(board, s, 74.5, 13.0 + 1.3 * i, 0.8, layer=B, just="center")
-    text(board, design.COMPANY.upper(), 74.5, 27.6, 1.3, layer=B, just="center", bold=True)
-    text(board, "Hasler HAT rev %s  2026" % design.REV, 74.5, 29.6, 0.9, layer=B, just="center")
-    text(board, "JLCJLCJLCJLC", 74.5, 32.0, 0.8, layer=B, just="center")
+        text(board, "%2d %s" % (a, design.J2_LABELS[a]), 62.0, 13.9 + 1.58 * i, T, layer=B)
+        text(board, "%2d %s" % (b, design.J2_LABELS[b]), 46.0, 13.9 + 1.58 * i, T, layer=B)
+    notes = ["J6 -> Amp4 power in,", "+ to +. Amp4 DC jack", "stays empty.",
+             "Never 28 V (R1 120k).", "Window 10.8-22.8 V.", "",
+             "I2C MCP23017 0x20", "ADS1115 0x48", "AMP 0x4D", "CH224A 0x22 JP9/10"]
+    for i, line in enumerate(notes):
+        if line:
+            text(board, line, 74.6, 12.2 + 1.6 * i, T, layer=B, just="center")
+    text(board, design.COMPANY.upper(), 74.6, 28.6, 1.3, layer=B, just="center", bold=True)
+    text(board, "Hasler HAT rev %s  2026" % design.REV, 74.6, 30.5, T, layer=B, just="center")
+    text(board, "JLCJLCJLCJLC", 74.6, 32.4, T, layer=B, just="center")
 
 
 # ----------------------------------------------- copper model and finishing passes
@@ -959,7 +1097,7 @@ def close_gaps(cu, gaps):
                     break
         if not done:   # hop: a via beside one end, then a straight run on a layer the other end has
             for (x0, y0, l0), (x1, y1, l1) in (((ax, ay, al), (bx, by, bl)), ((bx, by, bl), (ax, ay, al))):
-                for x, y in ring(x0, y0, 0.3, steps=(0.6, 0.9, 1.3, 1.8, 2.4)):
+                for x, y in ring(x0, y0, 0.3, steps=(0.6, 0.9, 1.3, 1.8, 2.4, 3.0, 3.6), n=32):
                     if not cu.fits("pt", (x, y), None, VIA_D / 2, net):
                         continue
                     la = [l for l in l0 if cu.path_fits(net, l, [(x0, y0), (x, y)], w)]
@@ -986,8 +1124,35 @@ def close_gaps(cu, gaps):
                         break
                 if done:
                     break
+        if not done:   # last resort: maze a stub to any free via spot nearby, then maze the far leg
+            done = _maze_hop(cu, net, w, (ax, ay, al), (bx, by, bl)) or \
+                _maze_hop(cu, net, w, (bx, by, bl), (ax, ay, al))
         fixed += done
     return fixed
+
+
+def _maze_hop(cu, net, w, a, b):
+    (x0, y0, l0), (x1, y1, l1) = a, b
+    spots = [p for p in ring(x0, y0, 0.3, steps=(0.6, 0.9, 1.3, 1.8, 2.4, 3.0, 3.6, 4.2), n=32)
+             if cu.fits("pt", p, None, VIA_D / 2, net)]
+    if not spots:
+        return False
+    for la in l0:
+        stub = grid_route(cu, net, la, (x0, y0), spots, w=w, window=10.0)
+        if not stub:
+            continue
+        vx, vy = stub[-1]
+        for lb in l1:
+            leg = grid_route(cu, net, lb, (vx, vy), [(x1, y1)], w=w,
+                             window=max(4.0, 2.4 * math.hypot(x1 - vx, y1 - vy)))
+            if leg:
+                for p, q in zip(stub, stub[1:]):
+                    cu.track(net, la, p, q, w)
+                cu.via(net, vx, vy)
+                for p, q in zip(leg, leg[1:]):
+                    cu.track(net, lb, p, q, w)
+                return True
+    return False
 
 
 def join_fragments(cu):
@@ -1051,7 +1216,7 @@ def join_fragments(cu):
 
 def tidy(board, report):
     """Delete vias the router left dangling; shave a track that misses clearance by a hair;
-    bring any router neck below JLC's 0.09 mm up to it."""
+    bring any router neck up to JLC's 0.09 mm (min_width() takes them further where they fit)."""
     gone = 0
     for t in board.GetTracks():
         if t.GetClass() == "PCB_TRACK" and mm(t.GetWidth()) < 0.09:
@@ -1071,15 +1236,49 @@ def tidy(board, report):
                 obj = obj.Cast() if obj is not None else None
                 if obj is not None and obj.GetClass() == "PCB_TRACK" and short < 0.02:
                     w = mm(obj.GetWidth()) - 2 * short - 0.004
-                    if w >= 0.1:
+                    if w >= SHAVE_MIN:
                         obj.SetWidth(pcbnew.FromMM(w))
                         gone += 1
                         break
     return gone
 
 
+def min_width(cu):
+    """Any track still under MIN_W (router necks, gap-closer shaves) up to it where it fits."""
+    ok = left = 0
+    for i, (kind, g, layer, hw, net, _, t) in enumerate(list(cu.items)):
+        if kind != "seg" or 2 * hw >= MIN_W - 1e-6:
+            continue
+        if cu.fits("seg", g, layer, MIN_W / 2, net, skip=t):
+            t.SetWidth(pcbnew.FromMM(MIN_W))
+            cu.items[i] = (kind, g, layer, MIN_W / 2, net, False, t)
+            ok += 1
+        else:
+            left += 1
+    return ok, left
+
+
 def fill(board):
     pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+
+
+def gap_passes(tag, rounds=6):
+    for i in range(rounds):
+        rpt = drc_report(PCB)
+        gaps = rpt["unconnected_items"]
+        if not gaps:
+            break
+        board = pcbnew.LoadBoard(PCB)
+        cu = Copper(board)
+        fixed = close_gaps(cu, [g for g in gaps if not all(it["description"].startswith("Zone")
+                                                             for it in g["items"])])
+        fixed += join_fragments(cu)
+        fixed += tidy(board, rpt)
+        fill(board)
+        board.Save(PCB)
+        print("%s pass %d: %d unconnected, %d fixes" % (tag, i + 1, len(gaps), fixed))
+        if not fixed:
+            break
 
 
 def finish():
@@ -1094,28 +1293,44 @@ def finish():
     print("power segments widened:", widen_power(cu))
     n, failed = stitch_gnd(cu)
     print("GND pads stitched: %d, %d left for the gap pass" % (n, len(failed)))
-    print("GND stitching grid vias:", stitch_grid(cu))
     gnd = board.FindNet("/GND")
     for layer in (pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.B_Cu):
-        add_zone(board, gnd, layer)
+        add_zone(board, gnd, layer, thermal=True)   # spokes on THT pads: J1 is hand-soldered
     silkscreen(board)
     fill(board)
     board.Save(PCB)
-    for i in range(6):
+    gap_passes("gap")
+    # The GND stitching grid only after every signal is joined: its vias would otherwise take
+    # the spots the gap-closer needs in the dense rows. Then once more for pour fragments.
+    board = pcbnew.LoadBoard(PCB)
+    print("GND stitching grid vias:", stitch_grid(Copper(board)))
+    fill(board)
+    board.Save(PCB)
+    gap_passes("after grid")
+    board = pcbnew.LoadBoard(PCB)
+    ok, left = min_width(Copper(board))
+    print("tracks brought up to %.3f mm: %d, no room: %d" % (MIN_W, ok, left))
+    fill(board)
+    board.Save(PCB)
+    for i in range(3):
         rpt = drc_report(PCB)
-        gaps = rpt["unconnected_items"]
-        if not gaps:
-            break
         board = pcbnew.LoadBoard(PCB)
-        cu = Copper(board)
-        fixed = close_gaps(cu, [g for g in gaps if not all(it["description"].startswith("Zone")
-                                                             for it in g["items"])])
-        fixed += join_fragments(cu)
-        fixed += tidy(board, rpt)
+        n = tidy(board, rpt)
+        # a thermal spoke that can only land on a scrap of pour: that pad joins solid instead
+        for v in rpt["violations"]:
+            if v["type"] == "starved_thermal":
+                for it in v["items"]:
+                    obj = board.GetItem(pcbnew.KIID(it["uuid"]))
+                    obj = obj.Cast() if obj is not None else None
+                    if obj is not None and obj.GetClass() == "PAD":
+                        obj.SetLocalZoneConnection(pcbnew.ZONE_CONNECTION_FULL)
+                        print("  solid GND connection (starved spokes): %s.%s" % (
+                            obj.GetParentFootprint().GetReference(), obj.GetNumber()))
+                        n += 1
         fill(board)
         board.Save(PCB)
-        print("gap pass %d: %d unconnected, %d fixes" % (i + 1, len(gaps), fixed))
-        if not fixed:
+        print("final pass %d: %d fixes" % (i + 1, n))
+        if not n:
             break
     set_stackup(PCB)
     set_rule_severities()

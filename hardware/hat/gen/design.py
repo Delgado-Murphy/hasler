@@ -35,8 +35,8 @@ LCSC = {
     "4.7k": "C23162", "5.1k": "C23186", "6.8k": "C23212", "33k": "C4216",
     "100k": "C25803", "120k": "C25808", "2.2k": "C4190", "1M": "C22935",
     "4x10k": "C29718", "4x1k": "C20197",
-    "100nF": "C14663", "100nF/16V": "C1525", "1nF": "C1588", "1uF/X7R": "C28323", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
-    "220uF/35V": "C970697",
+    "100nF": "C14663", "100nF/16V": "C1525", "1nF": "C1588", "1uF/X7R": "C28323", "1uF/25V": "C52923", "1uF": "C15849", "10uF": "C15850", "10uF/50V": "C13585",
+    "220uF/35V": "C970697", "470nF/50V": "C13967",
 }
 
 COMPONENTS = []
@@ -89,22 +89,22 @@ part("D2", "Device:LED", "PD", LED0603, {"1": "PD_PG", "2": "LED_PD"}, "C2287", 
 part("JP9", "Jumper:SolderJumper_2_Open", "PD_SCL", SJ2O, {"1": "PD_SCL", "2": "SCL"}, None, B)
 part("JP10", "Jumper:SolderJumper_2_Open", "PD_SDA", SJ2O, {"1": "PD_SDA", "2": "SDA"}, None, B)
 
-# ------------------------------------------------- window 10.9 V .. 22.7 V
+# ------------------------------------------------- window 10.8 V .. 22.8 V
 B = "window"
 R("R3", "6.8k", "VBUS", "VREF", B)
 part("U5", "hasler:AZ431_SOT23", "AZ431AN", SOT23,
      {"1": "VREF", "2": "VREF", "3": "GND"}, "C92573", B, mpn="AZ431AN-ATRG1",
      desc="2.5 V shunt ref (SOT23: 1 REF, 2 K, 3 A)")
 # Separate dividers, so the UV hysteresis (R16 from EN) cannot drag the OV threshold.
-R("R4", "33k", "VBUS", "DIV_UV", B)                     # UV: 2.50 V x 43/10 = 10.75 V
+R("R4", "33k", "VBUS", "DIV_UV", B)                     # UV: 2.50 V x 43/10 = 10.75 V (10.83 with R16)
 R("R14", "10k", "DIV_UV", "GND", B)
-R("R16", "1M", "EN", "DIV_UV", B)                       # ~0.35 V hysteresis once on
+R("R16", "1M", "EN", "DIV_UV", B)                       # hysteresis: off again below ~10.5 V
 R("R5", "33k", "VBUS", "DIV_OVT", B)                    # OV: 2.50 V x 42.8/4.7 = 22.8 V
 R("R6", "5.1k", "DIV_OVT", "DIV_OV", B)
 R("R15", "4.7k", "DIV_OV", "GND", B)
 C("C3", "1nF", "DIV_UV", "GND", B)                      # 1 nF: filters spikes, ~5 us lag
 C("C4", "1nF", "DIV_OV", "GND", B)
-# LM393: unit A = over-voltage (VBUS < 22.7 V releases), unit B = under-voltage
+# LM393: unit A = over-voltage (VBUS < 22.8 V releases), unit B = under-voltage
 part("U4", "Comparator:LM393", "LM393", SOIC8,
      {"1": "EN", "2": "DIV_OV", "3": "VREF",          # A: + ref, - divider
       "5": "DIV_UV", "6": "VREF", "7": "EN",          # B: + divider, - ref
@@ -113,6 +113,7 @@ part("U4", "Comparator:LM393", "LM393", SOIC8,
 C("C5", "100nF", "VBUS", "GND", B)
 R("R7", "100k", "VBUS", "EN", B)
 part("D3", "Device:D_Zener", "BZT52C15S", SOD323, {"1": "EN", "2": "GND"}, "C17283", B)
+C("C18", "1uF/25V", "EN", "GND", B, fp=C0402)                       # EN rises over ~10 ms: FET waits out the PD transition
 part("Q2", "Transistor_FET:2N7002", "2N7002", SOT23,
      {"1": "EN", "2": "GND", "3": "GATE_PULL"}, "C8545", B)
 R("R8", "2.2k", "GATE_PULL", "PGATE", B)                # Vgs = -0.68 x VBUS when on
@@ -122,7 +123,9 @@ part("Q1", "Transistor_FET:IRF7404", "AO4407A", SOIC8,
      {"1": "VBUS", "2": "VBUS", "3": "VBUS", "4": "PGATE",
       "5": "VOUT", "6": "VOUT", "7": "VOUT", "8": "VOUT"},
      "C16072", B, desc="P-FET 30 V 12 A, Vgs +-25 V")
-C("C6", "100nF", "PGATE", "VOUT", B)                    # soft start: ~3-7 A into C7, not 30 A
+C("C6", "470nF/50V", "PGATE", "VOUT", B, fp=C0805)      # soft start (Miller): 6-15 V/ms, ~1.4-3.5 A into C7 + C8
+C("C17", "10uF", "PGATE", "VBUS", B, fp=C0805)          # Cgs >> C6: a fast VBUS edge can't couple
+                                                        # through C6 and turn the FET on by itself
 
 # ------------------------------------------------------------- out to amp
 B = "out"
@@ -202,7 +205,7 @@ C("C15", "100nF/16V", "3V3A", "GND", B, fp=C0402)
 C("C16", "1uF", "3V3A", "GND", B)
 part("JP8", "Jumper:SolderJumper_2_Bridged", "ADDR_GND", SJ2B, {"1": "ADS_ADDR", "2": "GND"}, None, B,
      desc="ADDR to GND = 0x48")
-R("R13", "10k", "3V3A", "ADS_RDY", B)
+R("R13", "10k", "+3V3", "ADS_RDY", B)                   # Pi-side pull-up: no back-feed into an unpowered Pi
 part("JP6", "Jumper:SolderJumper_2_Bridged", "RDY_GPIO24", SJ2B, {"1": "ADS_RDY", "2": "GPIO24"}, None, B)
 
 # ------------------------------------------------- cabinet line conditioning
@@ -217,6 +220,7 @@ for n in range(6):
         pins[ESD_PINS[k]] = "J_" + sig
     part("U%d" % (7 + n), "Power_Protection:SRV05-4", "SRV05-4", SOT23_6, pins, "C13612", B,
          mpn="SRV05-4.TCT")
+    C("C%d" % (38 + n), "100nF/16V", "3V3A", "GND", B, fp=C0402)   # at its VCC pin
 
 # Lines in fours: one 1k series array per group (digital groups, then the analog one).
 DIG_GROUPS = [["K1", "K2", "K3", "K4"], ["K5", "K6", "PU", "TSW"], ["X1", "X2", "X3", "X4"], ["X5", "X6"]]
@@ -257,12 +261,12 @@ for pin, sig, _, _ in LAMP:
     J2[pin] = "J_" + sig
 assert sorted(J2) == list(range(1, 27)), sorted(J2)
 # What the cabinet wire on each J2 pin is (HM / Excelsior), for the silkscreen legend.
-J2_LABELS = {1: "K1 / key 1", 2: "GND", 3: "K2 / key 2", 4: "K3 / key 3", 5: "K4 / key 4",
-             6: "K5 / key 5", 7: "K6 / key 6", 8: "PU / Q", 9: "tone / treble", 10: "volume",
-             11: "pots GND", 12: "3V3A (pots, LED +)", 13: "LED red", 14: "tone sw / key 0",
+J2_LABELS = {1: "K1 / key1", 2: "GND", 3: "K2 / key2", 4: "K3 / key3", 5: "K4 / key4",
+             6: "K5 / key5", 7: "K6 / key6", 8: "PU / Q", 9: "tone/treble", 10: "volume",
+             11: "pots GND", 12: "3V3A pots,LED+", 13: "LED red", 14: "tone sw/key0",
              15: "LED green", 16: "LED blue", 17: "- / Tape", 18: "- / SP", 19: "- / spk a",
              20: "- / spk b", 21: "spare", 22: "spare", 23: "- / bass", 24: "GND",
-             25: "spare analog", 26: "3V3A"}
+             25: "spare A3", 26: "3V3A"}
 part("J2", "Connector_Generic:Conn_02x13_Odd_Even", "Hasler J2",
      "Connector_IDC:IDC-Header_2x13_P2.54mm_Vertical",
      {str(k): v for k, v in J2.items()}, "C5156668", B, mpn="DC3-2.54-26PAS",
