@@ -46,7 +46,7 @@ for private ones. Setup: [build guide, Phase 3c](docs/build-guide.md#phase-3c--s
 | | |
 |---|---|
 | `daemon/haslerd/` | the service. `panel/` holds the IO backends and control primitives |
-| `config/variants/` | one descriptor per cabinet — `hasler-hm.yaml`, `excelsior.yaml` |
+| `config/variants/` | one descriptor per cabinet — `hasler-hm.yaml` (prototype stripboard), `hasler-hm-hat.yaml` (on the Hasler HAT), `excelsior.yaml` |
 | `config/` | `haslerd.yaml.example`, systemd units, go-librespot config template |
 | `scripts/install.sh` | idempotent installer: haslerd, go-librespot, yt-dlp + deno. `--dry-run` first |
 | `scripts/panel-probe.py` | live view of the panel. Wire against this |

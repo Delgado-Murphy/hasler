@@ -34,7 +34,7 @@ def make(**kwargs):
 
 def test_default_pins_and_common_cathode_drive_high():
     ctl, (led,) = make()
-    assert led.pins == (27, 22, 23)
+    assert led.pins == (17, 22, 27)
     assert led.active_high is True
     assert led.pwm is True
 

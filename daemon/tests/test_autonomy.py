@@ -83,7 +83,7 @@ class TestBoot:
         player = FakePlayer()
         actions = Actions(self.variant, player, state=StateStore(tmp_path / "s.json"))
         panel = Panel.from_variant(self.variant, fake=True)
-        panel.digital.set("d0", True)                # knob on (end-switch, GPA0)
+        panel.digital.set("d8", True)                # knob on (end-switch, PB0)
         assert boot(panel, actions, settle_s=0.1) is True
         assert player.current().n == 4
 
@@ -91,7 +91,7 @@ class TestBoot:
         StateStore(tmp_path / "s.json").save({"last_preset": 4, "standby": False})
         player = FakePlayer()
         actions = Actions(self.variant, player, state=StateStore(tmp_path / "s.json"))
-        panel = Panel.from_variant(self.variant, fake=True)  # d0 open: knob off
+        panel = Panel.from_variant(self.variant, fake=True)  # d8 open: knob off
         boot(panel, actions, settle_s=0.1)
         assert actions.standby is True
         assert "play_preset" not in player.verbs()
@@ -136,7 +136,7 @@ class TestConnectivity:
 
 
 # Mirrors the commented-out fallback block in config/variants/hasler-hm.yaml.
-GPIO_FALLBACK = {"backend": "gpio", "pins": [5, 0, 0, 0, 0, 0, 0, 0, 6, 12, 13, 16, 26, 9, 10]}
+GPIO_FALLBACK = {"backend": "gpio", "pins": [5, 6, 12, 13, 16, 17, 24, 26, 25]}
 
 
 class TestGpioPinIndex:
@@ -169,9 +169,9 @@ class TestGpioPinIndex:
         open_backends(variant)
         assert seen == {"d3": variant.io["digital"]["pins"][3]}
 
-    def test_gpio_fallback_avoids_the_hats_pins(self, monkeypatch):
-        # The commented fallback in hasler-hm.yaml: without the HAT, every key
-        # and the end-switch (d0) lands on a free Pi pin - none of the HAT's.
+    def test_gpio_fallback_keeps_the_original_wiring(self, monkeypatch):
+        # The commented fallback in hasler-hm.yaml: going back to direct GPIO
+        # must land every key, and the end-switch (now d8), on its old pin.
         import haslerd.panel.io_gpio as io_gpio
 
         seen = {}
@@ -180,4 +180,4 @@ class TestGpioPinIndex:
         variant.io["digital"] = dict(GPIO_FALLBACK)
         variant.io["analog"] = {"backend": "none"}   # no ADS1115 on the laptop
         open_backends(variant)
-        assert seen == {"d0": 5, "d8": 6, "d9": 12, "d10": 13, "d11": 16, "d12": 26, "d13": 9, "d14": 10}
+        assert seen == {"d0": 5, "d1": 6, "d2": 12, "d3": 13, "d4": 16, "d5": 17, "d6": 24, "d8": 25}

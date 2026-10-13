@@ -2,55 +2,57 @@
 # 7 momentary piano keys (1-6 + PU) and 2 pots (volume, tone).
 # The tone pot carries the original mains switch on its CCW end-stop.
 #
-# Panel on the Hasler HAT: keys to its MCP23017, wipers to its ADS1115, lamp
-# to three Pi GPIOs. The cabinet's 16-wire ribbon is crimped into a 26-way
-# IDC plug flush to pin 1, so wire n lands on J2 pin n (17-26 empty).
+# Keys go through an MCP23017 expander on I2C, so the panel loom is 4 wires
+# (3V3, GND, SDA, SCL). No ADC fitted yet - the wheels are dead and volume
+# comes from the moOde UI / HA until the ADS1115 lands.
 variant: hasler-hm
 
 io:
   digital:
     backend: mcp23017
-    # Pinned, not auto: the HAT's CH224A answers at 0x22/0x23 if JP9/JP10 are
-    # closed, and auto refuses two devices. A0-A2 to GND (JP2-JP4). Check:
-    # i2cdetect -y 1
-    addr: 0x20
-    int_gpio: 23         # INTA (JP5). Accepted, not used yet - the panel polls.
-    # Logical names ARE the chip pins: d0-d6 = GPA0-6, d8-d14 = GPB0-6.
-    # GPA7 (d7) and GPB7 (d15) are output-only and not routed on the HAT.
-  # Fallback - no HAT, keys straight to Pi GPIO. Uncomment this and remove
-  # the block above. Indexed by dN: d0 is the end-switch, d1-d7 are
-  # placeholders (0, never opened), d8-d14 the keys. Avoids the Amp4 Pro's
-  # 2,3,4, 18-21, its EEPROM (0,1), UART (14,15), the lamp (17,22,27) and the
-  # HAT's INT/RDY/RST (23,24,25). 9/10 are SPI - leave SPI off.
+    # auto = probe 0x20-0x27 and use the one board that answers: the CQRobot
+    # board (A0-A2 open, 0x27) and the green breakout (A0-A2 to GND, 0x20) both
+    # work with no edit. A number pins it. Check: i2cdetect -y 1
+    addr: auto
+    # Logical names ARE the wiring: d0-d6 = PA0-PA6, d8 = PB0. Wire by the
+    # silkscreen. PA7 (d7) and PB7 (d15) are output-only - never use them.
+  # Fallback - keys straight to Pi GPIO, no expander. Uncomment this and
+  # remove the block above. The list is d0..d8 in order; d7 is a placeholder
+  # so the end-switch on d8 lands on GPIO 25. Avoids the Amp4 Pro's 2,3,4,
+  # 18-21, the HAT EEPROM (0,1), UART (14,15) and the lamp (17,22,27).
   # digital:
   #   backend: gpio
-  #   pins: [5, 0, 0, 0, 0, 0, 0, 0, 6, 12, 13, 16, 26, 9, 10]
+  #   pins: [5, 6, 12, 13, 16, 23, 24, 26, 25]
   analog:
-    backend: ads1115     # on the HAT, ADDR to GND (JP8)
+    backend: ads1115     # U2 on the prototype board (0x48)
     addr: 0x48
-  # Pilot lamp: the cabinet's 4-leg RGB LED. Its resistors sit on the HAT
-  # (220/100/100 ohm); the common anode is J2-12 (3V3A).
+  # Pilot lamp: the 4-leg RGB LED, its resistors on the prototype board
+  # (Paper PB1-PB3). The board's 7-wire ribbon sits on the Pi header's odd
+  # row only - pins 1 3V3, 3 SDA, 5 SCL, (7 empty: amp mute), 9 GND, 11/13/15
+  # = lamp R/G/B - so nothing ever lands on the 5 V row. The LED
+  # common goes to 3.3 V: IDC wire 11 (common anode, metered).
   lamp:
     backend: gpio
-    pins: {red: 17, green: 22, blue: 27}   # J2-13, J2-15, J2-16 - Pi header 11, 15, 13
+    pins: {red: 17, green: 22, blue: 27}   # header pins 11, 15, 13 - cabinet wires 13, 15, 16
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
 
 controls:
-  # J2: 2x13 keyed header, standard IDC numbering (pin 1 by the key slot).
-  # Keys and the tone switch close to GND on J2-2.
-  - {id: k1, kind: momentary, pin: d8}    # J2-1 (GPB0)
-  - {id: k2, kind: momentary, pin: d9}    # J2-3
-  - {id: k3, kind: momentary, pin: d10}   # J2-4
-  - {id: k4, kind: momentary, pin: d11}   # J2-5
+  # Prototype stripboard (Paper PB3): each key sits on the MCP pin its J2
+  # wire lands on. The cabinet's female IDC lands wire 1 on 13·19, so the
+  # cabinet is wired to suit: 1 K1, 2 GND, 3-8 K2..PU, 14 tone switch.
+  - {id: k1, kind: momentary, pin: d4}   # cabinet wire 1 (white) - J2 as the female IDC really lands
+  - {id: k2, kind: momentary, pin: d3}   # wire 3
+  - {id: k3, kind: momentary, pin: d5}   # wire 4
+  - {id: k4, kind: momentary, pin: d2}   # wire 5
   # k5/k6 hold = volume down/up, ramping every repeat_ms until released.
-  # Tap still plays the preset.
-  - {id: k5, kind: momentary, pin: d12, repeat_ms: 150}   # J2-6
-  - {id: k6, kind: momentary, pin: d13, repeat_ms: 150}   # J2-7
-  - {id: pu, kind: momentary, pin: d14}   # J2-8 (GPB6)
+  # Tap still plays the preset. Stand-in for the dead wheels until the ADS1115.
+  - {id: k5, kind: momentary, pin: d6, repeat_ms: 150}
+  - {id: k6, kind: momentary, pin: d1, repeat_ms: 150}
+  - {id: pu, kind: momentary, pin: d0}
 
   - id: volume
     kind: pot
-    channel: 1   # volume wiper, J2-10 -> A1
+    channel: 1   # volume wiper, cabinet wire 10 -> A1
     # The pot is audio taper. Measured 2026-10-13 (median counts): quarter 770,
     # half 3070, full 26200; the rest from an exponential fit through those.
     # The curve undoes the taper so knob angle -> 0-100 evenly, and the
@@ -59,14 +61,14 @@ controls:
 
   - id: tone
     kind: pot
-    channel: 0   # tone wiper, J2-9 -> A0
+    channel: 0   # tone wiper, cabinet wire 9 -> A0
     taper: linear   # 2026-10-13 sweep: even, 0 .. ~25500
     # TODO(phase-0): first value is the ADC count AT THE DETENT. The switch
     # eats the bottom of the sweep, so the usable range starts above it.
     range: [0, 25500]
     end_switch:
       id: power
-      pin: d0              # J2-14 (GPA0)
+      pin: d8              # PB0 - not d7/PA7, which cannot be an input
       off_hold_ms: 5000    # held off this long -> clean shutdown
 
 # Actions bind to control ids. Nothing here knows a GPIO number.

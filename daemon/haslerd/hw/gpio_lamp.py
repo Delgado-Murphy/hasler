@@ -17,7 +17,9 @@ from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
-DEFAULT_PINS = {"red": 27, "green": 22, "blue": 23}
+# The lamp GPIOs both cabinets use (header pins 11, 15, 13). Not 23: on the HAT that is the
+# MCP23017's push-pull INTA, so a default there would drive against it.
+DEFAULT_PINS = {"red": 17, "green": 22, "blue": 27}
 
 
 class GpioRgbController:

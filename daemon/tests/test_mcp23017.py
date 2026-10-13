@@ -25,7 +25,7 @@ class TestCheckPins:
             check_pins([name])
 
 
-@pytest.mark.parametrize("variant", ["hasler-hm", "excelsior"])
+@pytest.mark.parametrize("variant", ["hasler-hm", "hasler-hm-hat", "excelsior"])
 def test_shipped_descriptors_avoid_the_output_only_pins(variant):
     # Both cabinets are meant to run on the expander; a descriptor that drifts
     # back onto d7/d15 would boot fine on a laptop and die on the box.
@@ -35,9 +35,7 @@ def test_shipped_descriptors_avoid_the_output_only_pins(variant):
 def test_hasler_runs_on_the_expander():
     io = load_variant(VARIANTS / "hasler-hm.yaml").io["digital"]
     assert io["backend"] == "mcp23017"
-    # Pinned on the HAT: its CH224A can answer at 0x22/0x23, and auto refuses two.
-    assert io["addr"] == 0x20
-    assert io["int_gpio"] == 23
+    assert io["addr"] == "auto"   # CQRobot (0x27) or the green board (0x20)
 
 
 class Bus:

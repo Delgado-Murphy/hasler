@@ -243,7 +243,7 @@ class TestBuildControls:
 class TestVariants:
     """Both cabinets must load and build - the Excelsior before it is wired."""
 
-    @pytest.mark.parametrize("name", ["hasler-hm", "excelsior"])
+    @pytest.mark.parametrize("name", ["hasler-hm", "hasler-hm-hat", "excelsior"])
     def test_descriptor_builds_a_panel(self, name):
         variant = load_variant(VARIANTS / f"{name}.yaml")
         panel = Panel.from_variant(variant, fake=True)
@@ -252,8 +252,8 @@ class TestVariants:
 
     def test_hasler_references_seven_keys_and_the_end_switch(self):
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
-        # The HAT's J2: end-switch on GPA0, keys on GPB0-6 (d15/GPB7 output-only).
-        assert variant.pin_names() == ["d0", "d8", "d9", "d10", "d11", "d12", "d13", "d14"]
+        # d7 is skipped on purpose - it is GPA7 on the expander, output-only.
+        assert variant.pin_names() == ["d0", "d1", "d2", "d3", "d4", "d5", "d6", "d8"]
 
     def test_hasler_keys_drive_presets_end_to_end(self):
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
@@ -287,7 +287,7 @@ class TestVariants:
                 events.extend(panel.poll(now))
                 now = round(now + TICK, 6)
 
-        panel.digital.press_only("d8")       # key 1
+        panel.digital.press_only("d8")       # key 1 (Excelsior is wired for the HAT's J2)
         settle(0.2)
         panel.digital.clear()      # the mechanical changeover gap
         settle(0.03)
