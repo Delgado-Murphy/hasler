@@ -8,6 +8,7 @@ code path.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -15,7 +16,16 @@ from typing import Any, Mapping
 import yaml
 
 from .panel.controls import Control, Event, build_controls
-from .panel.io_base import AnalogBackend, DigitalBackend, FakeAnalog, FakeDigital, NullAnalog
+from .panel.io_base import (
+    AbsentDigital,
+    AnalogBackend,
+    DigitalBackend,
+    FakeAnalog,
+    FakeDigital,
+    NullAnalog,
+)
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -113,7 +123,13 @@ def open_backends(
     elif dbackend == "mcp23017":
         from .panel.io_mcp23017 import Mcp23017Digital
 
-        digital = Mcp23017Digital(names, **digital_spec)
+        try:
+            digital = Mcp23017Digital(names, **digital_spec)
+        except (OSError, RuntimeError) as exc:
+            # No board on the header: keep the page and the music up rather
+            # than crash-looping. Controls stay unread until a restart.
+            log.warning("panel board not found, running without controls: %s", exc)
+            return AbsentDigital(str(exc)), NullAnalog()
     else:
         raise ValueError(f"unknown digital backend {dbackend!r}")
 
@@ -146,7 +162,14 @@ class Panel:
         digital, analog = open_backends(variant, fake=fake)
         return cls(build_controls(variant.controls), digital, analog)
 
+    @property
+    def absent(self) -> bool:
+        """True when the panel board was missing at start (see AbsentDigital)."""
+        return getattr(self.digital, "absent", False)
+
     def poll(self, now: float) -> list[Event]:
+        if self.absent:
+            return []
         digital = self.digital.read()
         analog = self.analog.read()
         events: list[Event] = []

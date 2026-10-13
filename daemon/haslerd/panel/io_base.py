@@ -74,6 +74,27 @@ class FakeAnalog:
         pass
 
 
+class AbsentDigital:
+    """The digital board the descriptor names did not answer at start.
+
+    Reads nothing, and the Panel stops polling its controls while it is in
+    place: an empty reading would look like every contact open, and an open
+    tone-knob end switch means "shut down". The web page and the player keep
+    running; restart haslerd once the board is connected.
+    """
+
+    absent = True
+
+    def __init__(self, reason: str = "") -> None:
+        self.reason = reason
+
+    def read(self) -> dict[str, bool]:
+        return {}
+
+    def close(self) -> None:
+        pass
+
+
 class NullAnalog:
     """The ``backend: none`` case - no ADC fitted yet.
 
