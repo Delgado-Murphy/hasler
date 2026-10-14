@@ -36,6 +36,11 @@ ROTATIONS = [
 ]
 # Footprints whose origin is not the body centre (pin 1 on the headers, the contact row
 # on the HRO USB-C): JLC places by centre, so the CPL gives the centre of their pads.
+# Per-part offsets, checked first: JLC builds some parts from a different library footprint
+# than the package name suggests. SRV05-4 (C13612) uses their SOT-23-6 "-BL" footprint
+# (pin 1 bottom-left, pins in rows, like KiCad's at 90), not the "-BR" one; their engineer
+# corrected our 270 to 0 on the first order (DFM review, Oct 2026).
+LCSC_ROTATIONS = {"C13612": 270}
 OFF_CENTRE = r"^(IDC-Header_|PinHeader_|PinSocket_|TerminalBlock_|USB_C_Receptacle_HRO_)"
 
 
@@ -100,6 +105,7 @@ def cpl():
     run("pcb", "export", "pos", "--format", "csv", "--units", "mm", "--side", "both",
         "--use-drill-file-origin", "-o", raw, PCB)
     keep = {c["ref"] for c in design.COMPONENTS if c["lcsc"] and not c["dnp"]}
+    lcsc = {c["ref"]: c["lcsc"] for c in design.COMPONENTS}
     centres = pad_centres()
     path = os.path.join(FAB, "hasler-hat-cpl.csv")
     with open(raw) as f, open(path, "w", newline="") as g:
@@ -110,10 +116,13 @@ def cpl():
             if ref not in keep:
                 continue
             rot = float(row["Rot"])
-            for pat, add in ROTATIONS:
-                if re.match(pat, row["Package"]):
-                    rot += add
-                    break
+            if lcsc[ref] in LCSC_ROTATIONS:
+                rot += LCSC_ROTATIONS[lcsc[ref]]
+            else:
+                for pat, add in ROTATIONS:
+                    if re.match(pat, row["Package"]):
+                        rot += add
+                        break
             x, y = row["PosX"], row["PosY"]
             if re.match(OFF_CENTRE, row["Package"]):
                 x, y = ("%.4f" % v for v in centres[ref])

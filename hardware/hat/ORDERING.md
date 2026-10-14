@@ -48,8 +48,11 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 - **Check the placement preview** (2D and 3D) before paying. `make_fab.py` turns KiCad's
   orientations into JLC's and was checked part by part against JLC's own footprints and in
   JLC's preview on 2026-10-13:
-  - SOT-23 / SOT-23-3 / SOT-23-6 +180°, SSOP / VSSOP +270°, 4×0603 resistor arrays +270°, the
+  - SOT-23 / SOT-23-3 +180°, SSOP / VSSOP +270°, 4×0603 resistor arrays +270°, the
     eFuse (custom RPW footprint) and the USB-C 0°;
+  - the SRV05-4s (C13612) +270°: JLC builds them from its SOT-23-6 "-BL" footprint, not the
+    "-BR" one EasyEDA shows for the part. The first order went out with +180° and JLC's
+    engineer turned all six to 0° in the DFM review (14 Oct 2026); that is now the default;
   - J1, J2, J4, J6 (KiCad origin on pin 1) and J3 (JLC's model 1.5 mm off KiCad's origin) are
     placed by the centre of their pads; the 2-row headers turn 270°.
   
