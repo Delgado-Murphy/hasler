@@ -41,6 +41,9 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
   (35 with J1). Buy five sockets yourself: LCSC **C5124634**, or any 2×20,
   2.54 mm female header **8.5 mm tall** (the height sets the gap over the Amp4).
 - JLC fits J2 (2×13 box header), J4 (2×8 header) and J6 (screw terminal) from the top.
+  J6 is a Kefa KF350-3.5-2P on its own footprint (`gen/make_fp.py`), with the wire openings drawn
+  on the edge side. On the first order it still had KiCad's Phoenix PT-1,5 outline, and JLC asked
+  whether it faced the right way. The answer is yes: wire entry to the board edge, + (pin 1) on the left.
 - **Confirm parts placement: Yes** (€0.40): JLC's engineers check every position and rotation
   and you approve before assembly.
 - **Not fitted by design:** test points, solder jumpers, mounting holes (bare unplated holes), and

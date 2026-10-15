@@ -1574,7 +1574,7 @@ STACKUP = """		(stackup
 
 def set_rule_severities():
     """One DRC check off, on purpose: library silkscreen of parts that sit on the board edge
-    by design (USB-C, J6, J2's key side, C7 by the corner) runs past the outline; the fab
+    by design (USB-C, J2's key side, C7 by the corner) runs past the outline; the fab
     clips silkscreen at the outline anyway. Everything else stays on."""
     import json
     pro = os.path.join(OUT, "hasler-hat.kicad_pro")

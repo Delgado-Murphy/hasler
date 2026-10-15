@@ -16028,7 +16028,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-2-3.5-H_1x02_P3.50mm_Horizontal"
+		(property "Footprint" "hasler:TerminalBlock_Kefa_KF350-3.5-2P_1x02_P3.50mm_Horizontal"
 			(at 139.7 246.38 0)
 			(effects
 				(font

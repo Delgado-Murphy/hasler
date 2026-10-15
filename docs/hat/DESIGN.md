@@ -265,7 +265,7 @@ I²C map: 0x20 MCP23017 (A0–A2 to GND via JP2–JP4) · 0x48 ADS1115 (ADDR to 
   past the board edge.
 - DRC: **0 violations, 0 unconnected, schematic parity clean** (kicad-cli, all severities).
   Checks set to ignore in `hasler-hat.kicad_pro`, on purpose:
-  - `silk_edge_clearance`: the library silkscreen of the parts that sit on the edge (USB-C, J6,
+  - `silk_edge_clearance`: the library silkscreen of the parts that sit on the edge (USB-C,
     J2's key side, C7 by the corner) runs past the outline; the fab clips silkscreen there.
   - `footprint_filters_mismatch`, `footprint_type_mismatch`: the generated symbols' footprint
     filters and the SMD/THT attribute of a few library footprints don't match KiCad's

@@ -130,7 +130,7 @@ R("R10", "10k", "VOUT", "LED_OUT", B)
 part("D6", "Device:LED", "OUT", LED0603, {"1": "GND", "2": "LED_OUT"}, "C965804", B,
      mpn="XL-1608UGC-04", desc="green: 20 V to the amp")
 part("J6", "Connector:Screw_Terminal_01x02", "To Amp4 DC in",
-     "TerminalBlock_Phoenix:TerminalBlock_Phoenix_PT-1,5-2-3.5-H_1x02_P3.50mm_Horizontal",
+     "hasler:TerminalBlock_Kefa_KF350-3.5-2P_1x02_P3.50mm_Horizontal",
      {"1": "VOUT", "2": "GND"}, "C474892", B, mpn="KF350-3.5-2P")
 
 # ------------------------------------------------------- 3V3A (cabinet rail)
