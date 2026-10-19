@@ -522,7 +522,8 @@ class TestHttp:
 
     def test_garbage_body_is_a_400_not_a_crash(self, base):
         url, _ = base
-        req = urllib.request.Request(url + "/api/config", data=b"{not json", method="PUT")
+        req = urllib.request.Request(url + "/api/config", data=b"{not json", method="PUT",
+                                     headers={"Content-Type": "application/json"})
         with pytest.raises(urllib.error.HTTPError) as exc:
             urllib.request.urlopen(req, timeout=5)
         assert exc.value.code == 400

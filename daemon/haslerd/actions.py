@@ -110,6 +110,10 @@ class Actions:
         self.presets = build_presets(variant.presets, variant.name)
         self.standby = False
         self.shutting_down = False
+        # time.monotonic() of the last hand on the radio or preset started;
+        # health.py's "nothing played for 10 min" (the updater's idle) reads
+        # it, and the main loop keeps it fresh while the radio is awake.
+        self.last_active_at: float | None = None
         # Bluetooth discoverable until this clock time (the lamp's blue breath).
         self.pairing_until = 0.0
         self._last_preset: int | None = None
@@ -176,6 +180,8 @@ class Actions:
         # Keys at INFO so "did it see my press?" is answered by the journal;
         # wheel changes stream while turning, so they stay at DEBUG.
         log.log(logging.DEBUG if event.kind == "change" else logging.INFO, "%s -> %s", event, verb)
+        if event.kind != "change":
+            self.touch()
         if event.kind in ACK_KINDS and verb not in SELF_REPLYING and verb not in HA_VERBS:
             self._reply("ack")
         try:
@@ -185,6 +191,10 @@ class Actions:
             log.exception("action %r failed for %s", verb, event)
             if event.kind != "change":
                 self._reply("fail")
+
+    def touch(self) -> None:
+        """Someone is using the radio now (health.py's idle clock)."""
+        self.last_active_at = time.monotonic()
 
     def _reply(self, name: str) -> None:
         if self.on_reply is None:
@@ -261,6 +271,7 @@ class Actions:
         ``on_start`` first, so the lamp is already breathing while a slow
         start (yt-dlp expanding a playlist) holds up the loop.
         """
+        self.touch()
         if self.on_start is not None:
             try:
                 self.on_start(preset)

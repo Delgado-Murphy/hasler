@@ -201,6 +201,23 @@ def link_target(link: Path) -> Path | None:
     return (link.parent / os.readlink(link)).resolve()
 
 
+def keep_owners(work: Path, before: Path) -> None:
+    """Give every file in ``work`` the owner its counterpart in ``before`` had;
+    files a migration created get the owner of ``before/box.yaml`` (or of
+    ``before`` itself). Root only - elsewhere there is nothing to restore."""
+    if os.geteuid() != 0 or not work.is_dir():
+        return
+    ref = before / "box.yaml"
+    default = os.stat(ref if ref.exists() else before) if before.exists() else None
+    for dirpath, _dirs, files in os.walk(work):
+        for f in files:
+            path = Path(dirpath) / f
+            old = before / path.relative_to(work)
+            st = os.stat(old) if old.exists() else default
+            if st is not None and not path.is_symlink():
+                os.chown(path, st.st_uid, st.st_gid)
+
+
 def sync_tree(src: Path, dst: Path, exclude: tuple[str, ...] = ()) -> None:
     """Make ``dst`` hold what ``src`` holds (files atomically, extras removed)."""
     dst.mkdir(parents=True, exist_ok=True)
@@ -447,6 +464,10 @@ class Applier:
             ran = self.hooks.migrate(final, snap / "work" / "etc", snap / "work" / "state", schema)
             self.state.log("migrations", ran=ran)
             work = snap / "work"
+            # Migrations run as root; what they rewrite must stay haslerd's, or it
+            # can no longer save box.yaml in the sticky /etc/hasler.
+            keep_owners(work / "etc", snap / "before" / "etc")
+            keep_owners(work / "state", snap / "before" / "state")
             self.hooks.selftest(final, work / "etc", work / "state")
         else:
             self.hooks.selftest(final, self.layout.etc, self.layout.haslerd_state)

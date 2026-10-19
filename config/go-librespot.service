@@ -1,14 +1,21 @@
 [Unit]
 Description=go-librespot (Spotify Connect, driven by haslerd)
+# Shipped in every release; the binary is the release's pinned one. The legacy
+# rsync install uses config/legacy/go-librespot.service.
 After=sound.target network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/usr/local/bin/go-librespot --config_dir /home/pi/.config/go-librespot
+# Config and the one-time login (state.json, credentials) live outside the
+# release, in /var/lib/go-librespot (scripts/ota-bootstrap.sh copies them over
+# from ~pi/.config/go-librespot once).
+ExecStart=/opt/hasler/current/bin/go-librespot --config_dir /var/lib/go-librespot
 Restart=always
 RestartSec=5
 User=pi
 SupplementaryGroups=audio
+StateDirectory=go-librespot
+StateDirectoryMode=0700
 
 [Install]
 WantedBy=multi-user.target

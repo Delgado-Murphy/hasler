@@ -1,9 +1,37 @@
 [Unit]
-Description=Upgrade yt-dlp (YouTube breaks old versions)
+Description=Upgrade yt-dlp in a second venv; switch only if it passes (YouTube breaks old versions)
+# Weekly from yt-dlp-update.timer; haslerd can also start it ("update yt-dlp
+# now" - polkit allows pi exactly this unit, config/update/51-hasler-ytdlp.rules).
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-# [default] pulls yt-dlp-ejs at the version yt-dlp pins - upgrade them together.
-ExecStart=/opt/yt-dlp/bin/pip install --upgrade --quiet "yt-dlp[default]"
+# Not root: the dedicated ytdlp user owns /opt/yt-dlp and nothing else.
+User=ytdlp
+Group=ytdlp
+ExecStart=/usr/local/sbin/hasler-ytdlp-update
+Environment=HOME=/opt/yt-dlp
+Environment=XDG_CACHE_HOME=/opt/yt-dlp/.cache
+Environment=PIP_NO_CACHE_DIR=1
+Environment=PIP_DISABLE_PIP_VERSION_CHECK=1
+Environment=PIP_NO_INPUT=1
+# deno (yt-dlp's JS runtime) for the online self-check: the release's, else /usr/local/bin's.
+Environment=PATH=/opt/hasler/current/bin:/usr/local/bin:/usr/bin:/bin
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min
+# Only /opt/yt-dlp is writable.
+ProtectSystem=strict
+ReadWritePaths=/opt/yt-dlp
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes

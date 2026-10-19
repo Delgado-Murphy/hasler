@@ -315,6 +315,18 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .pair{display:flex;gap:10px;min-width:0}
 .pair > .field{flex:1 1 0;min-width:0}
 .acts{display:flex;flex-wrap:wrap;gap:10px}
+.note-warn{margin:2px 0 0;color:#E9B35C;font:12.5px/16px var(--sans)}
+.sw-notes{margin:0;padding:10px 12px;border-left:2px solid var(--line2);color:var(--text2);font:13px/18px var(--sans);white-space:pre-line;overflow-wrap:anywhere}
+.sw-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sw-why{color:var(--text2)}
+.li-act:disabled{opacity:.5;cursor:default}
+.cf{display:flex;align-items:center;gap:16px;margin-top:6px}
+.cf-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.cf-ring{flex:none;width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(closest-side,#241810 79%,transparent 80% 100%),conic-gradient(var(--amber) var(--p),var(--line) 0)}
+.cf-count{color:var(--amber);font:600 22px/1 var(--mono);font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:no-preference){ .cf-ring{animation:cf-breathe 2.4s ease-in-out infinite} }
+@keyframes cf-breathe{50%{box-shadow:0 0 18px rgba(255,178,56,.28)}}
 .li-danger{width:100%;text-align:left;border:0;background:none;padding:0;min-height:44px;color:var(--red);font:600 15px/20px var(--sans)}
 input[type=range]{width:100%;height:44px;margin:0;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}
 input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--amber) var(--pct,50%),var(--line) var(--pct,50%))}
@@ -535,10 +547,12 @@ const IC = {
   dots: () => icon('<circle cx="5" cy="11" r="1.6" fill="currentColor"/><circle cx="11" cy="11" r="1.6" fill="currentColor"/><circle cx="17" cy="11" r="1.6" fill="currentColor"/>', 22, 22),
 };
 async function api(method, url, body, opts = {}){
+  // Every change goes as JSON: the radio refuses anything else (its CSRF guard).
+  const send = method !== 'GET' && method !== 'HEAD';
   const r = await fetch(url, {
     method, cache:'no-store', signal: opts.signal,
-    headers: body !== undefined ? {'Content-Type':'application/json'} : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: send ? {'Content-Type':'application/json'} : undefined,
+    body: send ? JSON.stringify(body === undefined ? {} : body) : undefined,
   });
   let j = null;
   try { j = await r.json(); } catch (_) {}
@@ -1059,7 +1073,7 @@ function onRoute(){
   renderPanel();
   if (view === 'remote'){ stripSig = ''; renderRemote(); }
   if (changed && (view === 'ha' || view === 'settings')) refreshHa();
-  if (changed && view === 'settings'){ loadSettings().then(() => { if (view === 'settings') rerender(); }); loadKnobs(); }
+  if (changed && view === 'settings'){ loadSettings().then(() => { if (view === 'settings') rerender(); }); loadKnobs(); loadSoftware(); }
   if (changed && view === 'edit' && cfg && !isDirty()) refreshConfig();
   if (changed){
     window.scrollTo(0, 0);
@@ -1866,6 +1880,7 @@ function renderSettings(){
     h('div', {class:'li', style:'min-height:56px'}, h('button', {type:'button', class:'li-danger', onclick: resetDefaults}, 'Reset keys to defaults'))));
   if (settings && settings.location) panel.append(lampSettings());
   const kn = knobSettings(); if (kn) panel.append(kn);
+  panel.append(softwareSettings());
   panel.append(h('div', {class:'about'},
     h('p', null, 'Hasler HM · Bern 1964 · restored 2026' + (settings && settings.version ? ' · ' + settings.version : '')),
     h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
@@ -1983,10 +1998,179 @@ async function saveMono(box){
 async function resetDefaults(){
   if (!confirm('Restore the radio’s built-in keys and presets?\n\nThis replaces all your keys.')) return;
   try {
-    const r = await api('POST', '/api/reset', {});
+    const token = await pressToConfirm('reset', {}, 'Reset the keys', 'Every key goes back to the radio’s built-in presets.');
+    if (!token) return;
+    const r = await api('POST', '/api/reset', {confirm: token});
     if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); toast('Built-in keys restored'); refreshHa(); }
     else toast((r.json && r.json.error) || 'Reset failed (error ' + r.status + ').', true);
   } catch (_) { toast('Couldn’t reach the radio.', true); }
+}
+
+/* ---------- a press on the radio (web/confirm.py) ---------- */
+// Resolves with a confirmed token, or null (cancelled, timed out, can't confirm).
+function pressToConfirm(action, args, title, sub){
+  return new Promise(async resolve => {
+    let ask;
+    try { ask = await api('POST', '/api/confirm/request', {action, args}); }
+    catch (_) { toast('Couldn’t reach the radio.', true); resolve(null); return; }
+    const j = ask.json || {};
+    if (!ask.ok || !j.token){ toast(j.error || 'The radio can’t confirm this right now.', true); resolve(null); return; }
+    if (j.state === 'confirmed'){ resolve(j.token); return; }
+    const dlg = $('dlg'); dlg.textContent = '';
+    const total = j.expires_in || 30, end = Date.now() + total * 1000;
+    let result = null, timer = null, done = false;
+    const count = h('b', {class:'cf-count', 'aria-hidden':'true'}, String(total));
+    const ring = h('div', {class:'cf-ring', style:'--p:100%'}, count);
+    const finish = r => { if (done) return; done = true; result = r; clearTimeout(timer); dlg.close(); };
+    const tick = async () => {
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      count.textContent = String(left); ring.style.setProperty('--p', (left / total * 100) + '%');
+      try {
+        const p = await api('GET', '/api/confirm/' + encodeURIComponent(j.token));
+        const st = p.json && p.json.state;
+        if (st === 'confirmed'){ finish(j.token); return; }
+        if (st && st !== 'pending'){ toast('No key was pressed, so nothing changed.'); finish(null); return; }
+      } catch (_) {}
+      if (!done) timer = setTimeout(tick, 600);
+    };
+    dlg.append(h('h2', {id:'dlgTitle'}, title || 'Confirm on the radio'), sub ? h('p', {class:'sub'}, sub) : '',
+      h('div', {class:'cf'}, ring, h('div', {class:'cf-txt'},
+        h('span', {class:'li-title'}, 'Press any key on the radio'),
+        h('span', {class:'li-sub'}, 'The pilot lamp dips twice while it waits. That press only confirms — it won’t change the station.'))),
+      h('div', {style:'display:flex;justify-content:flex-end;margin-top:14px'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
+    dlg.onclose = () => {
+      done = true; clearTimeout(timer);
+      if (!result) api('DELETE', '/api/confirm/' + encodeURIComponent(j.token)).catch(() => {});
+      resolve(result);
+    };
+    dlg.onclick = null;
+    dlg.showModal();
+    timer = setTimeout(tick, 400);
+  });
+}
+
+/* ---------- about this radio: version, updates, going back (web/software.py) ---------- */
+// software: null = loading, {missing} = updates not installed, {err}, or GET /api/software.
+let software = null, swBusy = false;
+async function loadSoftware(){
+  try {
+    const r = await api('GET', '/api/software');
+    software = r.ok && r.json ? r.json : (r.status === 404 || r.status === 503) ? {missing:true}
+      : {err:(r.json && r.json.error) || 'Couldn’t read the update status.'};
+  } catch (_) { software = {err:'Couldn’t reach the radio.'}; }
+  if (view === 'settings') rerender();
+}
+const MODE_TEXT = {auto:'Small updates install by themselves at night, in standby. Bigger ones ask first.',
+  ask:'The radio tells you here when there is an update, and waits for you.', off:'No updates. Fixes won’t reach this radio.'};
+function ago(iso){
+  const t = Date.parse(iso || ''); if (!t) return '';
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 2) return 'just now'; if (m < 60) return m + ' minutes ago';
+  const hr = Math.round(m / 60); if (hr < 36) return hr + (hr === 1 ? ' hour ago' : ' hours ago');
+  return Math.round(hr / 24) + ' days ago';
+}
+function day(iso){
+  const t = Date.parse(iso || ''); if (!t) return '';
+  const d = new Date(t);
+  return d.toLocaleDateString(undefined, {day:'numeric', month:'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric'});
+}
+async function swAction(fn){
+  if (swBusy) return; swBusy = true; rerender();
+  try { await fn(); } catch (_) { toast('Couldn’t reach the radio.', true); }
+  swBusy = false; await loadSoftware();
+}
+function swCheck(){
+  swAction(async () => {
+    const r = await api('POST', '/api/software/check');
+    if (r.ok){ toast('Looking for updates…'); setTimeout(loadSoftware, 8000); }
+    else toast((r.json && r.json.error) || 'Couldn’t start the check.', true);
+  });
+}
+function swInstall(v, when){
+  swAction(async () => {
+    const token = await pressToConfirm('update', {version:v}, 'Install ' + v,
+      when === 'now' ? 'It installs once the radio has rested in standby for 10 minutes, then restarts by itself.'
+        : 'It installs tonight between 2 and 5, while the radio is in standby.');
+    if (!token) return;
+    const r = await api('POST', '/api/software/install', {version:v, when, confirm:token});
+    if (r.ok) toast(when === 'now' ? v + ' installs when the radio rests' : v + ' installs tonight');
+    else toast((r.json && r.json.error) || 'Couldn’t start the update.', true);
+  });
+}
+function swPutOff(){
+  swAction(async () => { const r = await api('DELETE', '/api/software/install'); if (r.ok) toast('Update put off'); });
+}
+function swBack(v){
+  swAction(async () => {
+    const token = await pressToConfirm('rollback', {to:v}, 'Go back to ' + v,
+      'The radio restarts on ' + v + ' and checks itself. Your keys and settings stay as they are.');
+    if (!token) return;
+    const r = await api('POST', '/api/software/rollback', {to:v, confirm:token});
+    if (r.ok) toast('Going back to ' + v + ' — the radio restarts in a moment');
+    else toast((r.json && r.json.error) || 'Couldn’t go back.', true);
+  });
+}
+function swMode(mode){
+  swAction(async () => {
+    const r = await api('PUT', '/api/software/settings', {update_mode:mode});
+    if (r.ok) toast(mode === 'auto' ? 'Small updates install by themselves' : mode === 'ask' ? 'The radio asks before updating' : 'Updates are off');
+    else toast((r.json && r.json.error) || 'Couldn’t save that.', true);
+  });
+}
+function softwareSettings(){
+  const wrap = (...kids) => h('section', {style:'display:flex;flex-direction:column;gap:8px;margin-top:20px', 'aria-label':'About this radio'},
+    h('span', {class:'mono', style:'padding:0 4px'}, 'About this radio'), ...kids);
+  const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
+  if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'Software'), h('span', {class:'li-sub'}, 'Checking…')))));
+  if (software.missing || software.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
+    h('span', {class:'li-sub'}, software.missing ? 'Updates not installed on this radio yet' : software.err)),
+    software.err ? h('button', {type:'button', class:'li-act', onclick: () => { software = null; loadSoftware(); }}, 'Retry') : null)));
+  const s = software, a = s.available, res = s.last_result, ap = s.approved;
+  const rows = [];
+  rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'},
+      h('span', {class:'li-title'}, 'Version ' + s.version),
+      h('span', {class:'li-sub'}, (s.channel !== 'stable' ? s.channel[0].toUpperCase() + s.channel.slice(1) + ' channel · ' : '')
+        + (s.last_check ? 'Checked ' + ago(s.last_check) : 'Not checked yet')),
+      s.stale ? h('span', {class:'note-warn'}, s.check_error ? 'No fresh update information — the last check failed.' : 'No fresh update information for a while.') : null),
+    h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: swCheck}, 'Check now')));
+  if (s.busy) rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Installing ' + ((res && res.version) || '')),
+    h('span', {class:'li-sub'}, 'The lamp holds its ember until it’s done. Leave the radio plugged in.'))));
+  if (a && !s.busy){
+    const big = a.kind === 'major' || a.requires_migration;
+    const mine = ap && ap.version === a.version;
+    rows.push(h('div', {class:'li col', style:'gap:10px'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Update available: ' + a.version),
+        h('span', {class:'li-sub'}, (big ? 'A bigger update — it waits for you. ' : '') + (a.staged ? 'Downloaded and checked.' : 'Not downloaded yet.'))),
+      a.notes ? h('p', {class:'sw-notes'}, a.notes) : null,
+      mine
+        ? h('div', {class:'sw-row'}, h('span', {class:'li-sub'}, ap.when === 'now' ? 'Installs as soon as the radio rests in standby.' : 'Installs tonight, between 2 and 5.'),
+            h('button', {type:'button', class:'link quiet', disabled: swBusy, onclick: swPutOff}, 'Put off'))
+        : h('div', {class:'acts'},
+            h('button', {type:'button', class:'btn small', disabled: swBusy || !a.staged, onclick: () => swInstall(a.version, 'tonight')}, 'Install tonight'),
+            h('button', {type:'button', class:'btn small primary', disabled: swBusy || !a.staged, onclick: () => swInstall(a.version, 'now')}, 'Install now'))));
+  }
+  if (res && res.ok !== null){
+    rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Last update'),
+      h('span', {class:'li-sub'}, res.ok
+        ? res.version + (res.manual ? ' — went back by hand' : ' installed') + (res.at ? ', ' + day(res.at) : '') + (res.probation ? ' · settling in' : '')
+        : res.version + ' didn’t work here, so the radio went back to ' + (res.back_to || 'the version before') + (res.at ? ' (' + day(res.at) + ')' : '') + '.'),
+      !res.ok && res.reason ? h('span', {class:'li-sub sw-why'}, 'Why: ' + res.reason) : null)));
+  }
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Updates'});
+  for (const [k, l] of [['auto','Automatic'], ['ask','Ask'], ['off','Off']])
+    seg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.update_mode === k), tabindex: s.update_mode === k ? '0' : '-1', disabled: swBusy,
+      onclick: () => { if (k !== s.update_mode) swMode(k); }}, l));
+  rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Updates'),
+    h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
+  for (const r of (s.releases || []).filter(r => r.status !== 'running'))
+    rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version ' + r.version),
+        h('span', {class:'li-sub'}, (r.status === 'bad' ? 'Didn’t work here' : r.status === 'previous' ? 'The one before' : 'Kept')
+          + (r.installed_at ? ' · installed ' + day(r.installed_at) : ''))),
+      h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: () => swBack(r.version)}, 'Go back')));
+  return wrap(h('div', {class:'list'}, rows),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Installing or going back asks for a press on the radio, so nobody else on the Wi-Fi can do it.'));
 }
 
 /* ---------- knobs: live reading + guided calibration (/api/knobs) ---------- */
@@ -2689,6 +2873,7 @@ onRoute();
 poll().then(schedule);
 loadConfig();
 loadAccount();
+loadSoftware();
 loadSettings().then(() => { if (view === 'settings') rerender(); if (settings && settings.volume_limit != null){ K.limit = +settings.volume_limit; paintKnob(); } });
 refreshHa();
 })();

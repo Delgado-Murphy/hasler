@@ -68,7 +68,7 @@ def repo(tmp_path_factory):
     git(dest, "add", "-A")
     git(dest, "commit", "-q", "-m", "fixture")
     # Untracked junk a real checkout on the Pi has: none of it may ship.
-    (dest / "config" / "haslerd.yaml").write_text("ha:\n  token: SECRET\n")
+    (dest / "config" / "haslerd.yaml").write_text("ha:\n  token: NOT-TO-SHIP-7f3a9c\n")
     (dest / "daemon" / ".venv" / "lib").mkdir(parents=True)
     (dest / "daemon" / ".venv" / "lib" / "evil.py").write_text("x = 1\n")
     (dest / "daemon" / "haslerd" / "__pycache__").mkdir(exist_ok=True)
@@ -111,7 +111,7 @@ def test_only_allowlisted_paths_ship(built):
     for p in files:
         if p.startswith("app/haslerd/migrations/") and p.split("/")[-1][:3].isdigit():
             assert files["migrations/" + p.split("/")[-1]] == files[p]
-    assert not any(b"SECRET" in data for data, _ in files.values())
+    assert not any(b"NOT-TO-SHIP-7f3a9c" in data for data, _ in files.values())
 
 
 def test_integration_layout(built):

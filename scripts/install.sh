@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
-# Install haslerd on the Pi. Run from the repo root, on the box itself.
+# Install haslerd on the Pi from this checkout - the LEGACY rsync layout
+# (code runs from the checkout, e.g. /home/pi/hasler). Run from the repo root,
+# on the box itself.
 #
 #   scripts/install.sh              # install or update
 #   scripts/install.sh --dry-run    # show what it would do
 #
-# Idempotent: safe to re-run after every git pull.
+# Idempotent: safe to re-run after every rsync / git pull. A box that runs
+# signed releases from /opt/hasler (docs/ota.md) is updated by hasler-update
+# instead; this script refuses to touch it. The bench box moves over with
+# scripts/ota-bootstrap.sh + migration 001 (docs/release.md "Bench box").
 #
-# Installs: haslerd (venv + unit), go-librespot (pinned binary + config + unit),
-# yt-dlp (own venv, weekly upgrade timer), deno (yt-dlp's JS runtime, pinned),
-# /var/lib/haslerd, a sudoers drop-in for the panel's clean shutdown, and the
-# pilot lamp's boot path (config.txt block, udev rule, early breath service,
-# halt hook - see docs/lamp.md).
+# First scripts/bootstrap.sh (one-time box setup: apt packages, I2C, groups,
+# system users, CamillaDSP tone config, captive portal, moOde patch, yt-dlp as
+# its own user with a checked weekly upgrade), then the legacy layout: haslerd
+# (venv + unit), go-librespot (pinned binary + config + unit), deno (yt-dlp's
+# JS runtime, pinned), a sudoers drop-in (config/sudoers/haslerd), the helpers,
+# and the pilot lamp's boot path (config.txt block, udev rule, early breath
+# service, halt hook - see docs/lamp.md).
 set -euo pipefail
 
 DRY=0
@@ -18,11 +25,13 @@ DRY=0
 
 # --- pins --------------------------------------------------------------------
 # Bump deliberately. SHA-256 is GitHub's own asset digest for the arm64 build.
+# (scripts/release/build_release.py reads these too, for the release's bin/.)
 GLR_VERSION=v0.10.3
 GLR_SHA256=fdab3c06f3a776a3f696afb26aa59fbdea63557e24d3c39f2df2830ab1851a42
 DENO_VERSION=v2.9.7
 DENO_SHA256=c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf
 # yt-dlp is deliberately NOT pinned: YouTube breaks old versions within weeks.
+# scripts/bootstrap.sh sets it up (user ytdlp, scripts/hasler-ytdlp-update).
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV="$REPO/daemon/.venv"
@@ -32,8 +41,6 @@ USER_HOME="$(getent passwd "$USER_NAME" 2>/dev/null | cut -d: -f6)" || true
 [[ -n "$USER_HOME" ]] || USER_HOME="$(eval echo "~$USER_NAME")"
 GROUP_NAME="$(id -gn "$USER_NAME")"
 GLR_CONF_DIR="$USER_HOME/.config/go-librespot"
-YTDLP_VENV=/opt/yt-dlp
-STATE_DIR=/var/lib/haslerd
 STAMPS=/usr/local/share/hasler     # records which pinned versions are installed
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
@@ -44,18 +51,26 @@ run()  { if (( DRY )); then printf '   would run: %s\n' "$*"; else eval "$@"; fi
 ARM64=0; [[ "$(uname -s)" == Linux && "$(uname -m)" == aarch64 ]] && ARM64=1
 SYSTEMD=0; command -v systemctl >/dev/null 2>&1 && [[ -d /run/systemd/system ]] && SYSTEMD=1
 
+if [[ -L /opt/hasler/current ]]; then
+  warn "this box runs signed releases from /opt/hasler ($(readlink /opt/hasler/current))."
+  warn "install.sh is for the old rsync layout and would fight the updater - not touching it."
+  warn "update with: hasler-update status / the key page; box setup only: sudo scripts/bootstrap.sh"
+  exit 1
+fi
+
 say "repo:  $REPO"
 say "user:  $USER_NAME ($USER_HOME)"
 
 # --- sanity ------------------------------------------------------------------
-if ! grep -qi 'raspberry pi' /proc/device-tree/model 2>/dev/null; then
-  warn "this does not look like a Raspberry Pi - continuing anyway"
-fi
-(( ARM64 ))   || warn "not linux/aarch64 - go-librespot, deno and yt-dlp will be skipped"
+(( ARM64 ))   || warn "not linux/aarch64 - go-librespot and deno will be skipped"
 (( SYSTEMD )) || warn "no systemd - units will be shown but not installed"
-if ! command -v moodeutl >/dev/null 2>&1; then
-  warn "moodeutl not found - is this a moOde image? the daemon will run but"
-  warn "renderer detection will fall back to 'radio' always"
+
+# --- one-time box setup --------------------------------------------------------
+if [[ "$(uname -s)" == Linux ]]; then
+  BOOT_ARGS=(--user "$USER_NAME"); (( DRY )) && BOOT_ARGS+=(--dry-run)
+  sudo bash "$REPO/scripts/bootstrap.sh" "${BOOT_ARGS[@]}"
+else
+  warn "not Linux - skipping scripts/bootstrap.sh"
 fi
 
 # Download $1 to $3 and check it against SHA-256 $2. Refuses to keep a mismatch.
@@ -66,9 +81,10 @@ fetch() {
   fi
 }
 
-# Render a unit from config/ (paths and User= for this box) into /etc/systemd.
+# Render a legacy unit (config/legacy/, else config/) with this box's paths and User=.
 put_unit() {
-  local src="$REPO/config/$1" dest="$UNIT_DIR/$1" tmp
+  local src="$REPO/config/legacy/$1" dest="$UNIT_DIR/$1" tmp
+  [[ -f "$src" ]] || src="$REPO/config/$1"
   tmp="$(mktemp)"
   sed -e "s#/home/pi/hasler#$REPO#g" -e "s#/home/pi/#$USER_HOME/#g" \
       -e "s#^User=pi#User=$USER_NAME#" "$src" > "$tmp"
@@ -80,11 +96,15 @@ put_unit() {
   rm -f "$tmp"
 }
 
+put_file() {   # put_file SRC DEST MODE - install if different, say whether it changed
+  local src="$1" dest="$2" mode="$3"
+  if sudo -n cmp -s "$src" "$dest" 2>/dev/null; then return 1; fi
+  if (( DRY )); then printf '   would install %s -> %s (%s)\n' "$src" "$dest" "$mode"; return 1; fi
+  sudo install -D -m "$mode" -o root -g root "$src" "$dest"
+}
+
 # --- I2C ---------------------------------------------------------------------
-if [[ ! -e /dev/i2c-1 ]]; then
-  warn "/dev/i2c-1 missing. Enable I2C first:"
-  warn "  sudo raspi-config nonint do_i2c 0 && sudo reboot"
-else
+if [[ -e /dev/i2c-1 ]]; then
   say "I2C present. Devices seen:"
   command -v i2cdetect >/dev/null && i2cdetect -y 1 2>/dev/null | tail -n +2 || true
   say "expect 0x77 (power controller), the Amp4 Pro DAC; 0x27 / 0x48 once the expander and ADC are fitted"
@@ -114,7 +134,11 @@ else
 fi
 
 # --- config ------------------------------------------------------------------
-if [[ ! -f "$REPO/config/haslerd.yaml" ]]; then
+# Once /etc/hasler/box.yaml exists (migration 001), haslerd reads that and
+# config/haslerd.yaml is only a fallback for the old code.
+if [[ -f /etc/hasler/box.yaml ]]; then
+  say "config: /etc/hasler/box.yaml (config/haslerd.yaml is no longer read)"
+elif [[ ! -f "$REPO/config/haslerd.yaml" ]]; then
   say "seeding config/haslerd.yaml from the example"
   run "cp '$REPO/config/haslerd.yaml.example' '$REPO/config/haslerd.yaml'"
   warn "edit it: set the HARDWARE mixer name from"
@@ -126,36 +150,11 @@ else
   done
 fi
 
-# --- state -------------------------------------------------------------------
-# systemd also creates this (StateDirectory=haslerd); doing it here means
-# state.json and a cookies file can be put in place before the first start.
-if [[ ! -d "$STATE_DIR" ]]; then
-  say "creating $STATE_DIR"
-  run "sudo install -d -o '$USER_NAME' -g '$GROUP_NAME' -m 0755 '$STATE_DIR'"
-fi
-
-# --- groups ------------------------------------------------------------------
-for group in gpio i2c audio; do
-  command -v getent >/dev/null 2>&1 || { warn "no getent - skipping group setup"; break; }
-  if getent group "$group" >/dev/null 2>&1 && ! id -nG "$USER_NAME" | grep -qw "$group"; then
-    say "adding $USER_NAME to $group"
-    run "sudo usermod -aG '$group' '$USER_NAME'"
-    warn "log out and back in for the $group group to take effect"
-  fi
-done
-
-# --- sudo for shutdown -------------------------------------------------------
-# The tone knob held off -> haslerd runs `sudo systemctl poweroff`. Allow that
-# and nothing else. Both paths because Bookworm is usrmerged.
+# --- sudo for shutdown, Wi-Fi, mono -------------------------------------------
+# config/sudoers/haslerd (the same file every release ships), for this user.
 SUDOERS=/etc/sudoers.d/haslerd
 TMP="$(mktemp)"
-cat > "$TMP" <<EOF
-# haslerd: clean shutdown from the panel, joining a new Wi-Fi from the
-# captive portal (the helper takes SSID/password on stdin, writes moOde's
-# network tables, reboots), and the mono switch on the key page (adds or
-# removes one ALSA override file). Installed by scripts/install.sh.
-$USER_NAME ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono
-EOF
+sed "s/^pi ALL=/$USER_NAME ALL=/" "$REPO/config/sudoers/haslerd" > "$TMP"
 if [[ -f "$SUDOERS" ]] && sudo -n cmp -s "$TMP" "$SUDOERS" 2>/dev/null; then
   :
 elif (( DRY )); then
@@ -168,42 +167,11 @@ else
 fi
 rm -f "$TMP"
 
-# --- captive portal for the fallback hotspot ----------------------------------
-# moOde starts the "Hasler" hotspot when no known Wi-Fi answers at boot. These
-# make a phone joining it pop up haslerd's Wi-Fi page by itself: every name
-# resolves to the Pi (hotspot only), and the phones' connectivity checks are
-# redirected to http://172.24.1.1:8080/wifi.
-put_file() {   # put_file SRC DEST MODE - install if different, say whether it changed
-  local src="$1" dest="$2" mode="$3"
-  if sudo -n cmp -s "$src" "$dest" 2>/dev/null; then return 1; fi
-  if (( DRY )); then printf '   would install %s -> %s (%s)\n' "$src" "$dest" "$mode"; return 1; fi
-  sudo install -D -m "$mode" -o root -g root "$src" "$dest"
-}
-say "mono switch (one speaker: L+R summed in ALSA; haslerd applies it at start)"
+# --- helpers -----------------------------------------------------------------
+say "helpers: mono switch, tone knob, Wi-Fi join"
 put_file "$REPO/scripts/hasler-audio-mono" /usr/local/sbin/hasler-audio-mono 0755 || true
 put_file "$REPO/scripts/hasler-tone" /usr/local/bin/hasler-tone 0755 || true
-# Tone knob: CamillaDSP config (seeded once - hasler-tone rewrites its gains),
-# and the DSP route in the audio override.
-CDSP_TONE="/usr/share/camilladsp/configs/Hasler Tone.yml"
-if [[ -d /usr/share/camilladsp/configs && ! -e "$CDSP_TONE" ]]; then
-    install -m 0666 "$REPO/config/camilladsp/Hasler Tone.yml" "$CDSP_TONE"
-    ln -sf "$CDSP_TONE" /usr/share/camilladsp/working_config.yml
-    /usr/local/sbin/hasler-audio-mono dsp-on >/dev/null || true
-fi
-
-say "captive portal for the Wi-Fi hotspot"
 put_file "$REPO/scripts/hasler-wifi-join" /usr/local/sbin/hasler-wifi-join 0755 || true
-put_file "$REPO/config/captive/dnsmasq-hotspot.conf" \
-         /etc/NetworkManager/dnsmasq-shared.d/hasler-captive.conf 0644 || true
-if [[ -d /etc/nginx/sites-enabled ]] && put_file "$REPO/config/captive/nginx-captive.conf" \
-         /etc/nginx/sites-enabled/hasler-captive.conf 0644; then
-  if sudo nginx -t >/dev/null 2>&1; then
-    sudo systemctl reload nginx
-  else
-    warn "nginx rejected hasler-captive.conf - removing it; moOde's web UI is unaffected"
-    sudo rm -f /etc/nginx/sites-enabled/hasler-captive.conf
-  fi
-fi
 
 # --- pilot lamp: firmware, kernel PWM, boot breath, halt ----------------------
 # docs/lamp.md "Boot and shutdown". The LED (common anode, R17 / G22 / B27,
@@ -211,34 +179,35 @@ fi
 # pwm-gpio driver: hasler-lamp-boot breathes amber from ~3-5 s until haslerd
 # takes over, and a system-shutdown hook leaves it dark at halt.
 #
-# config.txt block, kept between markers so re-runs replace it in place:
+# config.txt block = config/configtxt/hasler.block (what every release ships),
+# kept between the updater's markers so a later switch to releases finds it
+# unchanged (an older install.sh block is replaced in place):
 #   gpio=17,22,27=op,dh  firmware sets the pins output-high (= dark) right after
 #                        reading config.txt, ending the faint glow the reset
 #                        pull-downs give a common-anode LED.
-#   dtoverlay=pwm-gpio,gpio=N  one software-PWM chip per pin. Syntax from the
-#                        Raspberry Pi overlays README ("Name: pwm-gpio ...
-#                        Load: dtoverlay=pwm-gpio,<param>=<val>  Params: gpio
-#                        Output pin (default 4)"); the overlay rewrites its
-#                        reg so it can be loaded more than once.
-# No conflict between the two: the overlay's pinctrl state only selects
-# "output, no pull" (the latch keeps the firmware's HIGH) and the driver takes
-# the GPIO "as is", so the LED stays dark through the kernel's start until the
-# first PWM write - hasler-lamp-boot sets polarity "inversed" while disabled,
-# which drives HIGH (still dark), then fades in.
+#   dtoverlay=pwm-gpio,gpio=N  one software-PWM chip per pin (Raspberry Pi
+#                        overlays README, "Name: pwm-gpio"); the overlay
+#                        rewrites its reg so it can be loaded more than once.
+# The overlay's pinctrl only selects "output, no pull" (the latch keeps the
+# firmware's HIGH) and the driver takes the GPIO "as is", so the LED stays dark
+# until hasler-lamp-boot sets polarity "inversed" and fades in.
 BOOT_CFG=/boot/firmware/config.txt
 [[ -f "$BOOT_CFG" ]] || BOOT_CFG=/boot/config.txt
-LAMP_BEGIN='# >>> hasler pilot lamp (scripts/install.sh; edits here are replaced) >>>'
-LAMP_END='# <<< hasler pilot lamp <<<'
+LAMP_BEGIN='# >>> hasler (managed by hasler-update; edits here are replaced) >>>'
+LAMP_END='# <<< hasler <<<'
+OLD_BEGIN='# >>> hasler pilot lamp (scripts/install.sh; edits here are replaced) >>>'
+OLD_END='# <<< hasler pilot lamp <<<'
 REBOOT_NEEDED=0
+# only the lines that matter: a re-marked block with the same lines needs no reboot
+lamp_lines() { awk -v b="$LAMP_BEGIN" -v e="$LAMP_END" -v ob="$OLD_BEGIN" -v oe="$OLD_END" \
+    '$0==b||$0==ob{on=1; next} $0==e||$0==oe{on=0} on && !/^[[:space:]]*(#|$)/' "$1"; }
 if [[ -f "$BOOT_CFG" ]]; then
   TMP="$(mktemp)"
-  # Everything outside our block, then the block at the end under [all] (so it
-  # never lands inside a [pi5] / [cm4] conditional section).
-  awk -v b="$LAMP_BEGIN" -v e="$LAMP_END" \
-      '$0==b{skip=1; next} $0==e{skip=0; next} !skip' "$BOOT_CFG" > "$TMP"
-  printf '%s\n' "$LAMP_BEGIN" '[all]' 'gpio=17,22,27=op,dh' \
-      'dtoverlay=pwm-gpio,gpio=17' 'dtoverlay=pwm-gpio,gpio=22' \
-      'dtoverlay=pwm-gpio,gpio=27' "$LAMP_END" >> "$TMP"
+  # Everything outside our block(s), then the block at the end (it starts with
+  # [all], so it never lands inside a [pi5] / [cm4] conditional section).
+  awk -v b="$LAMP_BEGIN" -v e="$LAMP_END" -v ob="$OLD_BEGIN" -v oe="$OLD_END" \
+      '$0==b||$0==ob{skip=1; next} $0==e||$0==oe{skip=0; next} !skip' "$BOOT_CFG" > "$TMP"
+  { printf '%s\n' "$LAMP_BEGIN"; cat "$REPO/config/configtxt/hasler.block"; printf '%s\n' "$LAMP_END"; } >> "$TMP"
   if cmp -s "$TMP" "$BOOT_CFG"; then
     :
   elif (( DRY )); then
@@ -246,9 +215,9 @@ if [[ -f "$BOOT_CFG" ]]; then
     diff "$BOOT_CFG" "$TMP" | sed 's/^/     /' || true
   else
     say "pilot lamp: updating $BOOT_CFG (backup $BOOT_CFG.hasler-bak)"
+    [[ "$(lamp_lines "$BOOT_CFG")" == "$(lamp_lines "$TMP")" ]] || REBOOT_NEEDED=1
     sudo cp -p "$BOOT_CFG" "$BOOT_CFG.hasler-bak"
     sudo cp "$TMP" "$BOOT_CFG"     # FAT: no modes to keep
-    REBOOT_NEEDED=1
   fi
   rm -f "$TMP"
   # Anything else on our pins would fight the overlays.
@@ -269,27 +238,6 @@ if put_file "$REPO/config/udev/99-hasler-pwm.rules" /etc/udev/rules.d/99-hasler-
   # Re-apply to chips that already exist ("change" also covers exported pwm0/).
   sudo udevadm control --reload
   sudo udevadm trigger --subsystem-match=pwm --action=change || true
-fi
-
-# --- moOde: YouTube Music playlists' covers ----------------------------------
-# haslerd writes "YT · …" playlists to MPD's playlist dir (already writable)
-# and their covers to moOde's playlist-covers dir, owned by root. Let the audio
-# group - haslerd runs in it - write there too.
-COVERS=/var/local/www/imagesw/playlist-covers
-if [[ -d "$COVERS" ]] && [[ "$(stat -c %G "$COVERS")" != audio ]]; then
-  run "sudo chgrp audio '$COVERS' && sudo chmod 2775 '$COVERS'"
-fi
-
-# --- moOde: cover art for YouTube Music tracks -------------------------------
-# One line in moOde's mpd.php, so its player shows the album cover for our
-# YouTube tracks (via haslerd's /art/<id>). Re-run after a moOde update.
-if [[ -f /var/www/inc/mpd.php ]]; then
-  if (( DRY )); then
-    printf '   would patch /var/www/inc/mpd.php (YouTube cover art; backup mpd.php.hasler-orig)\n'
-  else
-    say "moOde cover art for YouTube Music: $(sudo python3 "$REPO/config/moode/patch-ytm-art.py")" \
-      || warn "moOde cover-art patch not applied - default covers stay; everything else works"
-  fi
 fi
 
 # --- go-librespot ------------------------------------------------------------
@@ -338,22 +286,10 @@ else
 fi
 rm -f "$TMP"
 
-# Two Spotify devices on one exclusive ALSA card fight. moOde's must be off.
-if command -v moodeutl >/dev/null 2>&1; then
-  if [[ "$(moodeutl -q "select value from cfg_system where param='spotifysvc'" 2>/dev/null)" == 1 ]]; then
-    warn "moOde's Spotify Connect renderer is ON. Turn it off:"
-    warn "  moOde -> Configure -> Renderers -> Spotify Connect -> OFF"
-  fi
-fi
-
-# --- yt-dlp + deno -----------------------------------------------------------
-# YouTube Music presets. yt-dlp in its own venv (fast start, `pip -U` keeps
-# yt-dlp-ejs matched), deno as its JS runtime - the one yt-dlp recommends and
-# enables by default. Bookworm has no quickjs package at all.
+# --- deno (yt-dlp's JS runtime) ----------------------------------------------
+# yt-dlp itself: scripts/bootstrap.sh (user ytdlp, /opt/yt-dlp). deno is the JS
+# runtime yt-dlp recommends and enables by default; trixie has no quickjs.
 if (( ARM64 )); then
-  if ! command -v unzip >/dev/null 2>&1; then
-    run "sudo apt-get install -y -q unzip"
-  fi
   if [[ "$(deno --version 2>/dev/null | head -1)" != "deno ${DENO_VERSION#v}"* ]]; then
     say "installing deno $DENO_VERSION"
     if (( DRY )); then
@@ -367,42 +303,24 @@ if (( ARM64 )); then
       rm -rf "$DL"
     fi
   fi
-
-  if [[ ! -x "$YTDLP_VENV/bin/pip" ]]; then
-    say "creating yt-dlp venv at $YTDLP_VENV"
-    run "sudo python3 -m venv '$YTDLP_VENV'"
-  fi
-  say "installing / upgrading yt-dlp"
-  run "sudo '$YTDLP_VENV/bin/pip' install --upgrade --quiet 'yt-dlp[default]'"
-  run "sudo ln -sfn '$YTDLP_VENV/bin/yt-dlp' /usr/local/bin/yt-dlp"
-fi
-
-# MPD plays what the ytm proxy redirects to: AAC-in-m4a or Opus-in-webm over
-# HTTPS. That needs the curl input plugin (follows redirects) and ffmpeg.
-if command -v mpd >/dev/null 2>&1; then
-  MPDV="$(mpd --version 2>/dev/null)" || true
-  grep -qw curl   <<<"$MPDV" || warn "mpd has no curl input plugin - ytm: presets will not play"
-  grep -qw ffmpeg <<<"$MPDV" || warn "mpd has no ffmpeg decoder - ytm: presets will not play"
 fi
 
 # --- services ----------------------------------------------------------------
 say "installing systemd units"
-for unit in haslerd.service hasler-lamp-boot.service go-librespot.service yt-dlp-update.service yt-dlp-update.timer; do
+for unit in haslerd.service hasler-lamp-boot.service go-librespot.service; do
   put_unit "$unit"
 done
 if (( ! DRY && SYSTEMD )); then
   sudo systemctl daemon-reload
   if (( ARM64 )); then
-    sudo systemctl enable --quiet go-librespot yt-dlp-update.timer
+    sudo systemctl enable --quiet go-librespot
     sudo systemctl restart go-librespot
-    sudo systemctl start yt-dlp-update.timer
   fi
   sudo systemctl enable --quiet haslerd
   # Boot-only: enabled for the next boot, never started here (haslerd owns
   # the LED once it runs, and its ExecStartPre stops this at every start).
   sudo systemctl enable --quiet hasler-lamp-boot
-  # Fails until the panel's expander answers on I2C - keep going so the rest
-  # of the output (Spotify login steps) still shows.
+  # Fails until the panel's expander answers on I2C - keep going.
   sudo systemctl restart haslerd || warn "haslerd did not start - see journalctl -u haslerd"
 fi
 
@@ -418,20 +336,4 @@ if (( REBOOT_NEEDED )); then
   echo
   warn "$BOOT_CFG changed (pilot lamp: gpio= and pwm-gpio overlays)."
   warn "  reboot for it to take effect:  sudo reboot"
-fi
-
-# --- one-time Spotify login --------------------------------------------------
-# /status: 200 + JSON once logged in, 204 before. Fall back to the state file
-# when the service is not up (yet).
-GLR_STATUS="$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:3678/status 2>/dev/null)" || true
-if [[ "$GLR_STATUS" != 200 ]] && \
-   ! grep -qs '"username":"[^"]' "$GLR_CONF_DIR/state.json" "$GLR_CONF_DIR/credentials.json"; then
-  echo
-  say "Spotify is not logged in yet. Once, from your laptop (Premium account):"
-  echo "     ssh -L 36842:127.0.0.1:36842 $USER_NAME@$(hostname -s 2>/dev/null || echo hasler).local"
-  echo "     journalctl -u go-librespot -n 50 | grep -o 'https://accounts.spotify.com[^ \"]*'"
-  echo "   Open that link in the laptop's browser and log in. The redirect comes back"
-  echo "   through the tunnel; credentials land in $GLR_CONF_DIR/state.json."
-  echo "   No tunnel? Copy the failed 127.0.0.1:36842 URL from the browser and curl it on the Pi."
-  echo "   Check: curl -s -o /dev/null -w '%{http_code}\\n' 127.0.0.1:3678/status   -> 200"
 fi

@@ -611,6 +611,11 @@ def build_web(
         mono=build_mono(state_dir),
     )
     app.ha_api = ha_api
+    # Physical confirmation and the "About this radio" card (web/confirm.py,
+    # web/software.py). web.allow_unconfirmed: true = the bench, no key press.
+    app.confirm.allow_unconfirmed = bool(spec.get("allow_unconfirmed", False))
+    app.allowed_hosts.update(str(h).lower() for h in (spec.get("hostnames") or []))
+    app.software.box_paths = paths
     # For the knob page: where the overlay lives, and how to apply a new one.
     app.box_paths = paths
     app.reload_variant = (
@@ -720,6 +725,8 @@ def main(argv=None) -> int:
 
     panel, actions, driver, config, web, app = build(args)
     publisher = HaPublisher(app)
+    confirm = getattr(app, "confirm", None)
+    software = getattr(app, "software", None)
     connectivity = build_connectivity(config)
     keeper = None
     if driver is not None:
@@ -768,7 +775,13 @@ def main(argv=None) -> int:
             events = panel.poll(now)
             if events:
                 resume_attempts = RESUME_ATTEMPTS   # the human is in charge now
+            if confirm is not None:
+                # A key press that confirms a page request (web/confirm.py)
+                # is taken out here: it must not also play a preset.
+                events = confirm.intercept(events)
             actions.dispatch_all(events)
+            if not actions.standby:
+                actions.last_active_at = now        # awake = in use (health.py's idle)
 
             online = connectivity.poll(now)
 
@@ -797,6 +810,10 @@ def main(argv=None) -> int:
                 next_lamp_tick = now + LAMP_TICK_S
                 keeper.tick(now)
 
+            if confirm is not None:
+                confirm.tick(now)                   # the lamp asks again while waiting
+            if software is not None:
+                software.tick(now)                  # an approved update, once the radio rests
             publisher.tick(now)
             watchdog.ping(now)
             time.sleep(max(0.0, period - (time.monotonic() - now)))

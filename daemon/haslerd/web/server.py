@@ -35,6 +35,18 @@ to the box's calibration overlay (boxconfig, ``/etc/hasler/variant.d``) and
 applies it live; ``DELETE`` goes back to the shipped curve. Positions are
 measured from the knob's quiet end - see calibrate.py.
 
+**Who may change things.** The page has no login, so every state-changing
+request (POST/PUT/PATCH/DELETE) must look like it came from the page itself
+(``request_refusal``): ``Content-Type: application/json`` (a cross-site form
+or ``fetch`` can't send that without a CORS preflight, which this server never
+answers), a ``Host`` that is one of the box's own names or addresses (defeats
+DNS rebinding: an attacker's name pointed at the box is refused) and an
+``Origin`` / ``Referer``, when sent, on that same host. Anything else is a 403.
+Installing or rolling back a release, changing the Wi-Fi (except from a phone
+on the setup hotspot), resetting the keys and changing the release channel
+also need a press on the radio (web/confirm.py); ``/api/software`` is the
+"About this radio" card (web/software.py).
+
 ``/api/browse`` serves the curated library (web/catalog.py), and anything under
 ``/api/ha`` is handed to ``WebApp.extra_routes`` - objects with
 ``route(method, path, body) -> (status, doc) | None`` (web/ha_api.py) - so
@@ -65,6 +77,9 @@ from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot
 from ..player.base import Preset
 from ..player.moode import treble_db
 from . import keymap, stations
+from ..net import HOTSPOT_ADDR
+from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
+from .software import NotInstalled, Software, SoftwareError
 from .wifi import Wifi
 
 log = logging.getLogger(__name__)
@@ -80,6 +95,10 @@ VOLUME_LIMIT_RANGE = (30, 100)   # below 30 the knob is barely audible; 100 = no
 VOLUME_GUESS = 40.0              # a relative nudge with no reading starts here, as volume_step does
 KNOB_ID = re.compile(r"^/api/knobs/([A-Za-z0-9_.-]{1,64})/(sample|fit|calibration)$")
 HYSTERESIS_MAX = 5000
+CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
+# Names the box answers to besides its own hostname (+ web.hostnames in box.yaml).
+OWN_NAMES = ("localhost", "hasler", "hasler.local")
+LOOPBACK = ("127.0.0.1", "::1")
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
@@ -202,6 +221,107 @@ class WebApp:
         self.reload_variant: Callable[[], Any] | None = None
         self.on_overlay_saved: Callable[[str], None] | None = None
         self._knob_lock = threading.Lock()
+        # A press on the radio for the risky buttons (web/confirm.py). The lamp
+        # hook is read at call time: the LampKeeper sets it after build_web.
+        self.confirm = ConfirmBroker(panel, reply=self._lamp_reply)
+        # "About this radio" (web/software.py); main.build_web adds box paths.
+        self.software = Software(
+            state_dir=settings_file.parent if settings_file is not None else None,
+            idle=self._idle, fallback_version=self._release_version)
+        # Extra Host names accepted for state-changing requests (box.yaml web.hostnames).
+        self.allowed_hosts: set[str] = set()
+        # Local addresses that are the setup hotspot: Wi-Fi changes from a phone
+        # joined to it need no key press (that phone is next to the radio, and
+        # the radio has no other network then).
+        self.hotspot_addrs: set[str] = {HOTSPOT_ADDR}
+
+    def _lamp_reply(self, name: str) -> None:
+        reply = getattr(self.actions, "_reply", None)
+        if callable(reply):
+            reply(name)
+
+    def _idle(self) -> bool:
+        from .. import health
+        return bool(health.health_report(self).get("idle"))
+
+    @staticmethod
+    def _release_version() -> str:
+        from .. import health
+        return health._version()
+
+    # -- who may change things ------------------------------------------------
+
+    def own_names(self) -> set[str]:
+        names = set(OWN_NAMES) | set(LOOPBACK) | {HOTSPOT_ADDR} | self.allowed_hosts
+        try:
+            host = socket.gethostname().lower().rstrip(".")
+            if host:
+                names |= {host, host.split(".")[0], host.split(".")[0] + ".local"}
+        except OSError:
+            pass
+        return names
+
+    def request_refusal(self, method: str, headers: Any, local_addr: str | None) -> str | None:
+        """Why a state-changing request is refused (CSRF / DNS rebinding), or None.
+
+        ``headers`` is the request's (``.get``); ``local_addr`` the address the
+        client connected to - a Host that is that very IP is the box.
+        """
+        ctype = (headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if ctype != "application/json":
+            return f"{method} needs Content-Type: application/json"
+        host_header = (headers.get("Host") or "").strip().lower()
+        host = _host_only(host_header).strip("[]").rstrip(".")
+        local = (local_addr or "").lower()
+        if local.startswith("::ffff:"):
+            local = local[7:]
+        if not host or (host not in self.own_names() and host != local):
+            return f"not this radio's address: {host_header or '(no Host)'}"
+        for name in ("Origin", "Referer"):
+            value = headers.get(name)
+            if value is None:
+                continue
+            try:
+                netloc = urlparse(value.strip()).netloc.lower()
+            except ValueError:
+                netloc = ""
+            if netloc != host_header:
+                return f"cross-site request refused ({name}: {value.strip()[:80] or 'empty'})"
+            break       # Origin decides when present; Referer only without it
+        return None
+
+    def wifi_join(self, body: Any, local_addr: str | None) -> None:
+        body = body if isinstance(body, dict) else {}
+        ssid = str(body.get("ssid", ""))
+        if (local_addr or "") not in self.hotspot_addrs:
+            self.confirm.consume(body.get("confirm"), "wifi", {"ssid": ssid})
+        self.wifi.join(ssid, str(body.get("password", "")), str(body.get("security", "auto")))
+
+    def confirmed_reset(self, body: Any) -> dict:
+        body = body if isinstance(body, dict) else {}
+        self.confirm.consume(body.get("confirm"), "reset", {})
+        return self.reset()
+
+    # -- software (web/software.py) ---------------------------------------------
+
+    def software_install(self, body: Any) -> dict:
+        body = body if isinstance(body, dict) else {}
+        version = str(body.get("version") or "")
+        self.confirm.consume(body.get("confirm"), "update", {"version": version})
+        return {"approved": self.software.install(version, str(body.get("when") or "now"))}
+
+    def software_rollback(self, body: Any) -> None:
+        body = body if isinstance(body, dict) else {}
+        to = str(body.get("to") or "")
+        self.confirm.consume(body.get("confirm"), "rollback", {"to": to})
+        self.software.rollback(to)
+
+    def software_settings(self, body: Any) -> dict:
+        body = body if isinstance(body, dict) else {}
+        channel = body.get("channel")
+        if channel is not None and channel != self.software.box_settings()["channel"]:
+            self.confirm.consume(body.get("confirm"), "channel", {"channel": str(channel)})
+        return self.software.put_settings(body)
 
     def load_saved(self) -> None:
         with self.lock:
@@ -960,11 +1080,40 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._json(400, {"ok": False, "errors": exc.errors, "error": str(exc)})
             except (ValueError, json.JSONDecodeError) as exc:
                 self._json(400, {"ok": False, "errors": [], "error": str(exc)})
-            except Unavailable as exc:
+            except (Unavailable, SoftwareError) as exc:
                 self._json(503, {"ok": False, "errors": [], "error": str(exc)})
+            except ConfirmError as exc:
+                self._json(403, {"ok": False, "errors": [], "error": str(exc), "confirm_required": True})
+            except ConfirmUnavailable as exc:
+                self._json(409, {"ok": False, "errors": [], "error": str(exc), "confirm_unavailable": True})
+            except NotInstalled as exc:
+                self._json(404, {"ok": False, "errors": [], "error": str(exc), "installed": False})
             except Exception as exc:
                 log.exception("web request failed: %s %s", self.command, self.path)
                 self._json(500, {"ok": False, "errors": [], "error": str(exc) or type(exc).__name__})
+
+        def _local_addr(self) -> str | None:
+            try:
+                return str(self.connection.getsockname()[0])
+            except (OSError, AttributeError, IndexError):
+                return None
+
+        def _refused(self) -> bool:
+            """CSRF / DNS-rebinding check for a state-changing request; True = 403 sent."""
+            why = app.request_refusal(self.command, self.headers, self._local_addr())
+            if why is None:
+                return False
+            log.warning("web: refused %s %s from %s: %s", self.command, urlparse(self.path).path,
+                        self.client_address[0] if self.client_address else "?", why)
+            # Drain the body so the connection closes cleanly.
+            try:
+                length = min(int(self.headers.get("Content-Length") or 0), MAX_BODY)
+                if length:
+                    self.rfile.read(length)
+            except (ValueError, OSError):
+                pass
+            self._json(403, {"ok": False, "errors": [], "error": why})
+            return True
 
         def _extra(self, method: str) -> bool:
             """Offer /api/ha* to the extra routes. True if this request was theirs."""
@@ -1033,6 +1182,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, app.knob_sample(m.group(1), n)))
             elif url.path == "/api/health":
                 self._guard(lambda: self._json(*app.health()))
+            elif url.path == "/api/software":
+                self._guard(lambda: self._json(200, app.software.status()))
+            elif m := CONFIRM_ID.match(url.path):
+                def poll() -> None:
+                    doc = app.confirm.poll(m.group(1))
+                    self._json(404, {"state": "expired"}) if doc is None else self._json(200, doc)
+                self._guard(poll)
             elif url.path == "/api/browse":
                 self._guard(lambda: self._json(200, app.browse_doc()))
             elif url.path == "/api/browse/radio":
@@ -1053,7 +1209,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
 
         def do_PUT(self) -> None:
-            if self._extra("PUT"):
+            if self._refused() or self._extra("PUT"):
                 return
             path = urlparse(self.path).path
             if path == "/api/config":
@@ -1064,11 +1220,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif (m := KNOB_ID.match(path)) and m.group(2) == "calibration":
                 self._guard(lambda: self._json(
                     200, {"ok": True, **app.put_calibration(m.group(1), self._body())}))
+            elif path == "/api/software/settings":
+                self._guard(lambda: self._json(200, {"ok": True, **app.software_settings(self._body())}))
             else:
                 self._send(404, b"not found", "text/plain")
 
         def do_POST(self) -> None:
-            if self._extra("POST"):
+            if self._refused() or self._extra("POST"):
                 return
             path = urlparse(self.path).path
             if path == "/api/press":
@@ -1091,13 +1249,23 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
             elif path == "/api/wifi":
                 def join() -> None:
-                    body = self._body()
-                    app.wifi.join(str(body.get("ssid", "")), str(body.get("password", "")),
-                                  str(body.get("security", "auto")))
+                    app.wifi_join(self._body(), self._local_addr())
                     self._json(200, {"ok": True})
                 self._guard(join)
             elif path == "/api/reset":
-                self._guard(lambda: self._json(200, {"ok": True, "config": app.reset()}))
+                self._guard(lambda: self._json(200, {"ok": True, "config": app.confirmed_reset(self._body())}))
+            elif path == "/api/confirm/request":
+                def ask() -> None:
+                    body = self._body()
+                    body = body if isinstance(body, dict) else {}
+                    self._json(200, {"ok": True, **app.confirm.request(body.get("action"), body.get("args"))})
+                self._guard(ask)
+            elif path == "/api/software/check":
+                self._guard(lambda: (self._body(), app.software.check(), self._json(200, {"ok": True})))
+            elif path == "/api/software/install":
+                self._guard(lambda: self._json(200, {"ok": True, **app.software_install(self._body())}))
+            elif path == "/api/software/rollback":
+                self._guard(lambda: (app.software_rollback(self._body()), self._json(200, {"ok": True})))
             elif path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_in(self._body())}))
             elif (m := KNOB_ID.match(path)) and m.group(2) == "fit":
@@ -1106,14 +1274,20 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._send(404, b"not found", "text/plain")
 
         def do_PATCH(self) -> None:
+            if self._refused():
+                return
             if not self._extra("PATCH"):
                 self._send(404, b"not found", "text/plain")
 
         def do_DELETE(self) -> None:
-            if self._extra("DELETE"):
+            if self._refused() or self._extra("DELETE"):
                 return
             path = urlparse(self.path).path
-            if path == "/api/ytm/account":
+            if m := CONFIRM_ID.match(path):
+                self._guard(lambda: self._json(200, {"ok": app.confirm.cancel(m.group(1))}))
+            elif path == "/api/software/install":
+                self._guard(lambda: (app.software.cancel_install(), self._json(200, {"ok": True})))
+            elif path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_out()}))
             elif (m := KNOB_ID.match(path)) and m.group(2) == "calibration":
                 self._guard(lambda: self._json(200, {"ok": True, **app.delete_calibration(m.group(1))}))

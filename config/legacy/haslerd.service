@@ -1,0 +1,33 @@
+[Unit]
+Description=Hasler panel daemon
+# go-librespot is optional at runtime - haslerd logs and carries on without it.
+After=network-online.target mpd.service go-librespot.service
+Wants=network-online.target
+# The early boot lamp (scripts/hasler-lamp-boot) breathes until haslerd starts.
+# After= so haslerd never starts before it; ExecStartPre= below stops it so
+# only one of them ever writes the LED. Not Conflicts=: both are in the same
+# boot transaction, and systemd would resolve the conflict by dropping the
+# lamp's start job - no boot breath at all.
+After=hasler-lamp-boot.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+WatchdogSec=30
+# '+' = as root (we are User=pi); '-' = fine if the unit is not installed.
+# SIGTERM leaves the LED at its last duty, so there is no dark gap.
+ExecStartPre=-+/usr/bin/systemctl stop hasler-lamp-boot.service
+ExecStart=/home/pi/hasler/daemon/.venv/bin/python -m haslerd.main \
+    --variant /home/pi/hasler/config/variants/hasler-hm.yaml \
+    --config /home/pi/hasler/config/haslerd.yaml
+WorkingDirectory=/home/pi/hasler/daemon
+Restart=always
+RestartSec=3
+User=pi
+# GPIO and I2C access without running as root.
+SupplementaryGroups=gpio i2c audio
+# /var/lib/haslerd, owned by User=. Holds state.json (last preset, resumed on boot).
+StateDirectory=haslerd
+
+[Install]
+WantedBy=multi-user.target

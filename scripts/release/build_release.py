@@ -84,6 +84,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("CHANGELOG.md", "app/"),
     # integration/: a repo-level integration/ tree wins over the legacy places below
     Rule("integration/**", "integration/", strip="integration"),
+    # (config/legacy/*.service are the rsync layout's units: never shipped)
     Rule("config/*.service", "integration/systemd/"),
     Rule("config/*.timer", "integration/systemd/"),
     Rule("config/systemd/*", "integration/systemd/"),
@@ -93,6 +94,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-audio-mono", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-wifi-join", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-lamp-boot", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-ytdlp-update", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-tone", "integration/bin/", mode=0o755),
     Rule("scripts/hasler-lamp-halt", "integration/shutdown/", mode=0o755),
     Rule("config/sudoers/haslerd", "integration/sudoers/"),

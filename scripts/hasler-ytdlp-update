@@ -1,0 +1,163 @@
+#!/bin/bash
+# hasler-ytdlp-update - upgrade yt-dlp without ever breaking the working one.
+#
+#   hasler-ytdlp-update             build the newest yt-dlp into the spare venv,
+#                                   self-check it, then switch to it
+#   hasler-ytdlp-update --force     switch even if the version is unchanged
+#   hasler-ytdlp-update --rollback  switch back to the previous venv (if it passes)
+#   hasler-ytdlp-update --status    {"current": "...", "previous": "..."}
+#
+# Runs as the unprivileged ytdlp user (yt-dlp-update.service, weekly timer, or
+# haslerd's "update yt-dlp now"), which owns /opt/yt-dlp and nothing else.
+# YouTube breaks old yt-dlp releases within weeks, so it is deliberately not
+# pinned - which is why it is not root, and why a bad upgrade cannot replace a
+# working one:
+#
+#   /opt/yt-dlp/venv-a, venv-b   two venv slots
+#   /opt/yt-dlp/current          -> the slot in use (switched atomically)
+#   /usr/local/bin/yt-dlp        -> /opt/yt-dlp/current/bin/yt-dlp (made once, by root)
+#
+# The upgrade goes into the slot not in use (pip, wheels only), then must pass:
+#   1. `yt-dlp --version`, and importing yt_dlp, yt_dlp_ejs and the YouTube extractor;
+#   2. an offline extraction: the generic extractor on a local HTML page (file://);
+#   3. online, soft: one YouTube video's id (`--print id`). If the new one fails
+#      here but the current one passes, the new one is refused; if both fail the
+#      box is just offline and 1+2 decide.
+# Only then does `current` move. The old slot stays as it is until the next
+# upgrade, so --rollback has something to go back to.
+#
+# Exit: 0 switched or already current, 1 failed (nothing changed).
+# Env (tests): HASLER_YTDLP_ROOT, HASLER_YTDLP_PYTHON, HASLER_YTDLP_SPEC,
+# HASLER_YTDLP_PROBE_URL ("" skips the online check).
+set -u
+umask 022
+
+ROOT="${HASLER_YTDLP_ROOT:-/opt/yt-dlp}"
+PY="${HASLER_YTDLP_PYTHON:-/usr/bin/python3}"
+SPEC="${HASLER_YTDLP_SPEC:-yt-dlp[default]}"
+PROBE="${HASLER_YTDLP_PROBE_URL-https://www.youtube.com/watch?v=jNQXAC9IVRw}"
+CUR="$ROOT/current"
+
+log() { echo "hasler-ytdlp-update: $*" >&2; }
+
+current_slot() {   # venv-a | venv-b | "" (none yet)
+  local t
+  t="$(readlink "$CUR" 2>/dev/null)" || return 0
+  t="$(basename "$t")"
+  case "$t" in venv-a|venv-b) [ -x "$ROOT/$t/bin/yt-dlp" ] && echo "$t" ;; esac
+  return 0
+}
+
+other_slot() { if [ "$1" = venv-a ]; then echo venv-b; else echo venv-a; fi; }
+
+version_of() { "$ROOT/$1/bin/yt-dlp" --version 2>/dev/null | head -n 1; }
+
+switch_to() {      # atomic: a new symlink renamed over the old one, then fsync the dir
+  "$PY" - "$1" "$CUR" <<'EOF'
+import os, sys
+target, link = sys.argv[1], sys.argv[2]
+tmp = link + ".new"
+try:
+    os.unlink(tmp)
+except FileNotFoundError:
+    pass
+os.symlink(target, tmp)
+os.replace(tmp, link)
+fd = os.open(os.path.dirname(link) or ".", os.O_RDONLY)
+try:
+    os.fsync(fd)
+finally:
+    os.close(fd)
+EOF
+}
+
+offline_check() {  # SLOT -> 0 if it works without the network
+  local v="$ROOT/$1" work out
+  "$v/bin/yt-dlp" --version >/dev/null 2>&1 || { log "$1: yt-dlp --version failed"; return 1; }
+  "$v/bin/python" -c 'import yt_dlp, yt_dlp_ejs; from yt_dlp.extractor.youtube import YoutubeIE' \
+    >/dev/null 2>&1 || { log "$1: importing yt_dlp / yt_dlp_ejs / the YouTube extractor failed"; return 1; }
+  work="$(mktemp -d "${TMPDIR:-/tmp}/ytdlp-check.XXXXXX")" || return 1
+  printf '<html><head><title>hasler selftest</title></head><body><video src="file://%s/tone.mp3"></video></body></html>\n' \
+    "$work" > "$work/index.html"
+  out="$("$v/bin/yt-dlp" --ignore-config --no-cache-dir --enable-file-urls --simulate --no-warnings \
+          --print title "file://$work/index.html" 2>/dev/null)"
+  rm -rf "$work"
+  case "$out" in *"hasler selftest"*) return 0 ;; esac
+  log "$1: offline extraction failed"
+  return 1
+}
+
+online_check() {   # SLOT -> 0 pass, 1 fail, 2 skipped
+  [ -n "$PROBE" ] || return 2
+  local t=""
+  command -v timeout >/dev/null 2>&1 && t="timeout 120"
+  $t "$ROOT/$1/bin/yt-dlp" --ignore-config --no-cache-dir --no-playlist --skip-download \
+     --socket-timeout 20 --no-warnings --print id "$PROBE" >/dev/null 2>&1 && return 0
+  return 1
+}
+
+status() {
+  local c p
+  c="$(current_slot)"
+  p=""
+  [ -n "$c" ] && [ -x "$ROOT/$(other_slot "$c")/bin/yt-dlp" ] && p="$(version_of "$(other_slot "$c")")"
+  printf '{"current": "%s", "previous": "%s"}\n' "$([ -n "$c" ] && version_of "$c")" "$p"
+}
+
+lock() {
+  exec 9>"$ROOT/.lock" || { log "cannot write $ROOT (run as the ytdlp user)"; exit 1; }
+  if command -v flock >/dev/null 2>&1 && ! flock -n 9; then
+    log "another upgrade is running"; exit 1
+  fi
+}
+
+rollback() {
+  lock
+  local c o
+  c="$(current_slot)"
+  [ -n "$c" ] || { log "nothing installed"; exit 1; }
+  o="$(other_slot "$c")"
+  [ -x "$ROOT/$o/bin/yt-dlp" ] || { log "no previous yt-dlp to go back to"; exit 1; }
+  offline_check "$o" || { log "the previous yt-dlp does not pass either - staying"; exit 1; }
+  switch_to "$o" || exit 1
+  log "back to yt-dlp $(version_of "$o") (was $(version_of "$c"))"
+}
+
+update() {
+  local force="$1" cur new oldv="" newv rc
+  lock
+  cur="$(current_slot)"
+  new="$(other_slot "$cur")"
+  [ -n "$cur" ] && oldv="$(version_of "$cur")"
+  rm -rf "${ROOT:?}/$new"
+  if ! "$PY" -m venv "$ROOT/$new" >&2; then
+    log "could not create $ROOT/$new"; rm -rf "${ROOT:?}/$new"; exit 1
+  fi
+  if ! "$ROOT/$new/bin/python" -m pip install --quiet --disable-pip-version-check --no-cache-dir \
+         --only-binary :all: --upgrade "$SPEC" >&2; then
+    log "pip install $SPEC failed - keeping ${oldv:-nothing}"; rm -rf "${ROOT:?}/$new"; exit 1
+  fi
+  newv="$(version_of "$new")"
+  if ! offline_check "$new"; then
+    log "yt-dlp ${newv:-?} failed its self-check - keeping ${oldv:-nothing}"; rm -rf "${ROOT:?}/$new"; exit 1
+  fi
+  if [ -n "$cur" ] && [ "$newv" = "$oldv" ] && [ "$force" != 1 ]; then
+    log "already yt-dlp $oldv"; rm -rf "${ROOT:?}/$new"; exit 0
+  fi
+  online_check "$new"; rc=$?
+  if [ "$rc" = 1 ] && [ -n "$cur" ] && online_check "$cur"; then
+    log "yt-dlp $newv cannot resolve a YouTube video but $oldv can - keeping $oldv"
+    rm -rf "${ROOT:?}/$new"; exit 1
+  fi
+  [ "$rc" = 1 ] && log "online check failed for old and new alike (offline?) - going by the offline checks"
+  switch_to "$new" || { log "could not switch $CUR"; exit 1; }
+  log "yt-dlp ${oldv:-none} -> $newv"
+}
+
+case "${1:-}" in
+  "")          update 0 ;;
+  --force)     update 1 ;;
+  --rollback)  rollback ;;
+  --status)    status ;;
+  *)           sed -n '3,8p' "$0" >&2; exit 2 ;;
+esac

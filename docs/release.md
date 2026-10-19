@@ -129,12 +129,68 @@ cannot verify. Renew the keyring well before `expires`.
   could not be repaired with auditwheel.
 - `app/` holds `haslerd/` + `hasler_update/` + `config/` (variants, catalog,
   stations, camilladsp, captive, go-librespot, moode, examples) - data that
-  install.sh puts in NetworkManager/nginx/camilladsp/moOde places, which the
+  scripts/bootstrap.sh puts in NetworkManager/nginx/camilladsp/moOde places, which the
   integration allowlist has no destination for yet.
-- No sudoers or config.txt block source in the repo yet; the builder ships
-  `config/sudoers/haslerd` and `config/configtxt/hasler.block` (or a
-  repo-level `integration/` tree) once they exist.
-- Units still say `/home/pi`; `--strict` (CI) refuses that until they use
-  `/opt/hasler/current`.
+- Integration sources: `config/*.service|*.timer` (OTA units, `/opt/hasler/current`),
+  `config/sudoers/haslerd`, `config/configtxt/hasler.block`, `config/udev/`, `scripts/hasler-*`,
+  `update/systemd/`, `update/bin/`. The legacy rsync layout's units live in `config/legacy/`
+  (used only by `scripts/install.sh`, never shipped). Not in releases: the polkit rules and
+  the watchdog (`config/update/`, put in place by `scripts/ota-bootstrap.sh` /
+  `scripts/bootstrap.sh`), and the captive portal / CamillaDSP / moOde files (`bootstrap.sh`).
 - `python/` (bundled CPython) is not built in v1: wheels target trixie's
   python3 (cp313).
+
+## Bench box: from the rsync tree to releases (dev keys, local channel)
+
+A full OTA cycle on the bench Pi without GitHub, with **throwaway dev keys**
+that the key ceremony's production keys replace later. Order matters:
+box setup -> updater -> migration 001 -> first release -> drills.
+
+Laptop (Docker Desktop running; keys stay in `~/.hasler-dev`, never in the repo):
+
+```sh
+scripts/release/dev-keys.sh                               # ~/.hasler-dev/keys (+ keys/trust/ for the box)
+scripts/release/dev-build.sh 0.2.0-rc.1 --worktree        # arm64 wheels in debian:trixie, --strict
+scripts/release/dev-channel.py publish --dist ~/.hasler-dev/dist/0.2.0-rc.1 \
+    --base-url http://<laptop>.local:8000                 # site in ~/.hasler-dev/site
+scripts/release/dev-channel.py serve                      # leave running
+rsync -a ~/.hasler-dev/keys/trust/ pi@hasler.local:/tmp/hasler-trust/   # public halves only
+rsync -a --delete --exclude .git --exclude .venv ./ pi@hasler.local:hasler/
+```
+
+Pi (`cd ~/hasler`):
+
+```sh
+sudo scripts/bootstrap.sh --dry-run && sudo scripts/bootstrap.sh     # apt, users, yt-dlp as ytdlp, ...
+sudo scripts/ota-bootstrap.sh --dry-run --trust /tmp/hasler-trust
+sudo scripts/ota-bootstrap.sh --trust /tmp/hasler-trust              # updater, units, polkit, watchdog, trust
+sudo daemon/.venv/bin/python -m haslerd.migrations --check           # migration 001: the plan
+sudo daemon/.venv/bin/python -m haslerd.migrations --apply           # writes /etc/hasler, moves secrets
+sudo scripts/ota-bootstrap.sh --update-url http://<laptop>.local:8000  # box.yaml + ownership after 001
+sudo systemctl start hasler-update-check.service; cat /var/lib/hasler-update/status.json   # "0.2.0-rc.1 staged"
+sudo hasler-update apply --seq <seq> --force                         # first install: integrate, switch, health
+hasler-update status
+```
+
+`--force` skips the night window and the idle veto (bench only). The first
+release is `major` (no previous tag), so it would wait to be asked anyway. The
+legacy lamp block was re-marked by ota-bootstrap, so no reboot is needed; if it
+says the block differs, add `--allow-reboot`. After the first commit
+`scripts/install.sh` refuses to run - the box is updated by releases now.
+
+Drills (each a new, higher rc; publish, check, apply as above):
+
+| drill | how | expect |
+|---|---|---|
+| upgrade | `dev-build.sh 0.2.0-rc.2`, publish | committed, probation, `previous` -> rc.1 |
+| rollback (health) | `dev-build.sh 0.2.0-rc.3 --broken` | haslerd exits at start -> rolled back to rc.2, rc.3 marked bad |
+| manual go back | `sudo systemctl start hasler-update-apply@rollback.service` (what the key page does) | back to the previous release |
+| power cut | pull power during download, stage, right after "switched", and at first boot | always lands on a working release; boot counter rolls a trial back at the 2nd boot |
+| halt | `dev-channel.py halt --seq <seq>` before applying | status says halted, staged copy dropped |
+| expiry | skip `dev-channel.py refresh` for 14 days (or set the Pi clock ahead in a scratch test) | "no fresh update info", nothing installed |
+
+Index expiry is 14 days: `dev-channel.py refresh` re-signs. To move the bench
+box to production keys after the ceremony:
+`sudo scripts/ota-bootstrap.sh --trust <ceremony trust dir> --replace-trust` and
+`--update-url ""` (back to the public channel); releases signed with the dev
+keys stop verifying at that moment.

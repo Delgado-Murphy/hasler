@@ -1,0 +1,5 @@
+[all]
+gpio=17,22,27=op,dh
+dtoverlay=pwm-gpio,gpio=17
+dtoverlay=pwm-gpio,gpio=22
+dtoverlay=pwm-gpio,gpio=27

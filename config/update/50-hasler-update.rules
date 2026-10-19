@@ -1,12 +1,16 @@
-// polkit: haslerd may start exactly the key page's update/rollback requests,
-// nothing else. Instance names are checked here AND again by the updater.
-// -> /etc/polkit-1/rules.d/50-hasler-update.rules
+// polkit: haslerd (runs as user pi) may start exactly the key page's update
+// requests - install <seq>, go back, go back to <version>, look for an update
+// now - and nothing else: no stop, restart, enable, other units or instance
+// names. Instance names are checked here AND again by the updater.
+// -> /etc/polkit-1/rules.d/50-hasler-update.rules (scripts/ota-bootstrap.sh)
 polkit.addRule(function(action, subject) {
     if (action.id == "org.freedesktop.systemd1.manage-units" &&
-        subject.user == "haslerd" &&
-        action.lookup("verb") == "start" &&
-        /^hasler-update-apply@([0-9]{1,9}|rollback|rollback-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)\.service$/
-            .test(action.lookup("unit"))) {
-        return polkit.Result.YES;
+        subject.user == "pi" &&
+        action.lookup("verb") == "start") {
+        var unit = action.lookup("unit");
+        if (/^hasler-update-apply@([0-9]{1,9}|rollback|rollback-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)\.service$/.test(unit) ||
+            unit == "hasler-update-check.service") {
+            return polkit.Result.YES;
+        }
     }
 });
