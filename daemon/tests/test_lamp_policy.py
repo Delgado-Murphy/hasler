@@ -255,6 +255,12 @@ class TestKeeper:
         actions.dispatch(Event("power", "off_held"))
         assert seen == [policy.SHUTTING_DOWN]
         keeper.close()
+        # The ember stays through the halt; the shutdown hook darkens it.
+        assert driver.closed is False
+
+    def test_any_other_exit_goes_dark_at_once(self, box):
+        _, _, _, driver, _, keeper, _ = box
+        keeper.close()
         assert driver.closed is True
 
     def test_loading_shows_before_the_start_and_ends_with_sound(self, box):
