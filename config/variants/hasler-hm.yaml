@@ -80,7 +80,10 @@ controls:
     # Most of the turn lives in the top ~2400 counts: a 250-count dead zone
     # would move it in big jumps. The wiper's noise is about +-10 counts.
     hysteresis_counts: 30
-    curve: [[25, 0], [1879, 12.5], [10882, 25], [21106, 37.5], [23783, 50], [24850, 62.5], [25616, 75], [25960, 87.5], [26150, 100]]
+    # The pot reads low at the right end, so the curve runs backwards: turning
+    # right (clockwise) is louder, as on any radio. Points are the same
+    # measurements, positions counted from the right end.
+    curve: [[25, 100], [1879, 87.5], [10882, 75], [21106, 62.5], [23783, 50], [24850, 37.5], [25616, 25], [25960, 12.5], [26150, 0]]
 
   - id: tone
     kind: pot
