@@ -36,6 +36,8 @@ def test_check_stage_apply_commit(world: World):
     assert "1.0.0" in (world.layout.sbin / "hasler-update").read_text()
     calls = [c for c in hooks_app.hooks.calls if c[0] == "systemctl"]
     assert ("systemctl", "daemon-reload") in calls and ("systemctl", "restart", "--no-block", "haslerd.service") in calls
+    # a crash-looped release must not leave the start limit blocking the next start
+    assert calls.index(("systemctl", "reset-failed", "haslerd.service")) < calls.index(("systemctl", "restart", "--no-block", "haslerd.service"))
     # staged and incoming are cleaned after commit
     assert not any(world.layout.staged.iterdir())
     # nothing new next time

@@ -81,6 +81,13 @@ class Hooks:
         self.run(["systemctl", *args])
 
     def restart(self, unit: str = "haslerd.service") -> None:
+        # A release that crash-looped has used up the unit's start limit
+        # (StartLimitBurst); without reset-failed systemd refuses to start even
+        # the good release we just rolled back to (found by the bench drill).
+        try:
+            self.systemctl("reset-failed", unit)
+        except Exception:   # noqa: BLE001 - nothing to reset is fine
+            pass
         self.systemctl("restart", "--no-block", unit)
 
     def reboot(self) -> None:
