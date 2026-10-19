@@ -29,8 +29,11 @@ commits; a real release (key 0) is longer, so it does.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+log = logging.getLogger(__name__)
 
 DEFAULT_HOLD_S = 0.8
 DEFAULT_BOUNCE_S = 0.03
@@ -176,6 +179,10 @@ class EndSwitch(Control):
     ``off`` immediately (-> standby) and ``off_held`` after ``off_hold_s``
     (-> clean shutdown), which is how one switch gives both behaviours without
     any extra circuitry.
+
+    ``off_held`` is only armed once the switch has read on (closed) since the
+    daemon started. An unplugged or broken ribbon reads exactly like a knob
+    turned off, and must not shut the Pi down 5 s after every boot.
     """
 
     kind = "end_switch"
@@ -194,10 +201,16 @@ class EndSwitch(Control):
         self._settled = _Settled(True, bounce_s)
         self._off_at = 0.0
         self._off_held_fired = False
+        self._armed = False
+        self._unarmed_logged = False
 
     def update(self, now, digital, analog):
         events: list[Event] = []
-        if self._settled.update(now, digital.get(self.pin, False)):
+        raw = digital.get(self.pin, False)
+        changed = self._settled.update(now, raw)
+        if raw and self._settled.committed:
+            self._armed = True
+        if changed:
             if self._settled.committed:
                 events.append(Event(self.id, "on"))
                 self._off_held_fired = False
@@ -205,7 +218,13 @@ class EndSwitch(Control):
                 self._off_at = now
                 self._off_held_fired = False
                 events.append(Event(self.id, "off"))
-        if not self._settled.committed and not self._off_held_fired:
+                if not self._armed and not self._unarmed_logged:
+                    self._unarmed_logged = True
+                    log.info(
+                        "%s: end switch off since start - shutdown not armed until "
+                        "it reads on (check the ribbon if the knob is on)", self.id
+                    )
+        if self._armed and not self._settled.committed and not self._off_held_fired:
             if now - self._off_at >= self.off_hold_s:
                 self._off_held_fired = True
                 events.append(Event(self.id, "off_held"))

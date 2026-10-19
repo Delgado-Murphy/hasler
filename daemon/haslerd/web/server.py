@@ -21,7 +21,10 @@ dispatched as the same ``Event`` the panel would emit, so "press the playing
 key again" means the same thing from the phone as from the wood. Volume is on
 the knob's 0-100 scale; the player maps it inside ``volume_limit``, which
 ``/api/settings`` can change (persisted to ``settings.json`` in the state dir,
-read again at startup by main.build, overriding haslerd.yaml).
+read again at startup by main.build, overriding haslerd.yaml). The pilot
+lamp's ``location`` and ``night`` mode live there too (lamp/night.py); GET adds
+today's sunrise/sunset and the night being dimmed, and ``WebApp.lamp_listeners``
+hear a change at once.
 
 ``/api/browse`` serves the curated library (web/catalog.py), and anything under
 ``/api/ha`` is handed to ``WebApp.extra_routes`` - objects with
@@ -46,6 +49,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .. import __version__
 from ..actions import Actions
+from ..lamp import night
 from ..panel.controls import Event
 from ..player.base import Preset
 from ..player.moode import treble_db
@@ -158,6 +162,11 @@ class WebApp:
         self.mono = mono
         # Handlers for /api/ha/*: ``route(method, path, body) -> (status, doc) | None``.
         self.extra_routes: list[Any] = []
+        # Called with the whole saved settings doc after the lamp's location or
+        # night mode changes, so the lamp needn't re-read settings.json.
+        self.lamp_listeners: list[Callable[[dict], None]] = []
+        # Without a settings file (no state dir) the lamp's choices live here.
+        self._lamp_settings: dict = {}
         self.station_db = station_db
         self.wifi = wifi or Wifi(db=station_db)
         self.lock = threading.Lock()
@@ -371,16 +380,21 @@ class WebApp:
         return {
             "volume_limit": self._volume_limit(),
             "mono": self._mono_doc(),
+            **self._lamp_doc(),
             "wifi": {"ssid": ssid},
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
 
     def put_settings(self, body: Any, host: str | None = None) -> dict:
-        """Validate, persist, apply live: ``volume_limit`` and/or ``mono``."""
-        if not isinstance(body, dict) or not ({"volume_limit", "mono"} & body.keys()):
-            raise ValueError("expected {\"volume_limit\": 30-100} and/or {\"mono\": true|false}")
+        """Validate, persist, apply live: ``volume_limit``, ``mono``, ``location``, ``night``."""
+        if not isinstance(body, dict) or not ({"volume_limit", "mono", "location", "night"} & body.keys()):
+            raise ValueError("expected {\"volume_limit\": 30-100}, {\"mono\": true|false}, "
+                             "{\"location\": {\"name\", \"lat\", \"lon\"}} and/or "
+                             "{\"night\": \"sun\"|\"off\"|\"22:00-07:00\"}")
         limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
+        place = night.location_from(body["location"]) if "location" in body else None
+        mode = night.night_from(body["night"]) if "night" in body else None
         mono = body.get("mono")
         if "mono" in body and not isinstance(mono, bool):
             raise ValueError("mono must be true or false")
@@ -400,12 +414,50 @@ class WebApp:
                     doc["volume_limit"] = limit
                 if mono is not None:
                     doc["mono"] = mono
+                if place is not None:
+                    doc["location"] = place
+                if mode is not None:
+                    doc["night"] = mode
                 save_settings(self.settings_file, doc)
+            else:
+                doc = self._lamp_settings
+                if place is not None:
+                    doc["location"] = place
+                if mode is not None:
+                    doc["night"] = mode
+            if place is not None or mode is not None:
+                self._lamp_settings = {k: doc[k] for k in ("location", "night") if k in doc}
+                for listener in self.lamp_listeners:
+                    try:
+                        listener(dict(doc))
+                    except Exception:
+                        log.exception("a lamp settings listener failed")
+        if place is not None:
+            log.info("lamp location set to %s (%.4f, %.4f) from the web page",
+                     place["name"] or "unnamed", place["lat"], place["lon"])
+        if mode is not None:
+            log.info("lamp night mode set to %s from the web page", mode)
         if limit is not None:
             log.info("volume limit set to %s%% from the web page", limit)
         if mono is not None:
             log.info("output set to %s from the web page", "mono" if mono else "stereo")
         return self.settings(host)
+
+    def lamp_settings(self) -> dict:
+        """The saved ``location`` / ``night`` (settings.json, else this session's)."""
+        if self.settings_file is not None:
+            return load_settings(self.settings_file)
+        return self._lamp_settings
+
+    def _lamp_doc(self) -> dict:
+        saved = self.lamp_settings()
+        try:
+            sun = night.tonight(saved)
+        except Exception:                           # never let the sky break Settings
+            log.debug("could not work out tonight's sun", exc_info=True)
+            sun = None
+        return {"location": night.location_doc(saved), "night": night.mode_from_settings(saved),
+                "tonight": sun}
 
     def _mono_doc(self) -> dict:
         if self.mono is None or not self.mono.available:
@@ -722,6 +774,9 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(play)
             elif path == "/api/stop":
                 self._guard(lambda: (app.stop(), self._json(200, {"ok": True})))
+            elif path == "/api/settings":            # as PUT, for clients that only POST
+                self._guard(lambda: self._json(
+                    200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
             elif path == "/api/wifi":
                 def join() -> None:
                     body = self._body()

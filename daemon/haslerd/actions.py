@@ -22,11 +22,19 @@ Two robustness rules, both load-bearing:
 Pressing the key that is already playing means "again": for a radio station
 that is "turn it off" (a station has nothing else to offer), for a Spotify or
 YouTube Music playlist it is "next track".
+
+The pilot lamp is told through hooks, never imported: ``on_reply`` gets the
+one-off replies of docs/lamp.md (a dip for a key, "next"/"stop" for the same
+key again, two dips for Home Assistant, red pulses for a failure),
+``on_start`` hears that a preset is about to start (the loading breath must be
+up *before* a slow start blocks the loop) and ``on_change`` that standby,
+pairing or shutdown flipped.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Callable
 
 from .panel.controls import Event
@@ -43,6 +51,14 @@ SOURCE_CYCLE = ("radio", "bluetooth", "airplay", "spotify")
 # path back from these explicitly; our own preset sources are arbitrated by the
 # player's router instead.
 RENDERERS = ("bluetooth", "airplay", "dlna")
+
+# Event kinds that are a hand on a key: they get the lamp's dip. Wheels and the
+# power knob get nothing - the ear is the feedback.
+ACK_KINDS = ("tap", "select")
+# Verbs that choose their own reply ("again" is next/stop, not a dip).
+SELF_REPLYING = ("preset", "preset_by_index")
+HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation")
+DEFAULT_PAIR_S = 120
 
 
 def build_presets(specs: list[dict], variant_name: str = "") -> dict[int, Preset]:
@@ -74,15 +90,28 @@ class Actions:
         ha: Callable[[str, dict], None] | None = None,
         state: StateStore | None = None,
         on_play_error: Callable[[Exception], None] | None = None,
+        on_reply: Callable[[str], None] | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.variant = variant
         self.player = player
         self.ha = ha
         self.state = state
-        # Called when starting a preset raises - the lamp's error flash.
+        # Called when starting a preset raises (the lamp drops its loading breath).
         self.on_play_error = on_play_error
+        # The lamp's one-off replies: "ack", "next", "stop", "fail", "ha".
+        self.on_reply = on_reply
+        # A preset is about to start; called before the (possibly slow) start.
+        self.on_start: Callable[[Preset], None] | None = None
+        # Standby, pairing or shutdown changed: the lamp should look again now,
+        # before whatever blocking call comes next.
+        self.on_change: Callable[[], None] | None = None
+        self.clock = clock
         self.presets = build_presets(variant.presets, variant.name)
         self.standby = False
+        self.shutting_down = False
+        # Bluetooth discoverable until this clock time (the lamp's blue breath).
+        self.pairing_until = 0.0
         self._last_preset: int | None = None
         # Preset numbers, most recent first - the PU cycle's memory per source.
         self._recent: list[int] = []
@@ -116,6 +145,17 @@ class Actions:
         self._ha_dropped: set[tuple[str, str]] = set()
 
     @property
+    def pairing(self) -> bool:
+        """The Bluetooth pairing window is open."""
+        return self.clock() < self.pairing_until
+
+    def end_pairing(self) -> None:
+        """A phone connected (or the window is moot): stop the pairing breath."""
+        if self.pairing_until:
+            self.pairing_until = 0.0
+            self._changed()
+
+    @property
     def cycle_position(self) -> str | None:
         """Where the PU cycle last put us - e.g. "bluetooth" before a phone connects."""
         return self._cycle_at
@@ -136,11 +176,31 @@ class Actions:
         # Keys at INFO so "did it see my press?" is answered by the journal;
         # wheel changes stream while turning, so they stay at DEBUG.
         log.log(logging.DEBUG if event.kind == "change" else logging.INFO, "%s -> %s", event, verb)
+        if event.kind in ACK_KINDS and verb not in SELF_REPLYING and verb not in HA_VERBS:
+            self._reply("ack")
         try:
             handler(event, spec)
         except Exception:
             # Never let a failing action break the panel loop.
             log.exception("action %r failed for %s", verb, event)
+            if event.kind != "change":
+                self._reply("fail")
+
+    def _reply(self, name: str) -> None:
+        if self.on_reply is None:
+            return
+        try:
+            self.on_reply(name)
+        except Exception:
+            log.debug("on_reply hook failed", exc_info=True)
+
+    def _changed(self) -> None:
+        if self.on_change is None:
+            return
+        try:
+            self.on_change()
+        except Exception:
+            log.debug("on_change hook failed", exc_info=True)
 
     def dispatch_all(self, events: list[Event]) -> None:
         for event in events:
@@ -152,6 +212,7 @@ class Actions:
         preset = self.presets.get(n)
         if preset is None:
             log.warning("no preset %s in %s", n, self.variant.name)
+            self._reply("ack")
             return
         # Asked once: on the real player this is an HTTP call plus shell-outs.
         active = self.player.active_source()
@@ -166,10 +227,13 @@ class Actions:
             and active == current.source
         ):
             if preset.source == "radio":
+                self._reply("stop")
                 self._standby(None, {})
             else:
+                self._reply("next")
                 self.player.next_track()
             return
+        self._reply("ack")
         # A renderer holds the audio path; take it back before starting ours.
         if active in RENDERERS:
             self.player.select_source("radio")
@@ -192,7 +256,16 @@ class Actions:
         return None
 
     def _start(self, preset: Preset) -> None:
-        """Start a preset; on failure tell the lamp, then let dispatch log it."""
+        """Start a preset; on failure tell the lamp, then let dispatch log it.
+
+        ``on_start`` first, so the lamp is already breathing while a slow
+        start (yt-dlp expanding a playlist) holds up the loop.
+        """
+        if self.on_start is not None:
+            try:
+                self.on_start(preset)
+            except Exception:
+                log.debug("on_start hook failed", exc_info=True)
         try:
             self.player.play_preset(preset)
         except Exception as exc:
@@ -249,13 +322,45 @@ class Actions:
             self._start(preset)
 
     def _bt_pair(self, event, spec):
-        self.player.bluetooth_pair(int(spec.get("seconds", 120)))
+        seconds = int(spec.get("seconds", DEFAULT_PAIR_S))
+        # Breathing blue before bluetoothctl's round trips, not after.
+        self.pairing_until = self.clock() + seconds
+        self._changed()
+        try:
+            self.player.bluetooth_pair(seconds)
+        except Exception:
+            self.pairing_until = 0.0
+            self._changed()
+            raise
 
     # -- power ------------------------------------------------------------
 
     def _wake(self) -> None:
         self.standby = False
+        self._changed()
         self.player.set_mute(False)
+
+    def phone_has_it(self, source: str | None = None) -> bool:
+        """A phone renderer holds the audio: Bluetooth, AirPlay, DLNA, or
+        Spotify Connect (go-librespot playing with none of our presets on)."""
+        active = self.player.active_source() if source is None else source
+        if active in RENDERERS:
+            return True
+        current = self.player.current()
+        return active == "spotify" and (current is None or current.source != "spotify")
+
+    def wake_for_phone(self, source: str) -> None:
+        """A phone started casting while asleep: the phone wakes the radio.
+
+        Standby ends and the mixer unmutes - and nothing of ours resumes: the
+        phone is in charge (docs/lamp.md, "Phone casts while in standby").
+        """
+        if not self.standby:
+            return
+        log.info("%s started casting - waking from standby", source)
+        self._cycle_at = None
+        self._wake()
+        self._persist()
 
     def _standby(self, event, spec):
         """Silence, but stay on the network.
@@ -265,6 +370,7 @@ class Actions:
         """
         self.standby = True
         self._cycle_at = None
+        self._changed()
         self._persist()
         self.player.stop()
         self.player.set_mute(True)
@@ -279,11 +385,18 @@ class Actions:
             self._standby(event, spec)
 
     def _resume(self, event, spec):
+        if not self.standby and self.phone_has_it():
+            # The phone woke the box while the knob was off; turning the knob
+            # on now must not snatch the audio back for a preset.
+            return
         self._wake()
         self._persist()
         self.resume_last()
 
     def _shutdown(self, event, spec):
+        # The ember breath first: poweroff below can take seconds to return.
+        self.shutting_down = True
+        self._changed()
         self.player.stop()
         self.player.shutdown()
 
@@ -314,11 +427,13 @@ class Actions:
             except Exception:
                 log.exception("could not re-apply standby at boot")
 
-    def resume_last(self) -> bool:
+    def resume_last(self, quiet: bool = False) -> bool:
         """Play the remembered preset, unless in standby. Never raises.
 
         Returns False only if starting it failed, so the caller can try again
         once the network turns up; True means done, including "nothing to do".
+        A failure gets the lamp's red pulses unless ``quiet`` (an attempt that
+        will be retried - the pulses wait for the last one).
         """
         if self.standby or self._last_preset is None:
             return True
@@ -329,6 +444,8 @@ class Actions:
             self._start(preset)
         except Exception:
             log.exception("could not resume preset %s", preset.n)
+            if not quiet:
+                self._reply("fail")
             return False
         return True
 
@@ -370,14 +487,24 @@ class Actions:
     # automation -> automation.trigger.
 
     def _fire_ha(self, kind: str, payload: dict[str, Any]) -> None:
-        """Fire-and-forget. HA being down must never slow down a key press."""
+        """Fire-and-forget. HA being down must never slow down a key press.
+
+        The lamp gives two dips when the call goes out, red pulses when it
+        cannot (not connected, or an entity this HA was seen not to have).
+        A call that fails later, on the transport's own thread, is not seen.
+        """
         ha = self.ha
         if ha is None:
             key = (kind, str(payload.get("entity", "")))
             level = logging.DEBUG if key in self._ha_dropped else logging.INFO
             self._ha_dropped.add(key)
             log.log(level, "Home Assistant not connected; %s %s does nothing", kind, key[1])
+            self._reply("fail")
             return
+        if payload.get("entity") in (getattr(ha, "missing", None) or ()):
+            self._reply("fail")
+        else:
+            self._reply("ha")
         ha(kind, payload)
 
     def _ha_scene(self, event, spec):
@@ -399,3 +526,5 @@ class Actions:
             self._fire_ha("scene", {"entity": scenes[index]})
         else:
             log.debug("no scene bound to index %s", index)
+            if event.kind in ACK_KINDS:
+                self._reply("ack")

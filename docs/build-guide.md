@@ -284,10 +284,28 @@ box comes back playing the last preset (`cat /var/lib/haslerd/state.json` shows 
 - [ ] PU key cycles Bluetooth → AirPlay → Spotify → radio; hold enters pairing for 120 s.
       (Spotify is go-librespot now — moOde's renderer stays off.)
 - [ ] Tapping a preset while a renderer is connected disconnects it and returns to MPD.
-- [ ] Wire the RGB LED to the **Power Controller** (I²C `0x77`, reg `0x01` mode, `0x02`–`0x04` R/G/B).
-      Amber = radio, blue = Bluetooth, cyan/green/magenta = AirPlay/Spotify/DLNA, dim red = standby,
-      flashing red = no network.
+- [ ] Pilot lamp on the Pi's GPIO — see *Lamp* below.
 - [ ] Tone wheel drives CamillaDSP shelves over its websocket (`:1234`).
+
+### Lamp
+
+The common-anode RGB LED on GPIO 17 (red, pin 11), 22 (green, pin 15), 27 (blue, pin 13), common
+to 3V3 — wiring in [`hardware.md`](hardware.md#pilot-lamp--rgb-led-resistors-on-the-prototype-board),
+what it shows in [`lamp.md`](lamp.md). `scripts/install.sh` sets up all of it:
+
+- a marked block at the end of `/boot/firmware/config.txt`: `gpio=17,22,27=op,dh` (dark from
+  the firmware on) and one `dtoverlay=pwm-gpio,gpio=N` per pin (kernel PWM, ~800 Hz);
+- `/etc/udev/rules.d/99-hasler-pwm.rules`, so haslerd (user `pi`, group `gpio`) can drive
+  `/sys/class/pwm`;
+- `hasler-lamp-boot.service`: the amber breath from ~3-5 s until haslerd starts (haslerd stops it
+  and carries on);
+- `/usr/lib/systemd/system-shutdown/hasler-lamp-halt`: the LED goes dark at halt.
+
+- [ ] Run `scripts/install.sh`, then **reboot** (config.txt only takes effect at boot).
+- [ ] `ls /sys/class/pwm` shows three `pwmchip`s; `systemctl status hasler-lamp-boot` is
+      *inactive (dead)* once haslerd runs, and its log names the chip for each GPIO.
+- [ ] Power on: dark, then within ~5 s a soft amber breath, never a hard colour or a flash.
+- [ ] `sudo poweroff`: ember breath while it shuts down, then **dark** — safe to unplug.
 
 ## Phase 5 — Home Assistant
 

@@ -1,0 +1,263 @@
+#!/usr/bin/python3
+"""Early-boot pilot lamp: fade into an amber breath until haslerd takes over.
+
+docs/lamp.md "Boot and shutdown", stage "~3-5 s". Started by
+hasler-lamp-boot.service as soon as udev has loaded the pwm-gpio driver; stopped
+(SIGTERM) by systemd when haslerd.service starts, which Conflicts= with it.
+
+What it shows: a 1 s fade from dark into a breath between 10 % and 35 %
+(perceptual), 3 s period, raised cosine. Perceptual -> linear with gamma 2.2,
+then the amber balance R 1.0 / G 0.15 / B 0. We cannot read the tone knob yet
+(that needs I2C and the panel), so it is always amber; haslerd corrects to
+ember within a second or two of starting if the knob is off.
+
+Hardware (docs/hardware.md "Pilot lamp"): common-anode RGB LED on 3.3 V, red
+GPIO17, green GPIO22, blue GPIO27, GPIO LOW = lit. Each pin is its own
+pwm-gpio chip (dtoverlay=pwm-gpio,gpio=N in config.txt), channel pwm0. We set
+the channel's polarity to "inversed", so duty_cycle is the *lit* time and a
+disabled channel idles HIGH = dark (the driver drives the idle level from the
+polarity). No manual duty inversion anywhere.
+
+Discovery (the same rule as haslerd/lamp/outputs.py): a pwmchip belongs to
+GPIO N when its device/of_node/compatible says "pwm-gpio" and the second cell
+of device/of_node/gpios (<&gpio N flags>, big-endian u32) is N. If not all
+three answer that way, fall back to the pwm-gpio chips (or every chip, if none
+says) in pwmchip-number order = the overlay declaration order 17, 22, 27.
+
+On SIGTERM / SIGINT it just stops: pins stay exported and enabled at the last
+duty (the kernel keeps the PWM running), so there is no dark gap before haslerd
+writes. It leaves /run/hasler-lamp/boot with the breath's start time on
+CLOCK_MONOTONIC so the engine can carry on in phase if it wants to.
+
+Testing without a Pi (fake sysfs; the script creates pwm0/ on "export"):
+
+    HASLER_PWM_ROOT=/tmp/fakepwm scripts/hasler-lamp-boot --fake-sysfs --print
+
+  --fake-sysfs   build pwmchip0..2 for GPIO 17/22/27 under HASLER_PWM_ROOT first
+  --print        log every frame's perceptual level and duties to stdout
+  --seconds N    stop by itself after N seconds (default: run until killed)
+
+Python stdlib only (no venv - it runs long before the user's session).
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import os
+import signal
+import struct
+import sys
+import time
+
+ROOT = os.environ.get("HASLER_PWM_ROOT", "/sys/class/pwm")
+FAKE = "HASLER_PWM_ROOT" in os.environ
+STATE_DIR = os.environ.get("HASLER_LAMP_RUN", "/run/hasler-lamp")
+
+GPIOS = (17, 22, 27)              # red, green, blue - overlay declaration order
+PERIOD_NS = 1_250_000             # 800 Hz
+GAMMA = 2.2
+BALANCE = (1.0, 0.15, 0.0)        # amber; docs/lamp.md "Palette"
+FADE_S = 1.0
+FLOOR, PEAK = 0.10, 0.35          # perceptual
+BREATH_S = 3.0
+FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU
+WAIT_CHIPS_S = 10.0               # udev may still be loading pwm-gpio
+
+running = True
+
+
+def log(msg: str) -> None:
+    print(f"hasler-lamp-boot: {msg}", file=sys.stderr, flush=True)
+
+
+def read(path: str) -> str:
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def write(path: str, value: object) -> bool:
+    try:
+        with open(path, "w") as f:
+            f.write(f"{value}\n")
+        return True
+    except OSError as e:
+        log(f"write {value} -> {path}: {e.strerror}")
+        return False
+
+
+# --- discovery (keep identical to haslerd/lamp/outputs.py) ------------------
+
+def _is_pwm_gpio(chip: str) -> bool:
+    try:
+        with open(os.path.join(chip, "device/of_node/compatible"), "rb") as f:
+            return b"pwm-gpio" in f.read().split(b"\0")
+    except OSError:
+        return False
+
+
+def _gpio_of(chip: str) -> int | None:
+    try:
+        with open(os.path.join(chip, "device/of_node/gpios"), "rb") as f:
+            cells = f.read()
+        return struct.unpack(">I", cells[4:8])[0]   # <&gpio N flags>
+    except (OSError, struct.error):
+        return None
+
+
+def discover() -> list[str] | None:
+    """[red, green, blue] chip dirs, or None while they are not all there."""
+    try:
+        names = [n for n in os.listdir(ROOT) if n.startswith("pwmchip")]
+    except OSError:
+        return None
+    chips = sorted((os.path.join(ROOT, n) for n in names if n[7:].isdigit()),
+                   key=lambda p: int(os.path.basename(p)[7:]))
+    pwm_gpio = [c for c in chips if _is_pwm_gpio(c)]
+    by_gpio = {_gpio_of(c): c for c in pwm_gpio}
+    if all(g in by_gpio for g in GPIOS):
+        return [by_gpio[g] for g in GPIOS]
+    candidates = pwm_gpio or chips          # fallback: declaration order
+    if len(candidates) >= len(GPIOS):
+        log("can't tell which pwmchip drives which GPIO; assuming "
+            "declaration order")
+        return candidates[: len(GPIOS)]
+    return None
+
+
+# --- one channel ------------------------------------------------------------
+
+class Channel:
+    def __init__(self, chip: str):
+        self.dir = os.path.join(chip, "pwm0")
+        self.duty = -1
+        if not os.path.isdir(self.dir):
+            write(os.path.join(chip, "export"), 0)
+            if FAKE:
+                os.makedirs(self.dir, exist_ok=True)
+            for _ in range(50):                 # the kernel adds pwm0/ at once;
+                if os.path.isdir(self.dir):     # udev's chgrp follows shortly
+                    break
+                time.sleep(0.02)
+        f = lambda name: os.path.join(self.dir, name)   # noqa: E731
+        self.f_duty = f("duty_cycle")
+        enabled = read(f("enable")) == "1"
+        if read(f("polarity")) != "inversed":
+            # Polarity only changes while disabled. Disabling with "normal"
+            # drives the pin LOW (= lit) for a moment, so only do it if needed.
+            if enabled:
+                write(f("duty_cycle"), 0)
+                write(f("enable"), 0)
+            write(f("polarity"), "inversed")    # disabled + inversed -> HIGH, dark
+            enabled = False
+        if read(f("period")) != str(PERIOD_NS):
+            write(f("duty_cycle"), 0)           # duty must never exceed period
+            write(f("period"), PERIOD_NS)
+        if not enabled:
+            write(f("duty_cycle"), 0)
+            write(f("enable"), 1)
+        self.duty = int(read(f("duty_cycle")) or 0)
+
+    def set(self, linear: float) -> int:
+        duty = round(max(0.0, min(1.0, linear)) * PERIOD_NS)
+        if duty != self.duty and write(self.f_duty, duty):
+            self.duty = duty
+        return duty
+
+
+# --- the look ---------------------------------------------------------------
+
+def level_at(t: float) -> float:
+    """Perceptual level t seconds after start: fade to the trough, then breathe."""
+    if t < FADE_S:
+        x = t / FADE_S
+        return FLOOR * x * x * (3 - 2 * x)      # smoothstep 0 -> floor
+    phase = (t - FADE_S) / BREATH_S
+    return FLOOR + (PEAK - FLOOR) * (1 - math.cos(2 * math.pi * phase)) / 2
+
+
+def make_fake_sysfs() -> None:
+    for i, gpio in enumerate(GPIOS):
+        node = os.path.join(ROOT, f"pwmchip{i}", "device", "of_node")
+        os.makedirs(node, exist_ok=True)
+        with open(os.path.join(node, "compatible"), "wb") as f:
+            f.write(b"pwm-gpio\0")
+        with open(os.path.join(node, "gpios"), "wb") as f:
+            f.write(struct.pack(">III", 1, gpio, 0))
+        for name, val in (("npwm", "1"), ("export", ""), ("unexport", "")):
+            with open(os.path.join(ROOT, f"pwmchip{i}", name), "w") as f:
+                f.write(val)
+        pwm = os.path.join(ROOT, f"pwmchip{i}", "pwm0")
+        os.makedirs(pwm, exist_ok=True)
+        for name, val in (("period", "0"), ("duty_cycle", "0"),
+                          ("enable", "0"), ("polarity", "normal")):
+            with open(os.path.join(pwm, name), "w") as f:
+                f.write(val + "\n")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--fake-sysfs", action="store_true")
+    ap.add_argument("--print", action="store_true")
+    ap.add_argument("--seconds", type=float, default=0.0)
+    args = ap.parse_args()
+    if args.fake_sysfs:
+        if not FAKE:
+            log("--fake-sysfs needs HASLER_PWM_ROOT"); return 2
+        make_fake_sysfs()
+
+    def stop(_sig, _frm):
+        global running
+        running = False
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+
+    deadline = time.monotonic() + WAIT_CHIPS_S
+    chips = discover()
+    while chips is None and running and time.monotonic() < deadline:
+        time.sleep(0.1)
+        chips = discover()
+    if chips is None:
+        log(f"no pwm-gpio chips for GPIO {GPIOS} under {ROOT} - is "
+            "dtoverlay=pwm-gpio in config.txt (and the box rebooted)?")
+        return 0                                # nothing to do; haslerd copes
+    log("chips: " + ", ".join(f"GPIO{g}={os.path.basename(c)}"
+                              for g, c in zip(GPIOS, chips)))
+    channels = [Channel(c) for c in chips]
+
+    t0 = time.monotonic()
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+        with open(os.path.join(STATE_DIR, "boot"), "w") as f:
+            json.dump({"colour": "amber", "t0_monotonic": t0, "fade_s": FADE_S,
+                       "floor": FLOOR, "peak": PEAK, "period_s": BREATH_S}, f)
+    except OSError:
+        pass
+
+    frame = 1.0 / FPS
+    nxt = t0
+    while running:
+        t = time.monotonic() - t0
+        if args.seconds and t >= args.seconds:
+            break
+        p = level_at(t)
+        lin = p ** GAMMA
+        duties = [ch.set(lin * k) for ch, k in zip(channels, BALANCE)]
+        if args.print:
+            print(f"{t:6.3f} level={p:.3f} duty_ns={duties}", flush=True)
+        nxt += frame
+        delay = nxt - time.monotonic()
+        if delay > 0:
+            time.sleep(delay)                   # a signal ends this early: fine
+        else:
+            nxt = time.monotonic()
+    # Leave everything exactly as it is: exported, enabled, last duty.
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

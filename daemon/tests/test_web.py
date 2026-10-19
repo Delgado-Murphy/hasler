@@ -688,3 +688,71 @@ class TestCoverArt:
         assert app.cover("aaaaaaaaaaa") == "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg"
         assert app.cover("../etc/passwd") is None
         assert app.cover("") is None
+
+
+class TestLampSettings:
+    @pytest.fixture
+    def lamp_app(self, rig, tmp_path, monkeypatch):
+        app, *_ = rig
+        app.settings_file = tmp_path / "settings.json"
+        monkeypatch.setattr(app.wifi, "current_ssid", lambda: "")
+        return app
+
+    def test_defaults_to_madrid_and_the_sun(self, lamp_app):
+        doc = lamp_app.settings()
+        assert doc["location"] == {"name": "Madrid", "lat": 40.4168, "lon": -3.7038}
+        assert doc["night"] == "sun"
+        t = doc["tonight"]
+        assert t["mode"] == "sun" and len(t["sunrise"]) == 5 and len(t["sunset"]) == 5
+        assert t["from"] and t["to"] and isinstance(t["night_now"], bool)
+
+    def test_put_persists_and_tells_the_lamp(self, lamp_app, tmp_path):
+        heard = []
+        lamp_app.lamp_listeners.append(heard.append)
+        (tmp_path / "settings.json").write_text(json.dumps({"volume_limit": 70}))
+        doc = lamp_app.put_settings({"location": {"name": "Bern", "lat": 46.948, "lon": 7.4474},
+                                     "night": "22:30-06:45"})
+        assert doc["location"]["name"] == "Bern" and doc["night"] == "22:30-06:45"
+        assert (doc["tonight"]["from"], doc["tonight"]["to"]) == ("22:30", "06:45")
+        saved = json.loads((tmp_path / "settings.json").read_text())
+        assert saved == {"volume_limit": 70, "night": "22:30-06:45",
+                         "location": {"name": "Bern", "lat": 46.948, "lon": 7.4474}}
+        assert heard == [saved]
+        lamp_app.put_settings({"night": "off"})
+        assert lamp_app.settings()["location"]["name"] == "Bern"   # untouched
+        assert heard[-1]["night"] == "off"
+
+    def test_without_a_settings_file_it_still_holds(self, rig, monkeypatch):
+        app, *_ = rig
+        monkeypatch.setattr(app.wifi, "current_ssid", lambda: "")
+        app.put_settings({"night": "off"})
+        assert app.settings()["night"] == "off"
+
+    @pytest.mark.parametrize("body", [
+        {"location": {"lat": 91, "lon": 0}}, {"location": {"lat": 0, "lon": 181}},
+        {"location": {"lat": "40", "lon": 0}}, {"location": "Madrid"},
+        {"night": "dusk"}, {"night": "25:00-07:00"}, {"night": "07:00-07:00"},
+        {"night": "off", "location": {"lat": 0}},
+    ])
+    def test_validation(self, lamp_app, tmp_path, body):
+        with pytest.raises(ValueError):
+            lamp_app.put_settings(body)
+        assert not (tmp_path / "settings.json").exists()      # nothing half-saved
+
+    def test_http_round_trip(self, lamp_app):
+        server = WebServer(lamp_app, host="127.0.0.1", port=0)
+        server.start()
+        try:
+            url = f"http://127.0.0.1:{server.port}/api/settings"
+            call = TestHttp.call
+            status, body = call(None, url, "PUT", {"location": {"name": "Zurich", "lat": 47.3769, "lon": 8.5417}})
+            assert status == 200 and json.loads(body)["location"]["name"] == "Zurich"
+            status, body = call(None, url, "POST", {"night": "sun"})
+            assert status == 200 and json.loads(body)["ok"] is True
+            status, body = call(None, url)
+            doc = json.loads(body)
+            assert status == 200 and doc["location"]["lat"] == 47.3769 and doc["tonight"]["sunset"]
+            status, body = call(None, url, "PUT", {"location": {"lat": -91, "lon": 0}})
+            assert status == 400 and "latitude" in json.loads(body)["error"]
+        finally:
+            server.close()

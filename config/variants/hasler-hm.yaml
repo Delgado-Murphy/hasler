@@ -31,10 +31,26 @@ io:
   # row only - pins 1 3V3, 3 SDA, 5 SCL, (7 empty: amp mute), 9 GND, 11/13/15
   # = lamp R/G/B - so nothing ever lands on the 5 V row. The LED
   # common goes to 3.3 V: IDC wire 11 (common anode, metered).
+  # docs/lamp.md. pwm-sysfs = the kernel pwm-gpio overlays on 17/22/27
+  # (config.txt), hrtimer PWM at 800 Hz, no flicker at night. `backend: gpio`
+  # is the fallback (gpiozero/lgpio software PWM ~400 Hz) and is used anyway,
+  # with a warning, if the overlays are missing.
   lamp:
-    backend: gpio
+    backend: pwm-sysfs
     pins: {red: 17, green: 22, blue: 27}   # header pins 11, 15, 13 - cabinet wires 13, 15, 16
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
+    frequency_hz: 800
+    # Calibrate by eye at night. Linear RGB ratios per palette name (defaults
+    # in lamp/engine.py), then a per-channel balance after gamma:
+    # palette:
+    #   amber: [1.0, 0.15, 0.0]
+    #   amber_pale: [1.0, 0.22, 0.02]
+    #   ember: [1.0, 0.10, 0.0]
+    #   blue: [0.0, 0.25, 1.0]
+    #   white: [1.0, 0.35, 0.06]
+    #   red: [1.0, 0.03, 0.0]
+    # balance: {red: 1.0, green: 1.0, blue: 1.0}
+    # min_duty: {red: 0.002, green: 0.0005, blue: 0.0005}   # keeps deep ember's green
 
 controls:
   # Prototype stripboard (Paper PB3): each key sits on the MCP pin its J2

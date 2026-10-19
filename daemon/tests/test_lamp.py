@@ -109,31 +109,6 @@ class TestErrorFlash:
         assert (0, 0, 0) in controller.writes
 
 
-class TestLampPriority:
-    def test_source_maps_to_its_lamp(self):
-        from haslerd.main import lamp_state
-
-        assert lamp_state(False, True, "ytm") == "ytm"
-        assert lamp_state(False, True, "spotify") == "spotify"
-        assert lamp_state(False, True, "mystery") == "radio"
-
-    def test_offline_overrides_internet_sources(self):
-        from haslerd.main import lamp_state
-
-        assert lamp_state(False, False, "radio") == "offline"
-        assert lamp_state(False, False, "ytm") == "offline"
-
-    def test_bluetooth_needs_no_internet(self):
-        from haslerd.main import lamp_state
-
-        assert lamp_state(False, False, "bluetooth") == "bluetooth"
-
-    def test_standby_beats_offline(self):
-        from haslerd.main import lamp_state
-
-        assert lamp_state(True, False, "radio") == "standby"
-
-
 def test_colour_writes_put_the_firmware_in_static_mode():
     # Firmware LED mode 1 is *pulsing*; ours draws its own effects on top of static.
     from haslerd.hw.powerctl import REG_LED_MODE, PowerController
@@ -150,13 +125,6 @@ def test_colour_writes_put_the_firmware_in_static_mode():
     pc.set_rgb(255, 150, 40)
     assert pc._bus.writes[0] == (REG_LED_MODE, 0)
     assert pc._bus.writes[1:] == [(0x02, 255), (0x03, 150), (0x04, 40)]
-
-
-def test_hotspot_outranks_standby_and_offline():
-    from haslerd.main import lamp_state
-    assert lamp_state(True, False, "radio", hotspot=True) == "hotspot"
-    assert lamp_state(False, True, "spotify", hotspot=True) == "hotspot"
-    assert LAMP_STATES["hotspot"]["effect"] == "pulse"
 
 
 def test_connectivity_reports_the_hotspot():

@@ -1,0 +1,43 @@
+#!/bin/sh
+# Pilot lamp at halt: drive the LED dark. "Dark = safe to unplug."
+#
+# Installed into /usr/lib/systemd/system-shutdown/. systemd-shutdown runs it
+# as root as the very last thing before halt/poweroff/reboot ($1 says which),
+# after every service has stopped and the filesystems are read-only. The ember
+# breath during shutdown is haslerd's job (lamp engine, docs/lamp.md); this
+# only guarantees the end state, even if haslerd crashed or was killed.
+#
+# Hardware: common-anode LED on 3.3 V, red GPIO17 / green GPIO22 / blue GPIO27,
+# GPIO HIGH = dark. Each pin is a pwm-gpio chip (channel pwm0):
+#   - polarity "inversed" (how hasler-lamp-boot and haslerd set it): duty 0,
+#     then disable - a disabled inversed channel idles HIGH;
+#   - polarity "normal" (someone else): duty = period, a constant HIGH (the
+#     driver stops toggling at 0 % and 100 %), left enabled - disabling a
+#     normal channel would drive it LOW and light the LED.
+# Then pinctrl (if present) sets the pins to output-high directly, which also
+# covers a box whose pwm-gpio overlays are missing. Never fails the shutdown.
+#
+# Test against a fake sysfs (pinctrl is skipped):
+#   HASLER_PWM_ROOT=/tmp/fakepwm scripts/hasler-lamp-halt poweroff
+
+ROOT="${HASLER_PWM_ROOT:-/sys/class/pwm}"
+PINS=17,22,27
+
+for chip in "$ROOT"/pwmchip*; do
+  pwm="$chip/pwm0"
+  [ -d "$pwm" ] || continue
+  # Only pwm-gpio chips (never a hardware PWM someone else uses).
+  tr '\0' '\n' < "$chip/device/of_node/compatible" 2>/dev/null | grep -qx 'pwm-gpio' || continue
+  if [ "$(cat "$pwm/polarity" 2>/dev/null)" = inversed ]; then
+    echo 0 > "$pwm/duty_cycle" 2>/dev/null
+    echo 0 > "$pwm/enable" 2>/dev/null
+  else
+    cat "$pwm/period" > "$pwm/duty_cycle" 2>/dev/null
+  fi
+done
+
+if [ -z "${HASLER_PWM_ROOT:-}" ] && command -v pinctrl >/dev/null 2>&1; then
+  sleep 0.01                 # let a running channel finish its current period
+  pinctrl set "$PINS" op dh 2>/dev/null
+fi
+exit 0
