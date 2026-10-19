@@ -26,6 +26,15 @@ lamp's ``location`` and ``night`` mode live there too (lamp/night.py); GET adds
 today's sunrise/sunset and the night being dimmed, and ``WebApp.lamp_listeners``
 hear a change at once.
 
+Knob calibration (``/api/knobs``) is the guided version of what we did by
+hand on the bench: the page asks the owner to hold each knob still at a few
+positions, reads ``GET /api/knobs/<id>/sample`` (the panel loop's own recent
+readings - the web never touches the ADC), previews a fit
+(``POST .../fit``, panel/calibrate.py), and ``PUT .../calibration`` saves it
+to the box's calibration overlay (boxconfig, ``/etc/hasler/variant.d``) and
+applies it live; ``DELETE`` goes back to the shipped curve. Positions are
+measured from the knob's quiet end - see calibrate.py.
+
 ``/api/browse`` serves the curated library (web/catalog.py), and anything under
 ``/api/ha`` is handed to ``WebApp.extra_routes`` - objects with
 ``route(method, path, body) -> (status, doc) | None`` (web/ha_api.py) - so
@@ -50,7 +59,9 @@ from urllib.parse import parse_qs, urlparse
 from .. import __version__
 from ..actions import Actions
 from ..lamp import night
-from ..panel.controls import Event
+from .. import boxconfig
+from ..panel import calibrate
+from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot
 from ..player.base import Preset
 from ..player.moode import treble_db
 from . import keymap, stations
@@ -67,6 +78,8 @@ PRESS_EVENTS = ("tap", "hold")
 SETTINGS_FILE = "settings.json"
 VOLUME_LIMIT_RANGE = (30, 100)   # below 30 the knob is barely audible; 100 = no ceiling
 VOLUME_GUESS = 40.0              # a relative nudge with no reading starts here, as volume_step does
+KNOB_ID = re.compile(r"^/api/knobs/([A-Za-z0-9_.-]{1,64})/(sample|fit|calibration)$")
+HYSTERESIS_MAX = 5000
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
@@ -123,6 +136,10 @@ def volume_limit_from(raw: Any) -> int:
     return value
 
 
+class Unavailable(Exception):
+    """This radio can't do that right now (HTTP 503) - not the request's fault."""
+
+
 def _number(raw: Any, name: str) -> float:
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
         raise ValueError(f"{name} must be a number")
@@ -176,6 +193,15 @@ class WebApp:
         # The descriptor's own layout, for "reset to defaults". Taken before any
         # saved overlay is laid on top.
         self.defaults = (copy.deepcopy(actions.variant.presets), copy.deepcopy(actions.variant.actions))
+        # Knob calibration. ``box_paths`` (boxconfig.Paths) says where the
+        # overlay lives - None and calibrations can be previewed but not saved.
+        # ``reload_variant()`` (main.apply_overlay) - or ``on_overlay_saved(
+        # variant_name)`` - re-applies the box's overlay to the running panel
+        # after a save or delete; with neither the one knob is respecced here.
+        self.box_paths: Any = None
+        self.reload_variant: Callable[[], Any] | None = None
+        self.on_overlay_saved: Callable[[str], None] | None = None
+        self._knob_lock = threading.Lock()
 
     def load_saved(self) -> None:
         with self.lock:
@@ -487,6 +513,280 @@ class WebApp:
             except Exception:
                 log.exception("could not re-apply the volume under the new limit")
 
+    # -- knob calibration -------------------------------------------------
+
+    @property
+    def variant_name(self) -> str:
+        return self.actions.variant.name
+
+    def _knobs(self) -> list[Any]:
+        return [c for c in getattr(self.panel, "controls", []) if isinstance(c, (Pot, AnalogSelector))]
+
+    def _knob(self, cid: str) -> Any:
+        for control in self._knobs():
+            if control.id == cid:
+                return control
+        raise ValueError(f"no knob called {cid!r} on the {self.variant_name}")
+
+    def _overlay(self) -> dict:
+        """The box's overlay ({} if none, no paths, or unreadable). Never raises."""
+        if self.box_paths is None:
+            return {}
+        try:
+            doc = boxconfig.read_overlay(self.box_paths, self.variant_name)
+        except Exception:
+            log.debug("could not read the calibration overlay", exc_info=True)
+            return {}
+        return doc if isinstance(doc, dict) else {}
+
+    def knobs(self) -> dict:
+        overlay = self._overlay()
+        entries = overlay.get("controls") or {}
+        states = self._states()
+        return {
+            "variant": self.variant_name,
+            "overlay": bool(entries or overlay.get("io")),
+            "knobs": [self._knob_doc(c, entries, states) for c in self._knobs()],
+        }
+
+    def _states(self) -> dict:
+        try:
+            return self.panel.states()
+        except Exception:
+            return {}
+
+    def _knob_doc(self, control: Any, entries: dict, states: dict) -> dict:
+        now = control.sample(5)
+        doc: dict[str, Any] = {
+            "id": control.id,
+            "label": control.label or control.id.replace("_", " ").capitalize(),
+            "kind": "pot" if isinstance(control, Pot) else "selector",
+            "channel": control.channel,
+            "raw": None if now is None else now["raw"],
+            "value": control.state(),
+            "source": "box" if entries.get(control.id) else "shipped",
+            "end_switch": None,
+        }
+        if isinstance(control, Pot):
+            spec = control.spec
+            doc.update({
+                "taper": spec.taper,
+                "range": list(spec.counts_range) if spec.counts_range else None,
+                "curve": [[r, v] for r, v in spec.curve] if spec.curve else None,
+                "hysteresis_counts": spec.hysteresis,
+                "direction": spec.direction,
+            })
+            if control.end_switch_id:
+                state = states.get(control.end_switch_id)
+                doc["end_switch"] = {"id": control.end_switch_id,
+                                     "state": state if isinstance(state, bool) else None}
+        else:
+            doc.update({"positions": list(range(control.positions)),
+                        "thresholds": control.thresholds})
+        return doc
+
+    def knob_sample(self, cid: str, n: Any = 15) -> dict:
+        """The knob's last ``n`` polls: median raw, spread, noise, held still?"""
+        control = self._knob(cid)
+        try:
+            n = int(n)
+        except (TypeError, ValueError):
+            raise ValueError("n must be a whole number") from None
+        if not 1 <= n <= RAW_HISTORY:
+            raise ValueError(f"n must be from 1 to {RAW_HISTORY}")
+        doc = control.sample(n)
+        if doc is None:
+            return {"raw": None, "min": None, "max": None, "stable": False, "noise": None,
+                    "value": None, "count": 0}
+        doc["value"] = control.scale(doc["raw"]) if isinstance(control, Pot) else control.decode(doc["raw"])
+        return doc
+
+    def knob_fit(self, cid: str, body: Any) -> dict:
+        """Preview a calibration from measured points. Saves nothing.
+
+        A selector takes the same ``points`` as a pot, one per position with
+        ``position = i / (n - 1)``; its preview's ``curve`` is those readings
+        ([raw, i / (n - 1) * 100], sorted by raw) beside the ``thresholds``
+        it decodes by, and PUTting that curve back saves the thresholds.
+        """
+        control = self._knob(cid)
+        body = body if isinstance(body, dict) else {}
+        if isinstance(control, AnalogSelector):
+            raws = self._selector_raws(control, body)
+            try:
+                thresholds = calibrate.fit_selector(raws, self._noise(body))
+            except ValueError as exc:     # a measurement to redo, not a bad request
+                return {"curve": None, "thresholds": None, "direction": None,
+                        "hysteresis_counts": control.band, "warnings": [str(exc)],
+                        "redo": list(range(control.positions))}
+            return self._selector_doc(control, raws, thresholds)
+        points = body.get("points")
+        if not isinstance(points, list):
+            raise ValueError("expected {\"points\": [{\"position\": 0-1, \"raw\": n}, ...]}")
+        return calibrate.fit_pot(points, body.get("direction") or "auto", self._noise(body)).to_doc()
+
+    @staticmethod
+    def _noise(body: dict) -> float | None:
+        noise = body.get("noise")
+        return None if noise is None else _number(noise, "noise")
+
+    @staticmethod
+    def _selector_doc(control: AnalogSelector, raws: list[int], thresholds: list[int]) -> dict:
+        n = control.positions
+        return {
+            "curve": sorted([int(r), round(i / (n - 1) * 100.0, 1)] for i, r in enumerate(raws)),
+            "thresholds": thresholds,
+            "direction": "normal" if raws[-1] > raws[0] else "reversed",
+            "hysteresis_counts": control.band,
+            "warnings": [],
+            "redo": [],
+        }
+
+    @staticmethod
+    def _selector_raws(control: AnalogSelector, body: dict) -> list[int]:
+        """One reading per position, in position order, from ``points``
+        ({position: i/(n-1), raw}), ``curve`` ([raw, i/(n-1)*100]) or
+        ``positions`` ([raw, ...])."""
+        n = control.positions
+        if "points" in body or "curve" in body:
+            items = body.get("points") if "points" in body else body.get("curve")
+            if not isinstance(items, list) or len(items) != n:
+                raise ValueError(f"expected one reading for each of the {n} positions")
+            pairs = []
+            for item in items:
+                if "points" in body:
+                    if not isinstance(item, dict):
+                        raise ValueError("each point must be {\"position\", \"raw\"}")
+                    pos, raw = item.get("position"), item.get("raw")
+                else:
+                    if not isinstance(item, (list, tuple)) or len(item) != 2:
+                        raise ValueError("each curve point must be [raw, value]")
+                    raw, pos = item[0], _number(item[1], "a curve value") / 100.0
+                pos, raw = _number(pos, "position"), _number(raw, "raw")
+                index = pos * (n - 1)
+                if abs(index - round(index)) > 0.01 or not 0 <= round(index) < n:
+                    raise ValueError(f"a {n}-position selector's positions are i/{n - 1} for i = 0..{n - 1}")
+                pairs.append((int(round(index)), int(round(raw))))
+            if sorted(i for i, _ in pairs) != list(range(n)):
+                raise ValueError("measure each position once")
+            return [raw for _, raw in sorted(pairs)]
+        raws = body.get("positions")
+        if not isinstance(raws, list) or len(raws) != n:
+            raise ValueError(f"expected {{\"points\": [...]}} - one reading for each of the {n} positions")
+        return [int(round(_number(raw, "a position's raw"))) for raw in raws]
+
+    def _selector_thresholds(self, control: AnalogSelector, body: dict) -> list[int]:
+        if "thresholds" not in body:
+            return calibrate.fit_selector(self._selector_raws(control, body), self._noise(body))
+        thresholds = body.get("thresholds")
+        if not isinstance(thresholds, list) or len(thresholds) != control.positions - 1:
+            raise ValueError(f"expected {{\"thresholds\": [...]}} with {control.positions - 1} counts")
+        values = [int(_number(t, "a threshold")) for t in thresholds]
+        steps = [b - a for a, b in zip(values, values[1:])]
+        if not (all(d > 0 for d in steps) or all(d < 0 for d in steps)):
+            raise ValueError("thresholds must run one way, rising or falling")
+        return values
+
+    def _pot_entry(self, control: Pot, body: dict) -> dict:
+        direction = body.get("direction")
+        if direction is not None and direction not in calibrate.DIRECTIONS:
+            raise ValueError("direction must be auto, normal or reversed")
+        if "points" in body:
+            noise = body.get("noise")
+            fit = calibrate.fit_pot(body["points"] if isinstance(body["points"], list) else [],
+                                    direction or "auto", None if noise is None else _number(noise, "noise"))
+            if not fit.ok:
+                raise ValueError("; ".join(fit.warnings) or "these points don't make a curve")
+            curve, direction, hysteresis = fit.curve, fit.direction, fit.hysteresis_counts
+        elif "curve" in body:
+            curve, measured = calibrate.check_curve(body["curve"])
+            if direction not in (None, "auto", measured):
+                raise ValueError(f"this curve is {measured}, not {direction}")
+            direction = measured
+            hysteresis = body.get("hysteresis_counts", control.hysteresis)
+        else:
+            raise ValueError("expected {\"curve\", \"direction\", \"hysteresis_counts\"} or {\"points\"}")
+        if "hysteresis_counts" in body and "points" in body:
+            hysteresis = body["hysteresis_counts"]
+        if isinstance(hysteresis, bool) or not isinstance(hysteresis, (int, float)) \
+                or hysteresis != int(hysteresis) or not 1 <= hysteresis <= HYSTERESIS_MAX:
+            raise ValueError(f"hysteresis_counts must be a whole number from 1 to {HYSTERESIS_MAX}")
+        return {"curve": curve, "direction": direction, "hysteresis_counts": int(hysteresis)}
+
+    def put_calibration(self, cid: str, body: Any) -> dict:
+        """Save a knob's calibration to the box overlay and apply it live."""
+        control = self._knob(cid)
+        body = body if isinstance(body, dict) else {}
+        if isinstance(control, AnalogSelector):
+            entry: dict = {"thresholds": self._selector_thresholds(control, body)}
+        else:
+            entry = self._pot_entry(control, body)
+        paths = self._require_paths()
+        with self._knob_lock:
+            boxconfig.write_overlay(paths, self.variant_name, {"controls": {cid: entry}})
+            self._apply_knob(control, entry)
+        log.info("%s calibrated from the web page: %s", cid, entry)
+        return self._knob_doc(control, (self._overlay().get("controls") or {}), self._states())
+
+    def delete_calibration(self, cid: str) -> dict:
+        """Drop the box's calibration for a knob: back to the shipped one, live."""
+        control = self._knob(cid)
+        paths = self._require_paths()
+        with self._knob_lock:
+            boxconfig.write_overlay(paths, self.variant_name, {"controls": {cid: None}})
+            self._apply_knob(control, None)
+        log.info("%s back to the shipped calibration", cid)
+        return self._knob_doc(control, (self._overlay().get("controls") or {}), self._states())
+
+    def _require_paths(self) -> Any:
+        if self.box_paths is None:
+            raise Unavailable("this radio has no box config directory, so calibrations can't be saved")
+        return self.box_paths
+
+    def _apply_knob(self, control: Any, entry: dict | None) -> None:
+        """Make the running panel match the overlay just written."""
+        hook = self.on_overlay_saved
+        reload = self.reload_variant
+        if hook is not None or reload is not None:
+            try:
+                hook(self.variant_name) if hook is not None else reload()
+                return
+            except Exception:
+                log.exception("re-applying the overlay failed; respeccing %s directly", control.id)
+        spec = dict(self._shipped_spec(control.id))
+        spec.update(entry or {})
+        control.respec_from_spec(spec)
+
+    def _shipped_spec(self, cid: str) -> dict:
+        """The release's own spec for a control (never the overlay): the
+        release's descriptor, else the file the running variant was loaded
+        from - ``actions.variant.controls`` already has the overlay in it."""
+        from ..variant import load_variant
+        sources = []
+        if self.box_paths is not None:
+            sources.append(lambda: self.box_paths.shipped_variant(self.variant_name))
+        sources.append(lambda: self.actions.variant.path)
+        for source in sources:
+            try:
+                path = source()
+                if path is not None and Path(path).exists():
+                    controls = load_variant(path).controls
+                    return next((c for c in controls if c.get("id") == cid), {})
+            except Exception:
+                log.debug("could not read a shipped descriptor", exc_info=True)
+        log.warning("no shipped descriptor for %s; %s goes back to the defaults", self.variant_name, cid)
+        return {}
+
+    # -- health -------------------------------------------------------------
+
+    def health(self) -> tuple[int, dict]:
+        """``GET /api/health`` (docs/ota-format.md): haslerd/health.py's report."""
+        try:
+            from .. import health
+        except ImportError:
+            return 503, {"ok": False, "error": "health report not installed"}
+        return 200, health.health_report(self)
+
     # -- browse -----------------------------------------------------------
 
     def browse_doc(self) -> dict:
@@ -660,6 +960,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._json(400, {"ok": False, "errors": exc.errors, "error": str(exc)})
             except (ValueError, json.JSONDecodeError) as exc:
                 self._json(400, {"ok": False, "errors": [], "error": str(exc)})
+            except Unavailable as exc:
+                self._json(503, {"ok": False, "errors": [], "error": str(exc)})
             except Exception as exc:
                 log.exception("web request failed: %s %s", self.command, self.path)
                 self._json(500, {"ok": False, "errors": [], "error": str(exc) or type(exc).__name__})
@@ -724,6 +1026,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._font(url.path[len("/fonts/"):]))
             elif url.path == "/api/settings":
                 self._guard(lambda: self._json(200, app.settings(self.headers.get("Host"))))
+            elif url.path == "/api/knobs":
+                self._guard(lambda: self._json(200, app.knobs()))
+            elif (m := KNOB_ID.match(url.path)) and m.group(2) == "sample":
+                n = parse_qs(url.query).get("n", ["15"])[0]
+                self._guard(lambda: self._json(200, app.knob_sample(m.group(1), n)))
+            elif url.path == "/api/health":
+                self._guard(lambda: self._json(*app.health()))
             elif url.path == "/api/browse":
                 self._guard(lambda: self._json(200, app.browse_doc()))
             elif url.path == "/api/browse/radio":
@@ -752,6 +1061,9 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif path == "/api/settings":
                 self._guard(lambda: self._json(
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
+            elif (m := KNOB_ID.match(path)) and m.group(2) == "calibration":
+                self._guard(lambda: self._json(
+                    200, {"ok": True, **app.put_calibration(m.group(1), self._body())}))
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -788,6 +1100,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.reset()}))
             elif path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_in(self._body())}))
+            elif (m := KNOB_ID.match(path)) and m.group(2) == "fit":
+                self._guard(lambda: self._json(200, {"ok": True, **app.knob_fit(m.group(1), self._body())}))
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -798,8 +1112,11 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
         def do_DELETE(self) -> None:
             if self._extra("DELETE"):
                 return
-            if urlparse(self.path).path == "/api/ytm/account":
+            path = urlparse(self.path).path
+            if path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_out()}))
+            elif (m := KNOB_ID.match(path)) and m.group(2) == "calibration":
+                self._guard(lambda: self._json(200, {"ok": True, **app.delete_calibration(m.group(1))}))
             else:
                 self._send(404, b"not found", "text/plain")
 

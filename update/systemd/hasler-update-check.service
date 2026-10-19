@@ -1,0 +1,29 @@
+[Unit]
+Description=Hasler: look for a signed update and stage it (unprivileged)
+Documentation=file:///opt/hasler/current/docs/ota.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=hasler-update
+Group=hasler-update
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-update check --stage
+Nice=10
+IOSchedulingClass=idle
+# Only its own state dir is writable; it never needs more.
+StateDirectory=hasler-update
+StateDirectoryMode=0755
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+LockPersonality=yes
+MemoryDenyWriteExecute=yes

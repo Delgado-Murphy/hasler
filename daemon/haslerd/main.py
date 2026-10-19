@@ -4,12 +4,21 @@ Runs under systemd with a watchdog. The loop is deliberately dull: everything
 interesting lives in the control primitives and the action table, both of which
 are tested without hardware.
 
-    haslerd --variant config/variants/hasler-hm.yaml
+    haslerd                       # /etc/hasler/box.yaml names the variant
+    haslerd --variant hasler-hm   # before box.yaml exists (the bench box)
+
+Configuration (docs/ota.md section 1): with /etc/hasler/box.yaml present the
+variant comes from its ``variant:`` and haslerd's settings are the code
+defaults with box.yaml's override blocks on top; the descriptor gets this
+box's calibration overlay (/etc/hasler/variant.d). Without box.yaml the old
+``--variant`` / ``--config`` files are read exactly as before (overlay still
+applied if one exists), so an unmigrated box is unaffected.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
 import signal
@@ -23,6 +32,7 @@ from typing import Callable
 
 import yaml
 
+from . import boxconfig
 from .actions import Actions
 from .ha.rest import HomeAssistant
 from .lamp.contract import BoxState, LampDriver, Look
@@ -55,7 +65,7 @@ from .net import Connectivity, tcp_probe
 from .player.base import FakePlayer, Preset
 from .player.moode import MoodeConfig, MoodePlayer
 from .state import StateStore
-from .variant import Panel, load_variant
+from .variant import Panel, Variant, load_variant
 
 log = logging.getLogger("haslerd")
 
@@ -396,11 +406,83 @@ def moode_config(config: dict, settings: dict) -> MoodeConfig:
     return MoodeConfig(**spec)
 
 
-def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | None, WebApp]:
-    variant = load_variant(args.variant)
+DEFAULT_VARIANT = "hasler-hm"
+
+
+def box_paths(args) -> boxconfig.Paths:
+    """Paths from the environment (HASLER_ETC/STATE/RELEASE), then --etc/--state."""
+    paths = boxconfig.Paths.from_env()
+    if getattr(args, "etc", None):
+        paths = dataclasses.replace(paths, etc=Path(args.etc))
+    if getattr(args, "state", None):
+        paths = dataclasses.replace(paths, state=Path(args.state))
+    return paths
+
+
+def variant_file(arg: str | None, paths: boxconfig.Paths) -> Path:
+    """``--variant``: a descriptor path, or a bare name the release ships."""
+    if not arg:
+        return paths.shipped_variant(DEFAULT_VARIANT)
+    if "/" not in arg and not arg.endswith((".yaml", ".yml")):
+        return paths.shipped_variant(arg)
+    return Path(arg)
+
+
+def load_config(args, paths: boxconfig.Paths) -> tuple[Variant, dict]:
+    """The effective variant and haslerd's settings (see the module docstring)."""
+    box = boxconfig.load_box_config(paths)
+    if box:
+        name = box.get("variant") or variant_file(args.variant, paths).stem
+        variant = boxconfig.load_effective_variant(paths, name)
+        config = boxconfig.haslerd_settings(box)
+        if not args.fake:
+            config.setdefault("state_file", str(paths.state / "state.json"))
+            try:     # secrets go here from now on (boxconfig.secret_file)
+                paths.secrets.mkdir(mode=0o700, parents=True, exist_ok=True)
+            except OSError:
+                log.warning("cannot create %s; secrets stay beside the state", paths.secrets)
+        log.info("config: %s, variant %s%s", paths.box_file, name,
+                 f" + {variant.overlay_path}" if variant.overlay_path else "")
+        return variant, config
+    variant = boxconfig.overlay_variant(paths, load_variant(variant_file(args.variant, paths)))
     config = {}
-    if args.config and Path(args.config).exists():
-        config = yaml.safe_load(Path(args.config).read_text()) or {}
+    legacy = Path(args.config) if args.config else paths.release / "config" / "haslerd.yaml"
+    if legacy.exists():
+        config = yaml.safe_load(legacy.read_text()) or {}
+    if getattr(args, "state", None) and not args.fake:
+        config.setdefault("state_file", str(paths.state / "state.json"))
+    log.info("config: %s (no %s yet), variant %s", legacy, paths.box_file, variant.path)
+    return variant, config
+
+
+def apply_overlay(
+    panel: Panel | None, paths: boxconfig.Paths, variant_name: str, actions: Actions | None = None
+) -> Variant:
+    """Re-read this box's calibration overlay and apply it to the running panel.
+
+    The knob page calls this (as ``app.reload_variant()``) after
+    ``boxconfig.write_overlay``: pots pick up their new curve / range /
+    hysteresis at the next poll, without a restart (``Panel.apply_specs``).
+    With ``actions`` its variant's controls and io follow too; its key table
+    and presets (the key page's) are left alone. Raises ValueError for an
+    overlay that doesn't fit the descriptor - nothing is changed then. io
+    changes (MCP address, lamp palette) still need a restart.
+    """
+    variant = boxconfig.load_effective_variant(paths, variant_name)
+    if panel is not None:
+        changed = panel.apply_specs(variant.controls)
+        if changed:
+            log.info("calibration applied live: %s", ", ".join(changed))
+    if actions is not None:
+        actions.variant.controls = variant.controls
+        actions.variant.io = variant.io
+        actions.variant.overlay_path = variant.overlay_path
+    return variant
+
+
+def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | None, WebApp]:
+    paths = box_paths(args)
+    variant, config = load_config(args, paths)
 
     panel = Panel.from_variant(variant, fake=args.fake)
 
@@ -427,7 +509,7 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     ha = None if HaApi is not None else yaml_ha(config)
 
     actions = Actions(variant, player, ha=ha, state=state)
-    web, app = build_web(config, actions, panel, state, ha is not None)
+    web, app = build_web(config, actions, panel, state, ha is not None, paths=paths)
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))
@@ -496,7 +578,8 @@ def build_mono(state_dir: Path | None) -> MonoSwitch | None:
 
 
 def build_web(
-    config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool
+    config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool,
+    paths: boxconfig.Paths | None = None,
 ) -> tuple[WebServer | None, WebApp]:
     """The key page, with the owner's saved layout laid over the descriptor.
 
@@ -528,6 +611,12 @@ def build_web(
         mono=build_mono(state_dir),
     )
     app.ha_api = ha_api
+    # For the knob page: where the overlay lives, and how to apply a new one.
+    app.box_paths = paths
+    app.reload_variant = (
+        (lambda: apply_overlay(panel, paths, actions.variant.name, actions=actions))
+        if paths is not None else None
+    )
     if ha_api is not None:
         # clear-missing rewrites keys.yaml: same file, same lock as the page
         ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
@@ -615,9 +704,11 @@ def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="haslerd", description=__doc__.splitlines()[0])
-    here = Path(__file__).resolve().parents[2]
-    ap.add_argument("--variant", default=str(here / "config/variants/hasler-hm.yaml"))
-    ap.add_argument("--config", default=str(here / "config/haslerd.yaml"))
+    ap.add_argument("--variant", help="descriptor path or shipped name (ignored once box.yaml names one)")
+    ap.add_argument("--config", help="legacy haslerd.yaml, read only while there is no box.yaml "
+                    "(default: config/haslerd.yaml in the release)")
+    ap.add_argument("--etc", help="box config directory (default /etc/hasler, or $HASLER_ETC)")
+    ap.add_argument("--state", help="state directory (default /var/lib/haslerd, or $HASLER_STATE)")
     ap.add_argument("--fake", action="store_true", help="in-memory panel and player")
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)

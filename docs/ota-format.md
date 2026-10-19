@@ -119,3 +119,27 @@ A box accepts a new keyring only if a root key verifies it and its
 
 `idle` = safe to update now (standby, nothing played for >= 10 min, no phone
 casting). haslerd builds this in `haslerd/health.py` (`health_report(...)`).
+
+## Amendments from the build (2026-10-20)
+
+- `release.json` also carries `files_sha256` (the hash of the tarball's
+  `files.sha256`) so root can verify a staged tree without re-extracting, and
+  optionally `bundles_python` (false in v1: venvs use trixie's python3.13).
+- The in-tarball `manifest.json` is `release.json` without `artifacts`;
+  `files.sha256` lists every file except itself, mode in octal, symlinks
+  listed but not hashed.
+- Signature namespaces: `hasler-release` (release.json), `hasler-keyring`
+  (keyring.json), `hasler-channel` (channel indexes).
+- The keyring is served at `<base>/keyring.json(.sig)` next to `channels/`.
+- `seq` = (major*10000 + minor*100 + patch)*100 + rc number, 99 for a final.
+- `app/` holds `haslerd/` beside `config/{variants,catalog,stations,...}`, and
+  `hasler_update/`; migrations ship inside `app/haslerd/migrations` (and as a
+  top-level copy).
+- `integration/` names starting with `hasler-update` are reserved for the
+  updater itself and are installed only when a release commits.
+- `selftest.py` gets `--state` as well as `--etc`.
+- `state.json` also has `step`, `to_seq`, `baseline`, `integrated`,
+  `migrated`, `reason`, `manual`, `failed`; the unprivileged side keeps
+  `/var/lib/hasler-update/status.json`.
+- Key-page buttons start `hasler-update-apply@<seq|rollback|rollback-X.Y.Z>.service`,
+  allowed by a polkit rule (not sudoers: a `*` there also matches spaces).

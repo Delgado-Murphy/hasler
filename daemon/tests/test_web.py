@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 
 import pytest
+import yaml
 from conftest import VARIANTS
 
 from haslerd.actions import Actions
@@ -174,6 +175,7 @@ class TestPersistence:
         key(doc, "k2")["tap"] = {"do": "cycle_source"}
         doc["presets"][2]["name"] = "Radio Tres"
         app.save(doc)
+        assert yaml.safe_load(app.keys_file.read_text())["schema"] == 1   # kept for migrations
 
         # A fresh daemon: descriptor first, then the overlay on top.
         variant = load_variant(VARIANTS / "hasler-hm.yaml")

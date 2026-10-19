@@ -41,7 +41,8 @@ search past the 1.5 s budget. Measured on the Pi 4: 0.4-0.75 s per search.
 
 Signing in (the owner's account - Liked songs, private playlists): the key page
 takes request headers copied from a signed-in desktop browser, or just the
-Cookie header. Two files are written to the state directory, both 0600:
+Cookie header. Two files are written to the secrets directory (``<state>/secrets``,
+0700; the state directory itself on a box from before it), both 0600:
 
 * ``ytm-browser.json`` - ytmusicapi "browser" auth (its ``setup()`` output).
 * ``ytm-cookies.txt`` - the same cookies in Netscape format for yt-dlp, so
@@ -64,6 +65,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
+
+from ...boxconfig import secret_file
 
 log = logging.getLogger(__name__)
 
@@ -117,12 +120,12 @@ class YtmCatalog:
 
     @property
     def browser_file(self) -> Path | None:
-        return self.state_dir / BROWSER_FILE if self.state_dir else None
+        return secret_file(self.state_dir, BROWSER_FILE) if self.state_dir else None
 
     @property
     def cookies_file(self) -> Path | None:
         """Netscape cookies for yt-dlp. ytm.py checks it exists before each use."""
-        return self.state_dir / COOKIES_FILE if self.state_dir else None
+        return secret_file(self.state_dir, COOKIES_FILE) if self.state_dir else None
 
     @property
     def signed_in(self) -> bool:
@@ -527,7 +530,7 @@ def _netscape_cookies(pairs: dict[str, str]) -> str:
 
 def _write_private(path: Path, text: str) -> None:
     """Write ``path`` atomically with mode 0600 (mkstemp creates files 0600)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}-")
     try:
         with os.fdopen(fd, "w") as fh:

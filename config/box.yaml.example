@@ -1,0 +1,109 @@
+# /etc/hasler/box.yaml - this Hasler's own settings (docs/ota.md section 1).
+#
+# A release (code, the shipped variant descriptors, defaults) is replaced
+# whole by an update; this file is never touched by one. Migration 001 writes
+# it on a box that was installed from the old rsync tree; on a new box the
+# installer does. Keep it short: list only what differs from the defaults -
+# every haslerd setting left out takes the code's default, so a later
+# release's better default reaches you.
+#
+# Precedence (later wins): code defaults < shipped variant < variant.d overlay
+# < this file < the key page's settings (/var/lib/haslerd) < secrets.
+# Dicts are deep-merged, lists replaced whole.
+
+schema: 1                 # of this file; a release that changes it ships a migration
+
+# Which cabinet this is: config/variants/<variant>.yaml in the release. The
+# box's own calibration lives in /etc/hasler/variant.d/<variant>.yaml (pot
+# curves, hysteresis, range, end switch, MCP address, lamp palette), written by
+# the key page's knob calibration; see "The calibration overlay" below.
+variant: hasler-hm
+
+# -- updates (read by the updater, not by haslerd) ----------------------------
+
+channel: stable           # bench (the makers' own box) | beta | stable
+update_mode: ask          # auto: patch/minor at night in standby | ask: a press on the radio | off
+box_id: 00000000-0000-4000-8000-000000000000   # random UUID, made once; names the box in rings and check-ins
+checkin: false            # true: one daily, anonymous {box_id, variant, version, channel, result, health}
+metered: false            # true: never download in the background (phone hotspot, capped plans)
+
+# Written by `python -m haslerd.migrations --apply`: ids already applied here.
+# Don't edit.
+# migrations: [001_from_rsync_tree]
+
+# -- haslerd overrides --------------------------------------------------------
+# Same blocks the old config/haslerd.yaml had. Uncomment only what differs.
+
+# moode:
+#   mpd_host: localhost
+#   mpd_port: 6600
+#   # The HARDWARE mixer (moodeutl -q "select value from cfg_system where
+#   # param='amixname'"): one knob then controls Bluetooth and AirPlay too.
+#   mixer: Digital
+#   # ALSA card id or index (cat /proc/asound/cards). The Amp4 Pro's id is
+#   # sndrpihifiberry and doesn't move when HDMI cards shift the numbering.
+#   card: sndrpihifiberry
+#   # Mixer ceiling, % of full scale. The vintage cone takes 1-3 W, the amp
+#   # gives ~10 W: raise slowly, by ear, then stop. The key page's saved
+#   # volume_limit wins over this.
+#   volume_limit: 70
+#   volume_floor: 0          # mixer % at the knob's first step (Digital is linear in dB)
+#   tone_commands: {}        # per tone wheel: a command with {gain} / {value} / {control}
+#   source_flags: {...}      # moOde renderer flags (defaults in player/moode.py)
+#   renderer_units: {...}
+#   moodeutl: moodeutl
+#   amixer: amixer
+#   bluetoothctl: bluetoothctl
+#   spotify:                 # go-librespot's local API (Spotify Premium)
+#     enabled: true
+#     base_url: http://127.0.0.1:3678
+#     timeout: 3.0
+#     status_timeout: 0.5
+#   ytm:                     # YouTube Music via yt-dlp, proxied to MPD
+#     enabled: true
+#     port: 8099             # keep fixed - radio tells a ytm track by it
+#     ytdlp: yt-dlp
+#     # Netscape cookies.txt for private playlists. Empty: the key page's
+#     # sign-in (/var/lib/haslerd/secrets/ytm-cookies.txt), else public only.
+#     cookies: ""
+#     catalog: true          # ytmusicapi search, names, endless radio
+
+# web:                       # the key page, http://hasler.local:8080 (LAN, no login)
+#   enabled: true            # false: no page; a saved key layout still applies
+#   host: 0.0.0.0
+#   port: 8080
+
+# connectivity:              # the internet probe behind the lamp's offline look
+#   host: 1.1.1.1
+#   port: 53
+#   timeout_s: 2.0
+#   interval_s: 10.0
+
+# Rarely needed: both default to /var/lib/haslerd (or $HASLER_STATE / --state).
+# state_file: /var/lib/haslerd/state.json
+# keys_file: /var/lib/haslerd/keys.yaml
+
+# Not here: the Home Assistant token. Connect HA from the key page; it is kept
+# in /var/lib/haslerd/secrets/ha.json (0600). A home_assistant: {url, token}
+# block still works but puts a password in a world-readable file.
+
+# -- The calibration overlay: /etc/hasler/variant.d/<variant>.yaml ------------
+# Not part of this file - shown here so every key is documented in one place.
+# Entries are keyed by the shipped descriptor's control ids; an id it doesn't
+# have is an error. Only what differs from the release:
+#
+#   schema: 1
+#   controls:
+#     volume:
+#       curve: [[25, 100], [1879, 87.5], [10882, 75], [26150, 0]]
+#       hysteresis_counts: 30
+#     tone:
+#       range: [0, 25500]
+#       taper: linear
+#       end_switch: {off_hold_ms: 5000}
+#   io:
+#     digital: {addr: 0x27}
+#     lamp:
+#       palette: {ember: [1.0, 0.10, 0.0]}
+#       balance: {red: 1.0, green: 1.0, blue: 1.0}
+#       min_duty: {red: 0.002, green: 0.0005, blue: 0.0005}

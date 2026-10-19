@@ -1,0 +1,14 @@
+[Unit]
+Description=Hasler: finish judging an update trial after a reboot
+After=haslerd.service mpd.service network-online.target
+Wants=haslerd.service
+ConditionPathExists=/var/lib/hasler-apply/state.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-update resume
+TimeoutStartSec=10min
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Hasler: update boot counter (rolls a trial back at the 2nd boot)
+# After the normal early boot (filesystems, udev), before haslerd starts:
+# in a trial it counts the boot, undoes a switch a power cut interrupted, and
+# at the 2nd boot in trial puts the previous release back first.
+Before=haslerd.service hasler-update-resume.service
+ConditionPathExists=/var/lib/hasler-apply/state.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-update boot
+RemainAfterExit=yes
+TimeoutStartSec=5min
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=haslerd.service

@@ -32,7 +32,7 @@ moOde and Debian are not updated by this mechanism.
 | `/opt/hasler/current` -> one release | atomic symlink swap; the previous release is kept | the updater |
 | `/etc/hasler/box.yaml` | `schema`, `variant`, channel, update mode, and **only overrides** of defaults (mixer, card, volume floor/limit, tone commands...) | owner / migration |
 | `/etc/hasler/variant.d/<variant>.yaml` | **calibration overlay** keyed by control id: pot curves, hysteresis, MCP address, lamp palette/balance | owner (today these live in the shipped descriptor - must move) |
-| `/etc/hasler/keys/` | release-signing public key + keyring | install only (root, 0444) |
+| `/etc/hasler/trust/` | release-signing public key + keyring | install only (root, 0444) |
 | `/var/lib/haslerd/` | web-written config (`keys.yaml`, `settings.json`, both with `schema`), state (`state.json`, caches) | haslerd |
 | `/var/lib/haslerd/secrets/` (0700) | HA token, YTM cookies, account files | haslerd; never in releases, logs or API responses |
 | moOde DB, Wi-Fi, Bluetooth, go-librespot credentials | untouched by updates; only backed up | moOde / owner |
@@ -101,7 +101,7 @@ only if the fleet or team grows.
 On the box: an unprivileged `hasler-update` user fetches, verifies (signature,
 keyring, expiry, seq, compatibility), and extracts safely (no absolute paths,
 `..`, escaping links, devices or setuid) into a staging dir. A root oneshot
-`hasler-apply@<seq>` re-verifies the staged tree itself and is the only thing
+`hasler-update-apply@<seq>` re-verifies the staged tree itself and is the only thing
 that writes to `/opt/hasler` and system paths. The daemon can no longer write
 the code it runs (today it can: the code lives in `/home/pi`).
 
