@@ -53,7 +53,7 @@ idempotent `migrations/NNN_*.py`, run against a snapshot, before the switch.
   tarball (reproducible: sorted, fixed owner/mtime), `files.sha256`, an SBOM
   and an **unsigned** `release.json`.
 - **Signing (offline):** a maintainer downloads CI's output, re-checks the
-  hashes, signs `release.json` with an ed25519 (minisign-format) key held on a
+  hashes, signs `release.json` with an `ed25519-sk` key (OpenSSH signature) held on a
   **YubiKey**, uploads the signature. A CI-held key would make one GitHub
   compromise a fleet compromise.
 - **RC path:** `vX.Y.Z-rc.N` goes only to the `bench` channel (the owner's
@@ -65,13 +65,20 @@ idempotent `migrations/NNN_*.py`, run against a snapshot, before the switch.
 | Threat | Defence |
 |---|---|
 | tampered download, MITM, bad mirror | signed manifest; every artifact and file hash-checked; HTTPS is transport only |
-| freeze (updates withheld) | manifest `expires` (~120 d); box shows "updates stale", never installs expired |
-| rollback attack (old vulnerable release) | monotonic `seq` stored root-owned on the box; network downgrades refused unless signed as a downgrade |
-| stolen release key | offline **root key** signs a keyring of 1-2 release keys (with seq + expiry); rotate/revoke by a new keyring |
-| compromised laptop / CI | YubiKey touch to sign; maintainer compares CI hashes |
+| freeze (updates withheld) | the channel index is re-signed daily by a CI **timestamp key** and expires after 14 days; manifests expire too; box shows "no fresh update info", never installs expired |
+| rollback attack (old vulnerable release) | monotonic `seq` stored root-owned on the box; network downgrades refused unless shipped as a new, higher-`seq` release |
+| stolen release key | two offline **root** YubiKeys (2-of-2) sign a `keyring.json` of release + timestamp keys with validity windows; rotate/revoke by a new keyring |
+| stolen timestamp key (lives in CI) | worst case a freeze, never new code - it can only sign `{seq, manifest sha256, expires}` |
+| compromised laptop / CI workflow | release key on a YubiKey (touch to sign); before signing: verify the build attestation, rebuild locally and compare SHA-256, diff the install destinations against the last release |
 | dependency supply chain | wheels + binaries pinned, hashed, bundled; boxes never hit PyPI during an update |
-| LAN attacker on the key page | the page can only *request* install/rollback; it takes a **press on the radio** to confirm (also gate today's unauthenticated `/api/wifi`, `/api/reset`) |
-| physical access | out of scope; secrets wiped on factory reset |
+| LAN attacker / malicious web page (CSRF, DNS rebinding) | every POST checks `Origin`/`Host` and wants JSON; install/rollback need a **press on the radio** within 30 s (also gate today's unauthenticated `/api/wifi`, `/api/reset`); a LAN PIN later |
+| physical access | out of scope; the box holds only public keys; secrets wiped on factory reset |
+
+**Signing tool:** OpenSSH signatures (`ssh-keygen -Y sign -n hasler-release`)
+with `ed25519-sk` keys on YubiKeys - touch to sign, verified on the box with
+the stock openssh-client, the namespace stops reuse elsewhere. Keys on the box:
+`/etc/hasler/trust/` (root pubkeys + keyring, root 0444). Move to python-tuf
+only if the fleet or team grows.
 
 On the box: an unprivileged `hasler-update` user fetches, verifies (signature,
 keyring, expiry, seq, compatibility), and extracts safely (no absolute paths,
@@ -190,5 +197,5 @@ environment with you as required reviewer for the publish job (on the
 GitHub Free plan required reviewers only work on public repos - fine, since v1
 signs and publishes from your laptop anyway); arm64 builds on
 `ubuntu-24.04-arm` (never the bench Pi - it is the test target); two YubiKeys
-(release key + a backup), and an offline root key kept apart (paper/age
+(release key + root key; ideally three: two roots kept apart, one release), plus a paper/age
 backup in two places).
