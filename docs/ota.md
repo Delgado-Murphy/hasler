@@ -6,6 +6,12 @@ good version on its own if a release breaks something. Planned 2026-10-20 from
 four reviews (config inventory, update + failsafe, security, release + fleet).
 Status: **plan**, nothing built yet.
 
+**Owner decisions (2026-10-20):** updates install automatically for patch/minor
+releases (at night, in standby) and ask - with a press on the radio - for major
+or migration releases; the daily fleet check-in is opt-in, asked at setup;
+remote help via Tailscale is opt-in and off by default; **the release signing
+key lives in GitHub for now** (see "Signing for v1" below), YubiKeys later.
+
 ## The shape in one paragraph
 
 CI builds a release tarball (code + a wheelhouse + a bundled Python), a
@@ -52,7 +58,8 @@ idempotent `migrations/NNN_*.py`, run against a snapshot, before the switch.
   hash-locked deps (`--require-hashes`), bundles a pinned Python, writes the
   tarball (reproducible: sorted, fixed owner/mtime), `files.sha256`, an SBOM
   and an **unsigned** `release.json`.
-- **Signing (offline):** a maintainer downloads CI's output, re-checks the
+- **Signing:** v1 signs in GitHub (see §3 "Signing for v1"). The later,
+  stronger path: a maintainer downloads CI's output, re-checks the
   hashes, signs `release.json` with an `ed25519-sk` key (OpenSSH signature) held on a
   **YubiKey**, uploads the signature. A CI-held key would make one GitHub
   compromise a fleet compromise.
@@ -61,6 +68,17 @@ idempotent `migrations/NNN_*.py`, run against a snapshot, before the switch.
   promoted by re-signing the channel index - never rebuilt.
 
 ## 3. Security
+
+**Signing for v1 (key in GitHub).** The release key is an ed25519 OpenSSH key
+stored only as a secret of a `sign` environment in the **public**
+`hasler-releases` repo (required reviewer = the owner works on public repos on
+the Free plan). The signing workflow is separate from the build, uses no
+third-party actions (only `ssh-keygen` and `curl`), takes the artifact's
+SHA-256 as input, re-downloads and checks it and its build attestation, and
+signs `release.json`. The **root key never goes to GitHub** - an encrypted file
+plus a paper backup, used only to sign `keyring.json`. A leaked release key is
+revoked and replaced by a new keyring, with no reinstall on the boxes; moving
+the release key to a YubiKey later is the same one keyring change.
 
 | Threat | Defence |
 |---|---|
