@@ -104,6 +104,22 @@ def test_boot_loop_rolls_back_at_second_boot(installed_v1: World):
     assert "# 1.0.0" in w.unit_text()
 
 
+def test_a_haslerd_restart_is_not_a_boot(installed_v1: World, monkeypatch):
+    """Found on the bench: restarting haslerd mid-trial also started the boot
+    unit, which counted a 'boot' and rolled the trial back. Same boot id: no-op."""
+    w = installed_v1
+    w.publish("1.1.0", 2)
+    w.checker().stage()
+    monkeypatch.setenv("HASLER_BOOT_ID", "boot-A")
+    with pytest.raises(PowerCut):
+        w.applier(crash_at="restarted").apply()
+    assert w.state()["boot_id"] == "boot-A"
+    assert w.applier().boot() == "same boot: nothing to count"
+    assert w.state()["phase"] == "trial" and w.current() == "1.1.0"
+    monkeypatch.setenv("HASLER_BOOT_ID", "boot-B")      # a real reboot
+    assert w.applier().boot() == "trial boot 1"
+
+
 def test_on_failure_during_probation(installed_v1: World):
     w = installed_v1
     w.publish("1.1.0", 2)

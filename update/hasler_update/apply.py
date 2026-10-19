@@ -201,6 +201,18 @@ def link_target(link: Path) -> Path | None:
     return (link.parent / os.readlink(link)).resolve()
 
 
+def current_boot_id() -> str | None:
+    """The kernel's id for this boot (changes on every boot, not on restarts).
+    ``HASLER_BOOT_ID`` overrides it in tests."""
+    env = os.environ.get("HASLER_BOOT_ID")
+    if env:
+        return env
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip() or None
+    except OSError:
+        return None
+
+
 def keep_owners(work: Path, before: Path) -> None:
     """Give every file in ``work`` the owner its counterpart in ``before`` had;
     files a migration created get the owner of ``before/box.yaml`` (or of
@@ -491,7 +503,7 @@ class Applier:
         self.state.log("switch", **{"from": from_v, "to": to_v, "manual": manual})
         self.state.update(
             phase="trial", step="integrate", **{"from": from_v}, from_seq=cur.get("seq"), to=to_v,
-            to_seq=to_seq, boots=0, baseline=baseline, reason=None, manual=manual,
+            to_seq=to_seq, boots=0, boot_id=current_boot_id(), baseline=baseline, reason=None, manual=manual,
             prev_link=str(prev_link) if prev_link else None, integrated_prev=old_integrated,
             integrated=sorted(set(old_integrated) | set(integ.dests(items))), migrated=work is not None,
             deadline=iso(self.hooks.now() + 150),
@@ -689,7 +701,17 @@ class Applier:
     # --- boot, resume, OnFailure -----------------------------------------------------------------------
 
     def boot(self) -> str:
-        """Early in boot, before haslerd (hasler-update-boot.service)."""
+        """Early in boot, before haslerd (hasler-update-boot.service).
+
+        systemd can also start this unit when haslerd is merely *restarted*
+        (it is WantedBy=haslerd.service, and a unit whose condition skipped it
+        at boot doesn't stay active). A restart is not a boot: if the kernel's
+        boot id is the one the trial began under, return at once - without the
+        lock, which a running apply holds while it waits for haslerd's health.
+        """
+        st = self.state
+        if st["phase"] == "trial" and st["boot_id"] and st["boot_id"] == current_boot_id():
+            return "same boot: nothing to count"
         with self.locked() as _:
             self._settle()
             st = self.state

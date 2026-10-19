@@ -78,6 +78,7 @@ DEFAULT_STATE: dict = {
     "to": None,
     "to_seq": None,
     "boots": 0,
+    "boot_id": None,   # the kernel boot id a trial began under (a restart is not a boot)
     "deadline": None,
     "bad": [],
     "history": [],
