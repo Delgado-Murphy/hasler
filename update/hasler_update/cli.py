@@ -94,10 +94,13 @@ def main(argv: list[str] | None = None) -> int:
             name = args.name
             if re.fullmatch(r"[0-9]{1,9}", name):
                 print(ap_.apply(seq=int(name), now_=True))
+            # A go-back from the key page was confirmed with a key press on the
+            # radio: run it now, even with music playing. Deferring it to "idle"
+            # would quietly do nothing while the owner stands there (bench drill).
             elif name == "rollback":
-                print(ap_.rollback(None, force=False))
+                print(ap_.rollback(None, force=True))
             elif m := re.fullmatch(r"rollback-([0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?)", name):
-                print(ap_.rollback(m.group(1), force=False))
+                print(ap_.rollback(m.group(1), force=True))
             else:
                 print(f"unknown instance {name!r}", file=sys.stderr)
                 return 1
