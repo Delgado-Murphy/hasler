@@ -17,14 +17,16 @@ import socket
 import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
 from .actions import Actions
 from .ha.rest import HomeAssistant
-from .hw.gpio_lamp import GpioRgbController
-from .hw.powerctl import Lamp, PowerController
+from .lamp.contract import BoxState, LampDriver, Look
+from .lamp.policy import look_for
 from .web import stations
 from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
 from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_limit_from
@@ -38,8 +40,19 @@ try:    # The curated Browse library; optional likewise.
     from .web.catalog import Catalog
 except ImportError:
     Catalog = None
-from .net import Connectivity
-from .player.base import FakePlayer
+try:    # The pilot lamp's engine; without it the radio runs dark.
+    from .lamp.engine import open_lamp
+except ImportError:
+    def open_lamp(spec: dict) -> LampDriver | None:
+        log.warning("lamp engine unavailable; no lamp")
+        return None
+
+try:    # Sunset..sunrise (and the page's fixed-hours mode) for the lamp.
+    from .lamp.night import night_mode_active
+except ImportError:
+    night_mode_active = None
+from .net import Connectivity, tcp_probe
+from .player.base import FakePlayer, Preset
 from .player.moode import MoodeConfig, MoodePlayer
 from .state import StateStore
 from .variant import Panel, load_variant
@@ -56,34 +69,283 @@ BOOT_SETTLE_S = 0.15
 RESUME_RETRY_S = 10.0
 RESUME_ATTEMPTS = 6
 
-SOURCE_TO_LAMP = {
-    "radio": "radio",
-    "bluetooth": "bluetooth",
-    "airplay": "airplay",
-    "spotify": "spotify",
-    "ytm": "ytm",
-    "dlna": "dlna",
-}
-
-# Sources that play happily with no internet; "offline" would be a lie for them.
-LOCAL_SOURCES = ("bluetooth",)
+# The lamp's clocks (docs/lamp.md).
+LOADING_POLL_S = 0.5    # "has the preset made a sound yet?", while loading
+LOADING_FAIL_S = 20.0   # no sound this long after a start: red pulses
+CAST_GRACE_S = 3.0      # blue stays this long after a phone lets go
+NIGHT_CHECK_S = 60.0    # sunset is not a thing to poll at 20 Hz
+BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest
 
 
-def lamp_state(standby: bool, online: bool, source: str, hotspot: bool = False) -> str:
-    """What the lamp should say. Pure, so the priority order is testable.
+def preset_sounding(player, preset: Preset) -> bool:
+    """Has ``preset`` started making sound? Our loading breath's end.
 
-    Standby wins over offline: a knob turned off means a quiet lamp, not a red
-    one flashing in the bedroom all night because the router is rebooting.
-    The hotspot outranks both: it means "I can't find your Wi-Fi - come and
-    tell me a new one", which is the one thing the owner has to act on.
+    The preset's source must be what the player reports as active (MPD
+    playing our URL for radio/ytm, go-librespot playing for spotify). For the
+    MPD sources that is not enough - MPD says "play" the moment it is told to,
+    while it is still connecting and buffering - so MPD's ``elapsed`` must
+    have moved too. Never raises: unsure reads as "not yet".
     """
-    if hotspot:
-        return "hotspot"
-    if standby:
-        return "standby"
-    if not online and source not in LOCAL_SOURCES:
-        return "offline"
-    return SOURCE_TO_LAMP.get(source, "radio")
+    try:
+        if player.current() != preset or player.active_source() != preset.source:
+            return False
+    except Exception:
+        return False
+    radio = (getattr(player, "sources", None) or {}).get("radio")
+    mpd = getattr(radio, "mpd", None)
+    if preset.source not in ("radio", "ytm") or not callable(mpd):
+        return True
+    try:
+        status = mpd().status()
+        return status.get("state") == "play" and float(status.get("elapsed") or 0) > 0
+    except Exception:
+        log.debug("MPD status for the loading lamp failed", exc_info=True)
+        return False
+
+
+def power_switch(panel: Panel, actions: Actions):
+    """The end switch whose long off shuts the box down (for the countdown)."""
+    for control in getattr(panel, "controls", ()):
+        if getattr(control, "kind", None) != "end_switch":
+            continue
+        spec = actions.variant.actions.get(f"{control.id}.off_held") or {}
+        if spec.get("do") == "shutdown":
+            return control
+    return None
+
+
+class LampKeeper:
+    """Gathers a BoxState each tick and keeps the lamp engine told.
+
+    The engine draws on its own thread, so nothing here waits on it; this side
+    only calls ``show`` when the Look changes, ``set_night`` when night flips
+    and ``countdown`` while the power knob is held off. Actions' hooks land
+    here too, so a slow preset start or a shutdown is already showing before
+    the blocking call that follows.
+    """
+
+    def __init__(
+        self,
+        driver: LampDriver,
+        actions: Actions,
+        panel: Panel | None = None,
+        connectivity: Connectivity | None = None,
+        settings_file: Path | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        wall: Callable[[], datetime] = datetime.now,
+        night: Callable[[datetime, dict], bool] | None = None,
+        sounding: Callable[[object, Preset], bool] = preset_sounding,
+    ) -> None:
+        self.driver = driver
+        self.actions = actions
+        self.panel = panel
+        self.connectivity = connectivity
+        self.settings_file = settings_file
+        self.clock = clock
+        self.wall = wall
+        self.night_fn = night if night is not None else night_mode_active
+        self.sounding = sounding
+        self.state = BoxState(boot="daemon")
+        self.source = "radio"
+        self.look: Look | None = None
+        self._started = clock()
+        self._net_seen = False
+        self._resume_done = False
+        self._offline_since: float | None = None
+        self._loading: Preset | None = None
+        self._loading_since = 0.0
+        # Started, then silent for LOADING_FAIL_S: not "playing" whatever the
+        # player claims (MPD says "play" while it fails to connect).
+        self._silent: Preset | None = None
+        self._next_loading_poll = 0.0
+        self._cast_seen: float | None = None
+        self._next_source_poll = 0.0
+        self._next_night = 0.0
+        self._counting = False
+        self._settings: dict | None = None    # the page's last saved doc, if any
+        # A knob that reads off at power-up never counts down: only an off
+        # after boot() (see arm) is a hand asking for shutdown.
+        self._armed_at = float("inf")
+        self._switch = power_switch(panel, actions) if panel is not None else None
+        actions.on_reply = self.reply
+        actions.on_start = self.loading_started
+        actions.on_play_error = self.play_failed
+        actions.on_change = self.refresh
+
+    # -- hooks from Actions -----------------------------------------------
+
+    def reply(self, name: str) -> None:
+        try:
+            self.driver.reply(name)
+        except Exception:
+            log.debug("lamp reply failed", exc_info=True)
+
+    def loading_started(self, preset: Preset) -> None:
+        now = self.clock()
+        self._loading = preset
+        self._loading_since = now
+        self._silent = None
+        # Ours now: no blue grace for the phone we just took the audio from.
+        self._cast_seen = None
+        self.source = preset.source
+        self._next_loading_poll = now + LOADING_POLL_S
+        self.refresh()
+
+    def play_failed(self, _exc: Exception) -> None:
+        self._loading = None
+        self.refresh()
+
+    def arm(self) -> None:
+        """Boot has settled: from now on a knob turned off counts down."""
+        self._armed_at = self.clock()
+
+    def settings_changed(self, doc: dict) -> None:
+        """WebApp.lamp_listeners: location or night mode changed - look again now.
+
+        Runs on a web thread, so it only leaves the doc and moves the next
+        night check to the next tick; the main loop does the rest.
+        """
+        self._settings = dict(doc)
+        self._next_night = 0.0
+
+    def boot_done(self) -> None:
+        """The resume finished (or a human took over): warm-up is over."""
+        self._resume_done = True
+
+    # -- the tick ---------------------------------------------------------
+
+    def tick(self, now: float) -> None:
+        """Called from the main loop every LAMP_TICK_S. Never raises."""
+        try:
+            self._poll(now)
+            self._countdown(now)
+            self.refresh(now)
+        except Exception:
+            log.exception("lamp tick failed")
+
+    def _poll(self, now: float) -> None:
+        player = self.actions.player
+        if now >= self._next_source_poll:
+            self._next_source_poll = now + SOURCE_POLL_S
+            try:
+                self.source = player.active_source()
+            except Exception:
+                log.debug("could not read active source", exc_info=True)
+        if self._loading is not None and now >= self._next_loading_poll:
+            self._next_loading_poll = now + LOADING_POLL_S
+            if self.sounding(player, self._loading):
+                self.source = self._loading.source
+                self._loading = None
+            elif now - self._loading_since >= LOADING_FAIL_S:
+                log.warning("preset %s made no sound in %.0f s", self._loading.n, LOADING_FAIL_S)
+                self._silent, self._loading = self._loading, None
+                self.reply("fail")
+        conn = self.connectivity
+        if conn is not None:
+            if conn.online:
+                self._offline_since = None
+            elif self._offline_since is None:
+                self._offline_since = now
+        if now >= self._next_night:
+            self._next_night = now + NIGHT_CHECK_S
+            night = self._night()
+            if night != self.state.night:
+                log.info("lamp: %s", "night" if night else "day")
+                self.state.night = night
+                try:
+                    self.driver.set_night(night)
+                except Exception:
+                    log.debug("lamp set_night failed", exc_info=True)
+
+    def _night(self) -> bool:
+        if self.night_fn is None:
+            return False
+        try:
+            settings = self._settings
+            if settings is None or self.settings_file is not None:
+                settings = load_settings(self.settings_file)
+            return bool(self.night_fn(self.wall(), settings))
+        except Exception:
+            log.debug("night check failed", exc_info=True)
+            return self.state.night
+
+    def _countdown(self, now: float) -> None:
+        sw = self._switch
+        progress = None
+        if sw is not None and not self.actions.shutting_down and not sw.state():
+            off_at = getattr(sw, "_off_at", 0.0)
+            if off_at >= self._armed_at and not getattr(sw, "_off_held_fired", False):
+                progress = max(0.0, min(1.0, (now - off_at) / max(sw.off_hold_s, 1e-3)))
+        if progress is None and not self._counting:
+            return
+        self._counting = progress is not None
+        try:
+            self.driver.countdown(progress)
+        except Exception:
+            log.debug("lamp countdown failed", exc_info=True)
+
+    def boot_stage(self, now: float) -> str:
+        conn = self.connectivity
+        if not self._net_seen and conn is not None and conn.online:
+            self._net_seen = bool(getattr(conn, "seen_up", True))
+        if self._resume_done and self._net_seen or now - self._started >= BOOT_MAX_S:
+            return "done"
+        return "network" if self._net_seen else "daemon"
+
+    def gather(self, now: float) -> BoxState:
+        """The BoxState as of ``now`` (timers are this object's, flags Actions')."""
+        actions, player, state = self.actions, self.actions.player, self.state
+        phone = actions.phone_has_it(self.source)
+        if phone:
+            self._cast_seen = now
+        casting = self._cast_seen is not None and now - self._cast_seen < CAST_GRACE_S
+        paused = False
+        cast_paused = getattr(player, "cast_paused", None)
+        if casting and callable(cast_paused):
+            try:
+                paused = bool(cast_paused())
+            except Exception:
+                paused = False
+        try:
+            current = player.current()
+        except Exception:
+            current = None
+        conn = self.connectivity
+        state.boot = self.boot_stage(now)
+        state.standby = actions.standby
+        state.shutting_down = actions.shutting_down
+        state.hotspot = bool(conn is not None and conn.hotspot)
+        state.pairing = actions.pairing
+        state.casting = casting
+        state.cast_paused = paused
+        state.offline_s = 0.0 if self._offline_since is None else now - self._offline_since
+        state.loading = self._loading is not None
+        state.playing = (
+            not state.loading and current is not None and self.source == current.source
+            and current != self._silent
+        )
+        state.source = current.source if current is not None else self.source
+        state.panel_missing = bool(self.panel is not None and getattr(self.panel, "absent", False))
+        return state
+
+    def refresh(self, now: float | None = None) -> Look:
+        """Recompute the Look; tell the engine only if it changed."""
+        now = self.clock() if now is None else now
+        look, fade = look_for(self.gather(now))
+        if look != self.look:
+            log.debug("lamp %s -> %s (%.1f s)", self.look, look, fade)
+            self.look = look
+            try:
+                self.driver.show(look, fade)
+            except Exception:
+                log.debug("lamp show failed", exc_info=True)
+        return look
+
+    def close(self) -> None:
+        try:
+            self.driver.close(halt_dark=True)
+        except Exception:
+            log.debug("lamp close failed", exc_info=True)
 
 
 class Watchdog:
@@ -131,7 +393,7 @@ def moode_config(config: dict, settings: dict) -> MoodeConfig:
     return MoodeConfig(**spec)
 
 
-def build(args) -> tuple[Panel, Actions, Lamp | None, dict, WebServer | None, WebApp]:
+def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | None, WebApp]:
     variant = load_variant(args.variant)
     config = {}
     if args.config and Path(args.config).exists():
@@ -166,8 +428,6 @@ def build(args) -> tuple[Panel, Actions, Lamp | None, dict, WebServer | None, We
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))
-    if lamp is not None:
-        actions.on_play_error = lambda _exc: lamp.flash("error", time.monotonic())
     return panel, actions, lamp, config, web, app
 
 
@@ -312,39 +572,31 @@ class HaPublisher:
             log.debug("Home Assistant publish failed", exc_info=True)
 
 
-def open_lamp(spec: dict) -> Lamp | None:
-    """The pilot lamp from the descriptor's ``io.lamp`` block, or None.
-
-    ``backend: gpio`` drives a bare RGB LED on three Pi pins; ``powerctl`` (the
-    default, for descriptors that predate the choice) the HiFiBerry Power
-    Controller; ``none`` no lamp at all.
-    """
-    backend = spec.get("backend", "powerctl")
-    if backend == "none":
-        return None
-    if backend == "gpio":
-        controller = GpioRgbController(
-            pins=spec.get("pins"), common=spec.get("common", "cathode"), balance=spec.get("balance")
-        )
-    elif backend == "powerctl":
-        controller = PowerController()
-    else:
-        log.warning("unknown lamp backend %r; no lamp", backend)
-        return None
-    return Lamp(controller) if controller.available else None
-
-
 def build_connectivity(config: dict) -> Connectivity:
+    """The internet probe; ``seen_up`` turns True at the first probe that answers.
+
+    ``online`` starts optimistic, so the lamp's boot warm-up needs this to know
+    the network is really there.
+    """
     net = config.get("connectivity") or {}
-    return Connectivity(
-        host=net.get("host", "1.1.1.1"),
-        port=int(net.get("port", 53)),
-        interval_s=float(net.get("interval_s", 10.0)),
-        timeout_s=float(net.get("timeout_s", 2.0)),
+    host, port = net.get("host", "1.1.1.1"), int(net.get("port", 53))
+    timeout_s = float(net.get("timeout_s", 2.0))
+
+    def probe() -> bool:
+        up = tcp_probe(host, port, timeout_s)
+        if up:
+            conn.seen_up = True
+        return up
+
+    conn = Connectivity(
+        host=host, port=port, interval_s=float(net.get("interval_s", 10.0)),
+        timeout_s=timeout_s, probe=probe,
     )
+    conn.seen_up = False
+    return conn
 
 
-def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S) -> bool:
+def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet: bool = False) -> bool:
     """Restore what the box was doing; True if the remembered preset is playing.
 
     Order matters: load state, let the panel settle so a knob that is off at
@@ -355,7 +607,7 @@ def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S) -> boo
     while time.monotonic() < end:
         actions.dispatch_all(panel.poll(time.monotonic()))
         time.sleep(0.01)
-    return actions.resume_last()
+    return actions.resume_last(quiet=quiet)
 
 
 def main(argv=None) -> int:
@@ -372,9 +624,15 @@ def main(argv=None) -> int:
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
 
-    panel, actions, lamp, config, web, app = build(args)
+    panel, actions, driver, config, web, app = build(args)
     publisher = HaPublisher(app)
     connectivity = build_connectivity(config)
+    keeper = None
+    if driver is not None:
+        keeper = LampKeeper(driver, actions, panel, connectivity, getattr(app, "settings_file", None))
+        listeners = getattr(app, "lamp_listeners", None)
+        if listeners is not None:
+            listeners.append(keeper.settings_changed)
     log.info("haslerd up: %s, %d controls", actions.variant.name, len(panel.controls))
 
     running = True
@@ -396,10 +654,15 @@ def main(argv=None) -> int:
     next_source_poll = 0.0
     next_lamp_tick = 0.0
     source = "radio"
-    online = True
 
     try:
-        resumed = boot(panel, actions)
+        if keeper is not None:
+            keeper.tick(time.monotonic())     # warm-up breath before anything blocks
+        # Quiet: a failed first resume is retried below; the red pulses wait
+        # for the last attempt.
+        resumed = boot(panel, actions, quiet=True)
+        if keeper is not None:
+            keeper.arm()
         # A box that boots before its Wi-Fi fails to resume; retry for a
         # minute or so, until it works or someone presses a key.
         resume_attempts = 0 if resumed else 1
@@ -417,19 +680,28 @@ def main(argv=None) -> int:
 
             if 0 < resume_attempts < RESUME_ATTEMPTS and online and now >= next_resume:
                 next_resume = now + RESUME_RETRY_S
-                resume_attempts = 0 if actions.resume_last() else resume_attempts + 1
+                last = resume_attempts == RESUME_ATTEMPTS - 1
+                resume_attempts = 0 if actions.resume_last(quiet=not last) else resume_attempts + 1
+            if keeper is not None and not 0 < resume_attempts < RESUME_ATTEMPTS:
+                keeper.boot_done()
 
-            if now >= next_source_poll:
+            if keeper is not None:
+                source = keeper.source      # the lamp polls it, on its own clock
+            elif now >= next_source_poll:
                 next_source_poll = now + SOURCE_POLL_S
                 try:
                     source = actions.player.active_source()
                 except Exception:
                     log.debug("could not read active source", exc_info=True)
+            if (actions.standby or actions.pairing) and actions.phone_has_it(source):
+                # The phone wakes the radio: standby ends, nothing of ours
+                # resumes. A phone that connected also ends the pairing breath.
+                actions.wake_for_phone(source)
+                actions.end_pairing()
 
-            if lamp is not None and now >= next_lamp_tick:
+            if keeper is not None and now >= next_lamp_tick:
                 next_lamp_tick = now + LAMP_TICK_S
-                lamp.set_state(lamp_state(actions.standby, online, source, connectivity.hotspot))
-                lamp.tick(now)
+                keeper.tick(now)
 
             publisher.tick(now)
             watchdog.ping(now)
@@ -438,11 +710,8 @@ def main(argv=None) -> int:
         panel.close()
         if web is not None:
             web.close()
-        if lamp is not None:
-            try:
-                lamp.controller.close()
-            except Exception:
-                log.debug("lamp close failed", exc_info=True)
+        if keeper is not None:
+            keeper.close()
         close = getattr(actions.player, "close", None)
         if callable(close):
             try:

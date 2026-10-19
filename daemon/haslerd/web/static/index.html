@@ -193,7 +193,7 @@ button{cursor:pointer}
 .searchbox{position:relative}
 .searchbox svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none}
 .searchbox input[type]{padding-left:40px}
-input[type=text],input[type=search],input[type=url],input[type=password],input[type=number],textarea{width:100%;min-height:46px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;
+input[type=text],input[type=search],input[type=url],input[type=password],input[type=number],input[type=time],textarea{width:100%;min-height:46px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;
   background:var(--well);color:var(--cream);font:15px/20px var(--sans);-webkit-appearance:none;appearance:none}
 input::-webkit-search-cancel-button{-webkit-appearance:none}
 input:focus-visible,textarea:focus-visible{outline:2px solid var(--amber);outline-offset:1px;border-color:transparent}
@@ -312,6 +312,9 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .li-act:hover{color:#E0BC78}
 .li.col{flex-direction:column;align-items:stretch}
 .li-val{color:var(--brass);font:13px/16px var(--mono);font-variant-numeric:tabular-nums}
+.pair{display:flex;gap:10px;min-width:0}
+.pair > .field{flex:1 1 0;min-width:0}
+.acts{display:flex;flex-wrap:wrap;gap:10px}
 .li-danger{width:100%;text-align:left;border:0;background:none;padding:0;min-height:44px;color:var(--red);font:600 15px/20px var(--sans)}
 input[type=range]{width:100%;height:44px;margin:0;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}
 input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--amber) var(--pct,50%),var(--line) var(--pct,50%))}
@@ -1817,9 +1820,104 @@ function renderSettings(){
     h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'moOde player'), h('span', {class:'li-sub'}, 'Library, queue, Bluetooth, AirPlay')),
       h('a', {class:'li-act', href:moode, target:'_blank', rel:'noopener'}, 'Open', IC.ext())),
     h('div', {class:'li', style:'min-height:56px'}, h('button', {type:'button', class:'li-danger', onclick: resetDefaults}, 'Reset keys to defaults'))));
+  if (settings && settings.location) panel.append(lampSettings());
   panel.append(h('div', {class:'about'},
     h('p', null, 'Hasler HM · Bern 1964 · restored 2026' + (settings && settings.version ? ' · ' + settings.version : '')),
     h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
+}
+/* ---- pilot lamp: night = sunset..sunrise where the radio stands (lamp/night.py) ---- */
+const CITIES = [
+  ['Madrid', 40.4168, -3.7038], ['Barcelona', 41.3874, 2.1686], ['Valencia', 39.4699, -0.3763], ['Seville', 37.3891, -5.9845],
+  ['Bilbao', 43.263, -2.935], ['Lisbon', 38.7223, -9.1393], ['Porto', 41.1579, -8.6291], ['Zurich', 47.3769, 8.5417],
+  ['Bern', 46.948, 7.4474], ['Geneva', 46.2044, 6.1432], ['Basel', 47.5596, 7.5886], ['Lausanne', 46.5197, 6.6323],
+  ['Paris', 48.8566, 2.3522], ['London', 51.5072, -0.1276], ['Amsterdam', 52.3676, 4.9041], ['Berlin', 52.52, 13.405],
+  ['Rome', 41.9028, 12.4964], ['New York', 40.7128, -74.006],
+];
+const lampUi = {dirty:false, name:'', lat:'', lon:'', from:'22:00', to:'07:00', err:'', busy:false};
+function tonightText(t){
+  if (!t) return '';
+  if (t.mode === 'off') return 'Never dims for the night';
+  if (t.mode === 'sun' && t.polar === 'night') return 'The sun stays down today — dim all day';
+  if (t.mode === 'sun' && t.polar === 'day') return 'The sun stays up today — no night';
+  if (!t.from || !t.to) return '';
+  return t.night_now ? 'Dimmed now, until ' + t.to : 'Tonight: dims from ' + t.from + ' to ' + t.to;
+}
+function coordText(lat, lon){
+  return Math.abs(lat).toFixed(2) + '° ' + (lat < 0 ? 'S' : 'N') + ', ' + Math.abs(lon).toFixed(2) + '° ' + (lon < 0 ? 'W' : 'E');
+}
+function lampSettings(){
+  const loc = settings.location, mode = settings.night || 'sun';
+  const fixed = /^\d\d:\d\d-\d\d:\d\d$/.test(mode);
+  if (!lampUi.dirty){
+    Object.assign(lampUi, {name: loc.name || '', lat: String(loc.lat), lon: String(loc.lon), err:''});
+    if (fixed) [lampUi.from, lampUi.to] = mode.split('-');
+  }
+  const kind = mode === 'off' ? 'off' : fixed ? 'fixed' : 'sun';
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Dim at night'});
+  for (const [k, l] of [['sun','By the sun'], ['fixed','Fixed hours'], ['off','Never']]){
+    seg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(kind === k), tabindex: kind === k ? '0' : '-1',
+      onclick: () => { if (k !== kind) saveLamp({night: k === 'fixed' ? lampUi.from + '-' + lampUi.to : k}); }}, l));
+  }
+  const edit = key => e => { lampUi[key] = e.target.value; lampUi.dirty = true; lampUi.err = ''; $('lampSave').disabled = lampUi.busy;
+    if (key === 'name'){ const c = CITIES.find(c => c[0].toLowerCase() === e.target.value.trim().toLowerCase());
+      if (c){ lampUi.lat = String(c[1]); lampUi.lon = String(c[2]); $('lampLat').value = lampUi.lat; $('lampLon').value = lampUi.lon; } } };
+  const hours = key => e => { lampUi[key] = e.target.value;
+    if (/^\d\d:\d\d$/.test(lampUi.from) && /^\d\d:\d\d$/.test(lampUi.to)) saveLamp({night: lampUi.from + '-' + lampUi.to}); };
+  const box = h('div', {class:'li col', style:'gap:12px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Dims at night'),
+      h('span', {class:'li-sub', id:'lampTonight', 'aria-live':'polite'}, tonightText(settings.tonight) || 'Gentler light in a dark room')),
+    seg,
+    kind === 'fixed' ? h('div', {class:'pair'},
+      h('div', {class:'field'}, h('label', {for:'lampFrom'}, 'From'), h('input', {type:'time', id:'lampFrom', value: lampUi.from, onchange: hours('from')})),
+      h('div', {class:'field'}, h('label', {for:'lampTo'}, 'Until'), h('input', {type:'time', id:'lampTo', value: lampUi.to, onchange: hours('to')}))) : null);
+  const place = h('div', {class:'li col', style:'gap:12px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Where the radio stands'),
+      h('span', {class:'li-sub'}, (loc.name ? loc.name + ' · ' : '') + coordText(loc.lat, loc.lon) + (kind === 'sun' ? ' — sets sunset and sunrise' : ''))),
+    h('div', {class:'field'}, h('label', {for:'lampName'}, 'City'),
+      h('input', {type:'text', id:'lampName', list:'lampCities', autocomplete:'off', placeholder:'Madrid', value: lampUi.name, oninput: edit('name')}),
+      h('datalist', {id:'lampCities'}, CITIES.map(c => h('option', {value:c[0]})))),
+    h('div', {class:'pair'},
+      h('div', {class:'field'}, h('label', {for:'lampLat'}, 'Latitude'), h('input', {type:'number', id:'lampLat', inputmode:'decimal', step:'any', min:'-90', max:'90', value: lampUi.lat, oninput: edit('lat')})),
+      h('div', {class:'field'}, h('label', {for:'lampLon'}, 'Longitude'), h('input', {type:'number', id:'lampLon', inputmode:'decimal', step:'any', min:'-180', max:'180', value: lampUi.lon, oninput: edit('lon')}))),
+    lampUi.err ? h('p', {class:'err', role:'alert'}, lampUi.err) : null,
+    h('div', {class:'acts'},
+      navigator.geolocation ? h('button', {type:'button', class:'btn small', disabled: lampUi.busy, onclick: useHere}, 'Use this phone’s location') : null,
+      h('button', {type:'button', class:'btn small primary', id:'lampSave', disabled: lampUi.busy || !lampUi.dirty, onclick: saveLocation}, 'Save place')));
+  return h('section', {style:'display:flex;flex-direction:column;gap:8px;margin-top:20px', 'aria-label':'Pilot lamp'},
+    h('span', {class:'mono', style:'padding:0 4px'}, 'Pilot lamp'),
+    h('div', {class:'list'}, box, place));
+}
+function useHere(){
+  lampUi.busy = true; lampUi.err = ''; rerender();
+  navigator.geolocation.getCurrentPosition(pos => {
+    Object.assign(lampUi, {busy:false, dirty:true, lat: pos.coords.latitude.toFixed(4), lon: pos.coords.longitude.toFixed(4)});
+    if (!CITIES.some(c => c[0] === lampUi.name.trim())) lampUi.name = lampUi.name.trim() || 'Here';
+    saveLocation();
+  }, err => {
+    lampUi.busy = false;
+    lampUi.err = err.code === 1 && !window.isSecureContext
+      ? 'This phone only shares its location with secure (https) pages. Pick a city or type the numbers.'
+      : err.code === 1 ? 'Location permission was refused. Pick a city or type the numbers.' : 'Couldn’t find this phone’s location.';
+    rerender();
+  }, {enableHighAccuracy:false, timeout:15000, maximumAge:600000});
+}
+function saveLocation(){
+  const lat = parseFloat(lampUi.lat), lon = parseFloat(lampUi.lon);
+  if (!(lat >= -90 && lat <= 90)){ lampUi.err = 'Latitude runs from -90 (south) to 90 (north).'; rerender(); return; }
+  if (!(lon >= -180 && lon <= 180)){ lampUi.err = 'Longitude runs from -180 (west) to 180 (east).'; rerender(); return; }
+  saveLamp({location: {name: lampUi.name.trim(), lat, lon}});
+}
+async function saveLamp(body){
+  lampUi.busy = true;
+  try {
+    const r = await api('PUT', '/api/settings', body);
+    if (r.ok && r.json){
+      settings = Object.assign(settings || {}, r.json); lampUi.busy = false; lampUi.dirty = false; lampUi.err = '';
+      toast(body.location ? 'Lamp follows the sun in ' + (r.json.location.name || coordText(r.json.location.lat, r.json.location.lon))
+        : r.json.night === 'off' ? 'The lamp won’t dim at night' : tonightText(r.json.tonight) || 'Saved');
+    } else { lampUi.busy = false; lampUi.err = (r.json && r.json.error) || 'Couldn’t save that.'; }
+  } catch (_) { lampUi.busy = false; toast('Couldn’t reach the radio.', true); }
+  if (view === 'settings') rerender();
 }
 async function saveLimit(v){
   try {

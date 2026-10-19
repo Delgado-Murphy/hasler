@@ -8,7 +8,9 @@
 #
 # Installs: haslerd (venv + unit), go-librespot (pinned binary + config + unit),
 # yt-dlp (own venv, weekly upgrade timer), deno (yt-dlp's JS runtime, pinned),
-# /var/lib/haslerd, and a sudoers drop-in for the panel's clean shutdown.
+# /var/lib/haslerd, a sudoers drop-in for the panel's clean shutdown, and the
+# pilot lamp's boot path (config.txt block, udev rule, early breath service,
+# halt hook - see docs/lamp.md).
 set -euo pipefail
 
 DRY=0
@@ -203,6 +205,72 @@ if [[ -d /etc/nginx/sites-enabled ]] && put_file "$REPO/config/captive/nginx-cap
   fi
 fi
 
+# --- pilot lamp: firmware, kernel PWM, boot breath, halt ----------------------
+# docs/lamp.md "Boot and shutdown". The LED (common anode, R17 / G22 / B27,
+# LOW = lit) is held dark by the firmware, then driven by the kernel's
+# pwm-gpio driver: hasler-lamp-boot breathes amber from ~3-5 s until haslerd
+# takes over, and a system-shutdown hook leaves it dark at halt.
+#
+# config.txt block, kept between markers so re-runs replace it in place:
+#   gpio=17,22,27=op,dh  firmware sets the pins output-high (= dark) right after
+#                        reading config.txt, ending the faint glow the reset
+#                        pull-downs give a common-anode LED.
+#   dtoverlay=pwm-gpio,gpio=N  one software-PWM chip per pin. Syntax from the
+#                        Raspberry Pi overlays README ("Name: pwm-gpio ...
+#                        Load: dtoverlay=pwm-gpio,<param>=<val>  Params: gpio
+#                        Output pin (default 4)"); the overlay rewrites its
+#                        reg so it can be loaded more than once.
+# No conflict between the two: the overlay's pinctrl state only selects
+# "output, no pull" (the latch keeps the firmware's HIGH) and the driver takes
+# the GPIO "as is", so the LED stays dark through the kernel's start until the
+# first PWM write - hasler-lamp-boot sets polarity "inversed" while disabled,
+# which drives HIGH (still dark), then fades in.
+BOOT_CFG=/boot/firmware/config.txt
+[[ -f "$BOOT_CFG" ]] || BOOT_CFG=/boot/config.txt
+LAMP_BEGIN='# >>> hasler pilot lamp (scripts/install.sh; edits here are replaced) >>>'
+LAMP_END='# <<< hasler pilot lamp <<<'
+REBOOT_NEEDED=0
+if [[ -f "$BOOT_CFG" ]]; then
+  TMP="$(mktemp)"
+  # Everything outside our block, then the block at the end under [all] (so it
+  # never lands inside a [pi5] / [cm4] conditional section).
+  awk -v b="$LAMP_BEGIN" -v e="$LAMP_END" \
+      '$0==b{skip=1; next} $0==e{skip=0; next} !skip' "$BOOT_CFG" > "$TMP"
+  printf '%s\n' "$LAMP_BEGIN" '[all]' 'gpio=17,22,27=op,dh' \
+      'dtoverlay=pwm-gpio,gpio=17' 'dtoverlay=pwm-gpio,gpio=22' \
+      'dtoverlay=pwm-gpio,gpio=27' "$LAMP_END" >> "$TMP"
+  if cmp -s "$TMP" "$BOOT_CFG"; then
+    :
+  elif (( DRY )); then
+    printf '   would update the lamp block in %s:\n' "$BOOT_CFG"
+    diff "$BOOT_CFG" "$TMP" | sed 's/^/     /' || true
+  else
+    say "pilot lamp: updating $BOOT_CFG (backup $BOOT_CFG.hasler-bak)"
+    sudo cp -p "$BOOT_CFG" "$BOOT_CFG.hasler-bak"
+    sudo cp "$TMP" "$BOOT_CFG"     # FAT: no modes to keep
+    REBOOT_NEEDED=1
+  fi
+  rm -f "$TMP"
+  # Anything else on our pins would fight the overlays.
+  if awk -v b="$LAMP_BEGIN" -v e="$LAMP_END" '$0==b{skip=1} !skip; $0==e{skip=0}' "$BOOT_CFG" \
+       | grep -Eq '^[[:space:]]*(gpio=([0-9,-]*[,=])?(17|22|27)[,=]|dtoverlay=.*[=,](17|22|27)([^0-9]|$))'; then
+    warn "$BOOT_CFG mentions GPIO 17/22/27 outside the lamp block - check it"
+  fi
+  [[ -e "$(dirname "$BOOT_CFG")/overlays/pwm-gpio.dtbo" ]] || \
+    warn "no overlays/pwm-gpio.dtbo next to $BOOT_CFG - the lamp needs a newer kernel"
+else
+  warn "no config.txt found - pilot lamp firmware/overlay lines not added"
+fi
+
+say "pilot lamp: boot breath, halt hook, PWM permissions"
+put_file "$REPO/scripts/hasler-lamp-boot" /usr/local/sbin/hasler-lamp-boot 0755 || true
+put_file "$REPO/scripts/hasler-lamp-halt" /usr/lib/systemd/system-shutdown/hasler-lamp-halt 0755 || true
+if put_file "$REPO/config/udev/99-hasler-pwm.rules" /etc/udev/rules.d/99-hasler-pwm.rules 0644; then
+  # Re-apply to chips that already exist ("change" also covers exported pwm0/).
+  sudo udevadm control --reload
+  sudo udevadm trigger --subsystem-match=pwm --action=change || true
+fi
+
 # --- moOde: YouTube Music playlists' covers ----------------------------------
 # haslerd writes "YT · …" playlists to MPD's playlist dir (already writable)
 # and their covers to moOde's playlist-covers dir, owned by root. Let the audio
@@ -319,7 +387,7 @@ fi
 
 # --- services ----------------------------------------------------------------
 say "installing systemd units"
-for unit in haslerd.service go-librespot.service yt-dlp-update.service yt-dlp-update.timer; do
+for unit in haslerd.service hasler-lamp-boot.service go-librespot.service yt-dlp-update.service yt-dlp-update.timer; do
   put_unit "$unit"
 done
 if (( ! DRY && SYSTEMD )); then
@@ -330,6 +398,9 @@ if (( ! DRY && SYSTEMD )); then
     sudo systemctl start yt-dlp-update.timer
   fi
   sudo systemctl enable --quiet haslerd
+  # Boot-only: enabled for the next boot, never started here (haslerd owns
+  # the LED once it runs, and its ExecStartPre stops this at every start).
+  sudo systemctl enable --quiet hasler-lamp-boot
   # Fails until the panel's expander answers on I2C - keep going so the rest
   # of the output (Spotify login steps) still shows.
   sudo systemctl restart haslerd || warn "haslerd did not start - see journalctl -u haslerd"
@@ -342,6 +413,11 @@ if (( ! DRY && SYSTEMD )); then
   echo
   say "logs:  journalctl -u haslerd -f"
   say "probe: scripts/panel-probe.py"
+fi
+if (( REBOOT_NEEDED )); then
+  echo
+  warn "$BOOT_CFG changed (pilot lamp: gpio= and pwm-gpio overlays)."
+  warn "  reboot for it to take effect:  sudo reboot"
 fi
 
 # --- one-time Spotify login --------------------------------------------------
