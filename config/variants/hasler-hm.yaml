@@ -73,7 +73,13 @@ controls:
     # half 3070, full 26200; the rest from an exponential fit through those.
     # The curve undoes the taper so knob angle -> 0-100 evenly, and the
     # player's dB-linear mapping (volume_floor..volume_limit) does the rest.
-    curve: [[0, 0], [240, 12.5], [770, 25], [1500, 37.5], [3070, 50], [5000, 62.5], [8500, 75], [15000, 87.5], [26200, 100]]
+    # Re-measured 19 Oct after the pot's 3.3 V end was re-soldered: it now rises
+    # steeply in the first quarter (1/4 22266, 1/2 25013, 3/4 25660, top ~26000;
+    # 1/8 estimated from that shape).
+    # Most of the turn now lives in the top ~900 counts: a 250-count dead zone
+    # would move it in 15-20 % jumps. The wiper's noise is about +-10 counts.
+    hysteresis_counts: 30
+    curve: [[0, 0], [15500, 12.5], [22266, 25], [24000, 37.5], [25013, 50], [25400, 62.5], [25660, 75], [25850, 87.5], [25950, 100]]
 
   - id: tone
     kind: pot
