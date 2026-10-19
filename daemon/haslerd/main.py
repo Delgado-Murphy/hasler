@@ -342,8 +342,11 @@ class LampKeeper:
         return look
 
     def close(self) -> None:
+        # Shutting down: leave the ember on through the halt - the
+        # system-shutdown hook darkens it last, so dark means safe to unplug.
+        # Any other exit (a restart, a crash) goes dark at once.
         try:
-            self.driver.close(halt_dark=True)
+            self.driver.close(halt_dark=not self.actions.shutting_down)
         except Exception:
             log.debug("lamp close failed", exc_info=True)
 
