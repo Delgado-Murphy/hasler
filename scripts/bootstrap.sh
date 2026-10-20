@@ -171,6 +171,16 @@ if [[ -f /var/www/inc/mpd.php ]]; then
       || warn "moOde cover-art patch not applied - default covers stay; everything else works"
   fi
 fi
+# AirPlay: moOde 10.3.6 on trixie ships no shairport-sync (neither its repo nor
+# nqptp for AirPlay 2), so Debian's classic build. moOde starts it itself
+# (renderer.php), so Debian's own unit stays off; our conf adds moOde's hooks.
+if [[ -f /var/www/inc/renderer.php ]] && ! command -v shairport-sync >/dev/null 2>&1; then
+  say "AirPlay: installing shairport-sync (classic AirPlay; moOde starts it)"
+  run apt-get install -y -q --no-install-recommends shairport-sync \
+    && run systemctl disable --now shairport-sync \
+    && run install -m 0644 "$REPO/config/moode/shairport-sync.conf" /etc/shairport-sync.conf \
+    || warn "shairport-sync not installed - AirPlay stays unavailable"
+fi
 if command -v moodeutl >/dev/null 2>&1 && \
    [[ "$(moodeutl -q "select value from cfg_system where param='spotifysvc'" 2>/dev/null)" == 1 ]]; then
   warn "moOde's Spotify Connect renderer is ON - turn it off (Configure -> Renderers); go-librespot replaces it"
