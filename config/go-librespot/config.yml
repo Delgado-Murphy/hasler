@@ -38,7 +38,7 @@ bitrate: 320
 # callback_port is fixed so the login can be tunnelled over SSH - see
 # docs/build-guide.md, Phase 3c. (Alternative with no tunnel: type: device_auth,
 # then enter the printed code at spotify.com/pair.)
-zeroconf_enabled: false
+zeroconf_enabled: true   # owner: guests on the Wi-Fi see "Hasler" in Spotify too
 credentials:
   type: interactive
   interactive:

@@ -159,8 +159,10 @@ class TestResumeAfterCast:
         player.source = "radio"
         actions.watch_cast("radio", t0 + 1)
 
-    def test_off_by_default(self, rig):
+    def test_on_by_default_but_can_be_switched_off(self, rig):
         _, player, actions = rig
+        assert actions.resume_after_cast is True     # owner's default
+        actions.resume_after_cast = False
         self.cast(actions, player)
         assert actions.watch_cast("radio", 101 + CAST_END_GRACE_S) is False
         assert player.current() is None
@@ -347,7 +349,7 @@ class TestSourcesApi:
         airplay = next(s for s in doc["stops"] if s["id"] == "airplay")
         assert airplay["available"] is False and "switched off" in airplay["reason"]
         assert doc["bound_to"] == ["pu.tap"]
-        assert doc["resume_after_cast"] is False
+        assert doc["resume_after_cast"] is True
 
     def test_put_applies_and_persists_and_survives_a_restart(self, api):
         sources, _, actions, _, tmp = api
@@ -378,7 +380,7 @@ class TestSourcesApi:
     def test_a_broken_saved_cycle_is_ignored(self, rig):
         _, _, actions = rig
         apply_saved(actions, {"sources": {"cycle": ["radio", "tv"], "resume_after_cast": 1}})
-        assert actions.source_cycle == SOURCE_CYCLE and actions.resume_after_cast is False
+        assert actions.source_cycle == SOURCE_CYCLE and actions.resume_after_cast is True   # a bad value keeps the default
 
     def test_casting_lists_targets_and_who_casts(self, api):
         sources, _, actions, player, tmp = api

@@ -165,7 +165,7 @@ class Actions:
         self.source_cycle: tuple[str, ...] = SOURCE_CYCLE
         # Take the speaker back for the last preset once a phone's Bluetooth
         # or AirPlay cast has ended (settings.json ``sources.resume_after_cast``).
-        self.resume_after_cast = False
+        self.resume_after_cast = True   # owner: back to the station 20 s after a cast ends
         # Bumped by every hand on the radio that chooses what plays (a preset,
         # the cycle, standby): a cast that ends after one of those is not ours
         # to follow with a resume.
