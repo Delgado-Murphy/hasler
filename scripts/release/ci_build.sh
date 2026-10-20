@@ -8,6 +8,17 @@ cd "$(dirname "$0")/../.."
 RUNNER_TEMP=${RUNNER_TEMP:-/tmp/rt}; mkdir -p "$RUNNER_TEMP"
 GITHUB_STEP_SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/null}
 
+# liblgpio-dev (lgpio's C library) lives in the Raspberry Pi archive, not in
+# Debian. Its key is committed (fingerprint CF8A 1AF5 02A2 AA2D 763B AE7E 82B1
+# 2992 7FA3 303E, taken from a Hasler) - nothing is fetched unauthenticated.
+install -m 0644 scripts/release/raspberrypi-archive-keyring.gpg /usr/share/keyrings/raspberrypi-archive-keyring.gpg
+cat > /etc/apt/sources.list.d/raspi.sources <<'SRC'
+Types: deb
+URIs: http://archive.raspberrypi.com/debian/
+Suites: trixie
+Components: main
+Signed-By: /usr/share/keyrings/raspberrypi-archive-keyring.gpg
+SRC
 apt-get update -q
 DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
   ca-certificates curl git zstd unzip openssh-client \
