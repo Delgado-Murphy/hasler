@@ -19,6 +19,22 @@ sys.path.insert(0, str(ROOT / "update"))
 sys.path.insert(0, str(ROOT / "daemon"))
 
 from hasler_update.apply import Applier, Hooks, PowerCut  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def every_call_is_a_new_boot(monkeypatch):
+    """On Linux /proc/sys/kernel/random/boot_id exists and never changes within
+    the test run, so every simulated reboot would look like 'the same boot'.
+    Each read gets a fresh id unless a test pins HASLER_BOOT_ID itself."""
+    import itertools
+
+    import hasler_update.apply as apply_mod
+
+    counter = itertools.count()
+    monkeypatch.setattr(
+        apply_mod, "current_boot_id",
+        lambda: os.environ.get("HASLER_BOOT_ID") or f"test-boot-{next(counter)}",
+    )
 from hasler_update.check import Checker  # noqa: E402
 from hasler_update.layout import Layout  # noqa: E402
 from hasler_update.state import iso  # noqa: E402
