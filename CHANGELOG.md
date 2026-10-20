@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.9 - 2026-10-20
+
+- Casting: a target whose program isn't installed (AirPlay without
+  shairport-sync) is shown as unavailable, with the reason, and can't be
+  switched on - moOde would otherwise restart it every 10 s, forever.
+- Casting: moOde can take a minute to answer while it starts a renderer;
+  that's no longer reported as a failure when the change went through.
+
 ## 0.3.8 - 2026-10-20
 
 - The radio announces itself on the network again, so Home Assistant finds

@@ -244,8 +244,13 @@ def moode(tmp_path):
         return 200
 
     clock = [0.0]
+
+    def sleep(dt):
+        clock[0] += dt
+
     r = MoodeRenderers(db=db, session_dir=tmp_path, post=post,
-                       unit_active=lambda unit: unit == "bluetooth", clock=lambda: clock[0])
+                       unit_active=lambda unit: unit == "bluetooth", clock=lambda: clock[0],
+                       installed=lambda prog: True, sleep=sleep)
     return r, posts, tmp_path, db
 
 
@@ -254,8 +259,8 @@ class TestMoodeRenderers:
         r, _, _, _ = moode
         assert r.enabled() == {"airplay": False, "bluetooth": True, "upnp": False}
         bt = next(t for t in r.describe() if t["id"] == "bluetooth")
-        assert bt == {"id": "bluetooth", "label": "Bluetooth", "available": True, "on": True,
-                      "name": "Hasler Bluetooth", "running": True, "managed_by": "moode"}
+        assert bt == {"id": "bluetooth", "label": "Bluetooth", "available": True, "reason": None,
+                      "on": True, "name": "Hasler Bluetooth", "running": True, "managed_by": "moode"}
 
     def test_switching_on_posts_moodes_own_form_with_its_session(self, moode):
         r, posts, _, _ = moode
@@ -287,6 +292,27 @@ class TestMoodeRenderers:
         r._post = lambda *a: 200            # answers, writes nothing
         with pytest.raises(RendererError, match="didn't take"):
             r.set("upnp", on=True)
+
+    def test_a_missing_program_is_unavailable_and_never_switched_on(self, moode):
+        # moOde's watchdog would restart a missing shairport-sync every 10 s.
+        r, posts, _, _ = moode
+        r._installed = lambda prog: prog != "shairport-sync"
+        air = next(t for t in r.describe() if t["id"] == "airplay")
+        assert air["available"] is False and "shairport-sync" in air["reason"]
+        with pytest.raises(RendererError, match="isn't installed"):
+            r.set("airplay", on=True)
+        assert posts == []
+        r.set("airplay", name="Hasler")          # renaming (it stays off) is fine
+
+    def test_moode_slow_to_answer_but_applying_is_success(self, moode):
+        r, posts, _, _ = moode
+        post = r._post
+
+        def slow(*a):
+            post(*a)                         # moOde writes the flag, then the reply times out
+            raise TimeoutError("timed out")
+        r._post = slow
+        assert r.set("upnp", on=True)["on"] is True
 
     @pytest.mark.parametrize("bad", ['Has"ler', "", " ", "x" * 33, "a;rm -rf /", 7])
     def test_bad_names_are_refused(self, moode, bad):

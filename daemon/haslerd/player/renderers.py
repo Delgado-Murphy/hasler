@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import sqlite3
 import subprocess
 import time
@@ -42,6 +43,9 @@ REN_CONFIG_URL = "http://127.0.0.1/ren-config.php"
 GO_LIBRESPOT_CONFIG = Path("/var/lib/go-librespot/config.yml")
 CACHE_S = 3.0
 APPLY_TIMEOUT_S = 5.0
+# ren-config.php can answer only once the worker has run the job (seen: >60 s
+# for AirPlay); a timeout then is not a failure - watch the flag this long.
+SETTLE_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -52,15 +56,16 @@ class Target:
     name: str         # cfg_system friendly-name param
     form: str         # ren-config.php's submit field
     unit: str         # the systemd unit moOde's worker starts
+    program: str | None = None   # what must be installed for it to work
 
 
 TARGETS: dict[str, Target] = {
     "airplay": Target("airplay", "AirPlay", "airplaysvc", "airplayname",
-                      "update_airplay_settings", "shairport-sync"),
+                      "update_airplay_settings", "shairport-sync", "shairport-sync"),
     "bluetooth": Target("bluetooth", "Bluetooth", "btsvc", "btname",
                         "update_bt_settings", "bluetooth"),
     "upnp": Target("upnp", "UPnP / DLNA", "upnpsvc", "upnpname",
-                   "update_upnp_settings", "upmpdcli"),
+                   "update_upnp_settings", "upmpdcli", "upmpdcli"),
 }
 
 # Names moOde passes to a shell (sysutil.sh chg-name "old" "new") and to
@@ -136,10 +141,13 @@ class MoodeRenderers:
         unit_active: Callable[[str], bool | None] = _unit_active,
         clock: Callable[[], float] = time.monotonic,
         spotify_config: Path = GO_LIBRESPOT_CONFIG,
+        installed: Callable[[str], bool] = lambda prog: shutil.which(prog) is not None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.db, self.session_dir, self.url = Path(db), Path(session_dir), url
         self._post, self._unit_active, self._clock = post, unit_active, clock
         self.spotify_config = spotify_config
+        self._installed, self._sleep = installed, sleep
         self._cache: tuple[float, dict[str, str]] | None = None
 
     # -- reading ----------------------------------------------------------
@@ -182,10 +190,12 @@ class MoodeRenderers:
         known = bool(rows)
         out = []
         for tid, t in TARGETS.items():
+            missing = t.program is not None and not self._installed(t.program)
             out.append({
                 "id": tid,
                 "label": t.label,
-                "available": known and t.svc in rows,
+                "available": known and t.svc in rows and not missing,
+                "reason": f"{t.program} isn't installed on this radio" if missing else None,
                 "on": rows.get(t.svc, "0") == "1",
                 "name": rows.get(t.name, ""),
                 "running": self._unit_active(t.unit) if units and known else None,
@@ -218,6 +228,10 @@ class MoodeRenderers:
             raise ValueError("on must be true or false")
         if name is not None:
             name = valid_name(name)
+        if on and t.program is not None and not self._installed(t.program):
+            # moOde would save the flag and its watchdog restart a missing
+            # program every 10 s, forever.
+            raise RendererError(f"{t.label} can't start: {t.program} isn't installed on this radio")
         rows = self._flags(fresh=True)
         if rows is None or t.svc not in rows:
             raise RendererError("moOde's settings can't be read on this radio")
@@ -234,14 +248,21 @@ class MoodeRenderers:
         # Both fields always: the Bluetooth handler passes the name to its
         # job unconditionally, and an absent one would rename it to "".
         form = {t.form: "1", t.svc: "1" if want_on else "0", t.name: want_name}
+        want = "1" if want_on else "0"
         try:
             status = self._post(self.url, form, sid, APPLY_TIMEOUT_S)
+        except TimeoutError:
+            status = 200   # moOde is still applying it; the flag below decides
         except Exception as exc:
             raise RendererError(f"moOde's web server didn't answer: {exc}") from exc
         if status >= 400:
             raise RendererError(f"moOde refused the change (HTTP {status})")
+        deadline = self._clock() + SETTLE_S
         rows = self._flags(fresh=True) or {}
-        if rows.get(t.svc) != ("1" if want_on else "0"):
+        while (rows.get(t.svc), rows.get(t.name)) != (want, want_name) and self._clock() < deadline:
+            self._sleep(0.5)
+            rows = self._flags(fresh=True) or {}
+        if rows.get(t.svc) != want:
             raise RendererError("moOde didn't take the change - try again, or use moOde's Renderers page")
         log.info("%s %s%s via moOde", t.label, "on" if want_on else "off",
                  f", named {want_name!r}" if name is not None else "")

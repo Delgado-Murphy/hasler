@@ -3,9 +3,9 @@ Description=go-librespot (Spotify Connect, driven by haslerd)
 # Shipped in every release; the binary is the release's pinned one. The legacy
 # rsync install uses config/legacy/go-librespot.service.
 # Not network-online (it held the boot ~6 s, docs/build-guide.md "Boot time").
-# Zeroconf is off (config.yml), so nothing binds to an interface at start; with
-# no network yet it fails to reach Spotify and Restart= below retries every 5 s
-# until Wi-Fi is up. haslerd only talks to it over 127.0.0.1:3678.
+# With no network yet it fails to reach Spotify and Restart= below retries
+# every 5 s until Wi-Fi is up. Zeroconf (guests see "Hasler" in Spotify) uses
+# its own mDNS responder on port 5353 beside avahi. haslerd only talks to it over 127.0.0.1:3678.
 After=sound.target network.target
 # Never give up retrying while offline (the default limit is 5 starts in 10 s;
 # RestartSec=5 stays under it, this makes it explicit).
