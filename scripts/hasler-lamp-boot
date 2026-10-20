@@ -5,7 +5,7 @@ docs/lamp.md "Boot and shutdown", stage "~3-5 s". Started by
 hasler-lamp-boot.service as soon as udev has loaded the pwm-gpio driver; stopped
 (SIGTERM) by systemd when haslerd.service starts, which Conflicts= with it.
 
-What it shows: a 0.6 s fade from dark straight to a clearly visible amber, then a breath between 25 % and 60 %
+What it shows: a slow 2 s fade from dark up to a clearly visible amber, then a breath between 25 % and 60 %
 (perceptual), 3 s period, raised cosine. Perceptual -> linear with gamma 2.2,
 then the amber balance R 1.0 / G 0.15 / B 0. We cannot read the tone knob yet
 (that needs I2C and the panel), so it is always amber; haslerd corrects to
@@ -59,7 +59,7 @@ GPIOS = (17, 22, 27)              # red, green, blue - overlay declaration order
 PERIOD_NS = 1_250_000             # 800 Hz
 GAMMA = 2.2
 BALANCE = (1.0, 0.15, 0.0)        # amber; docs/lamp.md "Palette"
-FADE_S = 0.6                      # quick: the lamp has been dark since ~3 s
+FADE_S = 2.0                      # a slow, visible fade up (the owner likes it slow)
 FLOOR, PEAK = 0.25, 0.60          # perceptual; 0.10/0.35 read as 'off' on this LED (bench, 20 Oct)
 BREATH_S = 3.0
 FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU

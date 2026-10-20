@@ -6,7 +6,7 @@
   tracks to ~32 KB/s, so the radio now fetches each track in fast byte ranges
   and plays it from local storage, with the next track downloaded ahead.
 - Pilot lamp at power-on: the warming-up breath starts with a clear amber glow
-  (fades up in 0.6 s, breathes 25-60 %) instead of a near-invisible 10-35 %.
+  (a slow 2 s fade up, then breathes 25-60 %) instead of a near-invisible 10-35 %.
 
 ## 0.3.1 - 2026-10-20
 
