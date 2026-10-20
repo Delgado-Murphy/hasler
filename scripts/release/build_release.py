@@ -100,10 +100,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-lamp-halt", "integration/shutdown/", mode=0o755),
     Rule("config/sudoers/haslerd", "integration/sudoers/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
-    # 0.3.7 leaves out the mDNS announcement: updaters up to 0.3.5 refuse an
-    # integration/avahi/ they don't know. 0.3.7 brings an updater that knows
-    # it, and the next release ships it again (put this line back).
-    # Rule("config/avahi/hasler.service", "integration/avahi/"),
+    Rule("config/avahi/hasler.service", "integration/avahi/"),
     # migrations/: NNN_name.py
     Rule("migrations/*.py", "migrations/"),
     Rule("daemon/migrations/*.py", "migrations/"),

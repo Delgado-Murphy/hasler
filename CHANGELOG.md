@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.8 - 2026-10-20
+
+- The radio announces itself on the network again, so Home Assistant finds
+  it by itself (needs 0.3.7 or later installed first).
+
 ## 0.3.7 - 2026-10-20
 
 - Same as 0.3.6, but installable on radios running 0.3.5 or older: their
