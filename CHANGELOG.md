@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.2 - 2026-10-20
+
+- YouTube Music no longer stutters: YouTube throttles a plain download of some
+  tracks to ~32 KB/s, so the radio now fetches each track in fast byte ranges
+  and plays it from local storage, with the next track downloaded ahead.
+
 ## 0.3.1 - 2026-10-20
 
 First signed release through GitHub.

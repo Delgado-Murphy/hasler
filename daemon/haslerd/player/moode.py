@@ -27,6 +27,7 @@ import shlex
 import shutil
 import sqlite3
 import subprocess
+import tempfile
 import threading
 import time
 from dataclasses import dataclass, field
@@ -159,7 +160,7 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
             log.warning("spotify source unavailable; spotify presets will not play", exc_info=True)
     if config.ytm.enabled:
         try:
-            from .sources.ytm import YtmSource, stream_ok
+            from .sources.ytm import STREAM_DIR, YtmSource, stream_ok
 
             catalog = None
             if config.ytm.catalog:
@@ -177,6 +178,9 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
                 catalog=catalog,
                 probe=stream_ok,
                 state_dir=state_dir,
+                # Ranged fetches past googlevideo's throttle (see ytm.py).
+                stream_dir=(Path(state_dir) / STREAM_DIR if state_dir is not None
+                            else Path(tempfile.gettempdir()) / "haslerd-ytm-stream"),
             )
             if catalog is not None:
                 from .sources.ytm_playlists import PlaylistSync
