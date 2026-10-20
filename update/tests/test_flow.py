@@ -135,6 +135,20 @@ def test_on_failure_during_probation(installed_v1: World):
 CHECKPOINTS_OK = ["copied", "venv", "trial-written", "integrated", "switched", "restarted", "health", "committed"]
 
 
+def test_a_trial_judged_after_a_reboot_gets_the_long_window(installed_v1: World):
+    """Bench power-cut drill: after a cold boot moOde starts MPD later than 90 s,
+    so the post-reboot judgement uses the boot window (BOOT_APPEAR_S)."""
+    w = installed_v1
+    w.publish("1.1.0", 2)
+    w.checker().stage()
+    with pytest.raises(PowerCut):
+        w.applier(crash_at="restarted").apply()
+    w.applier().boot()
+    a = w.applier()
+    a.resume()
+    assert ("health-after-boot", "1.1.0") in a.hooks.calls
+
+
 @pytest.mark.parametrize("cut", CHECKPOINTS_OK)
 def test_power_cut_at_each_step_lands_on_a_working_version(installed_v1: World, cut: str):
     w = installed_v1

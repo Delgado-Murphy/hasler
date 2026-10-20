@@ -29,7 +29,7 @@ from typing import Iterator
 from . import integrate as integ
 from . import stage as stage_mod
 from .check import installed
-from .health import HealthChecker, idle_now
+from .health import BOOT_APPEAR_S, HealthChecker, idle_now
 from .layout import KEEP_RELEASES, Layout, box_settings, read_box_yaml
 from .state import PROBATION_S, ApplyState, fsync_dir, iso, parse_iso, read_json, write_atomic
 from .verify import (
@@ -109,8 +109,14 @@ class Hooks:
     def baseline(self) -> dict:
         return self.checker().baseline()
 
-    def health_wait(self, version: str, baseline: dict) -> tuple[bool, str]:
-        return self.checker().wait(version, baseline)
+    def health_wait(self, version: str, baseline: dict, after_boot: bool = False) -> tuple[bool, str]:
+        checker = self.checker()
+        if after_boot:
+            # After a cold boot moOde starts MPD late (after its own startup and
+            # the time sync) - well past 90 s on the bench. A trial judged after
+            # a power cut gets longer to come up; a live install keeps 90 s.
+            checker.appear_s = max(checker.appear_s, BOOT_APPEAR_S)
+        return checker.wait(version, baseline)
 
     def facts(self) -> dict:
         return system_facts(self.layout.root)
@@ -545,9 +551,9 @@ class Applier:
         self._cp("restarted")
         return self._judge()
 
-    def _judge(self) -> str:
+    def _judge(self, after_boot: bool = False) -> str:
         to_v = self.state["to"]
-        ok, why = self.hooks.health_wait(to_v, self.state["baseline"] or {})
+        ok, why = self.hooks.health_wait(to_v, self.state["baseline"] or {}, after_boot=after_boot)
         self._cp("health")
         if ok:
             self._commit()
@@ -754,7 +760,7 @@ class Applier:
             if st["step"] == "switched":
                 self.hooks.daemon_reload()
                 self.hooks.restart("haslerd.service")
-            return self._judge()
+            return self._judge(after_boot=True)
 
     def on_failure(self) -> str:
         """haslerd's OnFailure=: during trial or probation, go back."""

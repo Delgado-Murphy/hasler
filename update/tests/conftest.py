@@ -244,8 +244,8 @@ class FakeHooks(Hooks):
     def baseline(self) -> dict:
         return {"haslerd": True}
 
-    def health_wait(self, version, baseline):
-        self.calls.append(("health", version))
+    def health_wait(self, version, baseline, after_boot=False):
+        self.calls.append(("health", version) if not after_boot else ("health-after-boot", version))
         return (True, "healthy") if self.healthy else (False, "haslerd not active")
 
     def facts(self) -> dict:

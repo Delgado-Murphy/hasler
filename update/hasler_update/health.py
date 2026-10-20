@@ -25,6 +25,7 @@ from typing import Callable
 from .layout import HEALTH_URL
 
 APPEAR_S = 90.0
+BOOT_APPEAR_S = 300.0   # a trial judged after a reboot: moOde starts MPD late (bench: >90 s)
 HOLD_S = 60.0
 INTERVAL_S = 5.0
 
