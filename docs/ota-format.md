@@ -89,7 +89,13 @@ A box accepts a new keyring only if a root key verifies it and its
 
 ## Channel index (signed by a timestamp key)
 
-`https://delgado-murphy.github.io/hasler-releases/channels/<channel>.json` + `.sig`:
+`https://delgado-murphy.github.io/hasler-releases/channels/<channel>.json` + `.sig`,
+with `<channel>` one of **`bench` | `stable`** (the same set in `release.json`'s
+`channel`, `scripts/release/{make_manifest,channel}.py` and the updater).
+
+**Change (2026-10-20):** the channel list was `bench|beta|stable`; `beta` was
+removed (no `beta` index was ever published). A box whose `box.yaml` still says
+`channel: beta` reads it as `stable`; the release tools refuse `beta`.
 
 ```json
 {"schema": 1, "channel": "stable", "issued": "2026-10-20T03:00:00Z",
@@ -110,8 +116,9 @@ A box accepts a new keyring only if a root key verifies it and its
   "phase": "idle|trial|probation|committed|rolled_back", "from": "1.1.0",
   "to": "1.2.0", "boots": 0, "deadline": "...", "bad": [11],
   "history": [...]}` - every write: tmp + fsync + rename + fsync dir.
-- `/etc/hasler/box.yaml` keys used by the updater: `channel` (bench|beta|stable),
-  `update_mode` (auto|ask|off), `box_id` (random UUID), `checkin` (bool),
+- `/etc/hasler/box.yaml` keys used by the updater: `channel` (bench|stable;
+  missing or unknown = stable), `update_mode` (auto|ask|off; missing = auto,
+  unknown = ask), `box_id` (random UUID), `checkin` (bool),
   `metered` (bool).
 
 ## Health endpoint (haslerd)

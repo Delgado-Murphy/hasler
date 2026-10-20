@@ -25,7 +25,8 @@ the pilot lamp and the original speaker all still work.
 - **A key page** in your browser (`http://hasler.local:8080`) to choose music for
   each key, change settings and calibrate the knobs.
 - **Safe updates** that install at night and go back by themselves if something
-  goes wrong.
+  goes wrong. Small ones install by themselves; bigger ones ask first. Every
+  radio is on the **Stable** channel; **Bench** is the makers' test radio.
 - **Home Assistant**, if you want it: a key can run a scene or switch a light.
   Everything else works without it.
 

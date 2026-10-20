@@ -35,7 +35,7 @@ DEFAULT_BASE_URL = "https://github.com/delgado-murphy/hasler-releases/releases/d
 DEFAULT_REQUIRES = {"os": "trixie", "moode": ">=10.0,<11", "python_abi": "cp313", "arch": "aarch64"}
 RELEASE_EXPIRES_DAYS = 120
 KINDS = ("patch", "minor", "major")
-CHANNELS = ("bench", "beta", "stable")
+CHANNELS = ("bench", "stable")   # bench: the makers' test radio; stable: everyone
 
 # semver with an optional -rc.N (the only pre-release form we ship)
 VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.([1-9]\d*))?$")

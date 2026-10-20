@@ -202,9 +202,23 @@ You find everything in **Settings → About this radio**.
 
 | Choice | What it means |
 |---|---|
-| **Ask** (the default) | The page tells you when there is an update. You choose **Install tonight** (between 2:00 and 5:00) or **Install now**. |
-| **Automatic** | Small updates install by themselves at night, while the radio is in standby. Bigger updates still ask first. |
+| **Automatic** (the default) | Small updates install by themselves at night, while the radio is in standby. Bigger updates (a new major version, or one that has to move your settings) still ask first. |
+| **Ask** | The page tells you when there is an update. You choose **Install tonight** (between 2:00 and 5:00) or **Install now**. |
 | **Off** | No updates. Fixes will not reach the radio. |
+
+### Update channel
+
+Below the update choice is **Update channel**. There are two:
+
+| Channel | Who it is for |
+|---|---|
+| **Stable (recommended)** | Every radio. Each version is tried on the makers' test radio first. |
+| **Bench** | The makers' test radio. It gets test versions before anyone else, and they may break. |
+
+Leave your radio on **Stable**. To switch, tap the other channel, then press a
+key on the radio when the page asks, so nobody else on the Wi-Fi can do it. If
+you go from Bench back to Stable, the radio keeps the version it has until
+Stable catches up; it never goes back to an older version on its own.
 
 Good to know:
 

@@ -81,7 +81,7 @@ def test_apply_writes_box_overlay_secrets_and_schema(box):
 
     doc = yaml.safe_load(paths.box_file.read_text())
     assert doc["schema"] == 1 and doc["variant"] == "hasler-hm"
-    assert doc["channel"] == "bench" and doc["update_mode"] == "ask"
+    assert doc["channel"] == "bench" and doc["update_mode"] == "auto"
     assert len(doc["box_id"]) == 36
     assert doc["migrations"] == [M001]
     # only what differs from the code defaults; no secrets, no default state_file

@@ -44,7 +44,7 @@ on:
       channel:
         description: channel to point at this release (halt - the channel to halt it on)
         type: choice
-        options: [bench, beta, stable]
+        options: [bench, stable]
         default: bench
   schedule:
     - cron: "17 3 * * *"     # daily; indexes expire after 14 days

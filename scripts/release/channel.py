@@ -26,7 +26,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-CHANNELS = ("bench", "beta", "stable")
+CHANNELS = ("bench", "stable")   # bench: the makers' test radio; stable: everyone
 EXPIRES_DAYS = 14
 RINGS_DEFAULT = {"0": [], "1": [], "2": ["*"]}
 URL_RE = re.compile(r"^https://[^\s]+/release\.json$")

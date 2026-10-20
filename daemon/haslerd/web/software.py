@@ -37,7 +37,9 @@ from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
-CHANNELS = ("bench", "beta", "stable")
+# Two update channels: bench (the makers' test radio) and stable (everyone).
+CHANNELS = ("bench", "stable")
+RETIRED_CHANNELS = ("beta",)      # read as stable (the updater does the same)
 MODES = ("auto", "ask", "off")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?$")
 # The same names the polkit rule allows (plus the check), checked again here.
@@ -118,6 +120,7 @@ class Software:
         self.fallback_version = fallback_version
         self._lock = threading.Lock()
         self._next_tick = 0.0
+        self._channel_warned = False   # a retired channel in box.yaml is logged once
         self._ticking: threading.Thread | None = None
 
     # -- paths ---------------------------------------------------------------
@@ -166,10 +169,17 @@ class Software:
 
     def box_settings(self) -> dict:
         box = self._box()
-        mode = str(box.get("update_mode", "ask")).lower()
-        channel = str(box.get("channel", "stable"))
-        return {"update_mode": mode if mode in MODES else "ask",
-                "channel": channel if channel in CHANNELS else "stable"}
+        # No update_mode yet = a new radio: auto (small releases at night in
+        # standby; major/migration releases still ask) - same as the updater.
+        mode = str(box.get("update_mode", "auto")).lower()
+        channel = str(box.get("channel", "stable")).lower()
+        if channel not in CHANNELS:
+            if not self._channel_warned:
+                self._channel_warned = True
+                why = "was retired" if channel in RETIRED_CHANNELS else "is not a channel"
+                log.warning("box.yaml channel %r %s: treating it as stable", channel, why)
+            channel = "stable"
+        return {"update_mode": mode if mode in MODES else "ask", "channel": channel}
 
     # -- the status document -----------------------------------------------------
 
@@ -323,7 +333,7 @@ class Software:
         if mode is not None and mode not in MODES:
             raise ValueError("update_mode must be auto, ask or off")
         if channel is not None and channel not in CHANNELS:
-            raise ValueError("channel must be bench, beta or stable")
+            raise ValueError("channel must be bench or stable")
         if mode is None and channel is None:
             raise ValueError("expected {\"update_mode\"} and/or {\"channel\"}")
         if self.box_paths is None:

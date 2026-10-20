@@ -21,9 +21,10 @@ is built and what is still planned:
 | CI build, signing in GitHub, public `hasler-releases` channel | built |
 | Stage, switch, health check, automatic rollback, boot counter | built |
 | Key page: version, check, install tonight / now, put off, go back | built |
-| Update mode `auto` / `ask` / `off` (shipped default: `ask`) | built |
-| Channels `bench` and `stable`, halt a bad release | built |
-| `beta` channel and rings of boxes | planned |
+| Update mode `auto` / `ask` / `off` (default for new radios: `auto`) | built |
+| The two channels `bench` and `stable`, halt a bad release | built |
+| Key page channel picker (Stable / Bench, confirmed on the radio) | built |
+| Rings of boxes inside a channel (staged rollout) | planned |
 | tryboot for `config.txt` changes | planned |
 | Opt-in daily check-in, remote help via Tailscale | planned |
 | Release key on a YubiKey; bundled Python | planned |
@@ -33,6 +34,10 @@ releases (at night, in standby) and ask - with a press on the radio - for major
 or migration releases; the daily fleet check-in is opt-in, asked at setup;
 remote help via Tailscale is opt-in and off by default; **the release signing
 key lives in GitHub for now** (see "Signing for v1" below), YubiKeys later.
+There are **only two channels**: `bench` (the makers' test radio) and `stable`
+(everyone); the planned `beta` channel was dropped. New radios default to
+`update_mode: auto`. A `box.yaml` that still says `channel: beta` is read as
+`stable` (the updater and the key page both do this; the key page logs it once).
 
 ## The shape in one paragraph
 
@@ -173,13 +178,18 @@ button (confirmed on the radio), run through the same switch + health path.
 
 ## 5. Channels and the fleet
 
-- Channels **bench** (owner's box) / **beta** (1-2 family boxes) / **stable**,
-  in a signed `channels.json`: per channel `current`, `min_version`, `halted`.
-  With a handful of boxes: explicit rings by box id, promoted by hand.
+- Two channels: **bench** (the makers' test radio - may break) and
+  **stable** (everyone), each a signed `channels/<channel>.json`: `current`,
+  `min_version`, `halted`. Every release starts on bench and is promoted to
+  stable by hand (the same artifact). Rings by box id inside a channel are
+  supported by the index format for a later staged rollout.
+- The key page's **Update channel** picker offers Stable (recommended) and
+  Bench; switching asks for a press on the radio.
 - **Halt** a bad release by signing a new index; **pull** moves `current`
   back (installed as a normal, signed update).
-- **Update mode** per box: `auto` (patch/minor at night), `ask`, `off`; MAJOR
-  and migration releases always ask.
+- **Update mode** per box: `auto` (patch/minor at night, in standby - the
+  default for new radios), `ask`, `off`; MAJOR and migration releases always
+  ask.
 - **Key page "About this radio":** version, channel, last check, "update
   available" + changelog, "install tonight / now", last result (ok / rolled
   back and why), "go back to X".
@@ -221,7 +231,7 @@ The original plan. See the status table at the top for what is done.
   `hasler-integrate`; channels bench + stable with halt; key page version /
   update / last result / go back (radio-confirmed); mode `ask` by default;
   the "fix now" list.
-- **v2** - beta channel and rings, `auto` mode, migrations framework beyond
+- **v2** - rings inside a channel, `auto` mode, migrations framework beyond
   001, tryboot for config.txt, fleet check-in + dashboard, Tailscale help,
   yt-dlp in releases.
 - **Later** - python-tuf with 2-of-n signing, coordinated OS campaigns,

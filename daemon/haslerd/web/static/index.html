@@ -2120,11 +2120,13 @@ function swMode(mode){
 // Channels (docs/ota.md §5). The updater only installs a release whose seq is
 // above the highest one this radio has run (update/hasler_update check.py), so a
 // channel that is behind leaves the radio where it is until it catches up.
-const CHANNELS = [['stable','Stable'], ['beta','Beta'], ['bench','Bench']];
-const CHANNEL_TEXT = {stable:'Recommended. Each version is tested on other radios first.',
-  beta:'New things a bit earlier, on a few family radios.', bench:'The makers’ test radio. Test versions — they may break.'};
+// Two channels only: Stable (everyone) and Bench (the makers' test radio).
+// [id, name, picker label]
+const CHANNELS = [['stable','Stable','Stable (recommended)'], ['bench','Bench','Bench (may break)']];
+const CHANNEL_TEXT = {stable:'Recommended. Each version is tested on the makers’ radio first.',
+  bench:'The makers’ test radio. Test versions — they may break.'};
 const chName = c => (CHANNELS.find(x => x[0] === c) || [c, c])[1];
-const chRank = c => ({bench:0, beta:1, stable:2})[c] ?? 2;
+const chRank = c => ({bench:0, stable:1})[c] ?? 1;
 // After a switch: {channel, behind} until the next check, so "Check now" sits by it.
 let swSwitched = null;
 function swChannel(ch){
@@ -2189,7 +2191,7 @@ function softwareSettings(){
   rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Updates'),
     h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
   const cseg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Update channel'});
-  CHANNELS.forEach(([k, l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
+  CHANNELS.forEach(([k, , l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
     onclick: () => { if (k !== s.channel) swChannel(k); },
     onkeydown: e => { const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
       if (d){ e.preventDefault(); const b = cseg.children[(i + d + CHANNELS.length) % CHANNELS.length]; b.focus(); } }}, l)));

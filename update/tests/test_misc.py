@@ -11,7 +11,7 @@ from conftest import ROOT, FakeHooks, World
 
 from hasler_update.apply import Applier, Hooks
 from hasler_update.integrate import config_block, render_config_txt
-from hasler_update.layout import Layout, read_box_yaml
+from hasler_update.layout import Layout, box_settings, read_box_yaml
 from hasler_update.verify import version_matches
 
 
@@ -77,3 +77,19 @@ def test_small_parsers(tmp_path):
     d = read_box_yaml(p)
     assert d == {"schema": "1", "channel": "bench", "update_mode": "off", "metered": True}
     assert version_matches("10.0.2", ">=10.0,<11") and not version_matches("11.0", ">=10.0,<11")
+
+
+def test_box_settings_two_channels_and_auto_default(tmp_path):
+    layout = Layout(tmp_path)
+    layout.box_yaml.parent.mkdir(parents=True)
+    # A new radio's box.yaml without update_mode: small releases go in automatically.
+    layout.box_yaml.write_text("schema: 1\nvariant: hasler-hm\n")
+    s = box_settings(layout)
+    assert s["channel"] == "stable" and s["update_mode"] == "auto"
+    # The retired beta channel (and anything unknown) reads as stable.
+    for ch in ("beta", "nightly"):
+        layout.box_yaml.write_text(f"schema: 1\nchannel: {ch}\nupdate_mode: ask\n")
+        assert box_settings(layout)["channel"] == "stable"
+        assert box_settings(layout)["update_mode"] == "ask"
+    layout.box_yaml.write_text("schema: 1\nchannel: bench\nupdate_mode: bogus\n")
+    assert box_settings(layout) == {**box_settings(layout), "channel": "bench", "update_mode": "ask"}

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.4 - 2026-10-20
+
+- Two update channels: Bench and Stable; new radios update automatically for
+  small releases.
+
 ## 0.3.3 - 2026-10-20
 
 - Keys: a bounced second tap no longer stops the station it just started

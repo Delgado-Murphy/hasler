@@ -9,6 +9,7 @@ from pathlib import Path
 DEFAULT_BASE_URL = "https://delgado-murphy.github.io/hasler-releases"
 HEALTH_URL = "http://127.0.0.1:8080/api/health"
 KEEP_RELEASES = 3
+CHANNELS = ("bench", "stable")   # bench: the makers' test radio; stable: everyone
 
 
 @dataclass(frozen=True)
@@ -174,9 +175,13 @@ def read_box_yaml(path: Path) -> dict:
 
 def box_settings(layout: Layout) -> dict:
     box = read_box_yaml(layout.box_yaml)
-    mode = str(box.get("update_mode", "ask")).lower()
+    # A box.yaml without update_mode is a new radio: patch/minor install at
+    # night in standby, major/migration releases still ask (owner decision).
+    mode = str(box.get("update_mode", "auto")).lower()
+    channel = str(box.get("channel", "stable")).lower()
     return {
-        "channel": str(box.get("channel", "stable")),
+        # Two channels only. Anything else (the retired "beta") reads as stable.
+        "channel": channel if channel in CHANNELS else "stable",
         "update_mode": mode if mode in ("auto", "ask", "off") else "ask",
         "box_id": str(box.get("box_id", "")),
         "metered": bool(box.get("metered", False)),

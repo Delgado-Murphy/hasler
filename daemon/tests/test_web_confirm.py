@@ -2,6 +2,7 @@
 confirmation and the "About this radio" software endpoints."""
 
 import json
+import logging
 import os
 import socket
 import time
@@ -468,6 +469,19 @@ class TestSoftware:
         assert doc["update_mode"] == "auto" and doc["variant"] == "hasler-hm" and doc["schema"] == 1
         with pytest.raises(ValueError):
             sw.put_settings({"update_mode": "sometimes"})
+        with pytest.raises(ValueError, match="bench or stable"):
+            sw.put_settings({"channel": "beta"})
+
+    def test_two_channels_beta_reads_as_stable(self, box, caplog):
+        sw, _, _, _, paths = box
+        paths.box_file.write_text("schema: 1\nvariant: hasler-hm\nchannel: beta\nupdate_mode: ask\n")
+        with caplog.at_level(logging.WARNING, logger="haslerd.web.software"):
+            assert sw.box_settings() == {"update_mode": "ask", "channel": "stable"}
+            assert sw.box_settings()["channel"] == "stable"
+        assert sum("treating it as stable" in r.getMessage() for r in caplog.records) == 1
+        # A new radio's box.yaml without update_mode: auto by default.
+        paths.box_file.write_text("schema: 1\nvariant: hasler-hm\n")
+        assert sw.box_settings() == {"update_mode": "auto", "channel": "stable"}
 
 
 class TestSoftwareHttp:
@@ -514,10 +528,10 @@ class TestSoftwareHttp:
         hp, app, (sw, *_ ) = web
         status, doc = call(hp, "PUT", "/api/software/settings", {"update_mode": "off"})
         assert status == 200 and doc["update_mode"] == "off"
-        assert call(hp, "PUT", "/api/software/settings", {"channel": "beta"})[0] == 403
-        token = self.confirmed(hp, app, "channel", {"channel": "beta"})
-        status, doc = call(hp, "PUT", "/api/software/settings", {"channel": "beta", "confirm": token})
-        assert status == 200 and doc["channel"] == "beta"
+        assert call(hp, "PUT", "/api/software/settings", {"channel": "bench"})[0] == 403
+        token = self.confirmed(hp, app, "channel", {"channel": "bench"})
+        status, doc = call(hp, "PUT", "/api/software/settings", {"channel": "bench", "confirm": token})
+        assert status == 200 and doc["channel"] == "bench"
 
     def test_systemd_refusal_is_a_503(self, web):
         hp, app, (sw, *_ ) = web

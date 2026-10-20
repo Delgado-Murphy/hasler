@@ -21,8 +21,8 @@ variant: hasler-hm
 
 # -- updates (read by the updater, not by haslerd) ----------------------------
 
-channel: stable           # bench (the makers' own box) | beta | stable
-update_mode: ask          # auto: patch/minor at night in standby | ask: a press on the radio | off
+channel: stable           # stable (everyone) | bench (the makers' test radio - may break)
+update_mode: auto         # auto (default): patch/minor at night in standby, major/migration still ask | ask: a press on the radio | off
 box_id: 00000000-0000-4000-8000-000000000000   # random UUID, made once; names the box in rings and check-ins
 checkin: false            # true: one daily, anonymous {box_id, variant, version, channel, result, health}
 metered: false            # true: never download in the background (phone hotspot, capped plans)

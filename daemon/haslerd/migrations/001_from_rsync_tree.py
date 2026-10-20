@@ -9,7 +9,7 @@ the shipped descriptor ``config/variants/<v>.yaml`` itself. This step:
    and ``io`` (MCP address, lamp palette/balance/min_duty), to
    ``/etc/hasler/variant.d/<v>.yaml``;
 2. writes ``/etc/hasler/box.yaml``: schema, the variant, channel ``bench``,
-   update mode ``ask``, a random box id, and only the haslerd.yaml settings
+   update mode ``auto``, a random box id, and only the haslerd.yaml settings
    that differ from the code defaults (the Home Assistant token goes to
    secrets/ha.json instead, if the page never saved one);
 3. moves ``ha.json`` and the YouTube Music sign-in into
@@ -232,7 +232,7 @@ def up(
     legacy_conf = read_yaml(legacy / "config" / "haslerd.yaml")
     overrides, ha_block, notes = settings_overrides(legacy_conf, paths)
     lines += notes
-    fresh = {"schema": SCHEMA, "variant": name, "channel": "bench", "update_mode": "ask",
+    fresh = {"schema": SCHEMA, "variant": name, "channel": "bench", "update_mode": "auto",
              "box_id": str(uuid.uuid4()), **overrides}
     new_box = deep_merge(fresh, box)                      # an existing box.yaml wins
     if new_box != box:

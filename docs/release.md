@@ -48,8 +48,9 @@ the public `hasler-releases` repository). Published releases:
 7. Bench box: 48 h incl. nights and standby cycles; run the test matrix in
    docs/ota.md (rollback drill, power-cut drill, halt drill).
 8. Promote: tag `vX.Y.Z` on the same commit -> steps 4-6 with channel
-   `stable` (or `beta` first), or mode `promote` to point another channel at
-   an already published release without rebuilding.
+   `stable`, or mode `promote` to point `stable` at the release already on
+   `bench` without rebuilding. There are only two channels, `bench` and
+   `stable`.
 9. Bad release: `channel.py halt --index channels/<ch>.json --seq N`, sign
    with the timestamp key (`sign.sh -n hasler-channel`), push gh-pages; then
    ship the fix as a new, higher version.
