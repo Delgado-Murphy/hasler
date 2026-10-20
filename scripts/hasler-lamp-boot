@@ -5,7 +5,7 @@ docs/lamp.md "Boot and shutdown", stage "~3-5 s". Started by
 hasler-lamp-boot.service as soon as udev has loaded the pwm-gpio driver; stopped
 (SIGTERM) by systemd when haslerd.service starts, which Conflicts= with it.
 
-What it shows: a 1 s fade from dark into a breath between 10 % and 35 %
+What it shows: a 0.6 s fade from dark straight to a clearly visible amber, then a breath between 25 % and 60 %
 (perceptual), 3 s period, raised cosine. Perceptual -> linear with gamma 2.2,
 then the amber balance R 1.0 / G 0.15 / B 0. We cannot read the tone knob yet
 (that needs I2C and the panel), so it is always amber; haslerd corrects to
@@ -59,8 +59,8 @@ GPIOS = (17, 22, 27)              # red, green, blue - overlay declaration order
 PERIOD_NS = 1_250_000             # 800 Hz
 GAMMA = 2.2
 BALANCE = (1.0, 0.15, 0.0)        # amber; docs/lamp.md "Palette"
-FADE_S = 1.0
-FLOOR, PEAK = 0.10, 0.35          # perceptual
+FADE_S = 0.6                      # quick: the lamp has been dark since ~3 s
+FLOOR, PEAK = 0.25, 0.60          # perceptual; 0.10/0.35 read as 'off' on this LED (bench, 20 Oct)
 BREATH_S = 3.0
 FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU
 WAIT_CHIPS_S = 10.0               # udev may still be loading pwm-gpio
@@ -172,12 +172,13 @@ class Channel:
 # --- the look ---------------------------------------------------------------
 
 def level_at(t: float) -> float:
-    """Perceptual level t seconds after start: fade to the trough, then breathe."""
+    """Perceptual level t seconds after start: fade up to the peak, then breathe
+    down and up again - so the first thing anyone sees is a clear glow."""
     if t < FADE_S:
         x = t / FADE_S
-        return FLOOR * x * x * (3 - 2 * x)      # smoothstep 0 -> floor
+        return PEAK * x * x * (3 - 2 * x)       # smoothstep 0 -> peak
     phase = (t - FADE_S) / BREATH_S
-    return FLOOR + (PEAK - FLOOR) * (1 - math.cos(2 * math.pi * phase)) / 2
+    return FLOOR + (PEAK - FLOOR) * (1 + math.cos(2 * math.pi * phase)) / 2
 
 
 def make_fake_sysfs() -> None:
