@@ -34,7 +34,7 @@ The radio has six numbered keys and one key marked **PU**.
 | Hold key **5** | Volume goes down while you hold it. |
 | Hold key **6** | Volume goes up while you hold it. |
 | Hold key 1 to 4 | Nothing, unless someone gave it a job (for example a Home Assistant scene). |
-| Tap **PU** | Changes the source: radio, then Bluetooth, then AirPlay, then Spotify, then back to radio. |
+| Tap **PU** | Changes the source: radio, then Bluetooth, then AirPlay, then Spotify, then back to radio. Which sources, and in what order, is up to you: **Settings → Sources & casting** on the key page. A source that is switched off is skipped. |
 | Hold **PU** | Opens Bluetooth pairing for 2 minutes, so a new phone can connect. |
 
 Any key wakes the radio from standby.

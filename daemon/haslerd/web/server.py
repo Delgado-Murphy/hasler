@@ -48,9 +48,10 @@ also need a press on the radio (web/confirm.py); ``/api/software`` is the
 "About this radio" card (web/software.py).
 
 ``/api/browse`` serves the curated library (web/catalog.py), and anything under
-``/api/ha`` is handed to ``WebApp.extra_routes`` - objects with
-``route(method, path, body) -> (status, doc) | None`` (web/ha_api.py) - so
-Home Assistant's endpoints live with Home Assistant's code.
+``/api/ha`` (and ``/api/sources``, ``/api/casting``) is handed to
+``WebApp.extra_routes`` - objects with ``route(method, path, body) -> (status,
+doc) | None`` (web/ha_api.py, web/sources_api.py) - so Home Assistant's
+endpoints live with Home Assistant's code.
 """
 
 from __future__ import annotations
@@ -97,6 +98,8 @@ CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
 # Names the box answers to besides its own hostname (+ web.hostnames in box.yaml).
 OWN_NAMES = ("localhost", "hasler", "hasler.local")
 LOOPBACK = ("127.0.0.1", "::1")
+# Paths served by ``WebApp.extra_routes`` (web/ha_api.py, web/sources_api.py).
+EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting")
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
@@ -1131,9 +1134,10 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             return True
 
         def _extra(self, method: str) -> bool:
-            """Offer /api/ha* to the extra routes. True if this request was theirs."""
+            """Offer /api/ha*, /api/sources, /api/casting* to the extra routes.
+            True if this request was theirs."""
             url = urlparse(self.path)
-            if not (url.path == "/api/ha" or url.path.startswith("/api/ha/")):
+            if not any(url.path == p or url.path.startswith(p + "/") for p in EXTRA_PREFIXES):
                 return False
 
             def run() -> None:

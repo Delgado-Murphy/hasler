@@ -36,6 +36,7 @@ from typing import Callable
 
 from ..bootresume import http_answers, mpd_answers
 from .base import Preset, Source
+from .renderers import MoodeRenderers
 from .sources.radio import RadioSource
 
 log = logging.getLogger(__name__)
@@ -216,6 +217,8 @@ class MoodePlayer:
         self._knob: float | None = None     # knob scale 0-100, as last set
         self._renderer_cache: tuple[float, dict] | None = None
         self.moode_db = MOODE_DB            # read-only, for the renderer flags
+        # moOde's casting targets (AirPlay, Bluetooth, UPnP): on/off, names.
+        self.renderers = MoodeRenderers(db=MOODE_DB)
         # The swell's bookkeeping. Every write the knob (or standby) makes
         # bumps _mixer_gen, which stops a swell in its tracks: the knob wins.
         self._mixer_lock = threading.RLock()

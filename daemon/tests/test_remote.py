@@ -405,7 +405,7 @@ class TestBuildWeb:
         assert server is None
         ha_api = app.ha_api
         assert ha_api.loaded and ha_api.args == (actions, tmp_path, {"url": "http://ha:8123"})
-        assert app.extra_routes == [ha_api]
+        assert app.extra_routes[0] is ha_api and type(app.extra_routes[1]).__name__ == "SourcesApi"
         assert app.config()["ha"] is True
         assert app.settings_file == tmp_path / "settings.json"
         assert isinstance(app.browse, FakeBrowse)
@@ -415,7 +415,7 @@ class TestBuildWeb:
         monkeypatch.setattr(main, "HaApi", None)
         monkeypatch.setattr(main, "Catalog", None)
         server, app = main.build_web({"web": {"enabled": False}}, actions, None, StateStore(None), True)
-        assert app.ha_api is None and app.extra_routes == [] and app.config()["ha"] is True
+        assert app.ha_api is None and [type(r).__name__ for r in app.extra_routes] == ["SourcesApi"] and app.config()["ha"] is True
         assert app.browse is None and app.settings_file is None
 
     def test_publisher_runs_off_loop_and_throttles(self, rig):

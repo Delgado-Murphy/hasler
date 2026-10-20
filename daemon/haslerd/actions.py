@@ -47,8 +47,27 @@ log = logging.getLogger(__name__)
 # A repeat tap this soon after starting a preset is contact bounce, not "again".
 AGAIN_GUARD_S = 0.8
 
-# Order the PU key cycles through. "radio" is MPD; the rest are moOde renderers.
+# Order the PU key cycles through by default (``Actions.source_cycle``; the
+# owner's own lives in settings.json ``sources.cycle``). "radio" is our MPD
+# playback, "spotify" go-librespot, the rest moOde renderers.
 SOURCE_CYCLE = ("radio", "bluetooth", "airplay", "spotify")
+
+# Every stop the cycle can make. "radio", "ytm" and "spotify" resume the most
+# recent preset of that kind; "radio" also covers YouTube Music presets unless
+# "ytm" is a stop of its own. "spotify" with no preset, "bluetooth" and
+# "airplay" clear the way for a phone to cast.
+CYCLE_STOPS = ("radio", "ytm", "spotify", "bluetooth", "airplay")
+CYCLE_LABELS = {
+    "radio": "Radio",
+    "ytm": "YouTube Music",
+    "spotify": "Spotify",
+    "bluetooth": "Bluetooth",
+    "airplay": "AirPlay",
+}
+
+# A cast that ended stays ended this long before the radio takes the speaker
+# back (``Actions.resume_after_cast``): a phone pausing must not count.
+CAST_END_GRACE_S = 20.0
 
 # Renderers a phone drives through moOde. A preset key has to take the audio
 # path back from these explicitly; our own preset sources are arbitrated by the
@@ -63,6 +82,20 @@ SELF_REPLYING = ("preset", "preset_by_index")
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation")
 DEFAULT_PAIR_S = 120
 SHUTDOWN_PREPARE_S = 20.0   # YouTube Music's next-boot opener, before poweroff
+
+
+def cycle_from(raw: Any) -> tuple[str, ...]:
+    """A submitted cycle -> tuple of known, distinct stops, or ValueError saying why."""
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise ValueError("cycle must be a non-empty list of sources")
+    out: list[str] = []
+    for stop in raw:
+        if stop not in CYCLE_STOPS:
+            raise ValueError(f"unknown source {stop!r} (one of: {', '.join(CYCLE_STOPS)})")
+        if stop in out:
+            raise ValueError(f"{stop!r} is in the cycle twice")
+        out.append(stop)
+    return tuple(out)
 
 
 def build_presets(specs: list[dict], variant_name: str = "") -> dict[int, Preset]:
@@ -127,6 +160,17 @@ class Actions:
         # Where the PU cycle last put us, for renderers that are selected but
         # not yet connected (a phone has not cast yet, so nothing reports them).
         self._cycle_at: str | None = None
+        # The PU cycle's stops, in order (settings.json ``sources.cycle``).
+        self.source_cycle: tuple[str, ...] = SOURCE_CYCLE
+        # Take the speaker back for the last preset once a phone's Bluetooth
+        # or AirPlay cast has ended (settings.json ``sources.resume_after_cast``).
+        self.resume_after_cast = False
+        # Bumped by every hand on the radio that chooses what plays (a preset,
+        # the cycle, standby): a cast that ends after one of those is not ours
+        # to follow with a resume.
+        self._hand = 0
+        self._cast: tuple[str, int] | None = None    # (renderer, _hand) while a phone has it
+        self._cast_ended_at: float | None = None
         self._verbs: dict[str, Callable[[Event, dict], None]] = {
             "preset": self._preset,
             "preset_by_index": self._preset_by_index,
@@ -282,12 +326,13 @@ class Actions:
         return None
 
     def _start(self, preset: Preset) -> None:
-        self._started_at = self.clock()
         """Start a preset; on failure tell the lamp, then let dispatch log it.
 
         ``on_start`` first, so the lamp is already breathing while a slow
         start (yt-dlp expanding a playlist) holds up the loop.
         """
+        self._started_at = self.clock()
+        self._hand += 1
         self.touch()
         if self.on_start is not None:
             try:
@@ -313,41 +358,123 @@ class Actions:
 
     # -- sources ----------------------------------------------------------
 
-    def _cycle_source(self, event, spec):
-        """PU key: radio -> bluetooth -> airplay -> spotify -> radio.
+    def cycle_availability(self, order: tuple[str, ...] | None = None) -> dict[str, str | None]:
+        """Each stop -> None if the cycle can use it now, else why it is skipped.
 
-        The "radio" stop means our own MPD playback (radio or YTM presets) and
-        the "spotify" stop means go-librespot. Each resumes the most recent
-        preset of its kind; with none, "spotify" just clears the way for a
-        phone to cast, exactly as bluetooth and airplay do.
+        "radio" is always there. A preset source missing from the player, a
+        stop whose presets are all gone, or a renderer switched off in moOde
+        is skipped. A renderer is assumed on when moOde can't be read.
         """
-        order = spec.get("order", SOURCE_CYCLE)
+        order = tuple(order or self.source_cycle)
+        sources = getattr(self.player, "sources", None)
+        renderers = getattr(self.player, "renderers", None)
+        try:
+            enabled = renderers.enabled() if renderers is not None else {}
+        except Exception:
+            log.debug("could not read moOde's renderer flags", exc_info=True)
+            enabled = {}
+        kinds = {p.source for p in self.presets.values()}
+        out: dict[str, str | None] = {}
+        for stop in CYCLE_STOPS:
+            reason = None
+            if stop in ("ytm", "spotify") and sources is not None and stop not in sources:
+                reason = f"{CYCLE_LABELS[stop]} isn't set up on this radio"
+            elif stop == "ytm" and "ytm" not in kinds:
+                reason = "no YouTube Music presets"
+            elif stop in ("bluetooth", "airplay") and enabled and not enabled.get(stop):
+                reason = f"{CYCLE_LABELS[stop]} is switched off (Casting)"
+            out[stop] = reason
+        return out
+
+    def _cycle_pool(self, stop: str, order: tuple[str, ...]) -> tuple[str, ...]:
+        if stop == "radio":
+            return ("radio",) if "ytm" in order else ("radio", "ytm")
+        if stop in ("ytm", "spotify"):
+            return (stop,)
+        return ()
+
+    def _cycle_position(self, order: tuple[str, ...]) -> str:
         active = self.player.active_source()
         current = self.player.current()
         if current is not None and active == current.source:
-            # A YTM preset sits at the "radio" stop; without this the cycle
-            # would not know where it is.
-            active = "spotify" if current.source == "spotify" else "radio"
-        elif current is None and active == "radio" and self._cycle_at:
-            active = self._cycle_at
-        try:
-            nxt = order[(order.index(active) + 1) % len(order)]
-        except ValueError:
-            nxt = order[0]
+            # A YTM preset sits at the "radio" stop unless it has its own;
+            # without this the cycle would not know where it is.
+            if current.source == "spotify":
+                return "spotify"
+            return "ytm" if current.source == "ytm" and "ytm" in order else "radio"
+        if current is None and active == "radio" and self._cycle_at:
+            return self._cycle_at
+        return active
+
+    def _cycle_source(self, event, spec):
+        """PU key: the next stop of ``source_cycle`` (default radio ->
+        bluetooth -> airplay -> spotify -> radio), skipping stops that can't
+        be used now (``cycle_availability``).
+
+        The "radio" stop means our own MPD playback (radio, and YTM presets
+        unless "ytm" is a stop of its own) and the "spotify" stop means
+        go-librespot. Each resumes the most recent preset of its kind; with
+        none, "spotify" just clears the way for a phone to cast, exactly as
+        bluetooth and airplay do.
+        """
+        order = tuple(spec.get("order") or self.source_cycle) or SOURCE_CYCLE
+        position = self._cycle_position(order)
+        skip = self.cycle_availability(order)
+        start = order.index(position) if position in order else -1
+        nxt = "radio"
+        for step in range(1, len(order) + 1):
+            candidate = order[(start + step) % len(order)]
+            if skip.get(candidate) is None:
+                nxt = candidate
+                break
+        else:
+            log.info("no source in the cycle %s can be used now; radio", list(order))
+        self._hand += 1
         if self.standby:
             self._wake()
             self._persist()
-        self.player.select_source(nxt)
+        self.player.select_source("radio" if nxt == "ytm" else nxt)
         self._cycle_at = nxt
-        preset = None
-        if nxt == "radio":
-            preset = self._recent_preset(("radio", "ytm"))
-        elif nxt == "spotify":
-            preset = self._recent_preset(("spotify",))
+        pool = self._cycle_pool(nxt, order)
+        preset = self._recent_preset(pool) if pool else None
         if preset is not None:
             self._remember(preset.n)
             self._persist()
             self._start(preset)
+
+    # -- a phone casting ending -------------------------------------------
+
+    def watch_cast(self, source: str | None, now: float | None = None) -> bool:
+        """The main loop's active source, every poll. True if it resumed.
+
+        With ``resume_after_cast`` on, a Bluetooth or AirPlay cast that has
+        ended for CAST_END_GRACE_S brings back the last preset - unless a
+        hand on the radio chose something since the cast began, or it sleeps.
+        Spotify Connect is left alone: go-librespot reports a pause exactly
+        as it reports an end.
+        """
+        now = self.clock() if now is None else now
+        if source in RENDERERS:
+            if self._cast is None:
+                self._cast = (source, self._hand)
+            self._cast_ended_at = None
+            return False
+        if self._cast is None:
+            return False
+        if self._cast_ended_at is None:
+            self._cast_ended_at = now
+            return False
+        if now - self._cast_ended_at < CAST_END_GRACE_S:
+            return False
+        renderer, hand = self._cast
+        self._cast = self._cast_ended_at = None
+        if not self.resume_after_cast or self.standby or hand != self._hand:
+            return False
+        if self._last_preset is None or self._last_preset not in self.presets:
+            return False
+        log.info("%s cast ended - back to preset %s", renderer, self._last_preset)
+        self._cycle_at = None
+        return self.resume_last()
 
     def _bt_pair(self, event, spec):
         seconds = int(spec.get("seconds", DEFAULT_PAIR_S))
@@ -387,6 +514,10 @@ class Actions:
             return
         log.info("%s started casting - waking from standby", source)
         self._cycle_at = None
+        # The radio was off: when this cast ends it stays quiet, whatever
+        # resume_after_cast says (-1 never matches _hand).
+        self._cast = (source, -1)
+        self._cast_ended_at = None
         self._wake()
         self._persist()
 
@@ -406,6 +537,7 @@ class Actions:
         """
         self.standby = True
         self._cycle_at = None
+        self._hand += 1
         self._changed()
         if persist:
             self._persist()

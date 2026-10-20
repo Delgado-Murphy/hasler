@@ -42,6 +42,8 @@ from .lamp.policy import look_for
 from .web import stations
 from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
 from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_limit_from
+from .web.sources_api import SourcesApi
+from .web.sources_api import apply_saved as apply_sources
 
 try:    # Home Assistant's page API; optional so the radio runs without it.
     from .web.ha_api import HaApi
@@ -539,6 +541,7 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     ha = None if HaApi is not None else yaml_ha(config)
 
     actions = Actions(variant, player, ha=ha, state=state)
+    apply_sources(actions, settings)           # the PU cycle, resume after a cast
     web, app = build_web(config, actions, panel, state, ha is not None, paths=paths)
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
@@ -656,6 +659,7 @@ def build_web(
         # clear-missing rewrites keys.yaml: same file, same lock as the page
         ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
         app.extra_routes.append(ha_api)
+    app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
     app.load_saved()
     if not spec.get("enabled", True):
         return None, app
@@ -896,6 +900,7 @@ def main(argv=None) -> int:
                 # (Spotify only before our own first attempt - a failed
                 # Spotify resume would otherwise read as a phone.)
                 resume.cancel(f"a phone ({source})")
+            actions.watch_cast(source, now)        # resume_after_cast, when a cast ends
             if (actions.standby or actions.pairing) and actions.phone_has_it(source):
                 # The phone wakes the radio: standby ends, nothing of ours
                 # resumes. A phone that connected also ends the pairing breath.

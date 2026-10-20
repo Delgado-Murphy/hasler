@@ -37,7 +37,7 @@ VOLUME_REPEAT_S = 0.15    # a held volume key ramps at this rate
 VERBS: list[dict[str, Any]] = [
     {"do": "none", "label": "Nothing"},
     {"do": "preset", "label": "Play a preset", "params": ["n"]},
-    {"do": "cycle_source", "label": "Next source (radio → Bluetooth → AirPlay → Spotify)"},
+    {"do": "cycle_source", "label": "Next source (order set in Settings → Sources & casting)"},
     {"do": "bt_pair", "label": "Bluetooth pairing", "params": ["seconds"]},
     {"do": "volume_up", "label": "Volume up (ramps while held)"},
     {"do": "volume_down", "label": "Volume down (ramps while held)"},
