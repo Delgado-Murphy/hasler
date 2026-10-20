@@ -93,9 +93,10 @@ def test_strict_release_integration(built):
               "sudoers/haslerd", "configtxt/hasler.block", "udev/99-hasler-pwm.rules",
               "sbin/hasler-audio-mono", "sbin/hasler-wifi-join", "sbin/hasler-lamp-boot",
               "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-bootcfg-guard",
-              "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "shutdown/hasler-lamp-halt",
-              "avahi/hasler.service"):
+              "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "shutdown/hasler-lamp-halt"):
         assert f"integration/{p}" in integ_files, p
+    # Left out of 0.3.7 only, for updaters up to 0.3.5 (build_release.py); back next release.
+    assert "integration/avahi/hasler.service" not in integ_files
     assert files["integration/sbin/hasler-ytdlp-update"][1] == 0o755
     unit = files["integration/systemd/haslerd.service"][0].decode()
     for line in ("ExecStart=/opt/hasler/current/venv/bin/python -m haslerd.main --etc /etc/hasler",

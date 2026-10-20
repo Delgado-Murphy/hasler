@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7 - 2026-10-20
+
+- Same as 0.3.6, but installable on radios running 0.3.5 or older: their
+  updater refused 0.3.6's new network announcement file. 0.3.7 leaves it out
+  and brings an updater that accepts it; the next release adds it back.
+
 ## 0.3.6 - 2026-10-20
 
 - Sources: choose which sources the PU key cycles through and in what order;
