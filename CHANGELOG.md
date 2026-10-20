@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.5 - 2026-10-21
+
+- Settings, rethought: a short home with seven rows - Sound, Phones &
+  casting, Rooms, Pilot lamp, Keys & knobs, This radio, and Maker tools
+  (hidden: tap the version number 7 times). Each row says how things stand
+  now; anything waiting (an update) shows on top.
+- One way of working everywhere: a switch or slider applies at once with
+  Undo; a change of several fields gets a "Not saved - Cancel - Save" bar;
+  risky things ask for a press on the radio.
+- Reset keys and the Bluetooth key options moved into Edit keys; plain words
+  instead of jargon.
+
 ## 0.4.4 - 2026-10-21
 
 - Bluetooth: paired phones on the key page (connect, disconnect, forget,
