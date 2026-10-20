@@ -102,6 +102,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-tone", "integration/bin/", mode=0o755),
     Rule("scripts/hasler-lamp-halt", "integration/shutdown/", mode=0o755),
     Rule("config/sudoers/haslerd", "integration/sudoers/"),
+    Rule("config/systemd-dropins/bluetooth.service.d/hasler-*.conf", "integration/systemd/bluetooth.service.d/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
     Rule("config/avahi/hasler.service", "integration/avahi/"),
     # migrations/: NNN_name.py
@@ -113,7 +114,7 @@ ALLOWLIST: tuple[Rule, ...] = (
 # (kind) here also needs a rule in update/hasler_update/integrate.py, and ships
 # only in a major release until that updater is out (make_manifest.KNOWN_KINDS_SINCE).
 INTEGRATION_OK = re.compile(
-    r"^integration/(systemd/[^/]+\.(service|timer)|udev/[^/]+\.rules|sbin/hasler-[^/]+|"
+    r"^integration/(systemd/[^/]+\.(service|timer)|systemd/[^/]+\.service\.d/hasler-[^/]+\.conf|udev/[^/]+\.rules|sbin/hasler-[^/]+|"
     r"bin/hasler-[^/]+|sudoers/haslerd|shutdown/hasler-[^/]+|configtxt/hasler\.block|"
     r"avahi/hasler\.service)$")
 MIGRATION_OK = re.compile(r"^migrations/\d{3}_[a-z0-9_]+\.py$")
