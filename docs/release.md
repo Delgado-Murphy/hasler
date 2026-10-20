@@ -1,14 +1,30 @@
 # Releasing Hasler
 
-The human side of docs/ota.md §2-3. Formats: docs/ota-format.md. Tools:
-`scripts/release/`. Workflows: `.github/workflows/ci.yml`, `release.yml`
-(private `hasler`), `release-tools/hasler-releases/.github/workflows/sign-publish.yml`
-(public `hasler-releases`).
+This page is for maintainers: how a new version of the radio's software is
+built, signed and sent to the radios. If you only want to know how updates look
+to an owner, see [Using your Hasler](using.md#updates).
+
+**The short version.** Every release goes through the same steps:
+
+1. Bump the version and write the changelog.
+2. Tag a **release candidate** (`vX.Y.Z-rc.N`). CI builds it.
+3. Check the build, then approve the signing workflow. The release goes to the
+   `bench` channel (the makers' own radio).
+4. Let the bench radio live with it for 48 hours, including nights and standby.
+5. Tag the final version and publish it to `stable`. Every radio on `stable`
+   then sees it.
+
+Background: [ota.md](ota.md), sections 2-3 (why it works this way). File
+formats: [ota-format.md](ota-format.md). Tools: `scripts/release/`. Workflows:
+`.github/workflows/ci.yml` and `release.yml` (in `hasler`, this repository) and
+`release-tools/hasler-releases/.github/workflows/sign-publish.yml` (copied to
+the public `hasler-releases` repository). Published releases:
+<https://delgado-murphy.github.io/hasler-releases/>.
 
 ## Release checklist
 
 1. `master` green in CI. Bench box on the previous release.
-2. Bump `version` in `daemon/pyproject.toml`; add the `## [X.Y.Z] - date`
+2. Bump `version` in `daemon/pyproject.toml`; add the `## X.Y.Z - date`
    section to `CHANGELOG.md` (it becomes the release notes). MAJOR if config
    schema, descriptor format, units/udev/sudoers/config.txt, apt deps or the
    OS/moOde floor changed (docs/ota.md §2). New migration? It ships from
@@ -67,16 +83,18 @@ so it follows semver with no counter to keep (minor/patch < 100). `--seq` overri
 
 ## One-time org setup (owner, once the org exists)
 
-1. Org `delgado-murphy`; repos `hasler` (private, this code) and
-   `hasler-releases` (public). Settings -> Actions -> General, both repos:
+1. Org `delgado-murphy`; repos `hasler` (this code; private at first, now
+   public) and `hasler-releases` (public). Settings -> Actions -> General, both repos:
    "Allow actions created by GitHub" only (all used actions are `actions/*`,
    pinned by SHA); workflow permissions **read-only**; no PR approval by Actions.
 2. `hasler`: branch protection on `master` (require `ci / test`, no force
    push, no deletion). Tag ruleset for `v*`: only you can create, nobody can
-   update or delete. Repo variable `ATTESTATIONS=true` **only** on GitHub
-   Enterprise Cloud (attestations in private repos need it); on Free, leave it
-   unset - sign-publish then relies on run metadata + artifact digest.
-   `ubuntu-24.04-arm` runners must be available to private repos on the plan;
+   update or delete. Repo variable `ATTESTATIONS=true`: attestations in a
+   *private* repo need GitHub Enterprise Cloud; while `hasler` was private on
+   the Free plan it stayed unset, and sign-publish relied on run metadata +
+   artifact digest. Now that `hasler` is public, attestations should work on
+   the Free plan too; turning `ATTESTATIONS=true` on is still to be decided.
+   `ubuntu-24.04-arm` runners must be available to the repo on the plan;
    if not, make the build job `runs-on` a self-hosted arm64 runner (never the bench Pi).
 3. `hasler-releases`:
    - copy `release-tools/hasler-releases/.github/` to the repo root, and

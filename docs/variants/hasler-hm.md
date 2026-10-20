@@ -1,7 +1,12 @@
 # Hasler HM — panel survey
 
-> Fill this in on the bench. Every blank here becomes a value in
-> `config/variants/hasler-hm.yaml`. Nothing downstream can be finished until it is.
+This is a worksheet for makers, used in [Phase 0 of the build guide](../build-guide.md#phase-0--survey-the-panel).
+You measure the cabinet's keys, knobs and speaker with a multimeter and write
+the values here. Many of them end up in `config/variants/hasler-hm.yaml`.
+
+It also explains how to measure an old pot and how to read confusing results.
+The notes marked "observed on this cabinet" are what we found on our own radio;
+yours may differ.
 
 **Cabinet:** Hasler HM, Bern, ~1964 · Telefónica *Hilo Musical* wired-music receiver
 **Surveyed:** ______________  **By:** ______________
@@ -10,8 +15,9 @@
 
 ## 1. Keys — 7 momentary (1–6 + PU)
 
-Already out with a shared ground. **Do not trace them by hand** — wire them into any eight GPIOs
-and let `scripts/panel-probe.py --identify` map them. Only record anomalies here.
+Already out with a shared ground. **Do not trace them by hand.** Wire them to the MCP23017
+board and check each one in `scripts/panel-probe.py` (with direct GPIO,
+`panel-probe.py --identify` finds the order for you). Only write down anything unusual here.
 
 | Key | Momentary? | Extra poles? | Notes |
 |---|---|---|---|
@@ -253,13 +259,14 @@ usable bandwidth.
 more amplifier than the cone can survive, on a part that cannot be replaced with anything
 authentic.
 
-Mitigated in software by `moode.volume_limit` in `config/haslerd.yaml`. **Calibrate it:**
+Mitigated in software by the **volume ceiling** (`volume_limit`). Set it on the key page,
+Settings → **Volume ceiling** (it takes effect at once, no restart):
 
-- [ ] Set `volume_limit: 50` and restart the daemon
+- [ ] Start at 50
 - [ ] Play something dense — full-band music, not speech — with the knob at maximum
-- [ ] Raise the limit in steps of 5, restarting each time, until it is as loud as you ever want it
-- [ ] **Stop at the first hint of cone distortion or buzzing** and back off two steps
-- [ ] Record the final value here: `volume_limit: ________`
+- [ ] Raise the ceiling in steps of 5 until it is as loud as you ever want it
+- [ ] **Stop at the first hint of cone distortion or buzzing** and go back two steps
+- [ ] Write the final value here: `volume_limit: ________`
 
 The knob keeps its full mechanical sweep and resolution either way — it just tops out somewhere
 safe, which is how the original would have behaved.
@@ -286,9 +293,14 @@ The Amp4 Pro is stereo; the Hasler is mono.
 
 ## 6. Pot calibration — Phase 3b, once the ADS1115 is fitted
 
-Run `scripts/panel-probe.py` and read the **COUNTS** column while sweeping each pot.
+**The easy way:** key page → Settings → **Knobs** → **Calibrate**. A short guide asks you
+to turn each knob to a few positions and saves the curve on this radio
+(`/etc/hasler/variant.d/hasler-hm.yaml`, kept across updates).
 
-### Volume (channel 0)
+**By hand:** run `scripts/panel-probe.py` and read the **COUNTS** column while turning
+each pot, then fill in the tables and section 7.
+
+### Volume (channel 1, ADS1115 input A1)
 
 | Position | Counts |
 |---|---|
@@ -298,7 +310,7 @@ Run `scripts/panel-probe.py` and read the **COUNTS** column while sweeping each 
 | 75 % | ________ |
 | Fully CW | ________ |
 
-### Tone (channel 1)
+### Tone (channel 0, ADS1115 input A0)
 
 **The detent count is the important one** — the switch eats the bottom of the sweep, so the usable
 range starts *above* it. Everything below the detent is the off position, not a tone setting.
@@ -315,23 +327,25 @@ range starts *above* it. Everything below the detent is the off position, not a 
 
 ## 7. Transfer into the descriptor
 
-Replace the `taper` + `range` placeholders in `config/variants/hasler-hm.yaml` with the measured
-points — a `curve` beats a guessed taper every time:
+Only needed if you calibrate by hand. Replace `taper` + `range` in
+`config/variants/hasler-hm.yaml` with the measured points — a `curve` beats a guessed taper
+every time:
 
 ```yaml
   - id: volume
     kind: pot
-    channel: 0
+    channel: 1
     curve: [[<fully CCW>, 0], [<25%>, 25], [<50%>, 50], [<75%>, 75], [<fully CW>, 100]]
 
   - id: tone
     kind: pot
-    channel: 1
+    channel: 0
     curve: [[<AT THE DETENT>, 0], [<25%>, 25], [<50%>, 50], [<75%>, 75], [<fully CW>, 100]]
-    end_switch: {id: power, pin: d7, off_hold_ms: 5000}
+    end_switch: {id: power, pin: d8, off_hold_ms: 5000}   # PB0; d7 cannot be an input
 ```
 
-And paste the `pins:` array printed by `panel-probe.py --identify`.
+(If a pot reads backwards, enter the points descending; the shipped volume curve does this.)
+With direct GPIO wiring, also paste the `pins:` array printed by `panel-probe.py --identify`.
 
 **Then re-run the tests** — they load this descriptor, so a malformed curve fails on the laptop
 rather than in the cabinet:

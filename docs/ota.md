@@ -1,10 +1,32 @@
 # Over-the-air releases
 
-How a Hasler in someone else's home gets a new version of our software -
-safely, signed, without touching its owner's settings, and back to the last
-good version on its own if a release breaks something. Planned 2026-10-20 from
-four reviews (config inventory, update + failsafe, security, release + fleet).
-Status: **plan**, nothing built yet.
+**What this is, in plain words.** A Hasler in someone's home gets new versions
+of our software by itself, over the internet. Each new version (a **release**)
+is signed by us, so the radio can tell it is genuine. The radio installs it only
+while it sleeps, checks itself afterwards, and goes back to the previous version
+on its own if anything is wrong. The owner's keys, settings and knob calibration
+are never touched.
+
+Owners do not need this page: the short version is in
+[Using your Hasler](using.md#updates). This page is for contributors and
+maintainers. The exact file formats are in [ota-format.md](ota-format.md); the
+steps to publish a release are in [release.md](release.md).
+
+**Status (October 2026):** the first version shipped in release **0.3.1**. What
+is built and what is still planned:
+
+| Part | Status |
+|---|---|
+| Settings kept outside the release (`/etc/hasler`, calibration overlay, secrets) | built |
+| CI build, signing in GitHub, public `hasler-releases` channel | built |
+| Stage, switch, health check, automatic rollback, boot counter | built |
+| Key page: version, check, install tonight / now, put off, go back | built |
+| Update mode `auto` / `ask` / `off` (shipped default: `ask`) | built |
+| Channels `bench` and `stable`, halt a bad release | built |
+| `beta` channel and rings of boxes | planned |
+| tryboot for `config.txt` changes | planned |
+| Opt-in daily check-in, remote help via Tailscale | planned |
+| Release key on a YubiKey; bundled Python | planned |
 
 **Owner decisions (2026-10-20):** updates install automatically for patch/minor
 releases (at night, in standby) and ask - with a press on the radio - for major
@@ -14,9 +36,10 @@ key lives in GitHub for now** (see "Signing for v1" below), YubiKeys later.
 
 ## The shape in one paragraph
 
-CI builds a release tarball (code + a wheelhouse + a bundled Python), a
-maintainer **signs** its manifest with a hardware key, and it is published to a
-public releases repo. Each box checks nightly, verifies the signature before
+CI builds a release tarball (code + a wheelhouse; a bundled Python later), a
+maintainer approves a separate workflow that **signs** its manifest (with a key
+held in GitHub for v1, a hardware key later), and it is published to a public
+releases repo. Each box checks daily, verifies the signature before
 touching anything, stages the release next to the running one, and - only
 while the radio is in standby - switches a symlink, restarts, and health-checks.
 Pass: it commits. Fail, hang, boot loop or power cut: it **rolls back to the
@@ -44,8 +67,8 @@ idempotent `migrations/NNN_*.py`, run against a snapshot, before the switch.
 
 ## 2. Releases (pipeline)
 
-- **GitHub org `delgado-murphy`:** private `hasler` (code) + public
-  `hasler-releases` (signed artifacts only; the signed channel index served by
+- **GitHub org `delgado-murphy`:** `hasler` (code, this repository; now
+  public) + public `hasler-releases` (signed artifacts only; the signed channel index served by
   GitHub Pages, e.g. `delgado-murphy.github.io/hasler-releases/channels/stable.json`,
   later behind our own domain) - boxes need no GitHub token. CI fails if the tag
   and `pyproject.toml` disagree; `CHANGELOG.md` (Keep a Changelog) per release.
@@ -171,18 +194,25 @@ button (confirmed on the radio), run through the same switch + health path.
 - **Remote help (opt-in, off by default):** Tailscale installed but only
   started by "Let the makers help (24 h)" on the key page; ACL-limited, ephemeral.
 
-## 6. Fix now, regardless of OTA
+## 6. Fixed alongside OTA (done in 0.3.1)
 
-- yt-dlp upgrades itself weekly **as root from PyPI, unpinned** - move to a
-  dedicated user (later: ship it in releases).
-- the key page's `/api/wifi`, `/api/reset` are unauthenticated on the LAN.
-- `Hasler Tone.yml` is installed 0666.
-- the daemon can write its own code (code in `/home/pi`, runs as `pi`).
-- calibration lives in the shipped descriptor; `haslerd.yaml` lives in the code
-  tree; paths found via `parents[n]` (`web/catalog.py`, `web/stations.py`,
-  `main.py`) break once packaged.
+These problems were found during the OTA reviews and are now fixed:
+
+- yt-dlp upgraded itself weekly as root, from PyPI, unpinned. Now it runs as its
+  own user `ytdlp` and switches only after a self-check.
+- the key page's `/api/wifi` and `/api/reset` were open to anyone on the LAN.
+  Now every state-changing request checks `Host` and `Origin`, and Wi-Fi, reset,
+  install and go-back need a press on the radio.
+- `Hasler Tone.yml` was installed 0666. Now it is owned by `pi`, 0644.
+- the daemon could write its own code (code in `/home/pi`). Now releases are
+  root-owned and read-only in `/opt/hasler`.
+- calibration lived in the shipped descriptor, and paths were found with
+  `parents[n]`. Now calibration is in `/etc/hasler/variant.d/` and paths are
+  package-relative.
 
 ## 7. Phases
+
+The original plan. See the status table at the top for what is done.
 
 - **v1** - config separation (`/etc/hasler`, `variant.d` overlay, secrets dir,
   schema 1, migration 001 for the bench box); package-relative paths; CI
@@ -206,14 +236,7 @@ manual "go back"); **power-cut drill** (pull power during download, stage,
 switch, first boot); halt drill; update deferred while playing; offline and
 metered skip quietly.
 
-## One-time org setup (owner)
+## One-time org setup
 
-GitHub org `delgado-murphy`; repos `hasler` (private) and `hasler-releases`
-(public); branch protection on `master` (CI green, no force-push); Actions:
-allow only pinned/approved actions, read-only default token; a `release`
-environment with you as required reviewer for the publish job (on the
-GitHub Free plan required reviewers only work on public repos - fine, since v1
-signs and publishes from your laptop anyway); arm64 builds on
-`ubuntu-24.04-arm` (never the bench Pi - it is the test target); two YubiKeys
-(release key + root key; ideally three: two roots kept apart, one release), plus a paper/age
-backup in two places).
+Moved to [release.md, "One-time org setup"](release.md#one-time-org-setup-owner-once-the-org-exists),
+which has the full, current steps.

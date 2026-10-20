@@ -1,5 +1,13 @@
 # OTA formats - the contract between the release builder and the box
 
+*This page is for people who work on the release tools or the updater. It
+describes, field by field, the files that travel from our build to a radio: the
+release archive, its signed description, the signing keys and the channel
+index. The build side (`scripts/release/`) and the radio side (`update/`) both
+follow it, so a change here must be made on both sides at once. For the ideas
+behind it, read [ota.md](ota.md) first; for what an owner sees, see
+[Using your Hasler](using.md#updates).*
+
 docs/ota.md is the why; this is the exact shape both sides build against.
 Change it only together.
 

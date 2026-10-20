@@ -1,9 +1,17 @@
 # The pilot lamp
 
-One RGB LED behind the cabinet's original window. It should read like a valve
-radio's pilot lamp that learned a few quiet words: nobody reads a manual.
-Agreed 2026-10-19 from an inventory of today's code, an interaction design and
-a hardware check (see "Today" at the end for what this replaces).
+The pilot lamp is the coloured light in the cabinet's original window. It tells
+you what the radio is doing, the way the lamp of a valve radio did, so nobody
+needs a manual.
+
+- **Owners:** the short version is in
+  [Using your Hasler](using.md#the-pilot-lamp). This page has every detail.
+- **Makers and contributors:** this page is the design that the code follows
+  (`daemon/haslerd/lamp/`). Change the code and this page together.
+
+**In one breath:** amber is the radio, blue is a phone, warm white means "set
+me up", a dim ember means asleep, red means something failed, and dark means
+safe to unplug.
 
 ## Principles
 
@@ -20,7 +28,8 @@ a hardware check (see "Today" at the end for what this replaces).
 6. **Hands get a reply; the sound does the rest.** Keys get a dip. Knobs get
    nothing - the ear is the feedback.
 7. **Respect the dark room.** Sunset to sunrise everything is dimmer and
-   slower, and idle red is suppressed.
+   slower, and idle red is suppressed. (On the key page, Settings → Pilot
+   lamp can also use fixed hours, or never dim.)
 8. **Never look frozen.** No pause over 2 s while the box is busy.
 
 ## Palette
@@ -83,17 +92,17 @@ anything in standby except setup and a phone waking it.
 
 ## Boot and shutdown
 
-A valve radio: light comes first, sound as the valves warm. The breath grows
-warmer stage by stage so the ~40 s wait never looks frozen.
+Like a valve radio: light comes first, and sound follows as the valves warm.
+The breath grows stronger stage by stage, so the wait never looks frozen.
 
 | t | Stage | Lamp |
 |---|---|---|
 | 0-3 s | power, firmware | dark - `gpio=17,22,27=op,dh` in config.txt holds the LED off (the reset pull-downs would otherwise glow it faintly); firmware can't fade, and a hard colour here reads as a fault |
-| ~3-5 s | early `hasler-lamp-boot` service | 1 s fade into an amber breath, 10 -> 35%, 3 s period |
+| ~3-5 s | early `hasler-lamp-boot` service | slow 2 s fade up into an amber breath, 25 -> 60%, 3 s period |
 | ~10 s | haslerd takes over (reads the knob) | breath continues, floor rises to 20% |
 | ~15-25 s | network up | floor 30%, peak 50% |
-| ~40 s | music resumes | 1.5 s fade to solid amber 100% with the first sound |
-| ~40 s, nothing to resume | ready | settle to solid amber 35% |
+| ~15 s (was ~40 s before 0.3.1) | music resumes | 1.5 s fade to solid amber 100% with the first sound |
+| same, nothing to resume | ready | settle to solid amber 35% |
 
 - **Knob off at power-on:** the early breath is ember (2-8%), then settles to
   solid ember; never amber, never sound.
@@ -101,26 +110,32 @@ warmer stage by stage so the ~40 s wait never looks frozen.
   breath when the hotspot comes up. No red: it needs telling, not fixing.
 - **After a power cut while playing:** the normal timeline ending in the old
   station (or blue if a phone reconnects); if it can't come back, three red
-  pulses then ready amber.
+  pulses then ready amber. **At night** (sunset to sunrise) it stays asleep in
+  ember instead.
 - **Shutdown:** knob off -> ember -> 5 s countdown fade -> ember breath
   through the halt -> a `system-shutdown` hook drives the pins dark ->
   **dark = safe to unplug**.
 
-## How it is built (current board)
+## How it is built
 
-- Lamp gets its **own thread**: sleeps while steady, renders at 50 Hz during
-  fades/breaths; float levels, raised-cosine breathing, gamma 2.2, then
-  per-channel balance. Never blocked by a slow preset start (today the main
-  loop freezes the lamp while yt-dlp expands a playlist).
-- PWM: kernel `pwm-gpio` overlays on GPIO 17/22/27 at ~800 Hz (today:
-  gpiozero/lgpio software PWM at 100 Hz, which flickers at night). Never
-  pigpio - its DMA timing uses the PCM block the amp's I2S needs.
+On the current board (the prototype board on Pi GPIO):
+
+- The lamp has its **own thread**: it sleeps while steady and renders at 50 Hz
+  during fades and breaths (float levels, raised-cosine breathing, gamma 2.2,
+  then per-channel balance). A slow preset start never blocks it.
+- PWM: kernel `pwm-gpio` overlays on GPIO 17/22/27 at about 800 Hz, so there is
+  no flicker at night. `backend: gpio` (software PWM) is only a fallback, used
+  with a warning if the overlays are missing. Never pigpio: its DMA timing uses
+  the PCM block that the amp's I2S needs.
 - Deep night levels are limited on this wiring (green's share of a 2% amber is
   microseconds); below ~5% amber shifts towards red - acceptable for ember.
 - Night = sunset to sunrise for the box's location (computed locally; HA's
   sun entity when connected).
 
-## For the HAT
+## For the HAT (planned)
+
+The HAT is the ordered circuit board that will replace the prototype board
+([hat/BRIEF.md](hat/BRIEF.md)). The lamp plan for it:
 
 An I2C PWM driver (PCA9685 at 0x40, or a constant-current RGB indicator
 driver) with three low-side N-FETs (gate pull-downs keep the LED dark at
@@ -129,12 +144,22 @@ deep dimming stays amber, three GPIOs come free, and the LED current leaves
 the Pi's 3.3 V regulator. The shutdown hook then writes the halt colour over
 I2C (the chip holds its last state).
 
-## Today (what this replaces, 2026-10-19)
+## History
 
-Nine colours, one per source; offline = hard red flash (also wrongly during
-AirPlay); standby = dim pure red; no key acknowledgement, no loading, no
-shutdown countdown, pairing colour defined but never shown; dark for the first
-~10 s of boot; lamp freezes during slow starts; 100 Hz linear PWM without
-gamma; radio amber (255,150,40) renders yellow-green on this LED. Docs
-disagree on the pin map - the descriptor (R17 / G22 / B27, common anode) is
-right; `docs/hardware.md` and `gpio_lamp.py` defaults are stale.
+This design was agreed on 2026-10-19, from an inventory of the code at the time,
+an interaction design and a hardware check. It shipped in release 0.3.1. What it
+replaced:
+
+- nine colours, one per source;
+- offline = a hard red flash (also, wrongly, during AirPlay);
+- standby = dim pure red;
+- no key acknowledgement, no loading breath, no shutdown countdown; the pairing
+  colour was defined but never shown;
+- dark for the first ~10 s of boot, and the lamp froze during slow starts;
+- 100 Hz software PWM without gamma, so it flickered at night; the radio's amber
+  (255,150,40) looked yellow-green on this LED;
+- docs disagreed on the pin map. The descriptor (R17 / G22 / B27, common anode)
+  was right, and the other places have since been fixed.
+
+In 0.3.2 the boot breath became brighter (a 2 s fade up, then 25-60 %), because
+the first 10-35 % breath was almost invisible.

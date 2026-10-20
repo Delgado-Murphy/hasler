@@ -1,5 +1,11 @@
 # Hasler HAT — design brief
 
+*For makers and the board designer. A "HAT" is a circuit board that sits on top
+of a Raspberry Pi. This brief, written on 2026-10-13, says what our HAT must do.
+The design work itself lives on the `hat` branch. Some notes below (for example
+"Known faults on the bench") describe the bench radio on that date and are kept
+as history.*
+
 A board to order (fab + assembly) that replaces today's hand-built stripboard: it sits on
 the Raspberry Pi 4B + HiFiBerry Amp4 Pro stack, takes **USB-C power**, and carries
 everything the prototype board does. Written 2026-10-13 from the working bench build.
@@ -55,7 +61,7 @@ IDC cable spec — no hand-drawn numbering. A 16-way plug in a 26-way shrouded h
 not fit, so think about how the HM's 16-way and the Excelsior's 26-way both connect
 (e.g. a 2×13 header plus a 2×8 header in parallel, or a 2×13 the 16-way can share).
 
-## Known faults on the bench (not the HAT's problem, but context)
+## Known faults on the bench, 2026-10-13 (history; not the HAT's problem)
 
 Key 3's path on the stripboard (link L11 to PA5) is open; PU's contact chatters; the tone
 end switch doesn't reach PB0 yet; the LED is disconnected. The Pi currently runs with
