@@ -159,7 +159,7 @@ class SourcesApi:
             targets = [{"id": t.id, "label": t.label, "available": False, "on": False,
                         "name": "", "running": None, "managed_by": "moode"} for t in TARGETS.values()]
         for t in targets:
-            if not t["available"]:
+            if not t["available"] and not t.get("reason"):
                 t["reason"] = "moOde isn't reachable on this radio"
         sources = getattr(self.actions.player, "sources", None)
         spotify = sources is None or "spotify" in sources
