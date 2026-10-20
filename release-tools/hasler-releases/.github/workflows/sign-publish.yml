@@ -1,4 +1,4 @@
-# Lives in the PUBLIC repo delgado-murphy/hasler-releases (template kept in the
+# Lives in the PUBLIC repo Delgado-Murphy/hasler-releases (template kept in the
 # private repo under release-tools/hasler-releases/). Tools in tools/ are
 # copies of the private repo's scripts/release/ (docs/release.md).
 #
@@ -8,6 +8,8 @@
 # channel at it (timestamp key).
 # workflow_dispatch, mode=promote: point another channel at an existing
 # release (the same artifact - never rebuilt).
+# workflow_dispatch, mode=halt: add <version>'s seq to the channel's `halted`
+# list and re-sign the index (timestamp key) - boxes then never install it.
 # schedule: re-sign every channel index daily with a fresh issued/expires.
 #
 # No third-party actions: actions/checkout only, plus gh, ssh-keygen, curl,
@@ -18,9 +20,9 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: publish (new release) or promote (existing release to another channel)
+        description: publish (new release), promote (existing release to another channel) or halt (stop a bad release on a channel)
         type: choice
-        options: [publish, promote]
+        options: [publish, promote, halt]
         default: publish
       version:
         description: version without v, e.g. 0.2.0 or 0.2.1-rc.1
@@ -35,7 +37,7 @@ on:
         required: false
         type: string
       channel:
-        description: channel to point at this release
+        description: channel to point at this release (halt - the channel to halt it on)
         type: choice
         options: [bench, beta, stable]
         default: bench
@@ -49,7 +51,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  SOURCE_REPO: delgado-murphy/hasler
+  SOURCE_REPO: Delgado-Murphy/hasler    # GitHub reports names in this case; compared case-insensitively
   SOURCE_WORKFLOW: .github/workflows/release.yml
 
 jobs:
@@ -91,7 +93,7 @@ jobs:
           want = {"path": os.environ["SOURCE_WORKFLOW"], "event": "push", "status": "completed",
                   "conclusion": "success", "head_branch": "v" + os.environ["VERSION"]}
           bad = {k: r.get(k) for k, v in want.items() if r.get(k) != v}
-          if r["repository"]["full_name"] != os.environ["SOURCE_REPO"]:
+          if r["repository"]["full_name"].lower() != os.environ["SOURCE_REPO"].lower():
               bad["repository"] = r["repository"]["full_name"]
           if bad:
               sys.exit(f"run {r['id']} does not look like the release build: {bad}")
@@ -136,7 +138,9 @@ jobs:
           d = json.load(open("in/release.json"))
           v, repo = os.environ["VERSION"], os.environ["GITHUB_REPOSITORY"]
           url = f"https://github.com/{repo}/releases/download/v{v}/hasler-{v}-arm64.tar.zst"
-          if d["version"] != v or d["artifacts"][0]["url"] != url:
+          # GitHub URLs are case-insensitive; release.json is built with the
+          # lower-case org name, GITHUB_REPOSITORY has the real case.
+          if d["version"] != v or d["artifacts"][0]["url"].lower() != url.lower():
               sys.exit(f"release.json version/url mismatch: {d['version']} {d['artifacts'][0]['url']}")
           EOF
 
@@ -225,6 +229,50 @@ jobs:
           git commit -q -m "$CHANNEL -> $VERSION"
           git push -q origin HEAD:gh-pages
 
+  halt:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'halt'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: timestamp
+    permissions:
+      contents: write          # push gh-pages
+    env:
+      VERSION: ${{ inputs.version }}
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: pages
+      - name: Halt the release on the channel and sign
+        env:
+          TIMESTAMP_SIGNING_KEY: ${{ secrets.TIMESTAMP_SIGNING_KEY }}
+        run: |
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' || exit 1
+          idx="pages/channels/$CHANNEL.json"
+          [[ -f "$idx" ]] || { echo "::error::$idx does not exist"; exit 1; }
+          roots=(); for r in main/trust/root*.pub; do roots+=(--root "$r"); done
+          python3 main/tools/keyring.py verify "${roots[@]}" pages/keyring.json
+          bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
+          seq="$(cd main/tools && python3 -c 'import sys, make_manifest; print(make_manifest.seq_for(sys.argv[1]))' "$VERSION")"
+          echo "halting $VERSION (seq $seq) on $CHANNEL"
+          python3 main/tools/channel.py halt --index "$idx" --seq "$seq"
+          bash main/tools/sign.sh -n hasler-channel -e TIMESTAMP_SIGNING_KEY "$idx"
+          bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
+          echo "HALT_SEQ=$seq" >> "$GITHUB_ENV"
+      - name: Push gh-pages
+        run: |
+          cd pages
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git add channels
+          git commit -q -m "$CHANNEL: halt $VERSION (seq $HALT_SEQ)"
+          git push -q origin HEAD:gh-pages
+
   refresh:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-24.04
@@ -246,9 +294,11 @@ jobs:
           TIMESTAMP_SIGNING_KEY: ${{ secrets.TIMESTAMP_SIGNING_KEY }}
         run: |
           shopt -s nullglob
+          idxs=(pages/channels/*.json)
+          if (( ${#idxs[@]} == 0 )); then echo "no channel indexes yet (before the first release) - nothing to do"; exit 0; fi
           roots=(); for r in main/trust/root*.pub; do roots+=(--root "$r"); done
           python3 main/tools/keyring.py verify "${roots[@]}" pages/keyring.json
-          for idx in pages/channels/*.json; do
+          for idx in "${idxs[@]}"; do
             # never bless an index someone edited on gh-pages without a signature
             bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
             python3 main/tools/channel.py refresh "$idx"
