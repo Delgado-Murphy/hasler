@@ -99,6 +99,8 @@ jobs:
               sys.exit(f"run {r['id']} does not look like the release build: {bad}")
           open(os.environ["GITHUB_ENV"], "a").write(f"HEAD_SHA={r['head_sha']}\n")
           EOF
+          # GITHUB_ENV only reaches later steps - read it here too
+          HEAD_SHA="$(jq -r .head_sha run.json)"
           # the tag still points at the commit that was built
           ref="$(gh api "repos/$SOURCE_REPO/git/ref/tags/v$VERSION")"
           sha="$(jq -r .object.sha <<<"$ref")"; type="$(jq -r .object.type <<<"$ref")"
