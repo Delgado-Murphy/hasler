@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.6 - 2026-10-20
+
+- Sources: choose which sources the PU key cycles through and in what order;
+  any key can be set to "Cycle sources".
+- Casting: AirPlay, Spotify (guests on your Wi-Fi too) and UPnP/DLNA can be
+  switched on and named on the key page; the radio goes back to its station
+  20 s after a phone stops.
+- Volume: the quietest knob step is now a setting (Sound).
+- Home Assistant: a key can turn lights on/off, set colour, brightness and
+  white temperature, start a scene, script or automation - with "Try it"
+  before saving. The radio also announces itself so Home Assistant finds it,
+  for the new Hasler integration (hasler-homeassistant).
+
 ## 0.3.5 - 2026-10-20
 
 - Key page: easier to read (contrast), bigger buttons, settings grouped

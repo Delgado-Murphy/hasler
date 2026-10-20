@@ -1,3 +1,3 @@
 """haslerd - panel daemon for vintage radio cabinets running moOde Audio."""
 
-__version__ = "0.3.5"
+__version__ = "0.3.6"
