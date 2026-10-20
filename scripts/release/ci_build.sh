@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
-# The release build, run inside an arm64 debian:trixie container. On a GitHub
-# Free plan with a private repo there are no arm64 runners, so release.yml runs
-# this under QEMU on an x86 runner (slow, ~15-30 min, fine for releases).
-# Env: TAG (vX.Y.Z[-rc.N]), RUNNER_TEMP, GITHUB_STEP_SUMMARY (optional).
+# The release build, run inside an arm64 debian:trixie container. release.yml
+# runs it on a native arm64 runner (vars.ARM_RUNNER) or, without one, under
+# QEMU on an x86 runner (slow, ~15-30 min, fine for releases).
+# Env: TAG (vX.Y.Z[-rc.N]), RUNNER_TEMP, GITHUB_STEP_SUMMARY (optional),
+#      CACHE_DIR (optional: persistent dir kept by actions/cache between runs,
+#      holding apt/ pip/ uv/ wheels/ bins/), REPRO=1 (optional: build twice
+#      and compare bytes - the weekly/dispatched reproducibility check).
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 RUNNER_TEMP=${RUNNER_TEMP:-/tmp/rt}; mkdir -p "$RUNNER_TEMP"
 GITHUB_STEP_SUMMARY=${GITHUB_STEP_SUMMARY:-/dev/null}
+CACHE_DIR=${CACHE_DIR:-}
+BIN_CACHE="$RUNNER_TEMP/bins"
+
+if [[ -n "$CACHE_DIR" ]]; then
+  mkdir -p "$CACHE_DIR"/{apt/partial,pip,uv,wheels,bins}
+  # debian images delete downloaded .debs after every install; keep them, in the cache.
+  rm -f /etc/apt/apt.conf.d/docker-clean
+  cat > /etc/apt/apt.conf.d/90hasler-cache <<APT
+Dir::Cache::archives "$CACHE_DIR/apt";
+Binary::apt::APT::Keep-Downloaded-Packages "true";
+APT::Sandbox::User "root";
+APT
+  export PIP_CACHE_DIR="$CACHE_DIR/pip" UV_CACHE_DIR="$CACHE_DIR/uv" WHEEL_CACHE="$CACHE_DIR/wheels"
+  BIN_CACHE="$CACHE_DIR/bins"
+  # Hand the cache back to the runner user so actions/cache can save it.
+  trap 'apt-get autoclean -q >/dev/null 2>&1 || true; chown -R "${HOST_UID:-0}:${HOST_GID:-0}" "$CACHE_DIR" || true' EXIT
+fi
 
 # liblgpio-dev (lgpio's C library) lives in the Raspberry Pi archive, not in
 # Debian. Its key is committed (fingerprint CF8A 1AF5 02A2 AA2D 763B AE7E 82B1
@@ -37,14 +57,18 @@ scripts/release/build_wheels.sh daemon "$RUNNER_TEMP/wheelhouse"
 
 # --strict: tag == pyproject version, units free of /home/pi, wheels repaired or apt deps declared
 python3 scripts/release/build_release.py --version "$VERSION" --ref "$TAG" --out dist \
-  --wheelhouse "$RUNNER_TEMP/wheelhouse" --bins --bin-cache "$RUNNER_TEMP/bins" --strict
+  --wheelhouse "$RUNNER_TEMP/wheelhouse" --bins --bin-cache "$BIN_CACHE" --strict
 cp "$RUNNER_TEMP/wheelhouse/source.lock" dist/requirements-pi.source.lock 2>/dev/null || true
 
-# Reproducible: a second build gives the same bytes
-python3 scripts/release/build_release.py --version "$VERSION" --ref "$TAG" --out "$RUNNER_TEMP/dist2" \
-  --wheelhouse "$RUNNER_TEMP/wheelhouse" --bins --bin-cache "$RUNNER_TEMP/bins" --strict
-cmp dist/hasler-$VERSION-arm64.tar.zst "$RUNNER_TEMP/dist2/hasler-$VERSION-arm64.tar.zst"
-cmp dist/release.json "$RUNNER_TEMP/dist2/release.json"
+# Reproducible: a second build gives the same bytes (REPRO=1 only - weekly
+# schedule or a dispatch with reproducibility=true; normal releases skip it)
+if [[ "${REPRO:-0}" == 1 ]]; then
+  python3 scripts/release/build_release.py --version "$VERSION" --ref "$TAG" --out "$RUNNER_TEMP/dist2" \
+    --wheelhouse "$RUNNER_TEMP/wheelhouse" --bins --bin-cache "$BIN_CACHE" --strict
+  cmp dist/hasler-$VERSION-arm64.tar.zst "$RUNNER_TEMP/dist2/hasler-$VERSION-arm64.tar.zst"
+  cmp dist/release.json "$RUNNER_TEMP/dist2/release.json"
+  echo "reproducible: second build is byte-identical" | tee -a "$GITHUB_STEP_SUMMARY"
+fi
 
 # Offline install test, as the box does it
 python3 scripts/release/make_manifest.py check --release dist/release.json \

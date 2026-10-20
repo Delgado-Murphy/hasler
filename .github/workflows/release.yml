@@ -1,11 +1,28 @@
 # On a tag vX.Y.Z[-rc.N]: build the arm64 release in debian:trixie and upload it
 # as a workflow artifact. Nothing is signed or published here - that is
 # sign-publish.yml in the public hasler-releases repo (docs/release.md).
+#
+# Weekly (schedule) and on demand (workflow_dispatch): rebuild a tag (default:
+# the latest v*) as a check - reproducibility, and it warms the caches on the
+# default branch, which is the only scope tag runs can restore from. These
+# runs upload nothing; sign-publish only accepts `push` runs anyway.
 name: release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to rebuild (default the latest v* tag)
+        type: string
+        default: ""
+      reproducibility:
+        description: Build twice and compare the bytes
+        type: boolean
+        default: false
+  schedule:
+    - cron: "23 4 * * 1"     # Mondays: rebuild the latest tag, reproducibility on
 
 permissions:
   contents: read
@@ -20,21 +37,42 @@ jobs:
 
   build:
     needs: test
-    # Free plan + private repo: no arm64 runners -> x86 + QEMU (slow, fine).
-    # Set vars.ARM_RUNNER (e.g. ubuntu-24.04-arm) if the plan allows it.
+    # Native arm64 when vars.ARM_RUNNER is set (ubuntu-24.04-arm), else x86 +
+    # QEMU (slow, fine). Same caches either way: they hold arm64 container data.
     runs-on: ${{ vars.ARM_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 120
     permissions:
       contents: read
       id-token: write       # build provenance attestation
       attestations: write
-    env:
-      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0          # tags: previous version -> kind
           persist-credentials: false
+
+      - name: Which tag, reproducibility check or not
+        id: t
+        env:
+          EVENT: ${{ github.event_name }}
+          IN_TAG: ${{ inputs.tag }}
+          IN_REPRO: ${{ inputs.reproducibility }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            tag="$GITHUB_REF_NAME"; repro=0
+          else
+            tag="${IN_TAG:-$(git -c versionsort.suffix=-rc tag -l 'v*' --sort=-v:refname | head -n1)}"
+            echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' \
+              || { echo "::error::no usable tag ($tag)"; exit 1; }
+            git checkout -q --detach "refs/tags/$tag"
+            if [ "$EVENT" = schedule ] || [ "$IN_REPRO" = true ]; then repro=1; else repro=0; fi
+          fi
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "REPRO=$repro" >> "$GITHUB_ENV"
+          # go-librespot/deno pins -> the bins cache key
+          echo "pins=$(grep -E '^(GLR|DENO)_(VERSION|SHA256)=' scripts/install.sh | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP"/cache/{apt,pip,uv,wheels,bins}
+          echo "building $tag (reproducibility check: $repro)"
 
       - name: arm64 emulation (QEMU from Ubuntu's archive)
         if: ${{ !vars.ARM_RUNNER }}
@@ -43,22 +81,97 @@ jobs:
           sudo apt-get install -y -q qemu-user-static binfmt-support
           docker run --rm --platform linux/arm64 debian:trixie uname -m
 
+      # Caches. Keys ending in run_id are saved again only when the content
+      # changed (see "Cache changes"); restore takes the newest matching prefix.
+      - name: Restore apt archives
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cache/apt
+          key: release-apt-${{ hashFiles('scripts/release/ci_build.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            release-apt-${{ hashFiles('scripts/release/ci_build.sh') }}-
+            release-apt-
+      - name: Restore pip/uv downloads
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/cache/pip
+            ${{ runner.temp }}/cache/uv
+          key: release-pydl-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: release-pydl-
+      - name: Restore wheelhouse
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cache/wheels
+          key: release-wheels-${{ hashFiles('daemon/requirements-pi.lock', 'scripts/release/build_wheels.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            release-wheels-${{ hashFiles('daemon/requirements-pi.lock', 'scripts/release/build_wheels.sh') }}-
+            release-wheels-
+      - name: Restore pinned binaries
+        id: bins
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cache/bins
+          key: release-bins-${{ steps.t.outputs.pins }}
+
+      - name: Cache snapshot
+        run: |
+          for d in apt pip uv wheels bins; do
+            find "$RUNNER_TEMP/cache/$d" -type f ! -name lock -printf '%P %s\n' | sort | sha256sum > "$RUNNER_TEMP/cache-$d.before"
+          done
+
       - name: Build in arm64 debian:trixie
         id: v
         run: |
           docker run --rm --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE:/w" -w /w \
             -v "$GITHUB_STEP_SUMMARY:/summary" \
-            -e TAG -e RUNNER_TEMP=/tmp/rt -e GITHUB_STEP_SUMMARY=/summary \
+            -v "$RUNNER_TEMP/cache:/cache" \
+            -e TAG -e REPRO -e CACHE_DIR=/cache -e RUNNER_TEMP=/tmp/rt -e GITHUB_STEP_SUMMARY=/summary \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             debian:trixie bash scripts/release/ci_build.sh
           cat dist/.version >> "$GITHUB_OUTPUT" && rm dist/.version
+
+      - name: Cache changes
+        id: chg
+        run: |
+          for d in apt pip uv wheels bins; do
+            now="$(find "$RUNNER_TEMP/cache/$d" -type f ! -name lock -printf '%P %s\n' | sort | sha256sum)"
+            if [ "$now" = "$(cat "$RUNNER_TEMP/cache-$d.before")" ]; then c=false; else c=true; fi
+            echo "$d=$c" >> "$GITHUB_OUTPUT"; echo "$d changed: $c"
+          done
+      - name: Save apt archives
+        if: steps.chg.outputs.apt == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cache/apt
+          key: release-apt-${{ hashFiles('scripts/release/ci_build.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Save pip/uv downloads
+        if: steps.chg.outputs.pip == 'true' || steps.chg.outputs.uv == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ runner.temp }}/cache/pip
+            ${{ runner.temp }}/cache/uv
+          key: release-pydl-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Save wheelhouse
+        if: steps.chg.outputs.wheels == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cache/wheels
+          key: release-wheels-${{ hashFiles('daemon/requirements-pi.lock', 'scripts/release/build_wheels.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Save pinned binaries
+        if: steps.bins.outputs.cache-hit != 'true' && steps.chg.outputs.bins == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/cache/bins
+          key: release-bins-${{ steps.t.outputs.pins }}
 
       # Attestations in a PRIVATE repo need GitHub Enterprise Cloud; on the Free
       # plan leave vars.ATTESTATIONS unset (sign-publish then checks the run
       # metadata and the artifact digest instead). See docs/release.md.
       - name: Build provenance
-        if: vars.ATTESTATIONS == 'true'
+        if: github.event_name == 'push' && vars.ATTESTATIONS == 'true'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
@@ -66,6 +179,7 @@ jobs:
             dist/release.json
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: github.event_name == 'push'
         with:
           name: hasler-release-${{ steps.v.outputs.version }}
           path: dist/

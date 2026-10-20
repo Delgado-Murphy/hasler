@@ -16,6 +16,11 @@
 #
 # Needs: python3 (3.13), python3-venv, python3-dev, build-essential, swig,
 # liblgpio-dev, patchelf, uv. Installs pip tools into a throwaway venv.
+#
+# WHEEL_CACHE=<dir> (optional, CI): a finished wheelhouse is kept under
+# <dir>/<key>, key = sha256 of the lock + this script + the toolchain package
+# versions. Same key next time -> copied, nothing built (lgpio is the slow
+# one). Older keys are pruned. The lock's hashes still pin every input.
 set -euo pipefail
 
 DAEMON="$(cd "${1:?daemon dir}" && pwd)"
@@ -28,11 +33,6 @@ mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
   || { echo "build_wheels: need CPython 3.13 (trixie's python3)" >&2; exit 1; }
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
-"$PY" -m venv "$WORK/venv"
-VPY="$WORK/venv/bin/python"
-# Tool versions pinned; TODO: hash-lock the tools too (scripts/release/tools.lock).
-"$VPY" -m pip install -q 'pip==26.2.1' 'auditwheel==6.8.2' 'wheel==0.48.0'
-
 LOCK="$DAEMON/requirements-pi.lock"
 if [[ ! -f "$LOCK" ]]; then
   command -v uv >/dev/null || { echo "build_wheels: no $LOCK and no uv to compile one" >&2; exit 1; }
@@ -42,6 +42,25 @@ if [[ ! -f "$LOCK" ]]; then
       --python "$PY" --no-header --quiet -o "$LOCK")
 fi
 cp "$LOCK" "$OUT/source.lock"   # the input lock, for the record (not shipped)
+
+if [[ -n "${WHEEL_CACHE:-}" ]]; then
+  KEY="$( { cat "$LOCK" "${BASH_SOURCE[0]}"; uname -m; "$PY" -c 'import sys; print(sys.version_info[:2])'
+            dpkg-query -W -f='${Package} ${Version}\n' liblgpio-dev swig python3-dev patchelf 2>/dev/null || true
+          } | sha256sum | cut -c1-32)"
+  HIT="$WHEEL_CACHE/$KEY"
+  if [[ -f "$HIT/.complete" ]]; then
+    echo "build_wheels: wheelhouse cache hit ($KEY)" >&2
+    find "$HIT" -maxdepth 1 -type f ! -name .complete ! -name source.lock -exec cp {} "$OUT/" \;
+    ls -1 "$OUT" >&2
+    exit 0
+  fi
+  echo "build_wheels: wheelhouse cache miss ($KEY), building" >&2
+fi
+
+"$PY" -m venv "$WORK/venv"
+VPY="$WORK/venv/bin/python"
+# Tool versions pinned; TODO: hash-lock the tools too (scripts/release/tools.lock).
+"$VPY" -m pip install -q 'pip==26.2.1' 'auditwheel==6.8.2' 'wheel==0.48.0'
 
 "$VPY" -m pip wheel -q --require-hashes --no-deps -r "$LOCK" -w "$WORK/raw"
 
@@ -70,5 +89,11 @@ if [[ -s "$WORK/apt-deps.sorted" ]]; then
   echo "build_wheels: apt runtime deps: $(tr '\n' ' ' < "$OUT/apt-deps.txt")" >&2
 else
   rm -f "$OUT/apt-deps.txt"
+fi
+if [[ -n "${WHEEL_CACHE:-}" ]]; then
+  mkdir -p "$WHEEL_CACHE"
+  find "$WHEEL_CACHE" -mindepth 1 -maxdepth 1 ! -name "$KEY" -exec rm -rf {} +
+  rm -rf "$HIT"; mkdir -p "$HIT"
+  cp "$OUT"/* "$HIT/" && touch "$HIT/.complete"
 fi
 ls -1 "$OUT" >&2

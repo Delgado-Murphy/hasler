@@ -16,8 +16,8 @@ The human side of docs/ota.md §2-3. Formats: docs/ota-format.md. Tools:
 3. Try it locally: `python scripts/release/build_release.py --version X.Y.Z --out dist/ --no-wheels`
    (any machine; warnings list what `--strict` will refuse in CI).
 4. Release candidate first: `git tag -a vX.Y.Z-rc.1 -m ... && git push origin vX.Y.Z-rc.1`.
-   `release.yml` tests, builds in debian:trixie on arm64, rebuilds to prove the
-   bytes are reproducible, installs the venv offline, uploads the artifact
+   `release.yml` tests, builds in debian:trixie on arm64, installs the venv
+   offline, uploads the artifact
    `hasler-release-X.Y.Z-rc.1`. The run summary shows the run id and the
    tarball's sha256.
 5. Before signing (laptop): download the artifact, `make_manifest.py check`,
@@ -40,6 +40,30 @@ The human side of docs/ota.md §2-3. Formats: docs/ota-format.md. Tools:
 
 `seq` is derived from the version - `(M*10000 + m*100 + p)*100 + (N for rc.N, 99 for final)` -
 so it follows semver with no counter to keep (minor/patch < 100). `--seq` overrides.
+
+## CI speed
+
+- `ci.yml` runs `lint` (ruff), `pytest (daemon)`, `pytest (updater)` and
+  `release-smoke` as parallel jobs; `test` only gathers their results, so
+  branch protection still requires the single check `ci / test`. Both suites
+  run under pytest-xdist (`-n auto`; ~9 s / ~7 s on a laptop vs 73 s / 24 s
+  serial) - new tests must not share fixed ports or paths (use `tmp_path`
+  and port 0). Tool pins: `.github/ci-requirements.txt` (also the pip cache
+  key). A newer push to a branch/PR cancels the older run; tag runs never.
+- `release.yml` keeps four caches (actions/cache), mounted at `/cache` in the
+  container (`CACHE_DIR`): apt `.deb`s, pip/uv downloads, the finished
+  wheelhouse (`build_wheels.sh` reuses it when the lock, the script and the
+  toolchain versions match - lgpio is not rebuilt) and the go-librespot/deno
+  downloads (keyed on their pins, sha256-checked on use). Saved only when
+  their content changed. Same caches on the native arm64 runner and on QEMU.
+- Caches from a tag run are invisible to the next tag; only default-branch
+  caches are shared. The weekly scheduled run (and any manual dispatch from
+  `master`) rebuilds the latest tag and so warms them for the next release.
+- The byte-for-byte second build runs only on that weekly schedule or a
+  dispatch with `reproducibility: true`, not on every release. Before
+  signing an important release you can dispatch it on the tag yourself.
+- Expect: CI ~1-1.5 min wall clock; a release on `ubuntu-24.04-arm` with warm
+  caches ~4-6 min, cold ~10 min; on QEMU roughly 3-5x that.
 
 ## One-time org setup (owner, once the org exists)
 

@@ -19,7 +19,7 @@ pi = [
     # Imported lazily: without it the ytm source falls back to yt-dlp alone.
     "ytmusicapi>=1.12",
 ]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.6"]
 
 [build-system]
 requires = ["hatchling"]
