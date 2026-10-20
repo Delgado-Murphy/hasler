@@ -1,6 +1,6 @@
 [project]
 name = "haslerd"
-version = "0.1.0"
+version = "0.3.1"
 description = "Panel daemon for vintage radio cabinets running moOde Audio"
 requires-python = ">=3.11"
 dependencies = [

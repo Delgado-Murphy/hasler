@@ -238,6 +238,9 @@ class FakeHooks(Hooks):
     def udev_reload(self) -> None:
         self.calls.append(("udev",))
 
+    def bootcfg_save(self) -> None:
+        self.calls.append(("bootcfg-save",))
+
     def idle(self):
         return (self.idle_ok, "idle" if self.idle_ok else "radio playing")
 

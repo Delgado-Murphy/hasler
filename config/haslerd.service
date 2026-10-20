@@ -14,6 +14,10 @@ After=network.target mpd.service
 # shutdown or reboot by hasler-clean-shutdown.service, read and deleted by
 # haslerd at start; missing = the power was cut. Wants=, so no `enable` needed.
 Wants=hasler-clean-shutdown.service
+# Boot config guard (docs/build-guide.md "Boot config guard"): the early repair
+# of a config.txt a power cut broke (ordered before rc-local and this unit by
+# its own Before=) and the timer that refreshes the known-good copy after boot.
+Wants=hasler-bootcfg-guard.service hasler-bootcfg-save.timer
 # The early boot lamp (hasler-lamp-boot) breathes until haslerd starts.
 # After= so haslerd never starts before it; ExecStartPre= below stops it so
 # only one of them ever writes the LED. Not Conflicts=: both are in the same

@@ -1,0 +1,33 @@
+[Unit]
+Description=Hasler boot config guard - put a known-good config.txt back if a power cut broke it
+# docs/build-guide.md "Boot config guard". Shipped in every release
+# (integration/systemd/); pulled in by haslerd.service (Wants=), so it needs no
+# `systemctl enable` from the updater.
+#
+# moOde's worker rewrites config.txt with `sed -i` at every boot, and a power
+# cut while vfat still holds that write leaves it empty or truncated. The
+# worker then copies its pristine default over it (no amp overlay, no lamp
+# block). This runs first: after the local filesystems (/boot/firmware, /etc,
+# /var/lib) are mounted read-write, before rc-local (which starts the worker,
+# whose check and edits come later still) and before haslerd. If config.txt is
+# not sane and /etc/hasler/boot/config.txt.good exists, it writes that back and
+# reboots once (never more than once per 10 minutes). A sane config.txt is not
+# touched. Oneshot + RemainAfterExit: a later restart of haslerd (Wants=) does
+# not run it again in the same boot.
+DefaultDependencies=no
+After=local-fs.target systemd-remount-fs.service
+RequiresMountsFor=/boot/firmware /etc/hasler /var/lib
+Before=rc-local.service haslerd.service hasler-update-boot.service sysinit.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-bootcfg-guard repair
+# Never hold the boot for long, never fail it.
+TimeoutStartSec=60
+SuccessExitStatus=1
+
+[Install]
+WantedBy=sysinit.target

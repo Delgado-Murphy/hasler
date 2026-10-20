@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -27,6 +28,7 @@ from hasler_update.layout import Layout
 
 ROOT = Path(__file__).resolve().parents[2]
 REL = ROOT / "scripts" / "release"
+NODE = shutil.which("node")   # resolved now: a later test may leave PATH changed
 needs = lambda *tools: pytest.mark.skipif(  # noqa: E731
     not all(shutil.which(t) for t in tools), reason=f"needs {' '.join(tools)}")
 COMMIT_TIME = int(time.time()) // 86400 * 86400 - 86400
@@ -59,7 +61,8 @@ def repo(tmp_path_factory):
             (dest / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, dest / rel)
     pp = dest / "daemon" / "pyproject.toml"
-    pp.write_text(pp.read_text().replace('version = "0.1.0"', 'version = "0.2.0"', 1))
+    # whatever version master carries, the fixture builds 0.2.0
+    pp.write_text(re.sub(r'(?m)^version = "[^"]+"', 'version = "0.2.0"', pp.read_text(), count=1))
     subprocess.run(["git", "init", "-q", str(dest)], check=True)
     git(dest, "add", "-A")
     git(dest, "commit", "-q", "-m", "fixture")
@@ -89,7 +92,8 @@ def test_strict_release_integration(built):
               "systemd/hasler-update-check.service", "systemd/hasler-update-rollback.service",
               "sudoers/haslerd", "configtxt/hasler.block", "udev/99-hasler-pwm.rules",
               "sbin/hasler-audio-mono", "sbin/hasler-wifi-join", "sbin/hasler-lamp-boot",
-              "sbin/hasler-ytdlp-update", "sbin/hasler-update", "bin/hasler-tone", "shutdown/hasler-lamp-halt"):
+              "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-bootcfg-guard",
+              "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "shutdown/hasler-lamp-halt"):
         assert f"integration/{p}" in integ_files, p
     assert files["integration/sbin/hasler-ytdlp-update"][1] == 0o755
     unit = files["integration/systemd/haslerd.service"][0].decode()
@@ -166,7 +170,7 @@ console.log(JSON.stringify(cases.map(([user, verb, unit, id]) => rule(
 ])
 def test_polkit_rules(file, cases):
     args = json.dumps([list(c) for c, _ in cases])
-    out = subprocess.run(["node", "-e", POLKIT_HARNESS, str(ROOT / "config/update" / file), args],
+    out = subprocess.run([NODE, "-e", POLKIT_HARNESS, str(ROOT / "config/update" / file), args],
                          capture_output=True, text=True, check=True).stdout
     assert json.loads(out) == [want for _, want in cases]
 

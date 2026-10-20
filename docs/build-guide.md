@@ -448,6 +448,24 @@ writes `/var/lib/haslerd/clean-shutdown` when systemd shuts down or reboots; has
 deletes it at start, so a missing marker means the power was cut. It is not the halt hook's job:
 `hasler-lamp-halt` runs after the filesystems are read-only.
 
+**Boot config guard.** moOde's worker rewrites `config.txt` with `sed -i` at every boot (its
+fan-control edit, even on a Pi 4), and vfat writes back lazily: a power cut seconds later can
+leave the file empty or truncated. The worker's `chkBootConfigTxt` then copies its pristine
+default over it (`#dtoverlay=none`, none of our blocks): no amp, no lamp. Three defences:
+
+- `/boot/firmware` is mounted with the vfat `flush` option (bootstrap edits `/etc/fstab`).
+- `hasler-bootcfg-save.timer` (4 min after boot), the updater's commit/rollback and bootstrap run
+  `hasler-bootcfg-guard save`: a *sane* `config.txt`/`cmdline.txt` is copied to
+  `/etc/hasler/boot/*.good`. Sane = moOde's main header on line 2 and its four section headers,
+  the line under `# Audio overlays` equal to moOde's `cfg_system.i2soverlay`, and every hasler
+  block the known-good has (the lamp block whenever the release ships one).
+- `hasler-bootcfg-guard.service` runs `repair` early in boot, before rc-local starts the worker:
+  not sane -> the known-good is written back (tmp + fsync + rename + sync), the broken copy kept in
+  `/var/lib/hasler-bootcfg/`, and the box reboots once. At most one repair reboot per 10 min; a
+  repair that did not hold is logged (`journalctl -u hasler-bootcfg-guard -p crit`) and left.
+  A broken `cmdline.txt` is restored without a reboot. Both units are pulled in by
+  `haslerd.service` (Wants=); `sudo hasler-bootcfg-guard check` tells you what it would do.
+
 ## Moving the radio to a new Wi-Fi network
 
 No screen, no keyboard — moOde's fallback hotspot does it.

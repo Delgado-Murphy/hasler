@@ -1,0 +1,447 @@
+#!/usr/bin/python3 -I
+"""Boot config guard: keep /boot/firmware/config.txt (and cmdline.txt) sane.
+
+    hasler-bootcfg-guard check    # exit 0 = sane, 1 = not (the reasons on stderr)
+    hasler-bootcfg-guard save     # sane -> refresh the known-good copies in /etc/hasler/boot
+    hasler-bootcfg-guard repair   # not sane -> write the known-good back (+ reboot once at boot)
+
+Why (docs/build-guide.md "Boot config guard"): moOde's worker rewrites
+config.txt with `sed -i` at every boot (updBootConfigTxt 'upd_fan_temp0'), and
+vfat writes back lazily. A power cut soon after can leave config.txt empty or
+truncated; the worker then finds line 2 without its main header and copies its
+pristine default over it (chkBootConfigTxt: `cp -f` + reboot). The default has
+`#dtoverlay=none` and none of our blocks: no amp, no pilot lamp.
+
+`repair` runs from hasler-bootcfg-guard.service early in boot, before rc-local
+(which starts moOde's worker), so the worker never sees the damage. `save` runs
+a few minutes after boot (hasler-bootcfg-save.timer) and after every intended
+edit (the updater's commit and rollback, scripts/bootstrap.sh).
+
+"Sane" means:
+  - config.txt: non-empty text, no NUL bytes; line 2 holds moOde's main header
+    and its four section headers exist (exactly chkBootConfigTxt's test); the
+    line after "# Audio overlays" is the overlay moOde's database names
+    (cfg_system.i2soverlay), or, if that cannot be read, the known-good copy's;
+    every hasler marked block the known-good copy has (and the updater's lamp
+    block whenever the installed release ships one) is present.
+  - cmdline.txt: one non-empty line with a root= argument.
+
+Loop guard: at most one repair reboot per 10 minutes. If a repair did not hold
+(still broken within that window) it leaves everything alone and says so.
+Stdlib only, run as root. HASLER_ROOT prefixes every path (tests).
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import sqlite3
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+MOODE_MAIN = "# This file is managed by moOde"
+MOODE_HEADERS = ("# Device filters", "# General settings", "# Do not alter this section", "# Audio overlays")
+AUDIO_HEADER = "# Audio overlays"
+# Every hasler marked block (begin, end): the updater's lamp block, bootstrap's boot-time block.
+LAMP_BLOCK = ("# >>> hasler (managed by hasler-update; edits here are replaced) >>>", "# <<< hasler <<<")
+BLOCKS = (LAMP_BLOCK,
+          ("# >>> hasler boot time (scripts/bootstrap.sh; edits here are replaced) >>>", "# <<< hasler boot time <<<"))
+WINDOW_S = 600          # at most one repair reboot per 10 minutes
+KEEP_BAD = 3            # broken copies kept for a post-mortem
+
+
+class Paths:
+    def __init__(self, root: str | None = None) -> None:
+        self.root = Path(root if root is not None else (os.environ.get("HASLER_ROOT") or "/"))
+
+    def p(self, rel: str) -> Path:
+        return self.root / rel.lstrip("/")
+
+    @property
+    def fw(self) -> Path:
+        fw = self.p("/boot/firmware")
+        return fw if fw.is_dir() or not self.p("/boot/config.txt").exists() else self.p("/boot")
+
+    @property
+    def config(self) -> Path:
+        return self.fw / "config.txt"
+
+    @property
+    def cmdline(self) -> Path:
+        return self.fw / "cmdline.txt"
+
+    @property
+    def good_dir(self) -> Path:
+        return self.p("/etc/hasler/boot")
+
+    @property
+    def state_dir(self) -> Path:
+        return self.p("/var/lib/hasler-bootcfg")
+
+    @property
+    def state_file(self) -> Path:
+        return self.state_dir / "state.json"
+
+    @property
+    def moode_db(self) -> Path:
+        return self.p("/var/local/www/db/moode-sqlite3.db")
+
+    @property
+    def release_block(self) -> Path:
+        return self.p("/opt/hasler/current/integration/configtxt/hasler.block")
+
+    def good(self, name: str) -> Path:
+        return self.good_dir / f"{name}.good"
+
+
+# --- the outside world (tests replace these) ---------------------------------------
+
+
+def now() -> float:
+    return time.time()
+
+
+def boot_id() -> str:
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+    except OSError:
+        return ""
+
+
+def system_state() -> str:
+    """systemd's `is-system-running`: "starting" while the boot is in progress."""
+    try:
+        r = subprocess.run(["systemctl", "is-system-running"], capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def sync() -> None:
+    try:
+        subprocess.run(["sync"], timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        os.sync()
+
+
+def reboot() -> None:
+    subprocess.run(["systemctl", "--no-block", "reboot"], timeout=30)
+
+
+def log(msg: str, prio: int = 6) -> None:
+    """To stderr; under systemd the <N> prefix sets the journal priority (2 = crit)."""
+    prefix = f"<{prio}>" if os.environ.get("JOURNAL_STREAM") else ""
+    print(f"{prefix}hasler-bootcfg-guard: {msg}", file=sys.stderr, flush=True)
+
+
+# --- reading ------------------------------------------------------------------------
+
+
+def read(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except OSError:
+        return None
+
+
+def text_of(data: bytes | None) -> str | None:
+    """None for anything that is not plain text (missing, NULs from a torn FAT write)."""
+    if data is None or b"\0" in data:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def audio_line(text: str) -> str | None:
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line == AUDIO_HEADER:
+            return lines[i + 1].strip() if i + 1 < len(lines) else ""
+    return None
+
+
+def db_overlay(paths: Paths) -> str | None:
+    """moOde's cfg_system.i2soverlay as a config.txt line, or None (unreadable / none set)."""
+    db = paths.moode_db
+    if not db.is_file():
+        return None
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro&immutable=1", uri=True, timeout=2)
+        try:
+            row = con.execute("SELECT value FROM cfg_system WHERE param='i2soverlay'").fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+    val = str(row[0]).strip() if row and row[0] is not None else ""
+    return None if val in ("", "None", "none") else f"dtoverlay={val}"
+
+
+def expectations(paths: Paths, good_text: str | None) -> dict:
+    # moOde's database is the intent (a new amp chosen in moOde's UI changes both
+    # it and config.txt). Without it, only "an overlay is set" is checked, if the
+    # known-good copy had one - so a deliberate change is never reverted.
+    overlay, exact = db_overlay(paths), True
+    if overlay is None and good_text:
+        line = audio_line(good_text)
+        if line and not line.startswith("#"):
+            overlay, exact = line, False
+    blocks = [b for b in BLOCKS if good_text and b[0] in good_text.splitlines()]
+    if paths.release_block.is_file() and LAMP_BLOCK not in blocks:
+        blocks.insert(0, LAMP_BLOCK)
+    return {"overlay": overlay, "exact": exact, "blocks": blocks}
+
+
+def config_problems(text: str | None, exp: dict) -> list[str]:
+    if text is None:
+        return ["missing, unreadable or not text (NUL bytes)"]
+    if not text.strip():
+        return ["empty"]
+    lines = text.splitlines()
+    out = []
+    if len(lines) < 2 or MOODE_MAIN not in lines[1]:
+        out.append("line 2 is not moOde's main header")
+    out += [f"moOde header {h!r} missing" for h in MOODE_HEADERS if h not in lines]
+    if exp.get("overlay") and AUDIO_HEADER in lines:
+        got = audio_line(text)
+        if exp.get("exact", True) and got != exp["overlay"]:
+            out.append(f"audio overlay is {got!r}, moOde's database says {exp['overlay']!r}")
+        elif not exp.get("exact", True) and (not got or got.startswith("#")):
+            out.append(f"no audio overlay ({got!r}), the known-good copy has {exp['overlay']!r}")
+    for begin, end in exp.get("blocks", []):
+        if begin not in lines or end not in lines or lines.index(end) < lines.index(begin):
+            out.append(f"block {begin!r} missing or cut")
+    return out
+
+
+def cmdline_problems(text: str | None) -> list[str]:
+    if text is None:
+        return ["missing, unreadable or not text (NUL bytes)"]
+    lines = [l for l in text.splitlines() if l.strip()]
+    if not lines:
+        return ["empty"]
+    if len(lines) > 1:
+        return ["more than one line"]
+    if not any(t.startswith("root=") for t in lines[0].split()):
+        return ["no root= argument"]
+    return []
+
+
+# --- writing ------------------------------------------------------------------------
+
+
+def fsync_dir(path: Path) -> None:
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def write_file(path: Path, data: bytes, mode: int = 0o644) -> None:
+    """tmp + fsync + rename + fsync(dir). On vfat (no real rename atomicity, lazy
+    write-back) also a global sync and a read-back check."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.hasler-tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        view = memoryview(data)
+        while view:
+            view = view[os.write(fd, view):]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    try:
+        os.chmod(tmp, mode)
+    except OSError:
+        pass   # vfat
+    os.replace(tmp, path)
+    fsync_dir(path.parent)
+    sync()
+    if read(path) != data:
+        raise OSError(f"{path}: read-back differs after writing")
+
+
+def load_state(paths: Paths) -> dict:
+    try:
+        doc = json.loads(paths.state_file.read_text(encoding="utf-8"))
+        return doc if isinstance(doc, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_state(paths: Paths, doc: dict) -> None:
+    paths.state_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+    write_file(paths.state_file, (json.dumps(doc, indent=2, sort_keys=True) + "\n").encode())
+
+
+def keep_bad(paths: Paths, name: str, data: bytes | None) -> None:
+    if data is None:
+        return
+    paths.state_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime(now()))
+    (paths.state_dir / f"{name}.bad-{stamp}").write_bytes(data)
+    bad = sorted(paths.state_dir.glob(f"{name}.bad-*"))
+    for old in bad[:-KEEP_BAD]:
+        old.unlink(missing_ok=True)
+
+
+# --- commands -----------------------------------------------------------------------
+
+
+def assess(paths: Paths) -> dict:
+    good_cfg = text_of(read(paths.good("config.txt")))
+    exp = expectations(paths, good_cfg)
+    cfg_data, cmd_data = read(paths.config), read(paths.cmdline)
+    return {
+        "exp": exp,
+        "good_cfg": good_cfg,
+        "cfg_data": cfg_data,
+        "cfg": config_problems(text_of(cfg_data), exp),
+        "cmd_data": cmd_data,
+        # cmdline.txt is only judged when there is one (or a known-good of it).
+        "cmd": cmdline_problems(text_of(cmd_data)) if cmd_data is not None or paths.good("cmdline.txt").exists() else [],
+    }
+
+
+def cmd_check(paths: Paths) -> int:
+    a = assess(paths)
+    for p in a["cfg"]:
+        log(f"{paths.config}: {p}", 3)
+    for p in a["cmd"]:
+        log(f"{paths.cmdline}: {p}", 3)
+    if a["cfg"] or a["cmd"]:
+        return 1
+    log(f"{paths.config}: sane" + ("" if a["exp"]["overlay"] else " (no audio overlay to check)"))
+    return 0
+
+
+def cmd_save(paths: Paths, force: bool = False) -> int:
+    state = system_state()
+    if not force and state in ("initializing", "starting", "stopping"):
+        log(f"not saving: the system is {state} (save only once the boot has finished)")
+        return 1
+    a = assess(paths)
+    if a["cfg"]:
+        log(f"not saving: {paths.config} is not sane: " + "; ".join(a["cfg"]), 4)
+        return 1
+    doc = load_state(paths)
+    saved = []
+    for name, data, probs in (("config.txt", a["cfg_data"], a["cfg"]), ("cmdline.txt", a["cmd_data"], a["cmd"])):
+        if data is None:
+            continue
+        if probs:
+            log(f"not saving {name}: " + "; ".join(probs), 4)
+            continue
+        if read(paths.good(name)) != data:
+            paths.good_dir.mkdir(parents=True, exist_ok=True, mode=0o755)
+            write_file(paths.good(name), data)
+            saved.append(name)
+            doc.setdefault("saved", {})[name] = {"sha256": hashlib.sha256(data).hexdigest(), "at": int(now())}
+    if saved:
+        save_state(paths, doc)
+        log("known-good refreshed: " + ", ".join(saved))
+    else:
+        log("known-good up to date")
+    return 0
+
+
+def cmd_repair(paths: Paths, allow_reboot: bool = True) -> int:
+    a = assess(paths)
+    doc = load_state(paths)
+    rc = 0
+
+    # cmdline.txt: the kernel already booted with it (a broken one would not get
+    # this far), so it only matters for the next boot: restore, no reboot.
+    if a["cmd"]:
+        good = read(paths.good("cmdline.txt"))
+        if good is not None and not cmdline_problems(text_of(good)):
+            log(f"CRITICAL: {paths.cmdline} is broken ({'; '.join(a['cmd'])}) - restoring the known-good copy", 2)
+            keep_bad(paths, "cmdline.txt", a["cmd_data"])
+            write_file(paths.cmdline, good)
+            doc.setdefault("repairs", []).append({"file": "cmdline.txt", "at": int(now()), "boot_id": boot_id(),
+                                                  "problems": a["cmd"], "reboot": False})
+            save_state(paths, doc)
+        else:
+            log(f"CRITICAL: {paths.cmdline} is broken ({'; '.join(a['cmd'])}) and there is no good copy to restore", 2)
+            rc = 1
+
+    if not a["cfg"]:
+        last = doc.get("pending")
+        if last:
+            log(f"the repair of {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last['at']))} held: config.txt is sane")
+            doc["pending"] = None
+            save_state(paths, doc)
+        else:
+            log(f"{paths.config}: sane")
+        return rc
+
+    why = "; ".join(a["cfg"])
+    good = read(paths.good("config.txt"))
+    if good is None:
+        log(f"CRITICAL: {paths.config} is not sane ({why}) and there is no known-good copy - leaving it", 2)
+        return 1
+    good_probs = config_problems(text_of(good), a["exp"])
+    if good_probs:
+        log(f"CRITICAL: {paths.config} is not sane ({why}), but the known-good copy is not either "
+            f"({'; '.join(good_probs)}) - leaving it", 2)
+        return 1
+    t = now()
+    recent = [r for r in doc.get("repairs", []) if r.get("file") == "config.txt" and r.get("reboot")
+              and (t - float(r.get("at", 0)) < WINDOW_S or float(r.get("at", 0)) > t)]
+    if recent:
+        log(f"CRITICAL: {paths.config} is not sane ({why}) again, {int(t - recent[-1]['at'])} s after a repair "
+            "reboot - the repair did not hold; leaving it (no reboot loop)", 2)
+        doc["pending"] = None
+        doc["gave_up"] = {"at": int(t), "boot_id": boot_id(), "problems": a["cfg"]}
+        save_state(paths, doc)
+        return 1
+
+    log(f"CRITICAL: {paths.config} is not sane ({why}) - restoring the known-good copy", 2)
+    keep_bad(paths, "config.txt", a["cfg_data"])
+    write_file(paths.config, good)
+    # Reboot only while the boot is still in progress: the firmware has read the
+    # broken file, so this boot runs without the amp/lamp overlays. Run by hand
+    # on a running box it only writes the file.
+    do_reboot = allow_reboot and system_state() in ("initializing", "starting")
+    entry = {"file": "config.txt", "at": int(t), "boot_id": boot_id(), "problems": a["cfg"], "reboot": do_reboot}
+    doc.setdefault("repairs", []).append(entry)
+    doc["repairs"] = doc["repairs"][-20:]
+    doc["pending"] = entry if do_reboot else None
+    save_state(paths, doc)
+    if do_reboot:
+        log("rebooting once so the firmware reads the restored config.txt", 2)
+        reboot()
+    else:
+        log("config.txt restored - it takes effect at the next reboot", 4)
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if not argv or argv[0] not in ("check", "save", "repair"):
+        print(__doc__.split("\n\n")[1], file=sys.stderr)
+        return 2
+    paths = Paths()
+    try:
+        if argv[0] == "check":
+            return cmd_check(paths)
+        if argv[0] == "save":
+            return cmd_save(paths, force="--force" in argv[1:])
+        return cmd_repair(paths, allow_reboot="--no-reboot" not in argv[1:])
+    except OSError as e:
+        log(f"CRITICAL: {argv[0]} failed: {e}", 2)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

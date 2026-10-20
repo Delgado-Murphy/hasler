@@ -100,6 +100,21 @@ class Hooks:
         self.run(["udevadm", "control", "--reload"])
         self.run(["udevadm", "trigger", "--action=change"])
 
+    def bootcfg_save(self) -> None:
+        """Refresh the boot config guard's known-good config.txt/cmdline.txt
+        (``hasler-bootcfg-guard save``, shipped in integration/sbin/) after an
+        intended change, so its early-boot repair never puts an old one back.
+        Best effort: the guard only saves a sane file, and its own timer saves
+        again after the next boot."""
+        tool = self.layout.sbin / "hasler-bootcfg-guard"
+        if not tool.is_file():
+            return
+        try:
+            self.run(["/usr/bin/python3", "-I", str(tool), "save"], timeout=60,
+                     env={**os.environ, "HASLER_ROOT": str(self.layout.root)})
+        except Exception:   # noqa: BLE001 - never fail a commit/rollback over it
+            pass
+
     def idle(self) -> tuple[bool, str]:
         return idle_now()
 
@@ -584,6 +599,8 @@ class Applier:
         # The config snapshot stays through probation (a rollback restores it).
         if not st["migrated"]:
             shutil.rmtree(snap, ignore_errors=True)
+        # The release's config.txt block (if it changed one) is now the known-good.
+        self.hooks.bootcfg_save()
 
     def _install_updater(self, release: Path) -> None:
         """A new updater is used only once its release has passed: the package
@@ -681,6 +698,8 @@ class Applier:
         self.hooks.daemon_reload()
         if "udev" in touched:
             self.hooks.udev_reload()
+        if "configtxt" in touched:
+            self.hooks.bootcfg_save()
         if "configtxt" in touched and restart:
             self.hooks.reboot()
         elif restart:

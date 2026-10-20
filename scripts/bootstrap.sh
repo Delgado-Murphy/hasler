@@ -377,6 +377,59 @@ EOF
   [[ "$RES" == updated* ]] && BOOT_REBOOT=1
 fi
 
+# /boot/firmware with the vfat `flush` option: write back on close instead of
+# whenever the page cache gets to it. moOde's worker rewrites config.txt with
+# `sed -i` at every boot; without flush a power cut seconds later can leave it
+# empty or truncated (the worker then restores its default: no amp, no lamp).
+# Shrinks the window; hasler-bootcfg-guard repairs what still slips through.
+if [[ -f /etc/fstab ]]; then
+  RES="$(python3 -I - /etc/fstab "$DRY" <<'EOF'
+import os, sys
+path, dry = sys.argv[1], sys.argv[2] == "1"
+text = open(path, encoding="utf-8").read()
+out, hit = [], None
+for line in text.splitlines():
+    f = line.split()
+    if len(f) >= 4 and not line.lstrip().startswith("#") and f[1] in ("/boot/firmware", "/boot") and f[2] == "vfat":
+        if "flush" in f[3].split(","):
+            hit = hit or "ok"
+        else:
+            hit = "add"
+            f[3] += ",flush"
+            line = "\t".join(f)
+    out.append(line)
+if hit is None:
+    print("no vfat /boot/firmware entry - left alone"); sys.exit(0)
+if hit == "ok":
+    print("ok"); sys.exit(0)
+if dry:
+    print("would add flush to the /boot/firmware options"); sys.exit(0)
+open(path + ".hasler-boot-bak", "w", encoding="utf-8").write(text)
+st = os.stat(path)
+with open(path + ".tmp", "w", encoding="utf-8") as fh:
+    fh.write("\n".join(out) + "\n"); fh.flush(); os.fsync(fh.fileno())
+os.chmod(path + ".tmp", st.st_mode & 0o7777)
+os.replace(path + ".tmp", path)
+print("updated (backup fstab.hasler-boot-bak)")
+EOF
+)" || RES="could not edit /etc/fstab"
+  say "boot time: fstab /boot/firmware flush: $RES"
+  if [[ "$RES" == updated* ]] && (( SYSTEMD )); then
+    run systemctl daemon-reload
+    # vfat accepts flush on a remount; if not, it applies from the next boot.
+    run mount -o remount,flush "$FW" 2>/dev/null || warn "remount of $FW with flush failed - applies at the next boot"
+  fi
+fi
+
+# Boot config guard (a release helper, docs/build-guide.md "Boot config guard"):
+# config.txt / cmdline.txt were just edited on purpose, so they are the new
+# known-good copies (saved only if sane). Not installed yet: its timer saves
+# them after the first boot with a release.
+if [[ -x /usr/local/sbin/hasler-bootcfg-guard ]] && (( ! DRY )); then
+  /usr/bin/python3 -I /usr/local/sbin/hasler-bootcfg-guard save --force \
+    || warn "hasler-bootcfg-guard: config.txt not sane - known-good copy not refreshed"
+fi
+
 # Wi-Fi power save off for every profile (moOde writes powersave=2 into its own;
 # this covers any other). Takes effect at the next connection - no Wi-Fi bounce.
 if [[ -d /etc/NetworkManager ]]; then
