@@ -2,6 +2,11 @@
 
 <sub><i>A Delgado &amp; Murphy restoration</i></sub>
 
+<p align="center">
+  <img src="docs/img/hasler.jpg" width="720"
+       alt="The Hasler HAT, rev A: a green circuit board the size of a Raspberry Pi, with the cabinet's ribbon-cable connector along the bottom edge, a green 20 V power terminal at the left and 'Delgado &amp; Murphy, Hasler HAT rev A 2026' printed on it">
+</p>
+
 A Swiss radio from the 1960s that plays music again.
 
 The **Hasler HM** was built in Bern around 1964 for Telefónica's *Hilo Musical*,
@@ -10,14 +15,17 @@ one of six music channels. We took out the old electronics and put a small
 computer (a Raspberry Pi) and a modern amplifier inside. The keys, the knobs,
 the pilot lamp and the original speaker all still work.
 
-<!-- Photo: add a picture of the finished radio here, e.g. docs/img/hasler-hm.jpg -->
+<!-- docs/img/hasler.jpg is a render of the HAT board for now; swap in a photo of the finished cabinet when there is one. -->
 
 ## What it can do
 
 - **Press a key, hear music.** Each key plays an internet radio station, a
   Spotify playlist or a YouTube Music playlist. No phone and no app needed.
-- **Be a speaker for your phone** with Spotify Connect, AirPlay, Bluetooth or
-  DLNA.
+- **Be a speaker for your phone** with Spotify Connect (guests on your Wi-Fi
+  too), AirPlay, Bluetooth or UPnP/DLNA.
+- **Play in several rooms.** Two or more Haslers can play the same music in
+  step: tick *Also play on…* and the kitchen joins the living room. Each radio
+  keeps its own volume, and its own room name (*Hasler Kitchen*).
 - **One volume knob for everything**, with a safe ceiling to protect the old
   speaker. The tone knob sets the treble and puts the radio to sleep.
 - **A pilot lamp that talks:** amber when playing, blue for a phone, a dim ember
@@ -27,8 +35,9 @@ the pilot lamp and the original speaker all still work.
 - **Safe updates** that install at night and go back by themselves if something
   goes wrong. Small ones install by themselves; bigger ones ask first. Every
   radio is on the **Stable** channel; **Bench** is the makers' test radio.
-- **Home Assistant**, if you want it: a key can run a scene or switch a light.
-  Everything else works without it.
+- **Home Assistant**, if you want it: a key can run a scene or switch a light,
+  and the [Hasler Radio integration](https://github.com/Delgado-Murphy/hasler-homeassistant)
+  shows each radio in Home Assistant. Everything else works without it.
 
 ## Where to start
 
@@ -43,13 +52,14 @@ the pilot lamp and the original speaker all still work.
 
 **For owners**
 
-- [Using your Hasler](docs/using.md): keys, knobs, lamp, key page, Wi-Fi, updates, problems.
+- [Using your Hasler](docs/using.md): keys, knobs, lamp, phones, several rooms, Home Assistant, key page, Wi-Fi, updates, problems.
 - [The pilot lamp](docs/lamp.md): every colour and what it means, in detail.
 
 **For makers**
 
 - [Build guide](docs/build-guide.md): from an empty cabinet to a working radio, step by step.
 - [Hardware](docs/hardware.md): parts list, wiring, power and protection.
+- [Multiroom and casting](docs/multiroom.md): how Haslers play in step (Snapcast), room names, AirPlay, UPnP, Bluetooth, Spotify.
 - [Hasler HM panel survey](docs/variants/hasler-hm.md): measuring this cabinet's keys, knobs and speaker.
 - [Prototype board](docs/prototype/README.md) and the [HAT design brief](docs/hat/BRIEF.md).
 
@@ -73,13 +83,17 @@ knobs ──▶ ADS1115 ────────────────┤
           radio, YouTube      Spotify                            (optional)
               Music
 
-MPD │ go-librespot │ Bluetooth │ AirPlay ──▶ Amp4 Pro (hardware mixer = the knob) ──▶ original speaker
+MPD │ go-librespot │ Bluetooth │ AirPlay │ UPnP ──▶ Amp4 Pro (hardware mixer = the knob) ──▶ original speaker
+                         │
+                         └─ in a group: Snapcast ──▶ the other Haslers (each through its own amp and knob)
 ```
 
 `haslerd` is our small service on the Pi. It reads the keys and knobs, starts
 the music, drives the lamp and serves the key page. The music system underneath
-is [moOde audio](https://moodeaudio.org/). Bluetooth and AirPlay come from moOde;
-Spotify comes from go-librespot; YouTube Music streams are found by yt-dlp.
+is [moOde audio](https://moodeaudio.org/). Bluetooth, AirPlay (shairport-sync)
+and UPnP come from moOde; Spotify comes from go-librespot; YouTube Music
+streams are found by yt-dlp. Several Haslers play in step through
+[Snapcast](https://github.com/badaix/snapcast) ([multiroom.md](docs/multiroom.md)).
 
 **More cabinets are coming.** An *Excelsior* and others are waiting, and their
 panels work differently (for example, keys that lock down). So the panel is

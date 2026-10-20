@@ -84,7 +84,8 @@ command -v moodeutl >/dev/null 2>&1 || warn "moodeutl not found - is this a moOd
 # zstd: release tarballs. liblgpio1: lgpio's C library (if a release's wheel
 # is not self-contained). python3-venv: release venvs and yt-dlp's. The rest:
 # yt-dlp's deno zip, i2cdetect, polkit for the key page's update buttons.
-PKGS=(zstd liblgpio1 python3-venv curl unzip i2c-tools polkitd)
+# libasound2-plugins: the speex resampler the multiroom route uses (to 44.1 kHz).
+PKGS=(zstd liblgpio1 python3-venv curl unzip i2c-tools polkitd libasound2-plugins)
 MISSING=()
 for p in "${PKGS[@]}"; do dpkg -s "$p" >/dev/null 2>&1 || MISSING+=("$p"); done
 if (( ${#MISSING[@]} )); then

@@ -2723,6 +2723,26 @@ function castRow(t){
   if (t.read_only){
     row.append(h('div', {class:'cast-head'}, title));
     row.append(h('p', {class:'li-sub'}, (t.name ? 'Shows as “' + t.name + '”. ' : '') + (t.note || '')));
+    // Spotify for guests (settings.json spotify_guests -> go-librespot zeroconf).
+    if (t.id === 'spotify' && t.available && settings && typeof settings.spotify_guests === 'boolean'){
+      const on = settings.spotify_guests;
+      row.append(h('label', {class:'switch', for:'cast-spguests'},
+        h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Guests on your Wi-Fi can play'),
+          h('span', {class:'li-sub'}, on ? 'Anyone on this Wi-Fi with Spotify Premium sees the radio in their Spotify app'
+                                         : 'Only the Spotify account the radio is signed in to sees it')),
+        h('input', {type:'checkbox', role:'switch', id:'cast-spguests', checked: on, disabled: !!castUi.busy.spguests,
+          onchange: async e => {
+            const want = e.target.checked; castUi.busy.spguests = true; paintCast();
+            try {
+              const r = await api('PUT', '/api/settings', {spotify_guests: want});
+              if (r.ok && r.json && typeof r.json.spotify_guests === 'boolean'){
+                settings = Object.assign(settings || {}, {spotify_guests: r.json.spotify_guests});
+                toast(r.json.spotify_guests ? 'Guests on your Wi-Fi can play Spotify on the radio' : 'Spotify only for the radio’s own account');
+              } else toast(capFirst((r.json && r.json.error) || 'Couldn’t change that (error ' + r.status + ')'), true);
+            } catch (_) { toast('Couldn’t reach the radio.', true); }
+            delete castUi.busy.spguests; paintCast();
+          }})));
+    }
     return row;
   }
   row.append(h('label', {class:'switch', for:'cast-' + t.id},

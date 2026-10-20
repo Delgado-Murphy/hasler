@@ -40,6 +40,15 @@ CHANNELS = ("bench", "stable")   # bench: the makers' test radio; stable: everyo
 # semver with an optional -rc.N (the only pre-release form we ship)
 VERSION_RE = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-rc\.([1-9]\d*))?$")
 
+# The top dirs of integration/ the last-shipped updater has a destination for
+# (update/hasler_update/integrate.py ``_rules`` as shipped in 0.4.x; drop-ins
+# live under systemd/). A box only installs a release's system files of another
+# kind if the release is ``major``: the trial's (old) updater skips them and the
+# release's own updater puts them in place after the commit (docs/ota-format.md,
+# 2026-10-21). Add a kind here only once an updater that knows it has shipped -
+# update/tests/test_ota_ops.py checks this against the newest v* tag.
+KNOWN_KINDS_SINCE = frozenset({"systemd", "udev", "sbin", "bin", "sudoers", "shutdown", "configtxt", "avahi"})
+
 # release.json key order, as in docs/ota-format.md
 KEY_ORDER = ("schema", "product", "version", "seq", "channel", "created", "expires", "kind",
              "requires_migration", "min_from_seq", "requires", "config_schema", "variants",
@@ -191,6 +200,19 @@ def validate_release(doc: dict) -> None:
         raise ReleaseError("release.json: artifact url must be https and end in the name")
 
 
+def check_integration_kinds(paths, kind: str) -> None:
+    """A non-major release may only carry integration/ kinds the running
+    updaters know; a new kind waits for a major release. Raises ReleaseError."""
+    new = sorted({PurePosixPath(p).parts[1] for p in paths
+                  if p.startswith("integration/") and len(PurePosixPath(p).parts) > 2}
+                 - KNOWN_KINDS_SINCE)
+    if new and kind != "major":
+        raise ReleaseError(
+            f"integration/{', integration/'.join(new)}: a kind the shipped updater has no rule for; "
+            f"boxes refuse it in a {kind} release. Ship it in a major release (--kind major): the "
+            "release's own updater installs it after the commit (docs/ota-format.md, 2026-10-21)")
+
+
 # --- reading a tarball ---------------------------------------------------------------
 
 def zstd_decompress(path: Path) -> bytes:
@@ -287,6 +309,7 @@ def check(release_path: Path, tarball: Path) -> dict:
         raise ReleaseError(f"manifest.json differs from release.json in {diff}")
     if raw != dumps(doc):
         raise ReleaseError("release.json is not in canonical form")
+    check_integration_kinds(files, doc["kind"])
     return doc
 
 

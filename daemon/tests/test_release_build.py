@@ -381,3 +381,32 @@ def test_multiroom_files_ship_from_the_worktree():
     assert b"[stream]" in files["app/config/snapcast/snapserver.conf"][0]
     assert b"hasler-multiroom" in files["integration/sudoers/haslerd"][0]
     assert not [p for p in br.lint_integration(files) if "hasler" in p and "snap" in p]
+
+
+# --- a new integration/ kind only in a major release ----------------------------------------
+
+def test_new_integration_kind_needs_a_major_release(repo, tmp_path, monkeypatch):
+    """Boxes refuse an integration/ kind their updater has no rule for unless the
+    release is major (docs/ota-format.md, 2026-10-21): the build refuses first."""
+    import re
+    monkeypatch.setattr(br, "INTEGRATION_OK", re.compile(br.INTEGRATION_OK.pattern[:-2] + r"|tmpfiles/hasler\.conf)$"))
+    target = repo / "integration" / "tmpfiles" / "hasler.conf"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("d /run/hasler 0755 root root -\n")
+    try:
+        for kind in ("patch", "minor"):
+            with pytest.raises(mm.ReleaseError, match=r"integration/tmpfiles.*major"):
+                build(repo, tmp_path / kind, "--worktree", "--kind", kind)
+        tarball = build(repo, tmp_path / "major", "--worktree", "--kind", "major")
+        assert "integration/tmpfiles/hasler.conf" in mm.read_tarball(tarball)[1]
+    finally:
+        shutil.rmtree(repo / "integration")
+
+
+def test_known_kinds_pass_any_release_kind():
+    known = [f"integration/{k}/x" for k in sorted(mm.KNOWN_KINDS_SINCE)] + ["app/haslerd/main.py"]
+    for kind in mm.KINDS:
+        mm.check_integration_kinds(known, kind)
+    with pytest.raises(mm.ReleaseError, match="tmpfiles"):
+        mm.check_integration_kinds(known + ["integration/tmpfiles/hasler.conf"], "minor")
+    mm.check_integration_kinds(known + ["integration/tmpfiles/hasler.conf"], "major")

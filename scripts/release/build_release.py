@@ -95,6 +95,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-audio-mono", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-multiroom", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-wifi-join", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-bt-accept", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-lamp-boot", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-ytdlp-update", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-bootcfg-guard", "integration/sbin/", mode=0o755),
@@ -108,7 +109,9 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("daemon/migrations/*.py", "migrations/"),
 )
 
-# integration/ destinations the box accepts (docs/ota-format.md)
+# integration/ destinations the box accepts (docs/ota-format.md). A new top dir
+# (kind) here also needs a rule in update/hasler_update/integrate.py, and ships
+# only in a major release until that updater is out (make_manifest.KNOWN_KINDS_SINCE).
 INTEGRATION_OK = re.compile(
     r"^integration/(systemd/[^/]+\.(service|timer)|udev/[^/]+\.rules|sbin/hasler-[^/]+|"
     r"bin/hasler-[^/]+|sudoers/haslerd|shutdown/hasler-[^/]+|configtxt/hasler\.block|"
@@ -500,6 +503,7 @@ def build(args: argparse.Namespace) -> Path:
         requires_migration=args.requires_migration, min_from_seq=args.min_from_seq,
         requires=requires, config_schema=int(sm.group(1)) if sm else 1, variants=variants,
         notes=notes, keyring_seq=args.keyring_seq)
+    mm.check_integration_kinds(files, kind)
     files["manifest.json"] = (mm.dumps(manifest), 0o644)
     sums = files_sha256(files)
     files["files.sha256"] = (sums, 0o644)

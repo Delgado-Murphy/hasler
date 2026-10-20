@@ -20,6 +20,7 @@ import fcntl
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -172,6 +173,19 @@ class Hooks:
         vpy = release / "venv" / "bin" / "python"
         self._must([str(vpy), str(script), "--etc", str(etc), "--state", str(state)], "selftest", timeout=180)
 
+    def run_updater(self, args: list[str]) -> subprocess.CompletedProcess | None:
+        """``hasler-update <args>`` from the *installed* updater package
+        (``/opt/hasler/updater``, replaced at commit) - a new process, so the
+        release's own code runs, not the one already loaded here. None when
+        no installed package exists (a source checkout)."""
+        pkg = self.layout.updater
+        if not (pkg / "hasler_update" / "cli.py").is_file():
+            return None
+        code = ("import sys; sys.path.insert(0, sys.argv.pop(1)); "
+                "from hasler_update.cli import main; raise SystemExit(main(sys.argv[1:]))")
+        return self.run([sys.executable or "/usr/bin/python3", "-I", "-c", code, str(pkg), *args], timeout=600,
+                        env={**os.environ, "HASLER_ROOT": str(self.layout.root)})
+
     def check_item(self, item: integ.Item) -> None:
         if item.kind == "sudoers":
             self._must(["visudo", "-cf", str(item.src)], "visudo")
@@ -202,6 +216,12 @@ class Hooks:
             tail = ((proc.stderr or "") + (proc.stdout or "")).strip().splitlines()[-3:]
             raise ApplyError(f"{what} failed: {' | '.join(tail)}")
         return proc
+
+
+def is_major(release_dir: Path) -> bool:
+    """The release's signed ``kind`` (release.json is copied from the verified
+    bytes into the root-owned release dir at install)."""
+    return (read_json(release_dir / "release.json", {}) or {}).get("kind") == "major"
 
 
 def pending_migrations(mig: Path, from_schema: int) -> list[Path]:
@@ -474,6 +494,7 @@ class Applier:
             self._settle()
             if self.state["phase"] == "trial":
                 raise ApplyError("a trial is in progress")
+            self._pending_via_updater()
             bad, floor = set(self.state["bad"] or []), int(self.state["max_seq"] or 0)
             seqs = [s for s in self.staged_seqs() if (seq is None or s == seq) and s not in bad and s > floor]
             if not seqs:
@@ -483,9 +504,10 @@ class Applier:
             final = self.install_release(release, signed, staged)
             return self._switch(final, release, force=force, allow_reboot=allow_reboot)
 
-    def _preflight(self, final: Path, allow_reboot: bool = False) -> tuple[list[integ.Item], Path | None]:
+    def _preflight(self, final: Path, allow_reboot: bool = False) -> tuple[list[integ.Item], Path | None, list[str]]:
+        deferred: list[str] = []
         try:
-            items = integ.plan(self.layout, final)
+            items = integ.plan(self.layout, final, major=is_major(final), deferred=deferred)
         except integ.IntegrateError as e:
             raise ApplyError(str(e)) from e
         for it in items:
@@ -520,7 +542,7 @@ class Applier:
             self.hooks.selftest(final, work / "etc", work / "state")
         else:
             self.hooks.selftest(final, self.layout.etc, self.layout.haslerd_state)
-        return items, work
+        return items, work, deferred
 
     def _switch(self, final: Path, release: dict | None, force: bool = False, allow_reboot: bool = False,
                 manual: bool = False) -> str:
@@ -528,7 +550,7 @@ class Applier:
         to_seq = int(release["seq"]) if release else (read_json(final / "release.json", {}) or {}).get("seq")
         cur = installed(self.layout)
         from_v = cur.get("version")
-        items, work = self._preflight(final, allow_reboot)
+        items, work, deferred = self._preflight(final, allow_reboot)
         if not force:
             ok, why = self.hooks.idle()      # haslerd's veto, right before the switch
             if not ok:
@@ -538,12 +560,19 @@ class Applier:
         prev_link = link_target(self.layout.previous)
         old_integrated = list(self.state["integrated"] or [])
         self.state.log("switch", **{"from": from_v, "to": to_v, "manual": manual})
+        if deferred:
+            # A major release's system files of a kind this updater has no rule
+            # for: its own updater puts them in place once it commits.
+            self.state.log("integration-deferred", to=to_v, items=deferred)
         self.state.update(
             phase="trial", step="integrate", **{"from": from_v}, from_seq=cur.get("seq"), to=to_v,
             to_seq=to_seq, boots=0, boot_id=current_boot_id(), baseline=baseline, reason=None, manual=manual,
             prev_link=str(prev_link) if prev_link else None, integrated_prev=old_integrated,
             integrated=sorted(set(old_integrated) | set(integ.dests(items))), migrated=work is not None,
             deadline=iso(self.hooks.now() + 150),
+            pending_integration={"version": to_v, "items": deferred, "error": None, "attempts": 0}
+            if deferred else None,
+            pending_prev=self.state["pending_integration"],
         )
         self._cp("trial-written")
         ig = integ.Integrator(self.layout, to_v, chown=self.hooks.chown_root)
@@ -610,6 +639,8 @@ class Applier:
             shutil.rmtree(snap, ignore_errors=True)
         # The release's config.txt block (if it changed one) is now the known-good.
         self.hooks.bootcfg_save()
+        # Last: what the old updater had no rule for, by the release's own updater.
+        self._pending_via_updater()
 
     def _install_updater(self, release: Path) -> None:
         """A new updater is used only once its release has passed: the package
@@ -629,7 +660,7 @@ class Applier:
             fsync_dir(self.layout.opt)
             shutil.rmtree(old, ignore_errors=True)
         changed = False
-        for it in integ.plan(self.layout, release, reserved=True):
+        for it in integ.plan(self.layout, release, reserved=True, major=is_major(release)):
             data = it.src.read_bytes()
             if not (it.dest.is_file() and it.dest.read_bytes() == data):
                 write_atomic(it.dest, data, it.mode)
@@ -703,7 +734,7 @@ class Applier:
         if not st["manual"]:
             st.mark_bad(st["to_seq"])
         st.update(phase="rolled_back", step=None, integrated=st["integrated_prev"] or [], deadline=None,
-                  failed=to_v)
+                  failed=to_v, pending_integration=st["pending_prev"])
         self.hooks.daemon_reload()
         if "udev" in touched:
             self.hooks.udev_reload()
@@ -778,6 +809,7 @@ class Applier:
             self._settle()
             st = self.state
             if st["phase"] != "trial":
+                self._pending_via_updater()
                 return f"phase {st['phase']}"
             if st["step"] == "rollback":
                 self._rollback(st["reason"] or "resumed rollback", restart=True)
@@ -801,6 +833,88 @@ class Applier:
                 self._rollback("haslerd failed", restart=True)
                 return f"rolled back to {self.state['to']}"
             return f"phase {st['phase']}: nothing to do"
+
+    # --- system files the trial's updater could not place -------------------------------
+
+    def _pending_via_updater(self) -> None:
+        """Have the *installed* updater (after a commit: the release's own)
+        integrate ``pending_integration``, in a new process. Called with the
+        lock held (the child is told so). Never raises: the release stays
+        committed; a failure is recorded and retried at the next apply/resume."""
+        pend = self.state["pending_integration"]
+        if not pend or self.state["phase"] not in ("probation", "committed"):
+            return
+        before = int(pend.get("attempts") or 0)
+        self.state.save()           # the child reads state.json: flush our history first
+        try:
+            proc = self.hooks.run_updater(["integrate-pending", "--locked"])
+        except Exception as e:      # noqa: BLE001 - recorded below
+            proc, why = None, f"could not run the installed updater: {e}"
+        else:
+            if proc is None:        # no installed package (source checkout): this code is the updater
+                try:
+                    self.integrate_pending(locked=True)
+                except ApplyError:
+                    pass            # recorded in state.json
+                return
+            why = " | ".join(((proc.stderr or "") + (proc.stdout or "")).strip().splitlines()[-3:]) \
+                or f"exit {proc.returncode}"
+        self.state = ApplyState(self.layout.state_file)      # the child wrote it
+        pend = self.state["pending_integration"]
+        if pend and int(pend.get("attempts") or 0) == before and (proc is None or proc.returncode != 0):
+            self._pending_failed(pend, why)
+
+    def _pending_failed(self, pend: dict, why: str) -> None:
+        n = int(pend.get("attempts") or 0) + 1
+        self.state.log("integrate-pending-failed", version=pend.get("version"), error=why, attempts=n)
+        self.state.update(pending_integration={**pend, "error": why, "attempts": n,
+                                               "last_try": iso(self.hooks.now())})
+
+    def integrate_pending(self, locked: bool = False) -> str:
+        """``hasler-update integrate-pending``: put in place the current
+        release's system files the updater that ran its trial had no rule for.
+        Idempotent (unchanged files are left alone); the backups go with the
+        release's own (``backup/<version>/``), so a rollback in probation
+        removes them too. ``locked``: the caller (a commit) holds the lock."""
+        if locked:
+            self.state = ApplyState(self.layout.state_file)
+            return self._integrate_pending()
+        with self.locked() as _:
+            return self._integrate_pending()
+
+    def _integrate_pending(self) -> str:
+        st = self.state
+        pend = st["pending_integration"]
+        if not pend:
+            return "nothing pending"
+        if st["phase"] not in ("probation", "committed"):
+            return f"phase {st['phase']}: later"
+        version = str(pend.get("version"))
+        cur = link_target(self.layout.current)
+        if cur is None or cur.name != version:
+            st.log("integrate-pending-dropped", version=version, current=cur.name if cur else None)
+            st.update(pending_integration=None)
+            return f"{version} is not running: dropped"
+        try:
+            left: list[str] = []
+            items = integ.plan(self.layout, cur, major=is_major(cur), deferred=left)
+            if left:
+                raise ApplyError("no rule in this updater either: " + ", ".join(left))
+            for it in items:
+                self.hooks.check_item(it)
+            ig = integ.Integrator(self.layout, version, chown=self.hooks.chown_root)
+            ig.apply(items, allow_configtxt=False)
+            if ig.changed:
+                self.hooks.daemon_reload()
+            if "udev" in ig.changed:
+                self.hooks.udev_reload()
+        except Exception as e:      # noqa: BLE001 - recorded, retried; the release stays
+            self._pending_failed(pend, str(e))
+            raise ApplyError(f"pending integration for {version} failed: {e}") from e
+        st.log("integrate-pending", version=version, items=pend.get("items") or [], changed=sorted(ig.changed))
+        st.update(pending_integration=None,
+                  integrated=sorted(set(st["integrated"] or []) | set(integ.dests(items))))
+        return f"{version}: pending system files in place"
 
     def status(self) -> dict:
         kept = []

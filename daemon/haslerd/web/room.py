@@ -34,7 +34,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
-from .. import boxconfig
+from ..player import glr_config
 from ..player.renderers import GO_LIBRESPOT_CONFIG, RendererError, spotify_device_name, valid_name
 from . import integration
 
@@ -49,7 +49,11 @@ MOODE_TARGETS = ("airplay", "upnp", "bluetooth")
 # moOde's worker busy with the previous job: keep asking this long, this often.
 BUSY_WAIT_S = 180.0
 BUSY_POLL_S = 5.0
-SPOTIFY_RESTART = ["sudo", "-n", "/usr/bin/systemctl", "try-restart", "go-librespot.service"]
+# The config.yml edit and the restart live in player/glr_config.py (shared
+# with Spotify for guests); the names stay here for callers and tests.
+SPOTIFY_RESTART = glr_config.RESTART
+_restart_spotify = glr_config.restart_go_librespot
+set_device_name = glr_config.set_device_name
 ADDRESS_TTL_S = 60.0
 
 
@@ -72,35 +76,6 @@ def casting_name(room: str | None) -> str:
         return room
     name = f"{CAST_BRAND} {room}"[:NAME_MAX]
     return re.sub(r"[^\w.]+$", "", name, flags=re.UNICODE)
-
-
-def set_device_name(path: Path, name: str) -> bool:
-    """Write go-librespot's ``device_name``, keeping the rest of the file and
-    its mode. True if the file changed. Raises OSError."""
-    path = Path(path)
-    text = path.read_text()
-    line = f'device_name: "{name}"'
-    lines = text.splitlines()
-    for i, old in enumerate(lines):
-        if re.match(r"device_name\s*:", old):       # top level only
-            if old == line:
-                return False
-            lines[i] = line
-            break
-    else:
-        lines.insert(0, line)
-    mode = path.stat().st_mode & 0o777
-    boxconfig.atomic_write_text(path, "\n".join(lines) + "\n", mode=mode)
-    return True
-
-
-def _restart_spotify() -> None:
-    try:
-        out = subprocess.run(SPOTIFY_RESTART, capture_output=True, text=True, timeout=30)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeError(str(exc)) from exc
-    if out.returncode != 0:
-        raise RuntimeError((out.stderr or "systemctl failed").strip()[-200:])
 
 
 def _avahi_host() -> str | None:

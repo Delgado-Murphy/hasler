@@ -26,6 +26,7 @@ Everything else can be undone.
 | [3c](#phase-3c--streaming-sources-spotify--youtube-music) | Spotify and YouTube Music | Playlists play from keys |
 | [4](#phase-4--sources-tone-lamp) | PU key, tone, pilot lamp | The lamp breathes amber at power-on |
 | [5](#phase-5--home-assistant) | Home Assistant (optional) | A held key runs a scene |
+| [5b](#phase-5b--casting-room-names-and-multiroom) | Casting, room names, multiroom | A phone plays to it; two Haslers play in step |
 | [6](#phase-6--install-in-the-cabinet) | Close it up | One hour of playback, no overheating |
 | [After](#moving-to-over-the-air-releases) | Switch to signed releases | The radio updates itself |
 
@@ -405,12 +406,50 @@ HA the house has is connected from the key page, with no file editing.*
 **Done when:** holding a key bound to a scene runs it, a key set to dim a light
 dims it, **and the radio still works with HA stopped**.
 
+- [ ] *(Optional)* **The Hasler integration for HA:** HACS → **⋮** → **Custom
+      repositories** → `https://github.com/Delgado-Murphy/hasler-homeassistant`,
+      type **Integration** → find **Hasler Radio** → **Download** → restart HA →
+      **Settings → Devices & services**: the radio is **Discovered** → **Add**.
+      It gives a `media_player` (the preset keys are its sources), an `update`
+      entity and a health sensor. Done when HA's media player shows what the
+      radio plays and choosing a source presses that key.
+
 ### Moving to another home
 
 Key actions name things in the HA they were set up with. In a new home:
 Settings → Home Assistant → **Disconnect**, then connect the new home's HA. The
 page lists every key whose target the new HA does not have. Choose new targets,
 or press **Clear missing** to empty them all.
+
+## Phase 5b — Casting, room names and multiroom
+
+*Casting is on from the start; multiroom is optional and off by default. The
+details are in [multiroom.md](multiroom.md).*
+
+- [ ] **The packages.** `sudo scripts/bootstrap.sh` installs `shairport-sync`
+      (classic AirPlay; moOde's trixie repository has none, moOde still starts
+      it), `snapserver` and `snapclient` (Debian's own units masked) and
+      `libasound2-plugins`. On a radio set up before 0.4.0, run it once more:
+      a release can't install Debian packages.
+- [ ] **Casting.** Key page → **Settings → Sources & casting** → *Play from a
+      phone*: AirPlay, Bluetooth and UPnP / DLNA each show *on* and running. A
+      target whose program is missing says so and can't be switched on.
+      Spotify Connect is listed read-only; **Guests on your Wi-Fi can play**
+      lets other people's Spotify find it.
+- [ ] **Room name.** Settings → **About this radio** → room name (*Kitchen*).
+      The page title changes; `hasler.local` does not. With two radios, the
+      second answers at `hasler-2.local` by itself. **Use the room name for
+      casting** renames AirPlay, UPnP, Bluetooth and Spotify to *Hasler
+      Kitchen* one by one (a minute or two; Spotify blinks once).
+- [ ] **Multiroom** (needs two Haslers). On both: Settings → **Multiroom** →
+      *Play in several rooms*. On one, front page → **Also play on…** → tick the
+      other. `sudo hasler-multiroom status` says `lead` on one and `follow` on
+      the other.
+
+**Done when:** a phone plays to the radio over AirPlay, Bluetooth and Spotify;
+two radios play the same station in step (sound about 1 s after a key);
+standby on the follower leaves the leader playing; standby on the leader ends
+the group; and after unplugging both, each comes back on its own.
 
 ## Phase 6 — Install in the cabinet
 

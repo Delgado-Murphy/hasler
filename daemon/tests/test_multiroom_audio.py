@@ -22,9 +22,10 @@ TCP_LISTEN = TCP_HEAD + "   0: 00000000:06A8 00000000:0000 0A 00000000:00000000\
 class Box:
     """The helper, systemd and mpc, faked: the helper writes the /run files."""
 
-    def __init__(self, tmp_path, playing=False, answer=None):
+    def __init__(self, tmp_path, playing=False, answer=None, times=""):
         self.run_dir = tmp_path / "run"
         self.playing = playing
+        self.times = times
         self.answer = answer
         self.calls = []
         self.units = set()
@@ -42,7 +43,8 @@ class Box:
                 return SimpleNamespace(stdout=self.answer, stderr="boom", returncode=1)
             return self._helper(argv[3:])
         if argv[:2] == ["mpc", "status"]:
-            return SimpleNamespace(stdout="x\n[playing] #1/3\n" if self.playing else "x\n", stderr="")
+            return SimpleNamespace(stdout=f"x\n[playing] #1/3 {self.times}\n" if self.playing else "x\n",
+                                   stderr="")
         return SimpleNamespace(stdout="", stderr="")
 
     def _helper(self, args):
@@ -144,6 +146,30 @@ def test_switch_reopens_a_playing_mpd_but_never_stops_it_for_good(tmp_path):
     assert not any(c[0] == "mpc" for c in box.calls[n:])
     a.alone()                                  # a preset that started meanwhile moves to the card
     assert box.calls[-1] == ["mpc", "-q", "play"]
+
+
+def test_reopen_keeps_a_seekable_items_position(tmp_path):
+    box = Box(tmp_path, playing=True, times="  1:23:05/2:00:00 (69%)")
+    box.audio().lead()
+    assert box.calls[-3:] == [["mpc", "-q", "stop"], ["mpc", "-q", "play"],
+                              ["mpc", "-q", "seek", "1:23:05"]]
+
+
+def test_reopen_of_a_radio_stream_does_not_seek(tmp_path):
+    box = Box(tmp_path, playing=True, times="  12:34/0:00 (0%)")
+    box.audio().lead()
+    assert box.calls[-1] == ["mpc", "-q", "play"]
+
+
+@pytest.mark.parametrize("text,at", [
+    ("Song\n[playing] #3/12   1:23/4:56 (28%)\nvolume: 40%", "0:01:23"),
+    ("[playing] #1/1   0:00/4:56 (0%)", None),          # at the start anyway
+    ("[playing] #1/1   7:02/0:00 (0%)", None),          # a stream: no total
+    ("[paused]  #1/1   1:00/4:56 (20%)", None),
+    ("volume: 11%   repeat: off", None), (None, None),
+])
+def test_resume_at(text, at):
+    assert mra.resume_at(text) == at
 
 
 def test_follow_does_not_touch_the_local_players(tmp_path):
@@ -283,6 +309,8 @@ def test_units_are_never_enabled_and_use_the_release_paths():
     assert "/opt/hasler/current/app/config/snapcast/snapserver.conf" in server
     client = (REPO / "config/snapclient-hasler.service").read_text()
     assert "--mixer none" in client and "--soundcard hasler_local" in client
+    dsp = (REPO / "config/camilladsp-hasler.service").read_text()
+    assert " -l error " in dsp and "-l warn" not in dsp     # its warnings fill the journal
 
 
 def test_snapserver_conf_matches_the_loopback_route():
@@ -295,7 +323,36 @@ def test_snapserver_conf_matches_the_loopback_route():
     assert "enabled = false" in conf.split("[http]")[1].split("[")[0]
 
 
+def _rate_line(libs: str) -> str:
+    import re
+    helper = (REPO / "scripts/hasler-multiroom").read_text()
+    fn = re.search(r"^rate_line\(\) \{.*?^\}$", helper, re.M | re.S).group(0)
+    return subprocess.run(["sh", "-c", f"{fn}\nrate_line"], env={"SPEEX_LIBS": libs, "PATH": os.environ["PATH"]},
+                          capture_output=True, text=True, check=True).stdout.strip()
+
+
+def test_loopback_route_uses_speex_only_when_installed(tmp_path):
+    helper = (REPO / "scripts/hasler-multiroom").read_text()
+    assert helper.count("type plug\n$RATE\n") == 2           # both plugs, nothing global
+    assert "defaults.pcm.rate_converter" not in helper
+    lib = tmp_path / "x" / "alsa-lib" / "libasound_module_rate_speexrate_medium.so"
+    pattern = str(tmp_path / "*" / "alsa-lib" / lib.name)
+    assert _rate_line(pattern).startswith("#")               # absent: a comment, ALSA's default
+    lib.parent.mkdir(parents=True)
+    lib.write_text("")
+    assert _rate_line(pattern) == 'rate_converter "speexrate_medium"'
+    assert "libasound2-plugins" in (REPO / "scripts/bootstrap.sh").read_text().split("PKGS=(")[1].split(")")[0]
+
+
 def test_sudoers_allows_the_helper():
     line = [l for l in (REPO / "config/sudoers/haslerd").read_text().splitlines()
             if l.startswith("pi ")][0]
     assert "/usr/local/sbin/hasler-multiroom" in line
+
+
+def test_legacy_install_says_multiroom_needs_a_release():
+    script = (REPO / "scripts/install.sh").read_text()
+    note = script[script.index('say "done"'):]
+    assert "multiroom and the room name for Spotify Connect need a release install" in note
+    assert "/opt/hasler/current" in note
+    assert "hasler-multiroom" not in script.replace("# hasler-multiroom", "")   # not installed there

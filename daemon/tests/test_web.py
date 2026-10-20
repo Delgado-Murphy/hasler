@@ -759,3 +759,20 @@ class TestLampSettings:
             assert status == 400 and "latitude" in json.loads(body)["error"]
         finally:
             server.close()
+
+
+def test_fake_player_has_the_real_ceiling_and_floor(tmp_path, monkeypatch):
+    # haslerd --fake: the key page's volume sliders need numbers, not null.
+    from haslerd import main
+    variant = load_variant(VARIANTS / "hasler-hm.yaml")
+    player = main.fake_player({}, {})
+    assert (player.config.volume_limit, player.config.volume_floor) == (70, 28)
+    app = WebApp(Actions(variant, player), Panel.from_variant(variant, fake=True),
+                 tmp_path / "keys.yaml", {"radio": True}, ha=False)
+    monkeypatch.setattr(app.wifi, "current_ssid", lambda: "")
+    doc = app.settings()
+    assert (doc["volume_limit"], doc["volume_floor"]) == (70, 28)
+    app.put_settings({"volume_floor": 30})
+    assert app.settings()["volume_floor"] == 30 and player.config.volume_floor == 30
+    saved = main.fake_player({"moode": {"volume_limit": 60}}, {"volume_floor": 20})
+    assert (saved.config.volume_limit, saved.config.volume_floor) == (60, 20)

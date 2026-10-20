@@ -285,3 +285,149 @@ def test_config_txt_block_needs_reboot_flag(installed_v1: World):
         w.applier().apply()
     assert w.current() == "1.0.0" and w.state()["phase"] == "probation"   # refused before the trial
     assert "dtoverlay" not in (w.root / "boot/firmware/config.txt").read_text()
+
+
+# --- a major release with system files of a kind the running updater has no rule for --------
+
+PKG = Path(__file__).resolve().parents[1] / "hasler_update"
+TMPFILES = "integration/tmpfiles/hasler.conf"
+
+
+def new_updater(knows_tmpfiles: bool = True) -> dict[str, bytes]:
+    """This updater's package as the next release ships it: with a rule for a
+    kind (``tmpfiles``) the running one doesn't have."""
+    files = {f"app/hasler_update/{p.name}": p.read_bytes() for p in PKG.glob("*.py")}
+    if knows_tmpfiles:
+        src = files["app/hasler_update/integrate.py"].decode()
+        anchor = '        ("avahi", re.compile('
+        assert anchor in src
+        src = src.replace(anchor, '        ("tmpfiles", re.compile(r"^hasler\\.conf$"), '
+                                  'lambda n: layout.root / "etc/tmpfiles.d" / n, 0o644),\n' + anchor, 1)
+        files["app/hasler_update/integrate.py"] = src.encode()
+    return files
+
+
+@pytest.fixture
+def fake_systemctl(tmp_path, monkeypatch):
+    """The child updater uses the real Hooks: systemctl/udevadm from PATH, logged."""
+    bindir = tmp_path / "fakebin"
+    bindir.mkdir()
+    log = tmp_path / "systemctl.log"
+    for tool in ("systemctl", "udevadm"):
+        (bindir / tool).write_text(f'#!/bin/sh\necho "{tool} $*" >> "{log}"\n')
+        (bindir / tool).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ.get('PATH', '')}")
+    return log
+
+
+def publish_major_with_new_kind(w: World, knows: bool = True, kind: str = "major") -> Path:
+    extra = {**new_updater(knows), TMPFILES: b"d /run/hasler 0755 root root -\n"}
+    w.publish("2.0.0", 2, release_patch={"kind": kind}, extra=extra)
+    assert w.checker().stage()["result"] == "ok"
+    return w.root / "etc/tmpfiles.d/hasler.conf"
+
+
+def test_major_new_kind_installed_after_commit_by_the_new_updater(installed_v1: World, fake_systemctl):
+    w = installed_v1
+    dest = publish_major_with_new_kind(w)
+    ap = w.applier()
+    seen = {}
+    real = ap.hooks.health_wait
+
+    def health(version, baseline, after_boot=False):
+        seen["during_trial"] = dest.exists()
+        return real(version, baseline, after_boot)
+    ap.hooks.health_wait = health
+    assert ap.apply(now_=True) == "2.0.0 committed"
+    assert seen["during_trial"] is False          # the old updater has no destination for it
+    assert dest.read_text() == "d /run/hasler 0755 root root -\n"
+    s = w.state()
+    assert s["phase"] == "probation" and s["pending_integration"] is None
+    assert str(dest) in s["integrated"]
+    events = [h["event"] for h in s["history"]]
+    assert events[-4:] == ["switch", "integration-deferred", "commit", "integrate-pending"]
+    assert "systemctl daemon-reload" in fake_systemctl.read_text()   # by the child (new updater)
+    # idempotent: nothing pending, nothing done
+    assert w.applier().integrate_pending() == "nothing pending"
+    # a rollback in probation takes the release's late files out as well
+    assert w.applier().on_failure().startswith("rolled back")
+    assert not dest.exists() and w.current() == "1.0.0" and w.state()["pending_integration"] is None
+
+
+@pytest.mark.parametrize("kind", ["minor", "patch"])
+def test_non_major_new_kind_still_refused(installed_v1: World, kind):
+    w = installed_v1
+    dest = publish_major_with_new_kind(w, kind=kind)
+    with pytest.raises(ApplyError, match="allowlist"):
+        w.applier().apply(now_=True)
+    assert w.current() == "1.0.0" and not dest.exists()
+    assert "1.0.0" in (w.layout.updater / "hasler_update/__init__.py").read_text()
+
+
+def test_pending_failure_recorded_then_retried(installed_v1: World, fake_systemctl):
+    w = installed_v1
+    dest = publish_major_with_new_kind(w)
+    ap = w.applier()
+
+    def broken(args):
+        raise OSError("exec failed")
+    ap.hooks.run_updater = broken
+    assert ap.apply(now_=True) == "2.0.0 committed"      # the release stays committed
+    s = w.state()
+    assert s["phase"] == "probation" and w.current() == "2.0.0" and not dest.exists()
+    pend = s["pending_integration"]
+    assert pend["version"] == "2.0.0" and pend["items"] == ["tmpfiles/hasler.conf"]
+    assert pend["attempts"] == 1 and "exec failed" in pend["error"]
+    assert s["history"][-1]["event"] == "integrate-pending-failed"
+    # next boot (resume, after haslerd) retries through the installed (new) updater
+    assert w.applier().resume() == "phase probation"
+    assert dest.exists() and w.state()["pending_integration"] is None
+
+
+def test_pending_failure_in_the_new_updater_is_recorded_and_retried_by_apply(installed_v1: World, fake_systemctl):
+    """The release's own updater has no rule for the kind either: recorded,
+    the release stays, and the nightly apply tries again."""
+    w = installed_v1
+    dest = publish_major_with_new_kind(w, knows=False)
+    assert w.applier().apply(now_=True) == "2.0.0 committed"
+    pend = w.state()["pending_integration"]
+    assert pend["attempts"] == 1 and "no rule in this updater either" in pend["error"]
+    assert not dest.exists() and w.current() == "2.0.0"
+    assert w.applier().apply() == "nothing staged"
+    assert w.state()["pending_integration"]["attempts"] == 2
+    assert w.state()["phase"] == "probation"
+
+
+def test_major_still_refuses_bad_names_symlinks_and_strays(tmp_path):
+    from hasler_update import integrate as integ
+    from hasler_update.layout import Layout
+
+    layout = Layout(tmp_path / "root")
+
+    def plan_of(rel_path: str, data: bytes | None = b"x", link: str | None = None):
+        rel = tmp_path / "rel"
+        import shutil
+        shutil.rmtree(rel, ignore_errors=True)
+        p = rel / "integration" / rel_path
+        p.parent.mkdir(parents=True)
+        if link is not None:
+            p.symlink_to(link)
+        else:
+            p.write_bytes(data)
+        deferred: list[str] = []
+        return integ.plan(layout, rel, major=True, deferred=deferred), deferred
+
+    assert plan_of("tmpfiles/hasler.conf") == ([], ["tmpfiles/hasler.conf"])
+    for bad in ("avahi/other.service", "sudoers/root", "stray", "Tmp/x", "tmpfiles/.hidden"):
+        with pytest.raises(integ.IntegrateError, match="allowlist"):
+            plan_of(bad)
+    with pytest.raises(integ.IntegrateError, match="not a regular file"):
+        plan_of("tmpfiles/hasler.conf", link="/etc/shadow")
+    with pytest.raises(integ.IntegrateError, match="not a regular file"):
+        plan_of("tmpfiles", link="/etc")
+    # not major: refused as before
+    rel = tmp_path / "rel2"
+    (rel / "integration/tmpfiles").mkdir(parents=True)
+    (rel / "integration/tmpfiles/hasler.conf").write_text("x")
+    with pytest.raises(integ.IntegrateError, match="allowlist"):
+        integ.plan(layout, rel)

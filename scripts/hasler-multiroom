@@ -56,6 +56,9 @@ MONO=/usr/local/sbin/hasler-audio-mono
 SERVER=snapserver-hasler.service
 CLIENT=snapclient-hasler.service
 CAPTURE=/proc/asound/Loopback/pcm1c/sub0/status
+# libasound2-plugins' speex resampler (bootstrap installs it): far better than
+# ALSA's built-in linear converter for players not at the group's 44.1 kHz.
+SPEEX_LIBS="/usr/lib/*/alsa-lib/libasound_module_rate_speexrate_medium.so"
 MOODE_ALOOP=/etc/alsa/conf.d/_sndaloop.conf
 
 say() { printf '%s\n' "$1"; }
@@ -87,6 +90,13 @@ hook() {   # the fixed include; rewritten only when it differs
     fi
 }
 
+rate_line() {   # the plug's converter: speexrate_medium when it is installed
+    for lib in $SPEEX_LIBS; do
+        if [ -e "$lib" ]; then echo 'rate_converter "speexrate_medium"'; return 0; fi
+    done
+    echo '# libasound2-plugins not installed: the linear rate converter'
+}
+
 reload_alsa() { [ -e "$ALSA_TOP" ] && touch "$ALSA_TOP"; }
 
 route_loopback() {
@@ -95,18 +105,21 @@ route_loopback() {
     # 0 carries the local players (to snapserver), substream 1 the client's
     # output to camilladsp-hasler.
     install -d -m 0755 "$RUN"
-    cat > "$ROUTE.tmp" <<'EOF'
+    RATE=$(rate_line)
+    cat > "$ROUTE.tmp" <<EOF
 # hasler-multiroom: in a group - every local player into the Loopback.
 pcm.!_audioout {
 type plug
+$RATE
 slave { pcm "hw:Loopback,0,0"; rate 44100; format S16_LE; channels 2 }
 }
 EOF
     if [ -e "$DSP_MARK" ]; then
-        cat >> "$ROUTE.tmp" <<'EOF'
+        cat >> "$ROUTE.tmp" <<EOF
 # The group's sound after mono, into camilladsp-hasler (not a CamillaDSP per stream).
 pcm.!camilladsp {
 type plug
+$RATE
 slave { pcm "hw:Loopback,0,1"; rate 44100; format S32_LE; channels 2 }
 }
 EOF

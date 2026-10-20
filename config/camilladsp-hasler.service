@@ -15,7 +15,7 @@ StartLimitIntervalSec=0
 [Service]
 # '+' = as root: writes /run/hasler-multiroom/tone.yml from Hasler Tone.yml.
 ExecStartPre=+/usr/local/sbin/hasler-multiroom tone-config
-ExecStart=/usr/local/bin/camilladsp -a 127.0.0.1 -p 1234 -l warn /run/hasler-multiroom/tone.yml
+ExecStart=/usr/local/bin/camilladsp -a 127.0.0.1 -p 1234 -l error /run/hasler-multiroom/tone.yml
 # As go-librespot and the per-stream CamillaDSP of most players.
 User=pi
 SupplementaryGroups=audio

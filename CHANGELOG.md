@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.4.2 - 2026-10-21
+
+- Bluetooth pairing works: while the pairing window is open the radio says
+  yes to the phone's code by itself (moOde's helper waited for a yes on its
+  own web page, which nobody sees on a Hasler).
+- AirPlay and UPnP show as running on the key page (no more "Starting...").
+- Spotify for guests reaches radios set up before: a switch in Sources &
+  casting, on by default.
+- Multiroom: a track keeps its place when a radio starts leading; better
+  resampling; quieter logs.
+- Updates: a release that brings a new kind of system file must be a major
+  one (always asked first); its own updater installs those files.
+- Docs: multiroom, casting, room names and Home Assistant; a photo in the
+  README; a short box.yaml example.
+
 ## 0.4.1 - 2026-10-21
 
 - Room name: call each radio "Kitchen", "Living"... (Settings -> About this

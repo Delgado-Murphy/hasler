@@ -22,7 +22,7 @@ Nothing is persisted here. Every call is idempotent: repeating ``lead()`` or
 ALSA reads its routing when a device is opened, so a player that is already
 playing keeps the old path until it reopens. After each switch ``reopen`` is
 called (default: restart MPD's stream if it is playing, as the mono switch
-does); go-librespot, AirPlay and Bluetooth follow at their next open - pause
+does, and seek a file or podcast back to where it was); go-librespot, AirPlay and Bluetooth follow at their next open - pause
 and resume them if they must move at once.
 
 ``status()`` needs no root: unit state, the helper's /run files and the
@@ -55,6 +55,9 @@ TCP_TABLES = (Path("/proc/net/tcp"), Path("/proc/net/tcp6"))
 # What "installed" means: the helper, and Debian's snapserver/snapclient.
 NEEDS = (HELPER, "/usr/bin/snapserver", "/usr/bin/snapclient")
 
+# `mpc status`'s second line: "[playing] #3/12   1:23/4:56 (28%)" (or H:MM:SS).
+MPC_TIMES = re.compile(r"\[playing\].*?\s((?:\d+:)?\d+:\d\d)/((?:\d+:)?\d+:\d\d)")
+
 # A host name or IPv4/IPv6 address - the helper checks it again.
 HOST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.:-]{0,252}$")
 
@@ -76,6 +79,26 @@ def _read(path: Path) -> str | None:
         return path.read_text()
     except OSError:
         return None
+
+
+def _seconds(clock: str) -> int:
+    total = 0
+    for part in clock.split(":"):
+        total = total * 60 + int(part)
+    return total
+
+
+def resume_at(status: str | None) -> str | None:
+    """Where to seek a playing MPD item back to after a restart ("H:MM:SS"),
+    or None: not playing, a radio stream (total 0:00 - it can't seek) or at
+    the very start anyway."""
+    m = MPC_TIMES.search(status or "")
+    if not m:
+        return None
+    elapsed, total = _seconds(m.group(1)), _seconds(m.group(2))
+    if total <= 0 or elapsed < 1 or elapsed >= total:
+        return None
+    return f"{elapsed // 3600}:{elapsed // 60 % 60:02d}:{elapsed % 60:02d}"
 
 
 def buffer_ms(conf: str | None) -> int:
@@ -189,13 +212,19 @@ class SnapAudio:
             log.debug("reopen after the multiroom switch failed", exc_info=True)
 
     def _reopen_mpd(self) -> None:
-        """Restart MPD's stream if it is playing, so it reopens _audioout."""
+        """Restart MPD's stream if it is playing, so it reopens _audioout.
+
+        A file or podcast carries on where it was (seek back after play); a
+        radio stream just restarts, it can't seek."""
         try:
             status = self._run(["mpc", "status"], capture_output=True, text=True, timeout=5)
             if "[playing]" not in (status.stdout or ""):
                 return
+            at = resume_at(status.stdout)
             self._run(["mpc", "-q", "stop"], capture_output=True, timeout=5)
             self._run(["mpc", "-q", "play"], capture_output=True, timeout=5)
+            if at is not None:
+                self._run(["mpc", "-q", "seek", at], capture_output=True, timeout=5)
         except (OSError, subprocess.TimeoutExpired):
             log.debug("could not restart MPD after the multiroom switch", exc_info=True)
 

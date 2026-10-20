@@ -77,6 +77,7 @@ from .. import boxconfig
 from ..panel import calibrate
 from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot
 from ..player.base import Preset
+from ..player.glr_config import SpotifyGuests, guests_from
 from ..player.moode import treble_db
 from . import keymap, stations
 from ..net import HOTSPOT_ADDR
@@ -236,6 +237,10 @@ class WebApp:
         # The room name and the casting names that follow it (web/room.py).
         self.room = Room(settings_file, renderers=lambda: getattr(self.actions.player, "renderers", None))
         self.room.load(load_settings(settings_file))
+        # Spotify for guests on the Wi-Fi: go-librespot's zeroconf_enabled follows
+        # settings.json spotify_guests (player/glr_config.py). main.build_web
+        # applies it at start; put_settings on every change.
+        self.spotify_guests = SpotifyGuests()
         self.wifi = wifi or Wifi(db=station_db)
         self.lock = threading.Lock()
         # The ytm source (for now_playing) and its catalogue, if the player has them.
@@ -623,20 +628,22 @@ class WebApp:
             **self._lamp_doc(),
             "wifi": {"ssid": ssid},
             "room": self.room.doc(),
+            "spotify_guests": self._spotify_guests(),
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
 
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
-        ``location``, ``night``, ``room`` (web/room.py)."""
-        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room"}
+        ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``."""
+        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
                              "{\"location\": {\"name\", \"lat\", \"lon\"}} and/or "
                              "{\"night\": \"sun\"|\"off\"|\"22:00-07:00\"}, "
-                             "{\"room\": {\"name\", \"casting_names\"}}")
+                             "{\"room\": {\"name\", \"casting_names\"}}, "
+                             "{\"spotify_guests\": true|false}")
         limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
         floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
                  if "volume_floor" in body else None)
@@ -653,6 +660,9 @@ class WebApp:
             raise ValueError("mono must be true or false")
         if mono is not None and (self.mono is None or not self.mono.available):
             raise ValueError("mono output isn't installed on this radio (run install.sh)")
+        guests = body.get("spotify_guests")
+        if "spotify_guests" in body and not isinstance(guests, bool):
+            raise ValueError("spotify_guests must be true or false")
         with self.lock:
             if mono is not None:
                 try:
@@ -675,6 +685,8 @@ class WebApp:
                     doc["night"] = mode
                 if room is not None:
                     doc["room"] = room
+                if guests is not None:
+                    doc["spotify_guests"] = guests
                 doc.setdefault("schema", boxconfig.SCHEMA)
                 save_settings(self.settings_file, doc)
             else:
@@ -685,6 +697,10 @@ class WebApp:
                     doc["night"] = mode
             if room is not None:
                 self.room.commit(room, body["room"])
+            if guests is not None:
+                if self.settings_file is None:
+                    self._guests = guests
+                self.spotify_guests.apply_async(guests)
             if place is not None or mode is not None:
                 self._lamp_settings = {k: doc[k] for k in ("location", "night") if k in doc}
                 for listener in self.lamp_listeners:
@@ -703,6 +719,8 @@ class WebApp:
             log.info("volume floor set to %s%% from the web page", floor)
         if mono is not None:
             log.info("output set to %s from the web page", "mono" if mono else "stereo")
+        if guests is not None:
+            log.info("Spotify for guests %s from the web page", "on" if guests else "off")
         return self.settings(host)
 
     def lamp_settings(self) -> dict:
@@ -720,6 +738,16 @@ class WebApp:
             sun = None
         return {"location": night.location_doc(saved), "night": night.mode_from_settings(saved),
                 "tonight": sun}
+
+    def _spotify_guests(self) -> bool:
+        """settings.json ``spotify_guests`` (default on): go-librespot's zeroconf."""
+        if self.settings_file is not None:
+            return guests_from(load_settings(self.settings_file))
+        return getattr(self, "_guests", guests_from({}))
+
+    def apply_spotify_guests(self):
+        """Make go-librespot's config match the saved setting (off-thread; at start)."""
+        return self.spotify_guests.apply_async(self._spotify_guests())
 
     def _mono_doc(self) -> dict:
         if self.mono is None or not self.mono.available:

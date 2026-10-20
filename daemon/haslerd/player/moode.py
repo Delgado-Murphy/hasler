@@ -213,6 +213,7 @@ class MoodePlayer:
         )
         self.current_preset: Preset | None = None
         self._clock = clock
+        self._pair_acceptor = None   # player/btaccept.PairAcceptor, on first pairing
         self._source_cache: tuple[float, str] | None = None
         self._muted = False
         self._volume: float | None = None   # mixer percent, post-ceiling
@@ -705,6 +706,12 @@ class MoodePlayer:
                 log.warning("bluetoothctl %s failed: %s", " ".join(args), (result.stdout or "").strip()[-200:])
                 return
         log.info("bluetooth discoverable for %ss", seconds)
+        # moOde's agent asks for a yes nobody can give on a Hasler; answer it
+        # ourselves for as long as the window is open (player/btaccept.py).
+        if self._pair_acceptor is None:
+            from .btaccept import PairAcceptor
+            self._pair_acceptor = PairAcceptor()
+        self._pair_acceptor.open(seconds)
 
     def _bluetooth_up(self) -> bool:
         try:

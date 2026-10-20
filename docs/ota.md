@@ -70,6 +70,64 @@ by `id`): code defaults < shipped variant < `variant.d` overlay < `box.yaml` <
 web settings < secrets. Every config file carries `schema: N`; a release ships
 idempotent `migrations/NNN_*.py`, run against a snapshot, before the switch.
 
+### The keys of box.yaml
+
+`config/box.yaml.example` is a minimal, valid file. Keep a real one short:
+list only what differs from the defaults, so a later release's better default
+reaches the radio.
+
+| Key | Meaning |
+|---|---|
+| `schema` | Of this file (1). A release that changes it ships a migration. |
+| `variant` | Which cabinet: `config/variants/<variant>.yaml` in the release. |
+| `channel` | `stable` (everyone) or `bench` (the makers' test radio; may break). |
+| `update_mode` | `auto` (default: patch/minor at night in standby; major or migration still ask), `ask`, `off`. |
+| `box_id` | A random UUID, made once; names the box in rings and check-ins. |
+| `checkin` | `true`: one daily anonymous `{box_id, variant, version, channel, result, health}`. |
+| `metered` | `true`: never download in the background (phone hotspot, capped plans). |
+| `update_url` | Bench only: a local channel (`ota-bootstrap.sh --update-url`). |
+| `migrations` | Written by `python -m haslerd.migrations --apply`: the ids applied here. Don't edit. |
+
+Optional `haslerd` override blocks, the same as the old `config/haslerd.yaml`
+(the code has the defaults; add only what differs):
+
+- `moode:` `mpd_host`, `mpd_port`, `mixer` (the hardware mixer, `Digital`),
+  `card` (`sndrpihifiberry`), `volume_limit` (mixer ceiling %; the key page's
+  saved one wins), `volume_floor`, `tone_commands`, `source_flags`,
+  `renderer_units`, the tool paths (`moodeutl`, `amixer`, `bluetoothctl`),
+  `spotify:` (`enabled`, `base_url` `http://127.0.0.1:3678`, `timeout`,
+  `status_timeout`) and `ytm:` (`enabled`, `port` 8099 - keep it fixed,
+  `ytdlp`, `cookies`, `catalog`).
+- `web:` `enabled`, `host`, `port` (8080), `hostnames`.
+- `connectivity:` `host`, `port`, `timeout_s`, `interval_s` (the probe behind
+  the lamp's offline look).
+- `state_file`, `keys_file` (both default to `/var/lib/haslerd`).
+
+Not in box.yaml: the Home Assistant token. Connect HA from the key page; it is
+kept in `/var/lib/haslerd/secrets/ha.json` (0600).
+
+The calibration overlay `/etc/hasler/variant.d/<variant>.yaml` is keyed by the
+shipped descriptor's control ids (an unknown id is an error). Only what
+differs from the release, for example:
+
+```yaml
+schema: 1
+controls:
+  volume:
+    curve: [[25, 100], [1879, 87.5], [10882, 75], [26150, 0]]
+    hysteresis_counts: 30
+  tone:
+    range: [0, 25500]
+    taper: linear
+    end_switch: {off_hold_ms: 5000}
+io:
+  digital: {addr: 0x27}
+  lamp:
+    palette: {ember: [1.0, 0.10, 0.0]}
+    balance: {red: 1.0, green: 1.0, blue: 1.0}
+    min_duty: {red: 0.002, green: 0.0005, blue: 0.0005}
+```
+
 ## 2. Releases (pipeline)
 
 - **GitHub org `delgado-murphy`:** `hasler` (code, this repository; now

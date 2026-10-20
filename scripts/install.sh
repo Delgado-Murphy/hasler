@@ -336,6 +336,12 @@ if (( ! DRY && SYSTEMD )); then
   say "logs:  journalctl -u haslerd -f"
   say "probe: scripts/panel-probe.py"
 fi
+# Not in this legacy layout (on purpose): multiroom (snapcast units and
+# hasler-multiroom from /opt/hasler/current) and renaming the Spotify device
+# with the room name (go-librespot's config is managed by release installs).
+echo
+warn "note: multiroom and the room name for Spotify Connect need a release install"
+warn "  (/opt/hasler/current); this rsync layout does without them."
 if (( REBOOT_NEEDED )); then
   echo
   warn "$BOOT_CFG changed (pilot lamp: gpio= and pwm-gpio overlays)."

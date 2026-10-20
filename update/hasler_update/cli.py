@@ -10,6 +10,9 @@
   resume                          (root, after haslerd at boot) finish judging a trial
   on-failure                      (root, haslerd OnFailure=) roll back during trial/probation
   instance NAME                   (root, hasler-update-apply@NAME) NAME = <seq> | rollback | rollback-<version>
+  integrate-pending [--locked]    (root) put in place the system files of the running (major) release that
+                                  the updater which ran its trial had no rule for; run by the commit through
+                                  the newly installed updater, retried by apply and resume. Idempotent.
 
 Exit codes: 0 ok / nothing to do, 1 error, 75 deferred (not now: radio in use,
 outside the window, mode).
@@ -62,6 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("on-failure")
     i = sub.add_parser("instance")
     i.add_argument("name")
+    ip = sub.add_parser("integrate-pending")
+    ip.add_argument("--locked", action="store_true",
+                    help="internal: the calling commit holds the apply lock")
     args = ap.parse_args(argv)
     layout = Layout.from_env()
 
@@ -90,6 +96,8 @@ def main(argv: list[str] | None = None) -> int:
             print(ap_.resume())
         elif args.cmd == "on-failure":
             print(ap_.on_failure())
+        elif args.cmd == "integrate-pending":
+            print(ap_.integrate_pending(locked=args.locked))
         elif args.cmd == "instance":
             name = args.name
             if re.fullmatch(r"[0-9]{1,9}", name):

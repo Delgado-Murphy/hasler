@@ -160,3 +160,40 @@ casting). haslerd builds this in `haslerd/health.py` (`health_report(...)`).
   `/var/lib/hasler-update/status.json`.
 - Key-page buttons start `hasler-update-apply@<seq|rollback|rollback-X.Y.Z>.service`,
   allowed by a polkit rule (not sudoers: a `*` there also matches spaces).
+
+## Amendment: new integration kinds only in a major release (2026-10-21)
+
+The owner's rule: a release may bring system files of a new kind only if it is
+a major release. A *kind* is a top dir of `integration/` (`systemd`, `udev`,
+`sbin`, `bin`, `sudoers`, `shutdown`, `configtxt`, `avahi` as of 0.4.x).
+
+- **Box.** The updater that runs the trial refuses any `integration/` file of a
+  kind it has no rule for ("not on the allowlist"), unless the signed
+  `release.json` says `"kind": "major"`. Then it does not install that file (it
+  has no destination for it) and records it in `state.json` as
+  `pending_integration: {"version", "items", "error", "attempts", "last_try"}`
+  (history event `integration-deferred`). The kind's name must be
+  `[a-z][a-z0-9-]*` and the file name plain (no dot files); always refused,
+  major or not: a known kind with a name off its pattern, symlinks, anything
+  that is not a regular file.
+- **After the commit.** The commit installs the release's updater in
+  `/opt/hasler/updater` and then runs it as a new process,
+  `hasler-update integrate-pending --locked` (the commit holds the lock). The
+  new updater re-plans the running release with its own rules and puts the
+  files in place (unchanged ones are left alone, so it is idempotent), with
+  their backups in the release's own `backup/<version>/`: a rollback during
+  probation takes them out again. Success: `pending_integration` is cleared,
+  the destinations join `integrated`, history `integrate-pending`.
+- **A failure there never undoes the commit.** The error and the attempt
+  count are written into `pending_integration` (history
+  `integrate-pending-failed`), and the installed updater tries again at the
+  next `apply` (the nightly timer) and `resume` (every boot, after haslerd).
+  A rollback puts back the `pending_integration` the box had before the switch
+  (`pending_prev`).
+- Non-major releases: unchanged, a new kind fails the apply as before. Boxes
+  whose updater predates this amendment refuse a new kind even in a major
+  release, so a release carrying one needs this updater installed first.
+- **Build.** `scripts/release/make_manifest.py` keeps `KNOWN_KINDS_SINCE`, the
+  kinds of the last-shipped updater; `build_release.py` and
+  `make_manifest.py check` refuse a non-major release with any other kind. A
+  test keeps that list equal to the newest `v*` tag's `integrate.py`.

@@ -57,15 +57,20 @@ class Target:
     form: str         # ren-config.php's submit field
     unit: str         # the systemd unit moOde's worker starts
     program: str | None = None   # what must be installed for it to work
+    # moOde may start it as a plain process, not through its unit (shairport-sync:
+    # Debian's unit is disabled on purpose), so a process with this exact comm
+    # also counts as running.
+    process: str | None = None
 
 
 TARGETS: dict[str, Target] = {
     "airplay": Target("airplay", "AirPlay", "airplaysvc", "airplayname",
-                      "update_airplay_settings", "shairport-sync", "shairport-sync"),
+                      "update_airplay_settings", "shairport-sync", "shairport-sync",
+                      "shairport-sync"),
     "bluetooth": Target("bluetooth", "Bluetooth", "btsvc", "btname",
                         "update_bt_settings", "bluetooth"),
     "upnp": Target("upnp", "UPnP / DLNA", "upnpsvc", "upnpname",
-                   "update_upnp_settings", "upmpdcli", "upmpdcli"),
+                   "update_upnp_settings", "upmpdcli", "upmpdcli", "upmpdcli"),
 }
 
 # Names moOde passes to a shell (sysutil.sh chg-name "old" "new") and to
@@ -119,6 +124,26 @@ def _unit_active(unit: str) -> bool | None:
     return result.returncode == 0
 
 
+def _process_running(comm: str, proc: Path = Path("/proc")) -> bool | None:
+    """A process whose comm is exactly ``comm`` runs; None if /proc can't be read.
+
+    Exact match on purpose: shairport-sync's metadata reader shows up as
+    "shairport-sync-" (comm is cut at 15 chars) and must not count."""
+    try:
+        entries = list(proc.iterdir())
+    except OSError:
+        return None
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            if (entry / "comm").read_text().strip() == comm:
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _post(url: str, form: dict[str, str], cookie: str, timeout: float) -> int:
     data = urllib.parse.urlencode(form).encode()
     req = urllib.request.Request(url, data=data, method="POST", headers={
@@ -143,11 +168,13 @@ class MoodeRenderers:
         spotify_config: Path = GO_LIBRESPOT_CONFIG,
         installed: Callable[[str], bool] = lambda prog: shutil.which(prog) is not None,
         sleep: Callable[[float], None] = time.sleep,
+        process_running: Callable[[str], bool | None] = _process_running,
     ) -> None:
         self.db, self.session_dir, self.url = Path(db), Path(session_dir), url
         self._post, self._unit_active, self._clock = post, unit_active, clock
         self.spotify_config = spotify_config
         self._installed, self._sleep = installed, sleep
+        self._process_running = process_running
         self._cache: tuple[float, dict[str, str]] | None = None
 
     # -- reading ----------------------------------------------------------
@@ -198,10 +225,16 @@ class MoodeRenderers:
                 "reason": f"{t.program} isn't installed on this radio" if missing else None,
                 "on": rows.get(t.svc, "0") == "1",
                 "name": rows.get(t.name, ""),
-                "running": self._unit_active(t.unit) if units and known else None,
+                "running": self._running(t) if units and known else None,
                 "managed_by": "moode",
             })
         return out
+
+    def _running(self, t: Target) -> bool | None:
+        """Its unit is active, or moOde runs its program as a plain process."""
+        if t.process is not None and self._process_running(t.process):
+            return True
+        return self._unit_active(t.unit)
 
     # -- switching --------------------------------------------------------
 

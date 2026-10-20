@@ -161,6 +161,23 @@ After a timestamp-key rotation, re-sign each channel once with mode
 `promote` or by hand - the daily job refuses indexes the current keyring
 cannot verify. Renew the keyring well before `expires`.
 
+## A new kind of system file: major releases only
+
+A new top dir under `integration/` (a new *kind*, say `tmpfiles/`) needs a
+rule in `update/hasler_update/integrate.py`, a pattern in `build_release.py`'s
+`INTEGRATION_OK`, and a **major** release (`--kind major`): the radios'
+current updater has no rule for it, so in a patch or minor release they would
+refuse the whole update (as 0.3.5 did with 0.3.6's `avahi/`). The build
+refuses that for you (the kinds radios know are `KNOWN_KINDS_SINCE` in
+`make_manifest.py`). In a major release the old updater leaves those files
+out of the trial and the release's own updater puts them in place right
+after the commit; `hasler-update status` shows `pending_integration` with the
+error if that didn't work, and the radio retries at the next night apply and
+boot. Majors are never installed by themselves - the owner is asked - and
+radios need an updater with this rule (the first release after 0.4.1) for
+this. Once the major release is out, add the kind to `KNOWN_KINDS_SINCE` (the
+test against the newest tag tells you).
+
 ## Gaps against docs/ota-format.md (to settle with the box side)
 
 - Channel index signatures use namespace `hasler-channel` (the contract does

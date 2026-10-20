@@ -110,6 +110,32 @@ def test_strict_release_integration(built):
     assert not any("legacy" in p for p in files)
 
 
+def test_known_kinds_since_matches_the_shipped_updater():
+    """make_manifest.KNOWN_KINDS_SINCE (what a non-major release may carry) is
+    what the newest tagged updater knows, and never more than this one knows."""
+    mm = _load("make_manifest", "make_manifest.py")
+    assert mm.KNOWN_KINDS_SINCE <= integ.known_kinds(), "integrate.py lost a kind boxes rely on"
+    try:
+        tags = subprocess.run(["git", "-C", str(ROOT), "tag", "--list", "v*"], check=True,
+                              capture_output=True, text=True).stdout.split()
+    except (OSError, subprocess.CalledProcessError):
+        tags = []
+    vs = []
+    for t in tags:
+        try:
+            vs.append((mm.seq_for(t[1:]), t))
+        except mm.ReleaseError:
+            continue
+    if not vs:
+        pytest.skip("no v* tags in this checkout")
+    tag = max(vs)[1]
+    src = subprocess.run(["git", "-C", str(ROOT), "show", f"{tag}:update/hasler_update/integrate.py"],
+                         check=True, capture_output=True, text=True).stdout
+    shipped = {"systemd" if k == "systemd-dropin" else k for k in re.findall(r'^\s*\("([a-z-]+)", re\.compile', src, re.M)}
+    assert shipped == set(mm.KNOWN_KINDS_SINCE), \
+        f"KNOWN_KINDS_SINCE should be what {tag}'s updater knows: {sorted(shipped)}"
+
+
 def test_avahi_service_plan_and_check(tmp_path):
     """integration/avahi/hasler.service -> /etc/avahi/services/hasler.service; nothing else there."""
     layout = Layout(tmp_path / "root")
@@ -153,7 +179,7 @@ def test_sudoers_source_is_todays_rules():
     rules = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
     assert rules == ["pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, "
                      "/usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, "
-                     "/usr/local/sbin/hasler-multiroom, /usr/bin/systemctl try-restart go-librespot.service, "
+                     "/usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/bin/systemctl try-restart go-librespot.service, "
                      "/bin/systemctl try-restart go-librespot.service"]
     if shutil.which("visudo"):
         assert subprocess.run(["visudo", "-cf", str(ROOT / "config/sudoers/haslerd")]).returncode == 0

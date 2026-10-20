@@ -250,7 +250,8 @@ def moode(tmp_path):
 
     r = MoodeRenderers(db=db, session_dir=tmp_path, post=post,
                        unit_active=lambda unit: unit == "bluetooth", clock=lambda: clock[0],
-                       installed=lambda prog: True, sleep=sleep)
+                       installed=lambda prog: True, sleep=sleep,
+                       process_running=lambda comm: False)
     return r, posts, tmp_path, db
 
 
@@ -326,10 +327,32 @@ class TestMoodeRenderers:
         with pytest.raises(ValueError):
             r.set("spotify", on=True)
 
+    def test_airplay_run_by_moode_as_a_plain_process_is_running(self, moode):
+        # moOde starts shairport-sync itself; Debian's unit stays disabled.
+        r, _, _, _ = moode
+        r._process_running = lambda comm: comm == "shairport-sync"
+        running = {t["id"]: t["running"] for t in r.describe()}
+        assert running == {"airplay": True, "bluetooth": True, "upnp": False}
+        r._process_running = lambda comm: comm == "upmpdcli"
+        assert next(t for t in r.describe() if t["id"] == "upnp")["running"] is True
+
     def test_unreadable_db(self, tmp_path):
         r = MoodeRenderers(db=tmp_path / "none.db", session_dir=tmp_path)
         assert r.enabled() == {}
         assert all(t["available"] is False for t in r.describe())
+
+
+def test_process_scan_matches_comm_exactly(tmp_path):
+    from haslerd.player.renderers import _process_running
+    for pid, comm in (("12", "shairport-sync-\n"), ("13", "aplmeta.py\n"), ("self", "x\n")):
+        (tmp_path / pid).mkdir()
+        (tmp_path / pid / "comm").write_text(comm)
+    (tmp_path / "14").mkdir()                     # exited mid-scan: no comm
+    assert _process_running("shairport-sync", tmp_path) is False   # the metadata reader
+    (tmp_path / "15").mkdir()
+    (tmp_path / "15" / "comm").write_text("shairport-sync\n")
+    assert _process_running("shairport-sync", tmp_path) is True
+    assert _process_running("upmpdcli", tmp_path / "missing") is None
 
 
 def test_parse_session_and_idle():
@@ -455,6 +478,17 @@ class TestSourcesApi:
         status, doc = sources.route("POST", "/api/casting/pair", {})
         assert status == 409 and "switched off" in doc["error"]
         assert ("bluetooth_pair", 120) not in player.calls
+
+    def test_no_pairing_when_moode_is_unreachable(self, api):
+        from haslerd.web.server import Unavailable
+        sources, _, _, player, _ = api
+        player.renderers.on = {}                      # db unreadable
+        with pytest.raises(Unavailable, match="moOde isn't reachable"):
+            sources.route("POST", "/api/casting/pair", {})
+        player.renderers.enabled = lambda: 1 / 0      # or blowing up
+        with pytest.raises(Unavailable):
+            sources.route("POST", "/api/casting/pair", {})
+        assert not any(c[0] == "bluetooth_pair" for c in player.calls)
 
     def test_other_paths_are_not_ours(self, api):
         sources, *_ = api

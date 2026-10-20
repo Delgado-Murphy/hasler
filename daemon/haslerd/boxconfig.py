@@ -247,8 +247,8 @@ def read_box_file(paths: Paths) -> dict:
 
 
 BOX_HEADER = (
-    "# This Hasler's own settings (docs/ota.md section 1). Updates never touch\n"
-    "# this file; config/box.yaml.example in the release documents every key.\n"
+    "# This Hasler's own settings. Updates never touch this file;\n"
+    "# docs/ota.md section 1 lists every key.\n"
 )
 
 

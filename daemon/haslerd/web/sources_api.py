@@ -240,10 +240,19 @@ class SourcesApi:
         if isinstance(seconds, bool) or not isinstance(seconds, int) or not lo <= seconds <= hi:
             raise ValueError(f"seconds must be a whole number from {lo} to {hi}")
         renderers = self.renderers
-        try:
-            enabled = renderers.enabled() if renderers is not None else {}
-        except Exception:
-            enabled = {}
+        if renderers is not None:
+            # moOde owns Bluetooth: if its settings can't be read, opening a
+            # pairing window would only pretend to work.
+            try:
+                enabled = renderers.enabled()
+            except Exception:
+                log.debug("moOde's renderers unreadable", exc_info=True)
+                enabled = {}
+            if not enabled:
+                raise Unavailable("moOde isn't reachable on this radio, so Bluetooth pairing "
+                                  "can't be opened - try again in a minute")
+        else:
+            enabled = {}   # no moOde at all (a laptop, --fake): the fake player pairs
         if enabled and not enabled.get("bluetooth"):
             return 409, {"ok": False, "errors": [], "error": "Bluetooth is switched off - turn it on first"}
         with self.app.lock:

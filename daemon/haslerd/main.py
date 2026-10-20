@@ -470,6 +470,14 @@ def moode_config(config: dict, settings: dict) -> MoodeConfig:
     return MoodeConfig(**spec)
 
 
+def fake_player(config: dict, settings: dict) -> FakePlayer:
+    """``--fake``'s player, with a real player's volume ceiling and floor (box.yaml,
+    then the saved settings, else MoodeConfig's 70/28) so the key page's sliders work."""
+    player = FakePlayer()
+    player.config = moode_config(config, settings)
+    return player
+
+
 DEFAULT_VARIANT = "hasler-hm"
 
 
@@ -561,7 +569,7 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     state_dir = Path(state.path).parent if state.path is not None else None
     settings = load_settings(state_dir / SETTINGS_FILE if state_dir is not None else None)
     if args.fake:
-        player = FakePlayer()
+        player = fake_player(config, settings)
         lamp = None
     else:
         player = MoodePlayer(moode_config(config, settings), state_dir=state_dir)
@@ -694,6 +702,9 @@ def build_web(
     app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
     build_group(app, actions, int(spec.get("port", 8080)))
     app.load_saved()
+    # Spotify for guests: radios made before it existed get it here, not from
+    # a release (go-librespot's config.yml is theirs after the bootstrap).
+    app.apply_spotify_guests()
     if not spec.get("enabled", True):
         return None, app
     server = WebServer(app, host=spec.get("host", "0.0.0.0"), port=int(spec.get("port", 8080)))

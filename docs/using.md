@@ -14,6 +14,8 @@ like the old radio: you press a key and music plays.
 - [The two knobs](#the-two-knobs)
 - [The pilot lamp](#the-pilot-lamp)
 - [Playing from your phone](#playing-from-your-phone)
+- [Music in several rooms](#music-in-several-rooms)
+- [Home Assistant](#home-assistant)
 - [The key page](#the-key-page)
 - [Wi-Fi](#wi-fi)
 - [Updates](#updates)
@@ -93,14 +95,24 @@ The radio also works as a speaker for your phone. Its name on the network is
 **Hasler**.
 
 - **Spotify:** in the Spotify app, tap the speaker icon and choose **Hasler**.
-  This needs a Spotify Premium account.
+  This needs a Spotify Premium account. Guests on your Wi-Fi can do the same
+  with their own Spotify, no password needed. To allow only the radio's own
+  account, switch off **Guests on your Wi-Fi can play** (Settings → **Sources
+  & casting**).
 - **AirPlay** (iPhone, iPad, Mac): choose **Hasler** from the AirPlay list.
-- **Bluetooth:** hold **PU** until the lamp breathes blue. On your phone, choose
-  **Hasler** in the Bluetooth settings. The next time, the phone connects by
-  itself.
+- **Bluetooth:** hold **PU** until the lamp breathes blue (or tap **A new
+  phone** on the key page). On your phone, choose **Hasler** in the Bluetooth
+  settings. The next time, the phone connects by itself.
+- **UPnP / DLNA** (music apps on Android, Windows and many NAS boxes): choose
+  **Hasler** as the player.
 
 While a phone plays, the lamp is blue. A phone can wake the radio from standby.
-To take the radio back from the phone, tap any numbered key.
+To take the radio back from the phone, tap any numbered key. When the phone
+stops, the radio goes back to its own music after about 20 seconds (you can
+switch that off: **Back to the radio when a phone stops**).
+
+Which of these are switched on, and the name each one shows, is in
+**Settings → Sources & casting**, under *Play from a phone*.
 
 **More than one Hasler?** Give each one a room name (Settings → **About this
 radio**) and switch on **Use the room name for casting**: phones then show
@@ -114,14 +126,19 @@ off to go back to plain *Hasler*.
 Two or more Haslers on the same Wi-Fi can play the same music at the same
 time, in step. One radio **leads**: what it plays is what everyone hears. The
 others **follow**. This is off until you switch it on (key page, Settings →
-**Multiroom**) on every radio that should take part.
+**Multiroom** → *Play in several rooms*) on every radio that should take
+part. Each radio needs a [room name](#playing-from-your-phone) so you can
+tell them apart.
 
-**To start:** on the leading radio's key page, under **Also play on**, tick the
-other radios (for example *Kitchen*, *Study*). They start playing within a few
-seconds. Untick a radio to give it back its own music.
+**To start:** on the leading radio's front page, tap **Also play on…** and tick
+the other radios (for example *Kitchen*, *Study*). They start playing within a
+few seconds. Untick a radio to give it back its own music.
 
-**Or from the other room:** give a key's *hold* the action **Join the music in
-another room** (Edit keys). Holding it joins the radio that leads a group, or
+While radios play together, the music starts about **1 second** after you
+press a key. That small wait is what keeps them in step.
+
+**Or from the other room:** give a key's *hold* the action **Join another
+Hasler** (Edit keys). Holding it joins the radio that leads a group, or
 else the radio that is playing. If several are, it joins the one that started
 its music most recently. Hold it again to leave.
 
@@ -158,6 +175,44 @@ Settings, the radio leaves and plays the key on its own, as before.
 **After a power cut** every radio comes back on its own. A radio that was
 following comes back quiet (dim amber), not playing; it does not join again by
 itself. Tick it again on the leader's page, or hold its join key.
+
+**Phones in a group:** a phone playing to the leading radio is heard in every
+room. A phone playing to a following radio takes just that radio out of the
+group.
+
+How it works inside is in [multiroom.md](multiroom.md).
+
+## Home Assistant
+
+The radio works perfectly well without Home Assistant. If you have it, there
+are two separate things you can do.
+
+**1. See and control the radio from Home Assistant.** Install the **Hasler
+Radio** integration once, with HACS:
+
+1. In Home Assistant, open **HACS**, tap the **⋮** menu (top right) →
+   **Custom repositories**.
+2. Paste `https://github.com/Delgado-Murphy/hasler-homeassistant`, choose the
+   type **Integration**, and press **Add**.
+3. Search HACS for **Hasler Radio**, open it and press **Download**.
+4. Restart Home Assistant (Settings → System → Restart).
+5. Go to **Settings → Devices & services**. Your radio shows up as
+   **Discovered**: press **Add**. (If it does not, press **Add integration**,
+   choose **Hasler Radio** and type `hasler.local`, port `8080`.)
+
+Each radio becomes a device named after its room, with a media player (the
+radio's keys are its sources: choosing one presses that key), the volume,
+standby, what is playing, and whether an update is waiting. Installing an
+update still needs a press on the radio, as always.
+
+Do **not** add Home Assistant's *Music Player Daemon* integration for the
+radio, even if it offers one: it fights the radio.
+
+**2. Let a key on the radio run something in your home** (a scene, a light, a
+script): connect Home Assistant from the radio's key page, **Settings → Home
+Assistant**, then give a key a job in **Edit keys**. The person who built the
+radio can help with the first connection; the steps are in the
+[build guide](build-guide.md#phase-5--home-assistant).
 
 ## The key page
 
@@ -206,13 +261,14 @@ Tap the gear icon.
 | Setting | What it does |
 |---|---|
 | **YouTube Music** | Sign in to use your Liked songs and private playlists. The page shows the steps. |
-| **Home Assistant** | Connect your smart home, so a key can run a scene or a script, switch things, or set lights (brightness, colour, warm or cool white). Optional. |
+| **Home Assistant** | Connect your smart home, so a key can run a scene or a script, switch things, or set lights (brightness, colour, warm or cool white). Optional. To see the radio *in* Home Assistant, see [Home Assistant](#home-assistant). |
 | **Wi-Fi** | Shows the network. **Change** moves the radio to another network. |
 | **Volume ceiling** | The loudest the knob can go (30 to 100). Above 95 the old speaker can distort. |
 | **Mono** | Mixes left and right into the one speaker, so nothing is lost. On by default. |
 | **moOde player** | Opens the music system inside the radio (for advanced use). |
 | **Reset keys to defaults** | Puts the factory stations back on every key. |
-| **Multiroom** | Lets this radio play together with other Haslers (off by default). *Keys on a following radio*: change the whole group (default), or leave the group and play alone. See [Music in several rooms](#music-in-several-rooms). |
+| **Sources & casting** | What the **PU** key steps through, and in what order. Under *Play from a phone*: switch AirPlay, Bluetooth and UPnP on or off, see the name each one shows, open Bluetooth for **A new phone**, and allow Spotify for guests. **Back to the radio when a phone stops** brings your music back when a phone is done. |
+| **Multiroom** | **Play in several rooms** lets this radio play together with other Haslers (off by default). *Keys on this radio while it follows another*: **Control the whole group** (default), or **Leave and play alone**. See [Music in several rooms](#music-in-several-rooms). |
 | **Pilot lamp** | When the lamp dims for the night: *by the sun*, *fixed hours* or *never*. For "by the sun", choose the city where the radio stands. |
 | **Knobs** | Shows each knob live. **Calibrate** starts a short guide: you turn the knob to a few positions and the radio learns them. **Reset to factory** undoes it. |
 | **About this radio** | The radio's **room name** (for example *Kitchen*): shown in the multiroom list, in Home Assistant and at the top of this page. Its address (*hasler.local*) stays the same; the page shows it under the name. A second Hasler on the same Wi-Fi gets *hasler-2.local* by itself. **Use the room name for casting** makes phones see *Hasler Kitchen* (off: just *Hasler*). Also the software version and updates; see [Updates](#updates). |
@@ -331,6 +387,14 @@ from a phone over Bluetooth still works.
 - YouTube Music: if you signed in, the sign-in may have expired after some
   months. Sign in again in Settings.
 - Spotify on a key needs a Premium account that was set up by the builder.
+
+**Another Hasler is missing from "Also play on…".** Switch on **Play in
+several rooms** on *both* radios (Settings → Multiroom), and check that both
+are on the same Wi-Fi (not a guest network). Give it half a minute, then open
+the list again.
+
+**My phone shows several "Hasler"s.** Give each radio a room name and switch
+on **Use the room name for casting** (Settings → About this radio).
 
 **A knob feels wrong** (the volume jumps, or does not reach the top). Use
 **Settings → Knobs → Calibrate**.

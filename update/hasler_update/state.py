@@ -92,7 +92,12 @@ class ApplyState:
     trial we are: ``integrate`` -> ``switched`` -> ``restarted``, or
     ``rollback`` while rolling back), ``baseline`` (the health probe on the
     old release), ``integrated`` (destination paths of the release's system
-    files), ``reason`` (why the last one rolled back). Readable by all
+    files), ``reason`` (why the last one rolled back),
+    ``pending_integration`` (``{"version", "items", "error", "attempts",
+    "last_try"}``: a major release's system files of a kind the trial's
+    updater had no rule for, left for the release's own updater after the
+    commit; None when there are none) and ``pending_prev`` (the value it had
+    before the switch, put back by a rollback). Readable by all
     (0644) so haslerd's key page can show the last result.
     """
 

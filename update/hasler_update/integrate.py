@@ -64,11 +64,31 @@ def _rules(layout: Layout) -> list[tuple[str, re.Pattern, Callable[[str], Path],
     ]
 
 
-def plan(layout: Layout, release_dir: Path, reserved: bool = False) -> list[Item]:
+# What a kind (top dir of integration/) this updater has no rule for must look
+# like before a major release may carry it for the next updater (see plan()).
+FUTURE_KIND = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
+FUTURE_NAME = re.compile(r"^[A-Za-z0-9@._-]+(/[A-Za-z0-9@._-]+)*$")
+
+
+def known_kinds(layout: Layout | None = None) -> set[str]:
+    """The top dirs of ``integration/`` this updater has a destination for."""
+    return {"systemd" if r[0] == "systemd-dropin" else r[0] for r in _rules(layout or Layout())}
+
+
+def plan(layout: Layout, release_dir: Path, reserved: bool = False, major: bool = False,
+         deferred: list[str] | None = None) -> list[Item]:
     """What ``release_dir/integration`` installs. Anything off the allowlist is an error.
 
     ``reserved=False``: everything but the updater's own files (``hasler-update*``
-    units and sbin launcher); ``True``: only those (installed at commit)."""
+    units and sbin launcher); ``True``: only those (installed at commit).
+
+    ``major``: the signed release.json says ``kind: major``. Only then is a
+    file under a kind (top dir) this updater has *no rule at all* for
+    accepted - not installed here (there is no destination for it), but
+    listed in ``deferred`` for the release's own updater to put in place
+    after the commit (``hasler-update integrate-pending``). A known kind
+    with a name off its pattern, a symlink or a non-regular file is always
+    refused, major or not."""
     base = release_dir / "integration"
     if not base.is_dir():
         return []
@@ -85,6 +105,11 @@ def plan(layout: Layout, release_dir: Path, reserved: bool = False) -> list[Item
         if top == "systemd" and "/" in rest:
             kind = "systemd-dropin"
         rule = rules.get(kind)
+        if rule is None and major and rest and FUTURE_KIND.match(top) and FUTURE_NAME.match(rest) \
+                and not any(part.startswith(".") for part in rest.split("/")):
+            if deferred is not None and not reserved:
+                deferred.append(rel)
+            continue
         if rule is None or not rule[1].match(rest):
             raise IntegrateError(f"integration/{rel}: not on the allowlist")
         if bool(RESERVED.match(rest.split("/")[0])) != reserved:

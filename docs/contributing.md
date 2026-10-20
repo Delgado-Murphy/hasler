@@ -10,7 +10,8 @@ or describe a new cabinet. If you only want to use a Hasler, see
 |---|---|
 | `daemon/haslerd/` | The service that runs on the radio. |
 | `daemon/haslerd/panel/` | Input backends (GPIO, MCP23017, ADS1115) and the control types. |
-| `daemon/haslerd/player/` | Playing radio, Spotify (go-librespot) and YouTube Music. |
+| `daemon/haslerd/player/` | Playing radio, Spotify (go-librespot) and YouTube Music; moOde's casting targets (`renderers.py`). |
+| `daemon/haslerd/multiroom/` | Several Haslers in step: finding peers, the group, the Snapcast audio path ([multiroom.md](multiroom.md)). |
 | `daemon/haslerd/lamp/` | The pilot lamp: what to show ([lamp.md](lamp.md)) and how to fade. |
 | `daemon/haslerd/web/` | The key page (`static/index.html`) and the Wi-Fi setup page, and their API. |
 | `daemon/tests/` | Tests for the service. |
