@@ -67,7 +67,7 @@ SWELL_S = 3.0
 SWELL_STEPS = 20
 
 # active_source() is asked by the main loop and by every key press. The answer
-# costs an HTTP status call and up to three moodeutl shell-outs, and a human
+# costs an HTTP status call and a read of moOde's sqlite db, and a human
 # cannot tell a one-second-old answer from a fresh one.
 SOURCE_CACHE_S = 1.0
 
@@ -215,6 +215,7 @@ class MoodePlayer:
         self._volume: float | None = None   # mixer percent, post-ceiling
         self._knob: float | None = None     # knob scale 0-100, as last set
         self._renderer_cache: tuple[float, dict] | None = None
+        self.moode_db = MOODE_DB            # read-only, for the renderer flags
         # The swell's bookkeeping. Every write the knob (or standby) makes
         # bumps _mixer_gen, which stops a swell in its tracks: the knob wins.
         self._mixer_lock = threading.RLock()
@@ -521,17 +522,47 @@ class MoodePlayer:
                     return name
             except Exception:
                 log.debug("%s is_active failed", name, exc_info=True)
-        for source, flag in self.config.source_flags.items():
-            try:
-                value = self._moodeutl(
-                    f"select value from cfg_system where param='{flag}'"
-                )
-            except Exception:
-                log.debug("could not read moOde flag %s", flag, exc_info=True)
-                continue
+        flags = self.config.source_flags
+        if not flags:
+            return "radio"
+        values = self._moode_flags(list(flags.values()))
+        for source, flag in flags.items():
+            if values is not None:
+                value = values.get(flag, "")
+            else:
+                try:
+                    value = self._moodeutl(
+                        f"select value from cfg_system where param='{flag}'"
+                    )
+                except Exception:
+                    log.debug("could not read moOde flag %s", flag, exc_info=True)
+                    continue
             if value not in ("", "0", "off", "None"):
                 return source
         return "radio"
+
+    def _moode_flags(self, params: list[str]) -> dict[str, str] | None:
+        """``cfg_system`` values for ``params``, read straight from moOde's db.
+
+        One read-only sqlite query (~2 ms) instead of a moodeutl per flag:
+        moodeutl is a PHP script, ~120 ms of CPU each, and active_source()
+        is asked every second or two. A missing row is simply absent; None
+        when the db cannot be read (no moOde, locked mid-write), and the
+        caller falls back to moodeutl.
+        """
+        try:
+            con = sqlite3.connect(f"file:{self.moode_db}?mode=ro", uri=True, timeout=0.5)
+            try:
+                marks = ",".join("?" * len(params))
+                rows = con.execute(
+                    f"select param, value from cfg_system where param in ({marks})", params
+                ).fetchall()
+            finally:
+                con.close()
+        except sqlite3.Error:
+            log.debug("moOde db unreadable; asking moodeutl", exc_info=True)
+            return None
+        return {str(param): "" if value is None else str(value) for param, value in rows}
 
     # -- for the boot resume (bootresume.py), asked off the main loop ------
 

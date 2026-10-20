@@ -174,6 +174,7 @@ class Panel:
         self.controls = controls
         self.digital = digital
         self.analog = analog
+        self._bus_failing = False
 
     @classmethod
     def from_variant(cls, variant: Variant, fake: bool = False) -> "Panel":
@@ -188,8 +189,21 @@ class Panel:
     def poll(self, now: float) -> list[Event]:
         if self.absent:
             return []
-        digital = self.digital.read()
-        analog = self.analog.read()
+        try:
+            digital = self.digital.read()
+            analog = self.analog.read()
+        except OSError as exc:
+            # A glitch on the cabinet ribbon (ESD, a bus collision) fails one
+            # I2C transfer. Skip the tick rather than let it end haslerd -
+            # and never hand the controls an empty reading: every contact
+            # open looks like the power knob turned off.
+            if not self._bus_failing:
+                log.warning("panel read failed, skipping polls until it answers: %s", exc)
+                self._bus_failing = True
+            return []
+        if self._bus_failing:
+            log.info("panel reads again")
+            self._bus_failing = False
         events: list[Event] = []
         for control in self.controls:
             events.extend(control.update(now, digital, analog))

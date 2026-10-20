@@ -15,16 +15,14 @@ old layout or the new one, never half of each.
 from __future__ import annotations
 
 import logging
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from ..actions import Actions, build_presets
-from ..boxconfig import SCHEMA as KEYS_SCHEMA
+from ..boxconfig import SCHEMA as KEYS_SCHEMA, atomic_write_text
 from ..panel.controls import Momentary
 from ..player.base import Preset
 
@@ -360,22 +358,22 @@ def tune_repeat(actions: Actions, panel: Any) -> None:
 
 
 def save(path: Path, specs: list[dict], table: dict[str, dict | None]) -> None:
-    """Write the overlay atomically - a power cut mid-save leaves the old file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
+    """Write the overlay atomically (tmp + fsync + rename): the box is switched
+    off at the wall, and a power cut mid-save must leave the old file."""
     # schema as boxconfig writes it, so a migration knows what it is reading.
     doc = {"schema": KEYS_SCHEMA, "presets": specs, "actions": table}
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".keys-", suffix=".yaml")
-    try:
-        with os.fdopen(fd, "w") as fh:
-            fh.write("# Written by the haslerd web page. Delete to go back to the descriptor.\n")
-            yaml.safe_dump(doc, fh, sort_keys=False, allow_unicode=True)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    text = "# Written by the haslerd web page. Delete to go back to the descriptor.\n" + \
+        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+    atomic_write_text(path, text, mode=0o600)
 
 
 def load(path: Path | None) -> tuple[list[dict], dict[str, dict | None]] | None:
+    """The saved layout, or None (descriptor's keys) if absent or not a layout.
+
+    A hand-edited or half-understood file must cost the saved keys, never the
+    daemon: anything that isn't ``{presets: [...], actions: {...}}`` is logged
+    and ignored.
+    """
     if path is None or not path.exists():
         return None
     try:
@@ -383,7 +381,15 @@ def load(path: Path | None) -> tuple[list[dict], dict[str, dict | None]] | None:
     except (OSError, yaml.YAMLError):
         log.exception("could not read %s; using the descriptor's keys", path)
         return None
-    return list(doc.get("presets") or []), dict(doc.get("actions") or {})
+    presets, actions = (doc.get("presets"), doc.get("actions")) if isinstance(doc, dict) else (None, None)
+    if not isinstance(doc, dict) or not isinstance(presets or [], list) or not isinstance(actions or {}, dict):
+        log.error("%s is not a key layout ({presets: [...], actions: {...}}); using the descriptor's keys", path)
+        return None
+    schema = doc.get("schema", KEYS_SCHEMA)
+    if not isinstance(schema, int) or schema > KEYS_SCHEMA:
+        log.warning("%s has schema %r, newer than this release's %d; reading what it can",
+                    path, schema, KEYS_SCHEMA)
+    return list(presets or []), dict(actions or {})
 
 
 def apply_saved(path: Path | None, actions: Actions, panel: Any) -> bool:

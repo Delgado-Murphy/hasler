@@ -216,7 +216,7 @@ class TestSettings:
         (tmp_path / "settings.json").write_text(json.dumps({"other": 1}))
         app.put_settings({"volume_limit": 55})
         saved = json.loads((tmp_path / "settings.json").read_text())
-        assert saved == {"other": 1, "volume_limit": 55}
+        assert saved == {"schema": 1, "other": 1, "volume_limit": 55}
         assert stat.S_IMODE(os.stat(tmp_path / "settings.json").st_mode) == 0o644
         assert not [p for p in tmp_path.iterdir() if p.name.startswith(".settings-")]
         assert player.config.volume_limit == 55

@@ -72,7 +72,7 @@ from .variant import Panel, Variant, load_variant
 log = logging.getLogger("haslerd")
 
 POLL_HZ = 50.0
-SOURCE_POLL_S = 2.0     # active_source() shells out; no need to ask often
+SOURCE_POLL_S = 2.0     # active_source() asks go-librespot and moOde; no need to ask often
 LAMP_TICK_S = 0.05
 HA_PUBLISH_S = 5.0      # status to Home Assistant at most this often (HaApi throttles too)
 # Long enough for the power switch's debounce to report a knob that is off at

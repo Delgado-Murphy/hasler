@@ -718,7 +718,7 @@ class TestLampSettings:
         assert doc["location"]["name"] == "Bern" and doc["night"] == "22:30-06:45"
         assert (doc["tonight"]["from"], doc["tonight"]["to"]) == ("22:30", "06:45")
         saved = json.loads((tmp_path / "settings.json").read_text())
-        assert saved == {"volume_limit": 70, "night": "22:30-06:45",
+        assert saved == {"schema": 1, "volume_limit": 70, "night": "22:30-06:45",
                          "location": {"name": "Bern", "lat": 46.948, "lon": 7.4474}}
         assert heard == [saved]
         lamp_app.put_settings({"night": "off"})

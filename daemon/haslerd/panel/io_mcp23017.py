@@ -117,10 +117,7 @@ class Mcp23017Digital:
     def _check_reset(self) -> None:
         """Re-run the setup if the chip has reset since; see the module docstring."""
         try:
-            ipol = (
-                self._bus.read_byte_data(self.addr, IPOLA),
-                self._bus.read_byte_data(self.addr, IPOLB),
-            )
+            ipol = tuple(self._bus.read_i2c_block_data(self.addr, IPOLA, 2))
             if ipol != (0xFF, 0xFF):
                 log.warning(
                     "mcp23017: IPOL reads 0x%02x/0x%02x, not 0xff/0xff - chip reset? "
@@ -135,8 +132,11 @@ class Mcp23017Digital:
         if now >= self._next_check:
             self._next_check = now + CHECK_S
             self._check_reset()
-        a = self._bus.read_byte_data(self.addr, GPIOA)
-        b = self._bus.read_byte_data(self.addr, GPIOB)
+        # GPIOA and GPIOB in one transaction: the register pointer steps from
+        # 0x12 to 0x13 by itself (IOCON.BANK=0, SEQOP=0 - the power-on
+        # defaults, which nothing here changes). One I2C transfer per poll
+        # instead of two, at 50 Hz.
+        a, b = self._bus.read_i2c_block_data(self.addr, GPIOA, 2)
         word = a | (b << 8)
         return {name: bool(word & (1 << int(name[1:]))) for name in self.names}
 

@@ -171,7 +171,10 @@ class Software:
         box = self._box()
         # No update_mode yet = a new radio: auto (small releases at night in
         # standby; major/migration releases still ask) - same as the updater.
-        mode = str(box.get("update_mode", "auto")).lower()
+        mode = box.get("update_mode", "auto")
+        # A hand-written ``update_mode: off`` (or ``no``) is YAML 1.1's False to
+        # PyYAML; the updater reads the word itself, and so must we.
+        mode = "off" if mode is False else str(mode).lower()
         channel = str(box.get("channel", "stable")).lower()
         if channel not in CHANNELS:
             if not self._channel_warned:
@@ -327,8 +330,9 @@ class Software:
             raise ValueError(f"{to} is already running")
         self._start(f"hasler-update-apply@rollback-{to}.service")
 
-    def put_settings(self, body: dict) -> dict:
-        """``update_mode`` / ``channel`` into box.yaml (channel is confirm-gated by the caller)."""
+    @staticmethod
+    def check_settings(body: dict) -> None:
+        """ValueError unless ``body`` is a valid ``put_settings`` request."""
         mode, channel = body.get("update_mode"), body.get("channel")
         if mode is not None and mode not in MODES:
             raise ValueError("update_mode must be auto, ask or off")
@@ -336,6 +340,11 @@ class Software:
             raise ValueError("channel must be bench or stable")
         if mode is None and channel is None:
             raise ValueError("expected {\"update_mode\"} and/or {\"channel\"}")
+
+    def put_settings(self, body: dict) -> dict:
+        """``update_mode`` / ``channel`` into box.yaml (channel is confirm-gated by the caller)."""
+        self.check_settings(body)
+        mode, channel = body.get("update_mode"), body.get("channel")
         if self.box_paths is None:
             raise SoftwareError("this radio has no box.yaml to save that in")
         from .. import boxconfig
@@ -345,6 +354,8 @@ class Software:
             box["update_mode"] = mode
         if channel is not None:
             box["channel"] = channel
+        elif str(box.get("channel", "")).lower() in RETIRED_CHANNELS:
+            box["channel"] = "stable"        # what it already read as; say so in the file
         try:
             boxconfig.write_box_file(self.box_paths, box)
         except PermissionError as exc:

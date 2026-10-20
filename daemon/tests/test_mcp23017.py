@@ -60,6 +60,10 @@ class Bus:
     def write_byte_data(self, addr, reg, value):
         self.writes.append((addr, reg, value))
 
+    def read_i2c_block_data(self, addr, reg, length):
+        # The MCP23017 steps its register pointer (IOCON.SEQOP=0).
+        return [self.read_byte_data(addr, reg + i) for i in range(length)]
+
     def close(self):
         pass
 
@@ -174,3 +178,18 @@ class TestResetRecovery:
         bus.write_byte_data = refuse
         t[0] = 1.0
         mcp.read()                      # check runs, re-init fails, read still answers
+
+
+class TestTransfers:
+    def test_one_transfer_per_poll_for_both_ports(self):
+        bus, t = RegBus(), [0.5]
+        mcp = Mcp23017Digital(["d0", "d8"], bus_factory=lambda n: bus, clock=lambda: t[0])
+        reads = []
+        bus.regs[GPIOA], bus.regs[GPIOA + 1] = 0x00, 0x01
+        regs = dict(bus.regs)
+        bus.read_byte_data = lambda addr, reg: reads.append(("byte", reg)) or 0
+        bus.read_i2c_block_data = lambda addr, reg, n: (
+            reads.append(("block", reg, n)) or [regs.get(reg + i, 0) for i in range(n)]
+        )
+        assert mcp.read() == {"d0": False, "d8": True}
+        assert reads == [("block", GPIOA, 2)]

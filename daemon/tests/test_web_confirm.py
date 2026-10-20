@@ -483,6 +483,20 @@ class TestSoftware:
         paths.box_file.write_text("schema: 1\nvariant: hasler-hm\n")
         assert sw.box_settings() == {"update_mode": "auto", "channel": "stable"}
 
+    def test_hand_written_off_is_off_not_ask(self, box):
+        # PyYAML reads a bare ``off`` / ``no`` as False; the updater reads the word.
+        sw, _, _, _, paths = box
+        for word in ("off", "no", "Off"):
+            paths.box_file.write_text(f"schema: 1\nvariant: hasler-hm\nupdate_mode: {word}\n")
+            assert sw.box_settings()["update_mode"] == "off"
+
+    def test_writing_drops_a_retired_channel_for_stable(self, box):
+        sw, _, _, _, paths = box
+        paths.box_file.write_text("schema: 1\nvariant: hasler-hm\nchannel: beta\nupdate_mode: ask\n")
+        assert sw.put_settings({"update_mode": "off"}) == {"update_mode": "off", "channel": "stable"}
+        doc = yaml.safe_load(paths.box_file.read_text())
+        assert doc["channel"] == "stable" and doc["update_mode"] == "off"
+
 
 class TestSoftwareHttp:
     @pytest.fixture
@@ -532,6 +546,13 @@ class TestSoftwareHttp:
         token = self.confirmed(hp, app, "channel", {"channel": "bench"})
         status, doc = call(hp, "PUT", "/api/software/settings", {"channel": "bench", "confirm": token})
         assert status == 200 and doc["channel"] == "bench"
+
+    def test_a_bad_value_is_a_400_before_any_press(self, web):
+        hp, app, (sw, *_ ) = web
+        status, doc = call(hp, "PUT", "/api/software/settings", {"update_mode": "sometimes", "channel": "bench"})
+        assert status == 400 and "update_mode" in doc["error"] and not doc.get("confirm_required")
+        status, doc = call(hp, "PUT", "/api/software/settings", {"channel": "beta"})
+        assert status == 400 and "bench or stable" in doc["error"]
 
     def test_systemd_refusal_is_a_503(self, web):
         hp, app, (sw, *_ ) = web

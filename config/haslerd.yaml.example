@@ -32,7 +32,7 @@ moode:
     ytdlp: yt-dlp        # on PATH via /usr/local/bin; or an absolute path
     # Netscape cookies.txt for private playlists. Empty = public only, or the
     # cookies from the key page's YouTube Music sign-in (written to
-    # /var/lib/haslerd/ytm-cookies.txt, mode 600) once someone signs in there.
+    # /var/lib/haslerd/secrets/ytm-cookies.txt, mode 600) once someone signs in there.
     cookies: ""
     # ytmusicapi: search on the key page, track names in moOde, endless radio
     # presets, Liked songs. false = yt-dlp only.
@@ -51,7 +51,7 @@ web:
 
 # Optional, and normally left empty: connect Home Assistant from the key page
 # instead (Settings -> Home Assistant: it finds HA on the network, checks the
-# token and saves it to /var/lib/haslerd/ha.json, mode 0600, which wins over
+# token and saves it to /var/lib/haslerd/secrets/ha.json, mode 0600, which wins over
 # this block). Kept for setups configured by hand before the page existed.
 # Without any HA the box is fully standalone and HA key actions do nothing.
 # Long-lived token: HA profile -> Security -> Long-lived access tokens.

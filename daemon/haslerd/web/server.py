@@ -58,10 +58,8 @@ from __future__ import annotations
 import copy
 import json
 import logging
-import os
 import re
 import socket
-import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -124,24 +122,21 @@ def load_settings(path: Path | None) -> dict:
     try:
         doc = json.loads(path.read_text())
     except (OSError, ValueError):
-        log.exception("could not read %s; using haslerd.yaml's settings", path)
+        log.exception("could not read %s; using box.yaml's settings and the defaults", path)
         return {}
     return doc if isinstance(doc, dict) else {}
 
 
 def save_settings(path: Path, doc: dict) -> None:
-    """Write atomically, world-readable (0644): a power cut leaves the old file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".settings-", suffix=".json")
+    """Write atomically (tmp + fsync + rename), world-readable (0644), stamped
+    with the config ``schema`` so a later migration knows what it reads: a
+    power cut leaves the old file."""
+    doc = {"schema": boxconfig.SCHEMA, **doc}
+    text = json.dumps(doc, indent=2, sort_keys=True) + "\n"
     try:
-        with os.fdopen(fd, "w") as fh:
-            json.dump(doc, fh, indent=2, sort_keys=True)
-            fh.write("\n")
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+        boxconfig.atomic_write_text(path, text, mode=0o644)
+    except PermissionError as exc:
+        raise Unavailable(f"can't save settings to {path}: {exc.strerror}") from exc
 
 
 def volume_limit_from(raw: Any) -> int:
@@ -318,6 +313,7 @@ class WebApp:
 
     def software_settings(self, body: Any) -> dict:
         body = body if isinstance(body, dict) else {}
+        self.software.check_settings(body)      # a bad value is a 400, not a key press
         channel = body.get("channel")
         if channel is not None and channel != self.software.box_settings()["channel"]:
             self.confirm.consume(body.get("confirm"), "channel", {"channel": str(channel)})
@@ -466,6 +462,13 @@ class WebApp:
         except (TypeError, ValueError):
             return None
 
+    def _volume_floor(self) -> int | None:
+        floor = getattr(getattr(self.actions.player, "config", None), "volume_floor", None)
+        try:
+            return None if floor is None else int(floor)
+        except (TypeError, ValueError):
+            return None
+
     # -- remote control ---------------------------------------------------
 
     def press(self, body: Any) -> None:
@@ -525,6 +528,10 @@ class WebApp:
             ssid = ""
         return {
             "volume_limit": self._volume_limit(),
+            # What PUT accepts for volume_limit, so the page needn't hard-code it.
+            "volume_limit_range": list(VOLUME_LIMIT_RANGE),
+            # Mixer % at the knob's first step (box.yaml moode.volume_floor); read-only here.
+            "volume_floor": self._volume_floor(),
             "mono": self._mono_doc(),
             **self._lamp_doc(),
             "wifi": {"ssid": ssid},
@@ -564,6 +571,7 @@ class WebApp:
                     doc["location"] = place
                 if mode is not None:
                     doc["night"] = mode
+                doc.setdefault("schema", boxconfig.SCHEMA)
                 save_settings(self.settings_file, doc)
             else:
                 doc = self._lamp_settings
@@ -843,7 +851,7 @@ class WebApp:
             entry = self._pot_entry(control, body)
         paths = self._require_paths()
         with self._knob_lock:
-            boxconfig.write_overlay(paths, self.variant_name, {"controls": {cid: entry}})
+            self._write_overlay(paths, {"controls": {cid: entry}})
             self._apply_knob(control, entry)
         log.info("%s calibrated from the web page: %s", cid, entry)
         return self._knob_doc(control, (self._overlay().get("controls") or {}), self._states())
@@ -853,10 +861,17 @@ class WebApp:
         control = self._knob(cid)
         paths = self._require_paths()
         with self._knob_lock:
-            boxconfig.write_overlay(paths, self.variant_name, {"controls": {cid: None}})
+            self._write_overlay(paths, {"controls": {cid: None}})
             self._apply_knob(control, None)
         log.info("%s back to the shipped calibration", cid)
         return self._knob_doc(control, (self._overlay().get("controls") or {}), self._states())
+
+    def _write_overlay(self, paths: Any, patch: dict) -> None:
+        try:
+            boxconfig.write_overlay(paths, self.variant_name, patch)
+        except PermissionError as exc:
+            raise Unavailable(f"can't save the calibration to {paths.overlay_file(self.variant_name)}: "
+                              f"{exc.strerror}") from exc
 
     def _require_paths(self) -> Any:
         if self.box_paths is None:
