@@ -44,6 +44,9 @@ from .variant import Variant
 
 log = logging.getLogger(__name__)
 
+# A repeat tap this soon after starting a preset is contact bounce, not "again".
+AGAIN_GUARD_S = 0.8
+
 # Order the PU key cycles through. "radio" is MPD; the rest are moOde renderers.
 SOURCE_CYCLE = ("radio", "bluetooth", "airplay", "spotify")
 
@@ -108,6 +111,7 @@ class Actions:
         # before whatever blocking call comes next.
         self.on_change: Callable[[], None] | None = None
         self.clock = clock
+        self._started_at = float("-inf")   # clock() when a preset last started
         self.presets = build_presets(variant.presets, variant.name)
         self.standby = False
         self.shutting_down = False
@@ -241,6 +245,13 @@ class Actions:
             and current.source == preset.source
             and active == current.source
         ):
+            # An old key's contacts bounce: on the bench one press arrived as
+            # two taps ~0.2 s apart, and the second stopped the station it had
+            # just started. Nobody means "stop" that fast.
+            if self.clock() - self._started_at < AGAIN_GUARD_S:
+                log.info("k-tap on preset %s %.2f s after starting it: ignored (bounce)",
+                         preset.n, self.clock() - self._started_at)
+                return
             if preset.source == "radio":
                 self._reply("stop")
                 self._standby(None, {})
@@ -271,6 +282,7 @@ class Actions:
         return None
 
     def _start(self, preset: Preset) -> None:
+        self._started_at = self.clock()
         """Start a preset; on failure tell the lamp, then let dispatch log it.
 
         ``on_start`` first, so the lamp is already breathing while a slow

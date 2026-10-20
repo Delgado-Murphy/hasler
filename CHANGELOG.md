@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3 - 2026-10-20
+
+- Keys: a bounced second tap no longer stops the station it just started
+  (an old key's contacts can register one press as two taps).
+- Key page: choose the update channel (Stable, Beta or Bench) in the Software
+  card, confirmed with a press on the radio.
+
 ## 0.3.2 - 2026-10-20
 
 - YouTube Music no longer stutters: YouTube throttles a plain download of some

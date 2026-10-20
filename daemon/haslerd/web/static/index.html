@@ -2082,7 +2082,7 @@ async function swAction(fn){
 function swCheck(){
   swAction(async () => {
     const r = await api('POST', '/api/software/check');
-    if (r.ok){ toast('Looking for updates…'); setTimeout(loadSoftware, 8000); }
+    if (r.ok){ swSwitched = null; toast('Looking for updates…'); setTimeout(loadSoftware, 8000); }
     else toast((r.json && r.json.error) || 'Couldn’t start the check.', true);
   });
 }
@@ -2115,6 +2115,30 @@ function swMode(mode){
     const r = await api('PUT', '/api/software/settings', {update_mode:mode});
     if (r.ok) toast(mode === 'auto' ? 'Small updates install by themselves' : mode === 'ask' ? 'The radio asks before updating' : 'Updates are off');
     else toast((r.json && r.json.error) || 'Couldn’t save that.', true);
+  });
+}
+// Channels (docs/ota.md §5). The updater only installs a release whose seq is
+// above the highest one this radio has run (update/hasler_update check.py), so a
+// channel that is behind leaves the radio where it is until it catches up.
+const CHANNELS = [['stable','Stable'], ['beta','Beta'], ['bench','Bench']];
+const CHANNEL_TEXT = {stable:'Recommended. Each version is tested on other radios first.',
+  beta:'New things a bit earlier, on a few family radios.', bench:'The makers’ test radio. Test versions — they may break.'};
+const chName = c => (CHANNELS.find(x => x[0] === c) || [c, c])[1];
+const chRank = c => ({bench:0, beta:1, stable:2})[c] ?? 2;
+// After a switch: {channel, behind} until the next check, so "Check now" sits by it.
+let swSwitched = null;
+function swChannel(ch){
+  const from = software && software.channel, v = software && software.version;
+  const behind = chRank(ch) > chRank(from);   // a channel that usually trails the one we're on
+  swAction(async () => {
+    const token = await pressToConfirm('channel', {channel:ch}, 'Switch to ' + chName(ch),
+      ch === 'bench' ? 'Bench gets test versions before anyone else, and they may break. The radio still asks before installing unless updates are Automatic.'
+        : behind ? 'If ' + chName(ch) + ' is behind ' + v + ', the radio keeps ' + v + ' until ' + chName(ch) + ' catches up. It never goes back to an older version on its own.'
+        : 'The next check looks at ' + chName(ch) + ' for updates.');
+    if (!token) return;
+    const r = await api('PUT', '/api/software/settings', {channel:ch, confirm:token});
+    if (r.ok){ swSwitched = {channel:ch, behind, version:v}; toast('Now on the ' + chName(ch) + ' channel'); }
+    else toast((r.json && r.json.error) || 'Couldn’t switch the channel.', true);
   });
 }
 function softwareSettings(){
@@ -2164,13 +2188,24 @@ function softwareSettings(){
       onclick: () => { if (k !== s.update_mode) swMode(k); }}, l));
   rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Updates'),
     h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
+  const cseg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Update channel'});
+  CHANNELS.forEach(([k, l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
+    onclick: () => { if (k !== s.channel) swChannel(k); },
+    onkeydown: e => { const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+      if (d){ e.preventDefault(); const b = cseg.children[(i + d + CHANNELS.length) % CHANNELS.length]; b.focus(); } }}, l)));
+  const sw = swSwitched && swSwitched.channel === s.channel ? swSwitched : null;
+  rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Update channel'),
+      h('span', {class:'li-sub'}, CHANNEL_TEXT[s.channel] || '')), cseg,
+    sw ? h('div', {class:'sw-row'}, h('span', {class:'li-sub', style:'flex:1 1 200px'}, 'The next check looks at ' + chName(sw.channel) + '.'
+        + (sw.behind ? ' If it’s behind ' + sw.version + ', the radio stays on ' + sw.version + ' until ' + chName(sw.channel) + ' catches up.' : '')),
+      h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: swCheck}, 'Check now')) : null));
   for (const r of (s.releases || []).filter(r => r.status !== 'running'))
     rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version ' + r.version),
         h('span', {class:'li-sub'}, (r.status === 'bad' ? 'Didn’t work here' : r.status === 'previous' ? 'The one before' : 'Kept')
           + (r.installed_at ? ' · installed ' + day(r.installed_at) : ''))),
       h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: () => swBack(r.version)}, 'Go back')));
   return wrap(h('div', {class:'list'}, rows),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Installing or going back asks for a press on the radio, so nobody else on the Wi-Fi can do it.'));
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Installing, going back or switching channel asks for a press on the radio, so nobody else on the Wi-Fi can do it.'));
 }
 
 /* ---------- knobs: live reading + guided calibration (/api/knobs) ---------- */

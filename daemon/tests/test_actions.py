@@ -617,3 +617,21 @@ class TestPersistence:
         mtime = path.stat().st_mtime_ns
         actions.dispatch(Event("k2", "tap"))        # again -> next track
         assert path.stat().st_mtime_ns == mtime
+
+
+
+def test_a_bounced_second_tap_does_not_stop_the_station(monkeypatch):
+    """Bench: one press of an old key arrived as two taps 0.2 s apart."""
+    import haslerd.actions as actions_mod
+
+    monkeypatch.setattr(actions_mod, "AGAIN_GUARD_S", 0.8)
+    t = [100.0]
+    player = FakePlayer()
+    actions = Actions(load_variant(VARIANTS / "hasler-hm.yaml"), player, clock=lambda: t[0])
+    actions.dispatch(Event("k3", "tap"))
+    t[0] += 0.2
+    actions.dispatch(Event("k3", "tap"))          # bounce: ignored
+    assert player.playing.n == 3 and not actions.standby
+    t[0] += 1.0
+    actions.dispatch(Event("k3", "tap"))          # a real second press still stops it
+    assert actions.standby

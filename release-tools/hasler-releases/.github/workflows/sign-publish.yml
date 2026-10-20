@@ -12,6 +12,11 @@
 # list and re-sign the index (timestamp key) - boxes then never install it.
 # schedule: re-sign every channel index daily with a fresh issued/expires.
 #
+# releases.json on gh-pages feeds the website (index.html there): publish adds
+# the release, promote adds the channel to its `channels`, halt adds the
+# channel to its `halted`. It is informational and unsigned - boxes never read
+# it - so a failure there warns and never blocks a release or a channel.
+#
 # No third-party actions: actions/checkout only, plus gh, ssh-keygen, curl,
 # python3 that ship on the runner image.
 name: sign-publish
@@ -53,6 +58,71 @@ concurrency:
 env:
   SOURCE_REPO: Delgado-Murphy/hasler    # GitHub reports names in this case; compared case-insensitively
   SOURCE_WORKFLOW: .github/workflows/release.yml
+  # python3 -c "$RELEASES_INDEX_PY" upsert <releases.json> <release.json> <gh-release.json> [channel]
+  # python3 -c "$RELEASES_INDEX_PY" halt <releases.json> <version> <channel>
+  RELEASES_INDEX_PY: |
+    import hashlib, json, os, sys
+    from datetime import datetime, timezone
+    op, path = sys.argv[1], sys.argv[2]
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        d = {}
+    d.setdefault("schema", 1)
+    d.setdefault("releases", [])
+    def find(v):
+        return next((r for r in d["releases"] if r.get("version") == v), None)
+    def add(lst, x):
+        if x and x not in lst:
+            lst.append(x)
+    if op == "upsert":
+        raw = open(sys.argv[3], "rb").read()
+        rel, gh = json.loads(raw), json.load(open(sys.argv[4]))
+        channel = sys.argv[5] if len(sys.argv) > 5 else ""
+        names = {a["name"]: a for a in gh.get("assets", [])}
+        def asset(name):
+            a = names.get(name)
+            return {"name": name, "url": a["url"], "size": a.get("size")} if a else None
+        v, art = rel["version"], rel["artifacts"][0]
+        old = find(v)
+        entry = {
+            "version": v, "seq": rel["seq"], "date": gh.get("publishedAt") or rel.get("created"),
+            "created": rel.get("created"), "kind": rel.get("kind"),
+            "prerelease": bool(gh.get("isPrerelease")), "notes": rel.get("notes") or "",
+            "channels": list(old.get("channels", [])) if old else [],
+            "halted": list(old.get("halted", [])) if old else [],
+            "requires_migration": bool(rel.get("requires_migration")),
+            "min_from_seq": rel.get("min_from_seq"), "variants": rel.get("variants", []),
+            "release_page": gh.get("url"),
+            "assets": {
+                "tarball": dict(asset(art["name"]) or {"name": art["name"], "url": art["url"]},
+                                sha256=art["sha256"], size=art.get("size")),
+                "release_json": dict(asset("release.json") or {}, sha256=hashlib.sha256(raw).hexdigest()),
+                "signature": asset("release.json.sig"),
+                "sbom": asset(f"hasler-{v}.cdx.json"),
+                "sha256sums": asset("SHA256SUMS"),
+            },
+        }
+        add(entry["channels"], channel)
+        if old:
+            d["releases"][d["releases"].index(old)] = entry
+        else:
+            d["releases"].append(entry)
+    elif op == "halt":
+        entry = find(sys.argv[3])
+        if entry is None:
+            sys.exit(f"{sys.argv[3]} is not in {path}")
+        add(entry.setdefault("halted", []), sys.argv[4])
+    else:
+        sys.exit(f"unknown op {op}")
+    d["releases"].sort(key=lambda r: r.get("seq", 0), reverse=True)
+    d["updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with open(path + ".tmp", "w") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.replace(path + ".tmp", path)
+    print(f"{path}: {op} {sys.argv[3] if op == 'halt' else v} ok")
 
 jobs:
   publish:
@@ -182,6 +252,23 @@ jobs:
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --title "hasler $VERSION" \
             --notes-file notes.md "${pre[@]}" "${assets[@]}"
 
+      - name: List it in releases.json on gh-pages (the website)
+        continue-on-error: true      # the release exists; the channel job lists it too
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json url,publishedAt,isPrerelease,assets > gh-release.json
+          git fetch -q --depth 1 origin gh-pages
+          git worktree add -q --detach site FETCH_HEAD
+          python3 -c "$RELEASES_INDEX_PY" upsert site/releases.json in/release.json gh-release.json
+          cd site
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git add releases.json
+          git diff --cached --quiet && exit 0
+          git commit -q -m "releases.json: $VERSION"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
+
   channel:
     needs: publish
     if: >-
@@ -222,12 +309,20 @@ jobs:
           python3 main/tools/channel.py promote --index "$idx" --release release.json --release-url "$RELEASE_URL"
           bash main/tools/sign.sh -n hasler-channel -e TIMESTAMP_SIGNING_KEY "$idx"
           bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
+      - name: Note the channel in releases.json (the website)
+        continue-on-error: true      # informational; never blocks the channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json url,publishedAt,isPrerelease,assets > gh-release.json
+          python3 -c "$RELEASES_INDEX_PY" upsert pages/releases.json release.json gh-release.json "$CHANNEL"
       - name: Push gh-pages
         run: |
           cd pages
           git config user.name "hasler-releases"
           git config user.email "hasler-releases@users.noreply.github.com"
           git add channels
+          if [[ -f releases.json ]]; then git add releases.json; fi
           git commit -q -m "$CHANNEL -> $VERSION"
           git push -q origin HEAD:gh-pages
 
@@ -266,12 +361,16 @@ jobs:
           bash main/tools/sign.sh -n hasler-channel -e TIMESTAMP_SIGNING_KEY "$idx"
           bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
           echo "HALT_SEQ=$seq" >> "$GITHUB_ENV"
+      - name: Mark it halted in releases.json (the website)
+        continue-on-error: true      # informational; never blocks the halt
+        run: python3 -c "$RELEASES_INDEX_PY" halt pages/releases.json "$VERSION" "$CHANNEL"
       - name: Push gh-pages
         run: |
           cd pages
           git config user.name "hasler-releases"
           git config user.email "hasler-releases@users.noreply.github.com"
           git add channels
+          if [[ -f releases.json ]]; then git add releases.json; fi
           git commit -q -m "$CHANNEL: halt $VERSION (seq $HALT_SEQ)"
           git push -q origin HEAD:gh-pages
 
