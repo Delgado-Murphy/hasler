@@ -111,6 +111,12 @@ night (03:17 UTC), so nothing needs doing - unless that job stops running.
 
 ## 1.0.0: the first stable release
 
+**Where it stands (2026-10-21):** steps 1-5 are done for 1.0.0, and 1.0.1
+(a patch) followed it to bench; the bench radio runs 1.0.1. Nothing is on
+stable yet. The soak (step 6) and the promote (step 7) are next; which
+version to promote is an owner decision (*Promoting 1.0.1 instead of 1.0.0*,
+below).
+
 What is special: `stable.json` doesn't exist until the first promote (radios
 on Stable report "no update info" until then; the promote creates it - the
 `channel` job builds a fresh index when the file is missing, and the nightly
@@ -150,6 +156,13 @@ asks first, the bench radio included.
 8. A Stable radio then shows "Update ready: 1.0.0 - A bigger update - it
    waits for you" and installs only when its owner presses Install and the
    radio key. Tell the owners.
+
+**Promoting 1.0.1 instead of 1.0.0.** Promote works on any bench release.
+1.0.1's signed `kind` is `patch` (measured from v1.0.0), so a stable radio
+still on 0.4.6 would install it at night **without asking** - unlike 1.0.0,
+which asks. Content-wise that is safe (no migration, no new kind of system
+file), but if every 0.x stable radio should be asked, promote 1.0.0 first
+(those radios then ask), then 1.0.1.
 
 **If 1.0.0 is bad:** before promote, halt it on bench and fix forward with
 1.0.1 (the bench radio on 1.0.0 takes it at night). After promote, halt it on
@@ -220,8 +233,8 @@ Done once, in October 2026. Kept here so it can be checked or redone.
    SHA); workflow permissions **read-only**; no PR approval by Actions.
 2. `hasler`: `master` protected against force push and deletion. Repo
    variables: `ARM_RUNNER=ubuntu-24.04-arm` (native arm64 runners, free for
-   public repos) and `ATTESTATIONS=true` (build provenance, checked by
-   sign-publish). Not set up yet, worth doing: require the check `ci / test`
+   public repos) and `ATTESTATIONS=true` (makes `release.yml` attest the
+   build). Not set up yet, worth doing: require the check `ci / test`
    on `master`, and a tag ruleset for `v*` (only the owner creates them,
    nobody updates or deletes them).
 3. `hasler-releases`:
@@ -241,6 +254,10 @@ Done once, in October 2026. Kept here so it can be checked or redone.
      deployment branches = `main` only; secret `TIMESTAMP_SIGNING_KEY`.
    - `main` and `gh-pages` protected against force push and deletion (the
      workflows push `gh-pages` with the Actions token).
+   - repo variable `ATTESTATIONS=true` here too: without it `sign-publish`
+     skips the attestation check (set on 2026-10-21; 1.0.0 and 1.0.1 were
+     signed without the check). It is needed in **both** repos: `hasler` to
+     make the attestation, `hasler-releases` to check it.
    - not set up yet: a ruleset so that only the owner may create releases and
      `v*` tags.
 

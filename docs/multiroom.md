@@ -219,8 +219,8 @@ Settings → **Phones & casting** on the key page.
 |---|---|---|
 | **AirPlay** (classic, AirPlay 1) | `shairport-sync`, started by moOde | moOde's trixie repository has no shairport-sync, so `bootstrap.sh` installs Debian's, disables its own unit and puts `config/moode/shairport-sync.conf` in place. moOde starts it as before. |
 | **UPnP / DLNA** | `upmpdcli`, started by moOde | Plays through MPD. |
-| **Bluetooth** | BlueZ + bluealsa, moOde | Hold **PU**, or *A new phone* → **Pair a phone** on the page, opens pairing for 2 minutes. While it is open, `haslerd` answers yes to the phone's code itself (`player/btaccept.py` through the root helper `hasler-bt-accept`; moOde's agent would wait for a yes on its own web page). A systemd drop-in for `bluetooth.service` makes phones show the radio as a loudspeaker. Paired phones, the codec in use and reconnecting to the last phone are `/api/bluetooth` (`web/bluetooth_api.py`). |
-| **Spotify Connect** | go-librespot | Shown read-only: on whenever Spotify is set up, because the same program plays the Spotify keys. **Spotify for guests:** with *Guests on your Wi-Fi can play* on (the default), anyone on the Wi-Fi with Spotify Premium sees *Hasler* in their own app and plays with their own account, no login on the radio. The switch (`spotify_guests` in `settings.json`) keeps go-librespot's `zeroconf_enabled` in step. Off: only the radio's own account sees it. |
+| **Bluetooth** | BlueZ + bluealsa, moOde | Hold **PU**, or *A new phone* → **Pair a phone** on the page, opens pairing for 2 minutes. While it is open, `haslerd` answers yes to the phone's code itself (`player/btaccept.py` through the root helper `hasler-bt-accept`; moOde's agent would wait for a yes on its own web page). A systemd drop-in for `bluetooth.service` makes phones show the radio as a loudspeaker. Paired phones, the codec in use, reconnecting to the last phone and *Phone volume controls the radio* are `/api/bluetooth` (`web/bluetooth_api.py`); the phone's slider is the radio's mixer through `player/btvolume.py`. A drop-in for moOde's `bluealsa-aplay@.service` gives 1 s of buffer instead of 500 ms (Android phones stall for up to ~0.9 s in the first 20 s), and one for Debian's `bluealsa-aplay.service` keeps it from ever running beside moOde's. |
+| **Spotify Connect** | go-librespot | Always on, because the same program plays the Spotify keys. The radio's own account is signed in or out on the page with a code ([build guide, Phase 3c](build-guide.md#phase-3c--streaming-sources-spotify--youtube-music); `web/spotify_account_api.py`). **Spotify for guests:** with *Guests on your Wi-Fi can play* on (the default), anyone on the Wi-Fi with Spotify Premium sees *Hasler* in their own app and plays with their own account, no login on the radio. The switch (`spotify_guests` in `settings.json`) keeps go-librespot's `zeroconf_enabled` in step. Off: only the radio's own account sees it. |
 
 moOde owns AirPlay, UPnP and Bluetooth: `haslerd` never starts their units
 itself. It reads moOde's flags and names (one read-only sqlite query) and
@@ -249,7 +249,9 @@ install steps (HACS) are in
 - It talks to the radio's own API on port 8080 (no cloud, no account) and
   finds radios through the same `_hasler._tcp` announcement as multiroom.
 - Entities: a `media_player` (the preset keys are its sources), an `update`
-  entity (read-only: installing still needs a press on the radio), a *Health
+  entity (read-only: HA can't install; Automatic radios install small
+  updates at night by themselves, and majors, *Install now* and *Go back*
+  need a press on the radio), a *Health
   problem* binary sensor, and sensors for the update channel and when the
   software started.
 - **Not the MPD integration.** HA may offer *Music Player Daemon* for the radio.

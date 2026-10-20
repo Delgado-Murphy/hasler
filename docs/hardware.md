@@ -16,6 +16,13 @@ it all together are in the [build guide](build-guide.md).
 - **Pilot lamp:** one RGB LED on three Pi pins.
 - **Never:** more than 24 V into the amp, or the speaker across both amp channels.
 
+This page describes the prototype build: breakout boards and a hand-wired
+prototype board ([prototype/README.md](prototype/README.md)). The **Hasler
+HAT** (rev A, ordered October 2026; [hat/BRIEF.md](hat/BRIEF.md), design on
+the `hat` branch) puts the 20 V power, its protection, the key and knob chips
+and the lamp resistors on one board, with the same chips and pins (the
+key chip's address is found by itself), so the software doesn't change.
+
 ---
 
 ## Parts we already had

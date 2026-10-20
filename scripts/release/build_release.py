@@ -106,6 +106,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-audio-mono", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-multiroom", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-wifi-join", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-wifi-rescue", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-bt-accept", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-help", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-lamp-boot", "integration/sbin/", mode=0o755),

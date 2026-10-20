@@ -1,18 +1,29 @@
 # Changelog
 
+## 1.0.2 - 2026-10-21
+
+- The memory-card Wi-Fi rescue (hasler-wifi.txt) now arrives with updates
+  too, not only on new SD cards.
+- This radio -> Wi-Fi shows the setup network's name and password, to write
+  down for the day the radio can't find your Wi-Fi.
+- A last tidy-up of the key page and every document: plainer words, no
+  leftovers from older layouts, Home Assistant scenes no longer say
+  "unknown", the Bluetooth key reads simply "Bluetooth".
+
 ## 1.0.1 - 2026-10-21
 
 - Spotify: sign the radio in from the key page - a code to enter at
   spotify.com/pair, no laptop. Change account or sign out there too.
 - Bluetooth: the phone's volume is the radio's volume (and follows the
-  knob); a steadier start after a phone connects (1 s buffer); phones see a
-  loudspeaker; the Bluetooth service can no longer hang at start.
+  knob); a steadier start after a phone connects (1 s buffer).
 - Wi-Fi setup: the radio's setup network works again after a Wi-Fi change,
   any web address on it opens the setup page, and after a power cut where
   the router is slower the radio keeps trying your Wi-Fi instead of staying
   in setup mode. The setup page works without JavaScript, in English and
   Spanish, and says what the lamp will do. A file on the memory card can set
-  the Wi-Fi as a last resort.
+  the Wi-Fi as a last resort. (The memory-card file and the new captive page
+  come with a new SD card; a radio updated over the air gets them when its
+  maker re-runs the setup script.)
 - This radio: remove the room name with one tap.
 
 ## 1.0.0 - 2026-10-21
@@ -60,6 +71,7 @@ New in this version:
   twice on the way.
 - Reboots can't hang for minutes any more (a stuck service gets 20 s), and a
   small log stays on the card so a bad shutdown can be looked into.
+- Bluetooth can no longer hang while it starts.
 - New radios can be set up without a screen or keyboard: flash moOde, copy
   six files to the card, switch on (docs/new-install.md).
 - Open source: MIT licence, with the licences of everything bundled in each

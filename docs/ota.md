@@ -42,7 +42,7 @@ second half ("For makers") has the detail. The exact file formats are in
 
 ## What is built, and what isn't yet
 
-As of 0.4.5 (October 2026):
+As of 1.0.1 (October 2026):
 
 | Part | Status |
 |---|---|
@@ -51,12 +51,13 @@ As of 0.4.5 (October 2026):
 | Download, verify, install next to the running version, health check, automatic rollback, boot counter, power-cut recovery | built |
 | Key page: version, check now, install tonight / now, go back, last result | built |
 | Update modes `auto` / `ask` / `off` (new radios: `auto`) | built |
-| Two channels, `bench` and `stable`; halting a bad release | built - every release so far has gone to `bench`; `stable` gets its index with the first promotion |
+| Two channels, `bench` and `stable`; halting a bad release | built - every release so far (1.0.1 the latest) has gone to `bench`; `stable` gets its index with the first promotion ([release.md](release.md#100-the-first-stable-release)) |
 | Channel picker on the key page (with Maker tools on) | built |
 | New kinds of system files in major releases, put in place by the release's own updater | built (radios on 0.4.2 or later) |
 | systemd drop-ins for other services (e.g. `bluetooth.service.d/hasler-speaker.conf`) | built (first shipped in 0.4.3) |
 | Lamp breathes ember while an update installs | built (0.4.3) |
-| Remote help: "Let the makers help (24 h)" | in progress |
+| A new radio from a blank SD card, from a signed release (`hasler-install`, [new-install.md](new-install.md)) | built (1.0.0); the signed installer download is not published yet |
+| Remote help: "Let the makers help (24 h)" ([remote-help.md](remote-help.md)) | built (0.4.6) |
 | Staged rollout (rings of radios inside a channel) | the format and the radio support it; our tools still open every ring at once |
 | `config.txt` changes through the Pi's tryboot | planned - today such a release is installed by hand (§4) |
 | Opt-in daily check-in | planned - the `box.yaml` key exists, nothing is sent |
@@ -219,9 +220,9 @@ YubiKey is a later step - the same single keyring change.
 | rollback attack (an old, vulnerable release) | a monotonic `seq`, kept root-owned on the radio; anything not above it is refused. Going back fleet-wide means shipping a new, higher version |
 | stolen release key | revoked by a new keyring, signed with the root key |
 | stolen timestamp key | worst case a freeze: it signs indexes, never releases |
-| tampered build | the signing workflow uses no third-party actions, re-downloads the artifact, checks its digest and build attestation, and that the tag still points at the commit that was built |
+| tampered build | the signing workflow uses no third-party actions, re-downloads the artifact, checks its digest and build attestation, and that the tag still points at the commit that was built (the attestation needs the repo variable `ATTESTATIONS=true` in both repos: `hasler` makes it, `hasler-releases` checks it - [release.md](release.md#how-the-org-is-set-up)) |
 | dependency supply chain | wheels and binaries pinned, hashed and shipped in the release; radios never reach PyPI during an update |
-| LAN attacker, malicious web page (CSRF, DNS rebinding) | every state-changing request checks `Host` and `Origin` and wants JSON; install, go back, channel, Wi-Fi and reset need a **press on the radio** within 30 s |
+| LAN attacker, malicious web page (CSRF, DNS rebinding) | every state-changing request checks `Host` and `Origin` and wants JSON; installing from the page, go back, channel, Wi-Fi, reset, Spotify sign-in and remote help need a **press on the radio** within 30 s (the nightly automatic install of a small update needs none: nobody asks for it over the network) |
 | physical access | out of scope; the radio holds only public keys |
 
 **On the radio, two users split the work.** The unprivileged `hasler-update`
@@ -329,7 +330,8 @@ leaves is marked bad, so auto mode won't reinstall it.
 - **Fleet check-in** (planned, opt-in): one daily
   `{random box id, variant, version, channel, last result, health}` to a tiny
   endpoint - no IPs, SSIDs, history or accounts.
-- **Remote help** ("Let the makers help (24 h)" on the key page): in progress.
+- **Remote help** ("Let the makers help (24 h)" on the key page): separate
+  from updates; see [remote-help.md](remote-help.md).
 
 ## Drills for each release
 

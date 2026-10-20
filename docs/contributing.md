@@ -87,8 +87,9 @@ calibration lives outside the release, in `/etc/hasler/variant.d/`
 ## Making a release
 
 See [release.md](release.md). In short: bump the version in
-`daemon/pyproject.toml`, add a section to `CHANGELOG.md`, tag a release
-candidate, test it on the bench radio, then promote it.
+`daemon/pyproject.toml` and `daemon/haslerd/__init__.py`, add a section to
+`CHANGELOG.md`, tag it, publish it to the bench radio, live with it, then
+promote it to stable.
 
 ## Style
 

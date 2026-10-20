@@ -260,7 +260,7 @@ more amplifier than the cone can survive, on a part that cannot be replaced with
 authentic.
 
 Mitigated in software by the **volume ceiling** (`volume_limit`). Set it on the key page,
-Settings → **Volume ceiling** (it takes effect at once, no restart):
+Settings → Sound → **Volume ceiling** (it takes effect at once, no restart):
 
 - [ ] Start at 50
 - [ ] Play something dense — full-band music, not speech — with the knob at maximum
@@ -275,7 +275,7 @@ safe, which is how the original would have behaved.
 
 The Amp4 Pro is stereo; the Hasler is mono.
 
-- [x] Speaker on **one channel only** (left: L+ / L−; R+ / R− empty), with L+R summed to mono upstream so nothing is lost — key page → Settings → Mono (on by default)
+- [x] Speaker on **one channel only** (left: L+ / L−; R+ / R− empty), with L+R summed to mono upstream so nothing is lost — key page → Settings → Sound → Mono (on by default)
 - [ ] **⚠️ Never wire the speaker across the two + terminals.** Class-D outputs are already
       bridge-tied; connecting across two of them is a dead short that destroys the amplifier.
 

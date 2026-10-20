@@ -103,7 +103,7 @@ First prove the easy half works, before you add anything that can destroy
 hardware. If moOde will not start or join Wi-Fi, you want to find out with a
 cheap charger attached, not with a 20 V supply.
 
-- [ ] Flash **moOde, 64-bit** (tested with **10.3.0 / Debian 13 trixie**). Turn
+- [ ] Flash **moOde, 64-bit** (tested with **10.3.0 and 10.3.6 / Debian 13 trixie**). Turn
       SSH on and set the hostname to `hasler`. **Note the exact version.**
 - [ ] Start the Pi **alone**, on a plain 5 V USB-C charger in its own power port.
 - [ ] Join Wi-Fi. Check that `ssh hasler.local` works and the moOde web page loads.
@@ -501,13 +501,9 @@ HA the house has is connected from the key page, with no file editing.*
       `playing` / `standby` / `idle`, with `station`, `title`, `artist`,
       `source`). After an HA restart it comes back with the next change, or
       within 10 minutes.
-- [ ] *(Optional)* **The Hasler integration for HA:** HACS → **⋮** → **Custom
-      repositories** → `https://github.com/Delgado-Murphy/hasler-homeassistant`,
-      type **Integration** → find **Hasler Radio** → **Download** → restart HA →
-      **Settings → Devices & services**: the radio is **Discovered** → **Add**.
-      It gives a `media_player` (the preset keys are its sources), an `update`
-      entity and a health sensor. HA's media player then shows what the radio
-      plays, and choosing a source presses that key.
+- [ ] *(Optional)* **The Hasler integration for HA**, installed with HACS:
+      the steps are in [Using your Hasler](using.md#home-assistant), the
+      entities in [multiroom.md](multiroom.md#home-assistant).
 
 **Done when:** holding a key bound to a scene runs it, a key set to dim a light
 dims it, **and the radio still works with HA stopped**.
@@ -533,8 +529,8 @@ details are in [multiroom.md](multiroom.md).*
 - [ ] **Casting.** Key page → **Settings → Phones & casting**: AirPlay,
       Bluetooth and *Other music apps* (UPnP / DLNA) each show *on* and running. A
       target whose program is missing says so and can't be switched on.
-      Spotify Connect is listed read-only; **Guests on your Wi-Fi can play**
-      lets other people's Spotify find it.
+      Spotify Connect shows the radio's account (sign in or out there, Phase
+      3c); **Guests on your Wi-Fi can play** lets other people's Spotify find it.
 - [ ] **Room name.** Settings → **This radio** → room name (*Kitchen*).
       The page title changes; `hasler.local` does not. With two radios, the
       second answers at `hasler-2.local` by itself. **Use the room name on
@@ -616,6 +612,13 @@ password, press **Connect**; the radio restarts onto it. The owner's steps are i
   optionally `hotspot_password = …`): `hasler-wifi-rescue.service` applies it
   before moOde's worker looks for a network, deletes it and writes
   `hasler-wifi-result.txt` ([Using your Hasler](using.md#if-nothing-works-a-file-on-the-memory-card)).
+- **What a release doesn't bring.** The rescue unit and the captive portal are
+  put in place by `scripts/bootstrap.sh` (a new SD card from 1.0.1 on runs
+  it), not by the updater. A radio that reached 1.0.1 over the air has the
+  older captive files and no `hasler-wifi-rescue.service` until
+  `sudo scripts/bootstrap.sh` is run on it from a 1.0.1 checkout (safe to
+  repeat). The hotspot password and the retries are haslerd's, so every
+  1.0.1 radio has those.
 
 ---
 

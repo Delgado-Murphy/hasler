@@ -16,6 +16,7 @@ plays.
 - [Music in several rooms](#music-in-several-rooms)
 - [The key page and Settings](#the-key-page)
 - [Home Assistant](#home-assistant)
+- [Help from the makers](#help-from-the-makers)
 - [Wi-Fi](#wi-fi)
 - [Updates](#updates)
 - [After a power cut](#after-a-power-cut)
@@ -150,7 +151,7 @@ The radio is also a speaker for your phone. On the network it is called
   is waiting, Spotify plays nothing on the radio. **Sign out** (also with a key
   press) stops the Spotify keys; guests can still play.
 - **AirPlay** (iPhone, iPad, Mac): choose **Hasler** from the AirPlay list.
-- **Bluetooth:** hold **PU** until the lamp breathes blue (or tap **Pair a new
+- **Bluetooth:** hold **PU** until the lamp breathes blue (or tap **Pair a
   phone** on the key page), then choose **Hasler** in your phone's Bluetooth
   settings. After that, the phone connects by itself, or the radio calls it
   (see [Bluetooth](#bluetooth)).
@@ -173,7 +174,7 @@ off, your Bluetooth phones, and the names phones see.
 - **Your phones.** **Settings → Phones & casting → Bluetooth** lists the paired
   phones: which one is connected, its battery (if the phone tells), and when
   it was last used. **Connect**, **Disconnect**, or **Forget** (pair it again
-  later with **Pair a new phone**).
+  later with **Pair a phone**).
 - **Sound quality.** While a phone plays, the same place shows the codec it
   uses (SBC, aptX or aptX HD) and the sample rate. The phone chooses; on
   Android it is under *Developer options → Bluetooth audio codec*.
@@ -188,8 +189,12 @@ off, your Bluetooth phones, and the names phones see.
 - **Phone volume is the radio's volume.** While a phone plays over Bluetooth,
   its volume buttons turn the radio up and down (in the knob's safe range) and
   its slider follows the knob and keys; after a change on the phone, the next
-  turn of the knob sets the volume from where the knob is. Switch: **Phone
-  volume controls the radio** (on to start).
+  turn of the knob sets the volume from where the knob is. Connecting a phone
+  never changes how loud the radio is. Switch: **Phone volume controls the
+  radio** (on to start).
+- **A second behind.** The radio keeps about a second of music in hand, so a
+  phone's hiccups don't break the sound. With video, the phone usually makes
+  up for it.
 - **A Bluetooth key.** In **Edit keys**, choose a key and set its tap to
   **Bluetooth**. Tapping it switches the radio to Bluetooth and calls your
   phone. While your phone plays, tapping it again skips to the **next track**,
@@ -310,11 +315,11 @@ Tap the gear. Each row opens its own page.
 | Row | What you find there |
 |---|---|
 | **Sound** | The **volume ceiling**, the loudest the knob can go (30 to 100; above 95 the old speaker can rattle and distort). The **quietest step**: the knob's first click. **Mono**: left and right mixed into the one speaker, so nothing is lost (on to start). **What the tone knob does**, with **Try it**. |
-| **Phones & casting** | Spotify (and **Guests on your Wi-Fi can play**), AirPlay, Bluetooth and other music apps (UPnP), each on or off. Bluetooth: what is playing and its codec, your phones, **Pair a new phone**, **Reconnect to the last phone**. **Back to the radio when a phone stops**. **Use the room name on phones**. |
+| **Phones & casting** | Spotify (and **Guests on your Wi-Fi can play**), AirPlay, Bluetooth and other music apps (UPnP), each on or off. Bluetooth: what is playing and its codec, your phones, **Pair a phone**, **Reconnect to the last phone**. **Back to the radio when a phone stops**. **Use the room name on phones**. |
 | **Rooms** | **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. |
 | **Pilot lamp** | When the lamp dims at night (*by the sun*, *fixed hours* or *never*), and **where the radio stands**, so it knows when the sun sets. |
 | **Keys & knobs** | **What the source key (PU) steps through**, and in what order. Each knob, live, with **Calibrate**: turn the knob to a few positions and the radio learns them. |
-| **This radio** | The **room name** and the radio's address. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). |
+| **This radio** | The **room name** (with **Remove**) and the radio's address. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
 
 The version number is at the bottom of Settings.
 
@@ -329,8 +334,9 @@ stays hidden; tap the version number seven times to show it. You won't need it.
 
 ### "Press any key on the radio"
 
-Some buttons change a lot: installing an update, going back to an older
-version, changing the update channel, changing Wi-Fi, resetting the keys. For
+Some buttons change a lot: installing an update from the page (**Install
+tonight**, **Install now**), going back to an older version, changing the update channel, changing Wi-Fi, resetting the keys,
+signing Spotify in or out, letting the makers help. For
 these the page asks you to **press any key on the radio within 30 seconds**.
 That proves someone is standing next to the radio, not just anyone on the
 Wi-Fi.
@@ -355,8 +361,9 @@ Radio** integration once, with HACS:
 
 Each radio becomes a device named after its room, with a media player (the
 radio's keys are its sources: choosing one presses that key), the volume,
-standby, what is playing, and whether an update is waiting. Installing an
-update still needs a press on the radio itself.
+standby, what is playing, and whether an update is waiting. Home Assistant
+can't install an update: small ones install by themselves at night (if
+updates are on Automatic), and the rest need a press on the radio.
 
 Do **not** add Home Assistant's *Music Player Daemon* integration for the
 radio, even if it offers one: it fights the radio.
@@ -366,6 +373,16 @@ script): connect Home Assistant in **Settings → This radio → Home Assistant*
 then give a key's hold a job in **Edit keys**. The person who built the radio
 can help with the first connection; the steps are in the
 [build guide](build-guide.md#phase-5--home-assistant).
+
+## Help from the makers
+
+If something is wrong and the person who built your radio wants to look at
+it from afar: **Settings → This radio → Help from the makers** (at the
+bottom) → **Let the makers help (24 h)**, then press a key on the radio. The
+page shows a link: send it to the makers, and nobody else. Once they approve
+it, the page says when a maker is connected. Help ends by itself after 24
+hours, when you press **Stop**, or when the radio restarts. What they can see
+and do: [Remote help](remote-help.md).
 
 ## Wi-Fi
 
@@ -433,8 +450,8 @@ Everything is in **Settings → This radio → Updates**.
 
 | Choice | What it means |
 |---|---|
-| **Automatic** (to start) | Small updates install by themselves at night, while the radio is in standby. Bigger ones (a new major version, or one that has to move your settings) ask first. |
-| **Ask** | The page tells you when there is an update. Choose **Install tonight** (between 2:00 and 5:00) or **Install now**. |
+| **Automatic** (to start) | Small updates install by themselves at night, while the radio is in standby; nobody needs to press anything. Bigger ones (a new major version, or one that has to move your settings) ask first. |
+| **Ask** | The page tells you when there is an update. Choose **Install tonight** (between 2:00 and 5:00) or **Install now**, then press a key on the radio. |
 | **Off** | Still looks for updates (the page tells you), but never downloads or installs one. Fixes won't reach the radio. |
 
 Good to know:
@@ -450,13 +467,14 @@ Good to know:
 - **To go back by hand:** under Updates, find the older version, press **Go
   back**, then press a key on the radio. The radio restarts on that version.
 
-**Update channel.** Every radio is on **Stable**: each version is tried on the
+**Update channel.** Radios follow **Stable**: each version is tried on the
 makers' own radio first. The other channel, **Test versions** (*Bench*), is
-for the makers' test radio; its versions come first and may break. The choice
-only shows on the Updates page when [Maker tools](#settings) are on, because
-you won't need it. Switching asks for a press on the radio. Going back from
-Test versions to Stable, the radio keeps the version it has until Stable
-catches up; it never goes back to an older version on its own.
+for the makers' test radio; its versions come first and may break. (Until the
+first Stable version is out, the makers' radios run Test versions.) The choice
+only shows on the Updates page when [Maker tools](#settings) are on, or while
+the radio is on Test versions, because you won't need it. Switching asks
+for a press on the radio. Going back from Test versions to Stable, the radio
+keeps the version it has until Stable catches up; it never goes back to an older version on its own.
 
 What changed in each version: the
 [releases page](https://delgado-murphy.github.io/hasler-releases/) or the
@@ -525,7 +543,8 @@ on **Use the room name on phones** (see [One name per room](#one-name-per-room))
 **Nothing helps.** Shut the radio down (tone knob off for 5 seconds), wait
 until the lamp is dark, unplug it for 10 seconds and plug it in again. If the
 problem stays, tell the person who built your radio. What the lamp shows, and
-the version number at the bottom of Settings, help them a lot.
+the version number at the bottom of Settings, help them a lot. They may ask
+you to [let them help](#help-from-the-makers) from afar.
 
 ---
 

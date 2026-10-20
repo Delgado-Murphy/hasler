@@ -60,6 +60,7 @@ ten minutes.
 
 - [Using your Hasler](docs/using.md): the first ten minutes, keys, knobs, lamp, phones, several rooms, the key page, Wi-Fi, updates, and what to do when something is wrong.
 - [The pilot lamp](docs/lamp.md): every colour and what it means, in detail.
+- [Remote help](docs/remote-help.md): letting the makers look at your radio from afar, for 24 hours, and what they can see.
 
 **For makers**
 

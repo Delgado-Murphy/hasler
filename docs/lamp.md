@@ -196,17 +196,15 @@ On the current board (the prototype board on Pi GPIO):
 - Night = sunset to sunrise for the box's location (computed locally; HA's
   sun entity when connected).
 
-## For the HAT (planned)
+## On the HAT
 
-The HAT is the ordered circuit board that will replace the prototype board
-([hat/BRIEF.md](hat/BRIEF.md)). The lamp plan for it:
-
-An I2C PWM driver (PCA9685 at 0x40, or a constant-current RGB indicator
-driver) with three low-side N-FETs (gate pull-downs keep the LED dark at
-power-on) and the LED's common anode on **5 V**: green/blue get headroom,
-deep dimming stays amber, three GPIOs come free, and the LED current leaves
-the Pi's 3.3 V regulator. The shutdown hook then writes the halt colour over
-I2C (the chip holds its last state).
+The Hasler HAT, rev A (ordered October 2026, [hat/BRIEF.md](hat/BRIEF.md);
+the design is on the `hat` branch), keeps the prototype board's lamp wiring:
+GPIO 17/22/27 through 220/100/100 Ω, common anode on the HAT's
+current-limited 3.3 V. Nothing in the software changes. An I²C PWM driver
+with FETs and the anode on 5 V (more headroom for green and blue, deep
+dimming that stays amber, three GPIOs free) remains an idea for a later
+revision.
 
 ## History
 

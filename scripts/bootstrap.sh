@@ -170,30 +170,9 @@ fi
 # network, then deleted. The last way back when the radio has no network at
 # all (docs/using.md "Wi-Fi").
 if put "$REPO/scripts/hasler-wifi-rescue" /usr/local/sbin/hasler-wifi-rescue 0755 || [[ -x /usr/local/sbin/hasler-wifi-rescue ]]; then
-  RESCUE_UNIT="$(mktemp)"
-  cat > "$RESCUE_UNIT" <<'EOF'
-# scripts/bootstrap.sh -> scripts/hasler-wifi-rescue; docs/using.md "Wi-Fi".
-[Unit]
-Description=Hasler: Wi-Fi from hasler-wifi.txt on the SD card's boot partition
-# Only when the file is there. Before rc-local, which starts moOde's worker:
-# the worker's 90 s wait for an address (then its hotspot) sees the network.
-ConditionPathExists=/boot/firmware/hasler-wifi.txt
-After=NetworkManager.service local-fs.target
-Wants=NetworkManager.service
-Before=rc-local.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/hasler-wifi-rescue
-TimeoutStartSec=90
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  if put "$RESCUE_UNIT" /etc/systemd/system/hasler-wifi-rescue.service 0644 && (( SYSTEMD )); then
+  if put "$REPO/config/hasler-wifi-rescue.service" /etc/systemd/system/hasler-wifi-rescue.service 0644 && (( SYSTEMD )); then
     run systemctl daemon-reload
   fi
-  rm -f "$RESCUE_UNIT"
   if (( SYSTEMD )); then run systemctl enable --quiet hasler-wifi-rescue.service || true; fi
 fi
 

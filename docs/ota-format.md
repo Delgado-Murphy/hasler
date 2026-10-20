@@ -64,7 +64,7 @@ fails the apply. The top dir is the file's **kind**.
   up in `/var/lib/hasler-apply/backup/<version>/` before it is first replaced;
   a rollback restores exactly that.
 - **A new kind only in a major release.** The kinds above are the ones the
-  0.4.x updater knows (`KNOWN_KINDS_SINCE` in `make_manifest.py`; a test keeps
+  current updater knows (`KNOWN_KINDS_SINCE` in `make_manifest.py`; a test keeps
   it equal to the newest tag's `integrate.py`). `build_release.py` and
   `make_manifest.py check` refuse any other kind unless `kind` is `major`. On
   the radio (updater 0.4.2 or later), a file of an unknown kind in a major

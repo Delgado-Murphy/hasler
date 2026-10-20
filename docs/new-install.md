@@ -70,7 +70,7 @@ them for moOde, so this should not happen.
 
 | Setting | Default | Other choices |
 |---|---|---|
-| `channel` | `stable` | `bench` for the makers' test radio |
+| `channel` | `stable` | `bench` for the makers' test radio. **For now, set `bench`:** no release has been promoted to Stable yet, and the installer stops with "there is no 'stable' channel yet" |
 | `update_mode` | `auto` (small updates at night, big ones ask) | `ask`, `off` |
 | `variant` | `hasler-hm` | `excelsior` |
 | `user` | `pi` | the username you gave Imager |
@@ -116,7 +116,7 @@ and an account, so the radio can't do them alone:
 |---|---|---|
 | **Volume ceiling** - do this first | key page → Settings → **Sound** → Volume ceiling | protects the 1964 speaker; set by ear ([build guide, Phase 3a](build-guide.md#phase-3a--keys-drive-the-music)) |
 | **Your stations and playlists** | key page → **Edit keys** | the shipped keys are a test set |
-| **Spotify** (Premium) | the one-time login: [build guide, Phase 3c](build-guide.md#phase-3c--streaming-sources-spotify--youtube-music) ("Log go-librespot in, once") | your Spotify account; the radio has no screen to type it on |
+| **Spotify** (Premium) | key page → Settings → Phones & casting → Spotify Connect → **Sign in**, then enter the code at spotify.com/pair ([Using your Hasler](using.md#playing-from-your-phone)) | your Spotify account |
 | **YouTube Music** private playlists, Liked songs | key page → Settings → This radio → YouTube Music → **Sign in** | your Google sign-in; public playlists need nothing |
 | **Home Assistant** (optional) | key page → Settings → This radio → Home Assistant → paste a token | a token from your HA ([build guide, Phase 5](build-guide.md#phase-5--home-assistant)) |
 | **Knob calibration** (if the knobs feel off) | key page → Settings → Keys & knobs → **Calibrate** | turning the real knobs |
@@ -142,7 +142,7 @@ curl -fsSLO https://delgado-murphy.github.io/hasler-releases/install/hasler-inst
 curl -fsSLO https://delgado-murphy.github.io/hasler-releases/install/hasler-install.sig
 echo 'hasler-root namespaces="hasler-install" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF9gmAm746rpYzKa24jKiAZyiAiMw0bEuj30vRw38Cv7' > hasler-root.allowed
 ssh-keygen -Y verify -f hasler-root.allowed -I hasler-root -n hasler-install -s hasler-install.sig < hasler-install \
-  && sudo python3 -I hasler-install install --channel stable
+  && sudo python3 -I hasler-install install --channel bench   # stable once 1.0 is promoted
 ```
 
 `ssh-keygen` prints `Good "hasler-install" signature for hasler-root` and only
@@ -250,10 +250,11 @@ The kit files on the boot partition can stay; cloud-init runs them only once
   and the install carries on), or write the card again with the right Wi-Fi.
   After the install (haslerd gives the hotspot a password) the radio's own Wi-Fi page
   does this ([Using your Hasler](using.md#wi-fi)), and `hasler-wifi.txt` on
-  bootfs works at any time ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)).
+  bootfs works from then on, on a radio installed from 1.0.1 or later
+  ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)).
   The installer waits for the network and carries on by itself.
 - **"there is no 'stable' channel yet"**: no release has been promoted to
-  stable yet; use `channel = bench`.
+  stable yet (1.0.0 and 1.0.1 are on bench); use `channel = bench`.
 - **"this release cannot set up a new radio"**: releases before 1.0 do not
   carry `app/setup/`; wait for one that does.
 - **"bad signature"** or **"does not match"**: something between the release
@@ -286,8 +287,6 @@ The kit files on the boot partition can stay; cloud-init runs them only once
   installer changes:
   `ssh-keygen -Y sign -f hasler-root-2026.key -n hasler-install hasler-install`.
   A downloadable kit (the six files in one zip) belongs there too.
-- **Spotify login without a laptop.** go-librespot's `device_auth` login shows
-  a code to enter at spotify.com/pair; the key page could show it (not built).
 - Raspberry Pi Imager lists moOde 10.3.6 with `init_format: systemd`
   (firstrun.sh). If a later moOde image switches to cloud-init, Imager writes
   its own `meta-data` / `user-data` / `network-config`: then copy only

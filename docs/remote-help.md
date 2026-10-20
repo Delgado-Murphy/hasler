@@ -20,19 +20,22 @@ press on the radio to start, and it ends on its own.
 
 ### What it does
 
-1. On the key page, press **Start** under *Let the makers help (24 h)*.
+1. On the key page: **Settings → This radio → Help from the makers** (at the
+   bottom), then **Let the makers help (24 h)**.
 2. The lamp dips twice: press any key on the radio within 30 seconds. That
    press is how the radio knows it is you and not someone else on your Wi-Fi.
 3. After a few seconds the page shows a link: **Send this link to the makers**
    (copy it, or share it by message or email).
 4. One of the makers opens it and approves. The page then says
    **Connected to Delgado & Murphy's help network**, with the radio's name and
-   address there and when help ends.
+   address there and when help ends. Above that, a line says whether a maker
+   is on the radio right now: *A maker is connected now (…)* or *Connected -
+   waiting for a maker*.
 
-Help ends by itself **24 hours** after you pressed Start, or **after one
+Help ends by itself **24 hours** after you started it, or **after one
 hour** if nobody has approved the link by then. It also ends when you press
 **Stop** on the key page, or when the radio restarts (unplugging it counts).
-To give the makers another day, press Start again.
+To give the makers another day, start it again.
 
 ### The link is like a key
 
@@ -214,7 +217,8 @@ GET  /api/help
    "hostname": "hasler-kitchen-ab12", "started_at": 1761000000,
    "expires_at": 1761086400, "approve_by": 1761003600,      # epoch seconds
    "address": "100.x.y.z", "dns_name": "hasler-kitchen-ab12.tailXXXX.ts.net",
-   "status_text": "Connected to Delgado & Murphy's help network.",
+   "status_text": "A maker is connected now (wmurphy@github).",
+   "peers_active": [{"name": "…", "user": "wmurphy@github"}],  # live sessions, last ~2 min
    "network": "Delgado & Murphy's help network",
    "tailnet": "delgado-murphy.org.github", "expected_tailnet": null,
    "ssh": "pi@100.x.y.z", "page": "http://100.x.y.z:8080/",

@@ -1,10 +1,10 @@
-# Lives in the PUBLIC repo Delgado-Murphy/hasler-releases (template kept in the
-# private repo under release-tools/hasler-releases/). Tools in tools/ are
-# copies of the private repo's scripts/release/ (docs/release.md).
+# Lives in Delgado-Murphy/hasler-releases (template kept in Delgado-Murphy/hasler
+# under release-tools/hasler-releases/). Tools in tools/ are copies of
+# hasler's scripts/release/ (docs/release.md).
 #
-# workflow_dispatch, mode=publish: take a finished release.yml run of the
-# private repo, re-check everything, sign release.json with the release key
-# (environment `sign`, required reviewer), create the GitHub release, point a
+# workflow_dispatch, mode=publish: take a finished release.yml run of
+# Delgado-Murphy/hasler, re-check everything, sign release.json with the release key
+# (environment `sign`, main branch only), create the GitHub release, point a
 # channel at it (timestamp key).
 # workflow_dispatch, mode=promote: point another channel at an existing
 # release (the same artifact - never rebuilt).

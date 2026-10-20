@@ -18,6 +18,8 @@ Wants=hasler-clean-shutdown.service
 # of a config.txt a power cut broke (ordered before rc-local and this unit by
 # its own Before=) and the timer that refreshes the known-good copy after boot.
 Wants=hasler-bootcfg-guard.service hasler-bootcfg-save.timer
+# Wi-Fi from a file on the SD card (only runs when the file is there).
+Wants=hasler-wifi-rescue.service
 # The early boot lamp (hasler-lamp-boot) breathes until haslerd starts.
 # After= so haslerd never starts before it; ExecStartPre= below stops it so
 # only one of them ever writes the LED. Not Conflicts=: both are in the same

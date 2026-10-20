@@ -319,7 +319,7 @@ class Wifi:
 
     def hotspot_info(self) -> dict:
         """The setup hotspot's name, and its password where Hasler set it
-        (/etc/hasler/hotspot.txt; a password set on moOde's page is stored only
+        (/var/lib/haslerd/hotspot.txt; a password set on moOde's page is stored only
         as a key, so then it is not known here)."""
         rows = self._query("SELECT wlanssid, wlanpsk FROM cfg_network WHERE iface='apd0'")
         ssid = (rows[0][0] if rows else "") or HOTSPOT_SSID

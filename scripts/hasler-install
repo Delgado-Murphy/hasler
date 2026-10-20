@@ -426,6 +426,7 @@ SETUP_MAP: tuple[tuple[str, str], ...] = (
     ("config/snapcast", "app/config/snapcast"),
     ("config/yt-dlp-update.service", "integration/systemd/yt-dlp-update.service"),
     ("config/yt-dlp-update.timer", "integration/systemd/yt-dlp-update.timer"),
+    ("config/hasler-wifi-rescue.service", "integration/systemd/hasler-wifi-rescue.service"),
     ("config/configtxt/hasler.block", "integration/configtxt/hasler.block"),
     ("scripts/hasler-audio-mono", "integration/sbin/hasler-audio-mono"),
     ("scripts/hasler-ytdlp-update", "integration/sbin/hasler-ytdlp-update"),

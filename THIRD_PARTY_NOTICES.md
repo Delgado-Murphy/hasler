@@ -84,7 +84,7 @@ package of that name (`requires.apt` in `release.json`).
 
 moOde audio, MPD, shairport-sync, CamillaDSP, Snapcast, BlueZ and the rest of
 Raspberry Pi OS come from their own images and Debian packages under their own
-licences. yt-dlp (Unlicense) is installed on the radio from PyPI by
+licences; Tailscale (remote help) from Tailscale's own Debian repository. yt-dlp (Unlicense) is installed on the radio from PyPI by
 `hasler-ytdlp-update`, not shipped in the release.
 
 ## `licenses/`

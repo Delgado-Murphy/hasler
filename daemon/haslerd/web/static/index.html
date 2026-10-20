@@ -827,11 +827,12 @@ const SRC = [{id:'radio', label:'Radio'}, {id:'spotify', label:'Spotify'}, {id:'
 const SRC_HEAD = {radio:'Radio', spotify:'Spotify', ytm:'YouTube Music', bluetooth:'Bluetooth', airplay:'AirPlay'};
 const SHORT = {none:'Nothing', preset:'Play music', cycle_source:'Cycle sources', bt_pair:'Bluetooth pairing', volume_up:'Volume up', volume_down:'Volume down',
   standby_toggle:'Standby / wake', standby:'Standby', ha_scene:'Scene', ha_script:'Script', ha_toggle:'Toggle', ha_automation:'Automation',
-  ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler'};
+  ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler', bluetooth:'Bluetooth'};
 // What each choice in the "A tap… / Holding…" list says under its name.
 const VERB_DESC = {
   cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Keys & knobs',
   join_group:'Join the music playing on another Hasler',
+  bluetooth:'Plays a phone through the radio. Press again for the next track, hold to pause',
   ha_light:'Turn lights on or off, dim them, change their colour',
   ha_scene:'Set a scene from Home Assistant',
   ha_script:'Run a Home Assistant script',
@@ -1382,7 +1383,7 @@ function onRoute(){
   setUi.wantSec = toKey && next.arg2 && !(SET_SUBS[next.arg] || []).includes(next.arg2) ? next.arg2 : null;
   $('app').dataset.view = view;
   if (view === 'edit'){
-    ed.key = next.arg && cfg && cfg.keys.some(k => k.id === next.arg) ? next.arg : (changed ? null : ed.key);
+    ed.key = next.arg === 'reset' ? null : next.arg && cfg && cfg.keys.some(k => k.id === next.arg) ? next.arg : (changed ? null : ed.key);
     ed.pick = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null; ed.ent = null; ed.lp = null; ed.rename = false;
   }
   renderPanel();
@@ -1843,7 +1844,7 @@ function actionSection(sheet, k, slot){
   sheet.append(h('div', {class:'choice'},
     h('span', {class:'thumb blank', 'aria-hidden':'true'}, IC.dots()),
     h('div', {class:'choice-txt'}, h('span', {class:'choice-name'}, v === 'custom' ? (a.label || 'Custom') : verbShort(v)),
-      h('span', {class:'choice-type'}, v === 'custom' ? 'Set by hand on the radio' : v === 'cycle_source' ? 'Steps through your sources' : v === 'join_group' ? 'Plays along with another radio' : (verbDef(v) ? verbDef(v).label : ''))),
+      h('span', {class:'choice-type'}, v === 'custom' ? 'Set by hand on the radio' : v === 'cycle_source' ? 'Steps through your sources' : v === 'join_group' ? 'Plays along with another radio' : v === 'bluetooth' ? 'Plays your phone' : (verbDef(v) ? verbDef(v).label : ''))),
     h('button', {type:'button', class:'link', id:'chg-' + slot, onclick: () => { ed.pick = slot; rerender(); }}, 'Change')));
   sheet.append(paramsFor(k, slot));
   const err = errText(k.id + '.' + slot); if (err) sheet.append(h('p', {class:'err', role:'alert'}, err));
@@ -2831,7 +2832,7 @@ function renderRooms(panel){
   const box = h('div', {class:'list', id:'mrBox'});
   mrSig = '';
   fillMr(box);
-  panel.append(setGroup('multiroom', 'Several rooms (multiroom)', box));
+  panel.append(setGroup('multiroom', 'Several rooms', box));
 }
 function loadRooms(){
   const again = () => { if (onPage('rooms')) rerender(); };
@@ -2862,7 +2863,8 @@ function renderRadio(panel){
   const w = settings && settings.wifi;
   panel.append(setGroup('name', 'Name and address', roomList()));
   panel.append(setGroup('wifi', 'Wi-Fi', h('div', {class:'set-list'},
-    setRow('wifi', 'Wi-Fi', !w ? 'Checking…' : w.hotspot ? 'Setup mode — not on your home Wi-Fi' : w.ssid ? 'On ' + w.ssid : 'Not connected', '/wifi'))));
+    setRow('wifi', 'Wi-Fi', !w ? 'Checking…' : w.hotspot ? 'Setup mode — not on your home Wi-Fi' : w.ssid ? 'On ' + w.ssid : 'Not connected', '/wifi'),
+    setupNetRow())));
   panel.append(setGroup('software', 'Software', h('div', {class:'set-list'},
     setRow('updates', 'Updates', updatesSummary(), '#settings/radio/updates'))));
   const miss = ((haState && haState.missing) || []).length;
@@ -2870,6 +2872,27 @@ function renderRadio(panel){
     setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha'))));
   panel.append(setGroup('ytm', 'YouTube Music', accountCard()));
   const hg = helpGroup(); if (hg) panel.append(hg);   // last: rarely needed
+}
+// The setup network (GET /api/wifi .setup): what the radio opens when it can't join the home Wi-Fi.
+// The password is there only when Hasler set it; one set on the player's own page is stored as a key.
+let setupNet = null;
+const setupUi = {show:false};
+async function loadSetupNet(){
+  try { const r = await api('GET', '/api/wifi'); if (r.ok && r.json && r.json.setup) setupNet = r.json.setup; } catch (_) {}
+}
+function setupNetRow(){
+  const s = setupNet; if (!s || !s.ssid) return null;
+  const pw = s.password_set ? s.password || '' : null;
+  const kv = (k, v, extra) => h('div', {class:'chk', style:'align-items:center'}, h('span', null, k),
+    h('span', {style:'display:flex;align-items:center;gap:8px;min-width:0'}, h('b', {class:'help-v', id: extra ? 'setupPw' : null}, v), extra || null));
+  return h('div', {class:'li col', style:'gap:8px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Setup network'),
+      h('span', {class:'li-sub'}, 'If the radio can’t join your Wi-Fi, it opens this network so a phone can set it up again. Worth writing down.')),
+    h('div', null, kv('Name', s.ssid),
+      kv('Password', pw === null ? 'None (open network)' : !pw ? 'Not shown here' : setupUi.show ? pw : '••••••••',
+        pw ? h('button', {type:'button', class:'li-act', id:'setupPwShow', 'aria-label': (setupUi.show ? 'Hide' : 'Show') + ' the setup password',
+          onclick: () => { setupUi.show = !setupUi.show; rerender(); }}, setupUi.show ? 'Hide' : 'Show') : null)),
+    pw === '' ? h('p', {class:'hint', style:'margin:0'}, 'It was set on the player’s own page, so the radio can’t show it.') : null);
 }
 function updatesSummary(){
   const v = swVer();
@@ -2888,7 +2911,7 @@ function haSummary(){
 }
 function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
-  loadSettings().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp();
+  loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp();
 }
 function loadUpdates(){ loadSoftware(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
@@ -4547,8 +4570,8 @@ function roomSchedule(){
 function roomApplyLine(a){
   if (!a || a.state === 'idle') return null;
   const steps = a.steps || [];
-  const head = a.state === 'applying' ? 'Renaming to “' + a.name + '”… moOde does one at a time, so this can take a few minutes.'
-    : a.state === 'done' ? 'Casting now shows “' + a.name + '”.'
+  const head = a.state === 'applying' ? 'Renaming to “' + a.name + '”… one at a time, so this can take a few minutes.'
+    : a.state === 'done' ? 'Phones now show “' + a.name + '”.'
     : 'Some couldn’t be renamed to “' + a.name + '”.';
   return h('div', {class:'rn-apply', 'aria-live':'polite'},
     h('p', {class: a.state === 'failed' ? 'note-warn' : 'li-sub'}, head),
@@ -5330,17 +5353,16 @@ async function wizSave(){
 /* ---------- YouTube Music account (carried over) ---------- */
 function accountCard(){
   const box = h('section', {class:'card-box', 'aria-labelledby':'acctH'});
-  box.append(h('span', {class:'mono'}, 'YouTube Music'));
   if (ytm.available === null){ box.append(h('h3', {id:'acctH'}, 'Checking…')); return box; }
   if (ytm.available === false){ box.append(h('h3', {id:'acctH'}, 'Not available'), h('p', {class:'body'}, 'This radio can’t search YouTube Music. You can still paste playlist links on a key.')); return box; }
   const err = acctUi.err ? h('p', {class:'err', id:'acctErr', role:'alert'}, acctUi.err) : document.createDocumentFragment();
   if (ytm.signed_in){
     box.append(h('h3', {id:'acctH', tabindex:'-1'}, 'Signed in' + (ytm.name ? ' as ' + ytm.name : '')),
-      h('p', {class:'body'}, 'Your Liked songs and playlists show up when you edit a key, and in moOde.'),
+      h('p', {class:'body'}, 'Your Liked songs and playlists show up when you edit a key.'),
       h('div', null, h('button', {type:'button', class:'btn small inline', onclick: signOut}, 'Sign out')), err);
     return box;
   }
-  box.append(h('h3', {id:'acctH', tabindex:'-1'}, 'Not signed in'), h('p', {class:'body'}, 'Sign in to put your Liked songs and playlists on keys and in moOde.'));
+  box.append(h('h3', {id:'acctH', tabindex:'-1'}, 'Not signed in'), h('p', {class:'body'}, 'Sign in to put your Liked songs and playlists on keys.'));
   if (!acctUi.open){
     box.append(h('div', null, h('button', {type:'button', class:'btn primary small inline', 'aria-expanded':'false',
       onclick: () => { acctUi.open = true; acctUi.err = ''; rerender(); const t = $('acctHdr'); if (t) t.focus(); }}, 'Sign in')), err);
@@ -5571,7 +5593,7 @@ function haConnected(panel){
     for (const e of g.items){
       const verb = domainVerb(e.domain);
       list.append(h('div', {class:'ent'},
-        h('div', {class:'ent-txt'}, h('span', {class:'ent-name'}, e.name), h('span', {class:'ent-sub'}, e.domain.replace('_', ' ') + (e.state ? ' · ' + e.state : ''))),
+        h('div', {class:'ent-txt'}, h('span', {class:'ent-name'}, e.name), h('span', {class:'ent-sub'}, e.domain.replace('_', ' ') + (e.state && e.state !== 'unknown' ? ' · ' + e.state : ''))),
         h('button', {type:'button', class:'btn small inline', 'aria-label':'Try it: ' + e.name, onclick: ev => haTry(verb, e, ev.currentTarget)}, 'Try it'),
         h('button', {type:'button', class:'btn small inline', 'aria-label':'Put ' + e.name + ' on a key', onclick: () => haPutOnKey(verb, e)}, h('span', {'aria-hidden':'true'}, '+'), 'Key')));
     }
