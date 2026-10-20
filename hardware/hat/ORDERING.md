@@ -3,6 +3,35 @@
 Everything in `fab/` is generated: `gen/make_sch.py`, `gen/make_pcb.py`, `gen/make_fab.py`
 from `gen/design.py` (`gen/build.sh` runs them all). Design decisions: `docs/hat/DESIGN.md`.
 
+## First order (rev A)
+
+JLC order **W2026101414256187**, placed 2026-10-14: 5 boards, 4 layers, assembled on the top
+side ($208.02 with shipping). PCB Y3-4278125A, PCBA SMT026101460923.
+
+- JLC's copy of the Gerbers is byte-identical to `fab/` at commit 37161f0. Their production file
+  changed only the usual things: etch compensation, unused inner pads removed, a few GND slivers
+  trimmed, and copper pulled back from 0.35 to 0.40 mm along the V-cut edges.
+- DFM review (14 Oct): no warnings. Their engineer turned U7–U12 (SRV05-4) from our 270° to 0°,
+  which is right (see "Assembly options"); `make_fab.py` now gives 0° (commit ec2388c).
+- JLC asked whether J6 faced the right way; the answer was yes (wire entry to the board edge,
+  + on the left). J6 now has a KF350 footprint so the question can't come up again (c1b134c).
+  That changed only the top silkscreen; the boards being built have the old Phoenix outline.
+- The commits after 37161f0 change only fab data for a reorder, not the boards on order.
+
+**When the boards arrive:** break off the rails (below), solder J1, then follow "Bring-up". Still
+untested on real hardware: everything, in particular the eFuse start-up with the Amp4 and Pi
+attached (step 4) and whether the CH224A falls back to 12 or 15 V when a charger offers no 20 V.
+
+## Breaking off the rails
+
+Snapping a V-cut flexes the board right at the edge, and parts sit close to both lines: the Qwiic
+connector's pads (0.4 mm), the PD/20V LEDs (0.8 mm), the CH224A and the test-point row (about 1 mm).
+
+- Hold the board itself flat in a vise with soft jaws, the score line just above them.
+- Bend the rail away with pliers, a little at a time, along its whole length; or first deepen
+  the groove with a few passes of a knife so it breaks with almost no force.
+- Never snap it by hand. Afterwards, look at J5's pads and the two LEDs under a loupe.
+
 ## Files to upload
 
 | JLCPCB step | File |
@@ -27,7 +56,7 @@ from `gen/design.py` (`gen/build.sh` runs them all). Design decisions: `docs/hat
 | Mark on PCB | **Remove Mark** (the board has no placeholder for the order number) |
 | Confirm production file | Yes (€0.94): JLC's engineers check the files and you approve before fabrication |
 | Edge | One notch in the bottom edge (over the Amp4's capacitor): it's in the outline, no extra option |
-| Edge rails | The board is under JLC's 70 mm assembly minimum and has parts near every edge, so JLC adds rails: **on the two 85 mm sides only** (never left/right: the USB-C overhangs the right edge), tab-routed rather than V-cut, with fiducials on the rails. If the order form asks, pick that; otherwise say it in the order note |
+| Edge rails | The board is under JLC's 70 mm assembly minimum and has parts near every edge, so JLC adds rails: **on the two 85 mm sides only** (never left/right: the USB-C overhangs the right edge), with fiducials on the rails. We asked for tab-routing; on the first order JLC made 15 mm **V-cut** rails (panel 85 × 71 mm). That works, but see "Breaking off the rails" below. If the order form asks, pick the long sides; otherwise say it in the order note |
 | Via-in-pad | Three GND vias sit in the CH224A's exposed pad. If "Epoxy filled & capped" is offered free or cheap, take it; "Plugged" is acceptable (low-power part, GND pad) |
 
 After the upload, open JLC's **Gerber viewer** once and check that the drill holes sit in their
