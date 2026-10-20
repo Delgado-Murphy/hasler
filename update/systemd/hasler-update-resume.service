@@ -5,9 +5,13 @@ Wants=haslerd.service
 ConditionPathExists=/var/lib/hasler-apply/state.json
 
 [Service]
-Type=oneshot
+# Type=exec, not oneshot: a oneshot in multi-user.target holds the boot open
+# until it ends, and moOde's worker waits for "Linux startup complete" before
+# it starts MPD - while this waits for MPD to judge the trial. On the bench
+# that circle cost 94 s and rolled back a good release after a power cut.
+Type=exec
 ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-update resume
-TimeoutStartSec=10min
+TimeoutStartSec=infinity
 KillMode=process
 
 [Install]
