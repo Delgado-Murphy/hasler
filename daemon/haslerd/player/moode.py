@@ -122,10 +122,13 @@ class MoodeConfig:
     bluetoothctl: str = "bluetoothctl"
     source_flags: dict = field(default_factory=lambda: dict(DEFAULT_SOURCE_FLAGS))
     renderer_units: dict = field(default_factory=lambda: dict(DEFAULT_RENDERER_UNITS))
-    # Tone wheels. Fill these in during Phase 4 against the real box - e.g. a
-    # CamillaDSP helper or moOde's eqctl.php. `{gain}` is dB, `{value}` is the
-    # raw 0-100, `{control}` is the wheel id. Empty means the wheels do nothing,
-    # which is the correct behaviour before Phase 4.
+    # The knobs' sound effects (haslerd/dsp/): the helper that puts them into
+    # CamillaDSP. While it is installed it drives every knob that carries an
+    # effect and tone_commands below is not used; "" turns it off.
+    dsp_command: str = "/usr/local/bin/hasler-dsp"
+    # The old per-wheel commands, used only without dsp_command: `{gain}` is
+    # dB, `{value}` the raw 0-100, `{control}` the wheel id. Empty means the
+    # wheels do nothing.
     tone_commands: dict = field(default_factory=dict)
     # Blocks of their own in haslerd.yaml (``moode: {spotify: {...}, ytm: {...}}``).
     spotify: SpotifyConfig = field(default_factory=SpotifyConfig)

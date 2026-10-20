@@ -21,7 +21,9 @@ from typing import Literal, Protocol
 
 # Palette names; the engine maps them to linear RGB ratios (calibrated by eye,
 # overridable from the descriptor's lamp.palette). docs/lamp.md "Palette".
-Colour = Literal["amber", "amber_pale", "ember", "blue", "white", "red", "off"]
+# "magenta" is the house (another Hasler): brief signatures only, never a Look.
+Colour = Literal["amber", "amber_pale", "ember", "blue", "white", "red", "magenta", "off"]
+COLOURS: tuple[str, ...] = ("amber", "amber_pale", "ember", "blue", "white", "red", "magenta", "off")
 
 Motion = Literal["solid", "breath"]
 
@@ -47,7 +49,43 @@ Reply = Literal[
     "stop",       # same radio key again: 0.8 s fade 100 -> 35 % (then policy's Look)
     "fail",       # 3 soft red pulses, 0.6 s each
     "ha",         # HA action sent: two dips, 2 x 150 ms
+    "signature",  # 0.4 s crossfade to a hue, hold 0.6 s, 0.6 s back (see signature())
+    "swell",      # +25 % and back over 0.8 s (pairing success)
+    "nudge",      # one dip, as ack (a volume key at the floor or ceiling)
 ]
+
+# Signature, swell and nudge are this much slower at night (as fades are).
+SLOW_AT_NIGHT: tuple[str, ...] = ("signature", "swell", "nudge")
+
+
+def signature(colour: Colour, level: float | None = None) -> str:
+    """The reply text for a signature in ``colour``: ``"signature:blue@0.3"``.
+
+    Replies travel as one string (Actions.on_reply), so the hue - and an
+    optional perceptual level; else the current Look's, at least 35 % - ride
+    along in the name. ``parse_reply`` takes it apart again.
+    """
+    text = f"signature:{colour}"
+    return text if level is None else f"{text}@{level:g}"
+
+
+def parse_reply(text: str) -> tuple[str, str | None, float | None]:
+    """``"signature:blue@0.3"`` -> ("signature", "blue", 0.3); ``"ack"`` -> ("ack", None, None).
+
+    Raises ValueError for a colour that isn't in the palette or a bad level.
+    """
+    name, _, rest = str(text).partition(":")
+    if not rest:
+        return name, None, None
+    colour, _, level = rest.partition("@")
+    if colour not in COLOURS or colour == "off":
+        raise ValueError(f"unknown colour {colour!r}")
+    if not level:
+        return name, colour, None
+    value = float(level)
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"level {value} is not 0..1")
+    return name, colour, value
 
 BootStage = Literal["firmware", "early", "daemon", "network", "done"]
 
@@ -60,6 +98,7 @@ class BoxState:
     standby: bool = False
     countdown: float | None = None   # 0..1 through the 5 s knob-off hold, else None
     shutting_down: bool = False
+    updating: bool = False           # an update is being installed (the updater's trial)
     hotspot: bool = False
     pairing: bool = False
     casting: bool = False            # a phone renderer has the audio
@@ -91,8 +130,8 @@ class LampDriver(Protocol):
     def show(self, look: Look, fade_s: float = 0.0) -> None:
         """Settle into ``look``; crossfade from what is showing over ``fade_s``."""
 
-    def reply(self, name: Reply) -> None:
-        """Draw a one-off reply over the current Look."""
+    def reply(self, name: str) -> None:
+        """Draw a one-off reply over the current Look (a Reply, or a ``signature()``)."""
 
     def countdown(self, progress: float | None) -> None:
         """Knob-off hold: 0..1 dims ember towards 2 %; None cancels (0.5 s back)."""

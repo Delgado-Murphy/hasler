@@ -569,6 +569,7 @@ class Group:
             gen = self._gen
         if drop:
             log.info("multiroom: %s no longer in the group", ", ".join(m.name for m in drop))
+            self._reply("group")
         for m in drop:
             self._spawn(lambda m=m: self._with_ops(lambda: self._release(m)))
         for m in add:
@@ -601,11 +602,15 @@ class Group:
             m.pending = False
             if why is None:
                 m.online, m.misses = True, 0
-                log.info("multiroom: %s follows", m.name)
-                return True
-            self.members.pop(m.id, None)
-            self.error = f"{m.name}: {why}"
-            ending = self.role == "lead" and not self.members
+            else:
+                self.members.pop(m.id, None)
+                self.error = f"{m.name}: {why}"
+                ending = self.role == "lead" and not self.members
+        if why is None:
+            log.info("multiroom: %s follows", m.name)
+            if extra is None:           # a handover's move is no join: no signature
+                self._reply("group")
+            return True
         log.warning("multiroom: %s could not join: %s", m.name, why)
         if ending:
             self._end_lead("nobody could join", release=False)
@@ -646,9 +651,12 @@ class Group:
             join()                      # awake, persisted as a follower, lamp told
         else:
             self._changed()
-        self._spawn(lambda: self._with_ops(lambda: self._follow_audio(gen, leader, snap_host, snap_port, woke)))
+        sign = moved is None            # a handover's move is no join: no signature
+        self._spawn(lambda: self._with_ops(
+            lambda: self._follow_audio(gen, leader, snap_host, snap_port, woke, sign)))
 
-    def _follow_audio(self, gen: int, leader: Member, host: str, port: int, woke: bool) -> None:
+    def _follow_audio(self, gen: int, leader: Member, host: str, port: int, woke: bool,
+                      sign: bool = True) -> None:
         if gen != self._gen:
             return
         player = self.actions.player
@@ -667,10 +675,16 @@ class Group:
                 return
             self.joining = False
         self._changed()
+        if sign:
+            self._reply("group")        # the lamp's magenta: in the house's group now
 
     def _go_alone(self, reason: str, notify: bool, restore: bool, fail: bool = False,
-                  gen: int | None = None) -> None:
-        """Following -> alone. ``restore``: back to asleep if it was asleep before."""
+                  gen: int | None = None, sign: bool = True) -> None:
+        """Following -> alone. ``restore``: back to asleep if it was asleep before.
+
+        ``sign``: the lamp's magenta signature (out of the group); a failure
+        shows red pulses instead, and standby its own ember.
+        """
         with self._lock:
             if self.role != "follow" or (gen is not None and gen != self._gen):
                 return
@@ -688,6 +702,8 @@ class Group:
         if fail:
             self._reply("fail")
         self._changed()
+        if sign and not fail:
+            self._reply("group")
         me = self.self_id
 
         def job() -> None:
@@ -787,13 +803,19 @@ class Group:
         except GroupError:
             self._reply("fail")
 
-    def leave(self, reason: str = "asked to") -> None:
-        """Out of whatever group this radio is in. Never blocks."""
+    def leave(self, reason: str = "asked to", sign: bool = True) -> None:
+        """Out of whatever group this radio is in. Never blocks.
+
+        ``sign``: the lamp's magenta signature, here as on each radio that
+        leaves with it (not for standby: that shows its own ember).
+        """
         role = self.role
         if role == "follow":
-            self._go_alone(reason, notify=True, restore=False)
+            self._go_alone(reason, notify=True, restore=False, sign=sign)
         elif role == "lead":
             self._end_lead(reason, release=True)
+            if sign:
+                self._reply("group")
         if self.joining:
             with self._lock:
                 self.joining = False
@@ -807,7 +829,7 @@ class Group:
     def standby_entered(self) -> None:
         """Standby or shutdown on this radio: a follower leaves, a leader ends the group."""
         if self.role != "alone" or self.joining:
-            self.leave("standby")
+            self.leave("standby", sign=False)
 
     def forward_preset(self, preset: Preset) -> None:
         """A follower's preset key, in "group" mode: the leader plays it. Never blocks."""
@@ -1054,6 +1076,7 @@ class Group:
                 self._become_leader()
             self.members[pid] = Member(pid, name, host, port, added_at=self.clock())
         log.info("multiroom: %s joined", name)
+        self._reply("group")
         return {"ok": True, "leader": {"id": self.self_id, "name": self.self_name},
                 "host": self.towards(host), "port": SNAP_PORT, "api_port": self.api_port}
 
@@ -1063,9 +1086,12 @@ class Group:
         pid = _text(body.get("id"), "id", 64)
         with self._lock:
             gone = self.members.pop(pid, None)
-            ending = self.role == "lead" and gone is not None and not self.members and self._handover is None
+            moving = self._handover is not None     # a handover moves it on: no signature
+            ending = self.role == "lead" and gone is not None and not self.members and not moving
         if gone is not None:
             log.info("multiroom: %s left the group", gone.name)
+            if not moving:
+                self._reply("group")
         if ending:
             self._end_lead("the last member left", release=False)
         return {"ok": True, "role": self.role}
@@ -1243,6 +1269,7 @@ class Group:
                     self.members.pop(m.id)
             ending = self.role == "lead" and not self.members and self._handover is None
         log.info("multiroom: %s dropped from the group", ", ".join(m.name for m in drop))
+        self._reply("group")
         if ending:
             self._end_lead("no members left", release=False)
 

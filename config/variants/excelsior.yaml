@@ -35,8 +35,11 @@ controls:
     map: {"10": 0, "00": 1, "01": 2}
 
   - {id: volume, kind: pot, channel: 0, taper: log, range: [0, 26400]}
-  - {id: treble, kind: pot, channel: 1, taper: log, range: [0, 26400]}
-  - {id: bass,   kind: pot, channel: 2, taper: log, range: [0, 26400]}
+  # A pot's `effect:` is its default sound effect (haslerd/dsp/effects.py;
+  # optional `effect_params: {...}`); the key page can assign another. A pot
+  # with an effect needs no binding in actions: below.
+  - {id: treble, kind: pot, channel: 1, taper: log, range: [0, 26400], effect: treble}
+  - {id: bass,   kind: pot, channel: 2, taper: log, range: [0, 26400], effect: bass}
 
 actions:
   presets.select: {do: preset_by_index}

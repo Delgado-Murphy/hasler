@@ -1,0 +1,454 @@
+#!/usr/bin/python3
+"""hasler-dsp - the knobs' sound effects, in CamillaDSP.
+
+    hasler-dsp set JSON     filter values (see below), merged over the file's
+    hasler-dsp tone GAIN    the old hasler-tone: treble shelf, boosts halved
+    hasler-dsp reset        every block back to neutral
+    hasler-dsp status       the file's values, and the running CamillaDSP's
+
+haslerd runs this (haslerd/dsp/knobs.py) each time a knob that carries an
+effect settles. It runs as haslerd's user (pi), who owns the config file.
+
+One config, "Hasler Tone.yml", holds every block any effect needs, all
+neutral by default (a shelf or peak at 0 dB is an exact pass-through, to
+the sample): the pipeline never changes shape, so a knob only
+ever changes numbers - which the running CamillaDSP takes live, without a
+gap. JSON for ``set``:
+
+    {"replace": true,                       # start from neutral, not the file
+     "filters": {"Tilt low": {"gain": -4.0}, "Presence": {"freq": 3000, "gain": 2}},
+     "width": 1.0}                          # 0 = mono .. 1 = stereo (the mixer)
+
+Only the blocks below, and only their own parameters (freq, gain, q), are
+accepted; anything else is refused before a file is touched.
+
+The anti-clipping rule lives here, so nothing that calls this can break it:
+the master gain is always minus the highest point of the whole chain's
+frequency response (computed from the biquads, 20 Hz-20 kHz). No setting can
+push any frequency above where it is with everything flat - not into digital
+clipping, and not past what the old speaker gets at that volume.
+
+Two places get the values:
+  * the CamillaDSP config file, so the next stream starts with them (moOde's
+    camilladsp ALSA plugin starts a fresh CamillaDSP per stream; a multiroom
+    group's camilladsp-hasler copies the file at its start, hasler-multiroom
+    tone-config);
+  * the running CamillaDSP, over its websocket (port 1234) - whichever of the
+    two is running. Same blocks: a parameter patch. A CamillaDSP still on an
+    older file (only Treble and Master gain): the new blocks are sent once,
+    with its own devices kept. Nothing playing means nothing to tell.
+Never fails loudly on the way to CamillaDSP: a knob must not stop the music.
+Prints one JSON object.
+"""
+
+from __future__ import annotations
+
+import cmath
+import json
+import math
+import os
+import re
+import sys
+import time
+
+CONFIG = os.environ.get("HASLER_DSP_CONFIG", "/usr/share/camilladsp/configs/Hasler Tone.yml")
+WS = os.environ.get("HASLER_DSP_WS", "ws://127.0.0.1:1234")
+
+# name -> (biquad type, neutral parameters). Order = pipeline order.
+BLOCKS: dict[str, tuple[str, dict]] = {
+    "Treble":        ("Highshelf", {"freq": 2500, "gain": 0.0, "q": 0.7}),
+    "Bass":          ("Lowshelf",  {"freq": 200,  "gain": 0.0, "q": 0.7}),
+    "Tilt low":      ("Lowshelf",  {"freq": 800,  "gain": 0.0, "q": 0.5}),
+    "Tilt high":     ("Highshelf", {"freq": 800,  "gain": 0.0, "q": 0.5}),
+    "Loudness low":  ("Lowshelf",  {"freq": 150,  "gain": 0.0, "q": 0.7}),
+    "Loudness high": ("Highshelf", {"freq": 6000, "gain": 0.0, "q": 0.7}),
+    "Presence":      ("Peaking",   {"freq": 3000, "gain": 0.0, "q": 1.0}),
+    "Vintage low":   ("Lowshelf",  {"freq": 120,  "gain": 0.0, "q": 0.7}),
+    "Vintage mid":   ("Peaking",   {"freq": 1500, "gain": 0.0, "q": 0.8}),
+    "Vintage high":  ("Highshelf", {"freq": 6000, "gain": 0.0, "q": 0.7}),
+}
+MASTER = "Master gain"
+MIXER = "Stereo"
+LIMITS = {"freq": (10.0, 20000.0), "gain": (-30.0, 15.0), "q": (0.1, 10.0)}
+# The response is checked at this rate: the highest a stream runs at that
+# matters here, and a lower rate only moves the top octave a hair.
+CHECK_RATE = 48000.0
+CHECK_POINTS = 240
+# Between the two live patches: longer than a chunk (4096 frames at 44.1 kHz).
+SETTLE_S = 0.12
+# Extra room while a block makes a jump bigger than TRANSIENT_JUMP_DB.
+TRANSIENT_DB = 3.0
+TRANSIENT_JUMP_DB = 3.0
+# See master_for: 1 dB, and 1 dB more for every 8 dB of the deepest cut, at most 3.
+PHASE_HEADROOM_DB = 1.0
+PHASE_HEADROOM_PER_CUT = 0.125
+PHASE_HEADROOM_MAX_DB = 3.0
+
+
+class Refused(ValueError):
+    pass
+
+
+# -- the response (RBJ cookbook, as CamillaDSP's biquad.rs) ------------------
+
+def coefficients(kind: str, p: dict, fs: float = CHECK_RATE) -> tuple[list[float], list[float]]:
+    w0 = 2 * math.pi * float(p["freq"]) / fs
+    cs, sn = math.cos(w0), math.sin(w0)
+    alpha = sn / (2 * float(p["q"]))
+    if kind == "Highpass":
+        b = [(1 + cs) / 2, -(1 + cs), (1 + cs) / 2]
+        a = [1 + alpha, -2 * cs, 1 - alpha]
+        return b, a
+    amp = 10 ** (float(p.get("gain", 0.0)) / 40)
+    if kind == "Peaking":
+        b = [1 + alpha * amp, -2 * cs, 1 - alpha * amp]
+        a = [1 + alpha / amp, -2 * cs, 1 - alpha / amp]
+        return b, a
+    beta = 2 * math.sqrt(amp) * alpha
+    if kind == "Highshelf":
+        b = [amp * ((amp + 1) + (amp - 1) * cs + beta), -2 * amp * ((amp - 1) + (amp + 1) * cs),
+             amp * ((amp + 1) + (amp - 1) * cs - beta)]
+        a = [(amp + 1) - (amp - 1) * cs + beta, 2 * ((amp - 1) - (amp + 1) * cs),
+             (amp + 1) - (amp - 1) * cs - beta]
+        return b, a
+    if kind == "Lowshelf":
+        b = [amp * ((amp + 1) - (amp - 1) * cs + beta), 2 * amp * ((amp - 1) - (amp + 1) * cs),
+             amp * ((amp + 1) - (amp - 1) * cs - beta)]
+        a = [(amp + 1) + (amp - 1) * cs + beta, -2 * ((amp - 1) + (amp + 1) * cs),
+             (amp + 1) + (amp - 1) * cs - beta]
+        return b, a
+    raise Refused(f"no response for biquad type {kind}")
+
+
+def response_db(values: dict, freqs: list[float], fs: float = CHECK_RATE) -> list[float]:
+    """The chain's gain in dB at each frequency (master gain left out)."""
+    total = [0.0] * len(freqs)
+    for name, (kind, _neutral) in BLOCKS.items():
+        p = values["filters"][name]
+        if kind != "Highpass" and float(p.get("gain", 0.0)) == 0.0:
+            continue        # exactly flat
+        b, a = coefficients(kind, p, fs)
+        for i, f in enumerate(freqs):
+            z = cmath.exp(-1j * 2 * math.pi * f / fs)
+            h = (b[0] + b[1] * z + b[2] * z * z) / (a[0] + a[1] * z + a[2] * z * z)
+            total[i] += 20 * math.log10(max(abs(h), 1e-12))
+    return total
+
+
+def check_freqs(n: int = CHECK_POINTS) -> list[float]:
+    lo, hi = math.log10(20.0), math.log10(20000.0)
+    return [10 ** (lo + (hi - lo) * i / (n - 1)) for i in range(n)]
+
+
+def shaped(values: dict) -> bool:
+    """Any block away from neutral (the mixer's width changes no level)."""
+    return any(float(values["filters"][n].get("gain", 0.0)) != 0.0 for n in BLOCKS)
+
+
+def master_for(values: dict) -> tuple[float, float]:
+    """(peak dB of the chain, master gain dB that cancels it, rounded down).
+
+    Plus some headroom whenever anything is shaped: a filter turns the phase
+    as well as the level, and a waveform with flat tops (a full-scale square
+    wave, or a loud modern master) comes out of a shelf with peaks higher
+    than it went in, even where no frequency rose - most of all from a deep
+    bass cut. On the bench, a 0 dBFS master through the bass shelf at -12 dB
+    still clipped 4 samples (+0.55 dB) in 40 s with 1 dB of room.
+    """
+    peak = max(response_db(values, check_freqs()))
+    peak = max(0.0, peak)
+    cut = max([0.0] + [-float(values["filters"][n].get("gain", 0.0)) for n in BLOCKS])
+    room = peak + (min(PHASE_HEADROOM_MAX_DB, PHASE_HEADROOM_DB + cut * PHASE_HEADROOM_PER_CUT)
+                   if shaped(values) else 0.0)
+    master = -math.ceil(round(room * 10, 6)) / 10 if room > 0 else 0.0
+    return round(peak, 2), (master if master != 0 else 0.0)
+
+
+# -- values ---------------------------------------------------------------
+
+def neutral() -> dict:
+    return {"filters": {n: dict(p) for n, (_k, p) in BLOCKS.items()}, "width": 1.0}
+
+
+def merge(base: dict, patch: dict) -> dict:
+    """``patch`` (the ``set`` JSON) over ``base``; Refused if any of it is wrong."""
+    if not isinstance(patch, dict):
+        raise Refused("expected a JSON object")
+    unknown = set(patch) - {"replace", "filters", "width"}
+    if unknown:
+        raise Refused(f"unknown keys: {', '.join(sorted(unknown))}")
+    out = neutral() if patch.get("replace") else {"filters": {k: dict(v) for k, v in base["filters"].items()},
+                                                   "width": base["width"]}
+    filters = patch.get("filters") or {}
+    if not isinstance(filters, dict):
+        raise Refused("filters must be an object")
+    for name, params in filters.items():
+        if name not in BLOCKS:
+            raise Refused(f"no block called {name!r} (one of: {', '.join(BLOCKS)})")
+        if not isinstance(params, dict):
+            raise Refused(f"{name}: parameters must be an object")
+        allowed = BLOCKS[name][1].keys()
+        for key, value in params.items():
+            if key not in allowed:
+                raise Refused(f"{name}: no parameter {key!r} (one of: {', '.join(allowed)})")
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise Refused(f"{name}.{key} must be a number")
+            lo, hi = LIMITS[key]
+            if not lo <= value <= hi:
+                raise Refused(f"{name}.{key} must be {lo:g} to {hi:g}")
+            out["filters"][name][key] = round(float(value), 3)
+    if "width" in patch:
+        w = patch["width"]
+        if isinstance(w, bool) or not isinstance(w, (int, float)) or not 0 <= w <= 1:
+            raise Refused("width must be 0 (mono) to 1 (stereo)")
+        out["width"] = round(float(w), 3)
+    return out
+
+
+def tone_values(base: dict, raw: float) -> dict:
+    """hasler-tone GAIN: the Treble shelf, boosts halved (as before)."""
+    treble = raw / 2 if raw > 0 else raw
+    treble = round(max(-12.0, min(6.0, treble)), 1)
+    return merge(base, {"filters": {"Treble": {"gain": treble}}})
+
+
+def mixer_mapping(width: float) -> list[dict]:
+    """width 1 = left to left, right to right; 0 = each output half of each input."""
+    same, cross = (1 + width) / 2, (1 - width) / 2
+
+    def source(ch: int, gain: float) -> dict:
+        return {"channel": ch, "gain": round(gain, 4), "inverted": False, "mute": gain == 0, "scale": "linear"}
+
+    return [{"dest": d, "mute": False, "sources": [source(d, same), source(1 - d, cross)]} for d in (0, 1)]
+
+
+def sections(values: dict, master: float) -> dict:
+    """filters / mixers / pipeline / processors, as CamillaDSP takes them."""
+    filters: dict = {}
+    filters[MASTER] = {"type": "Gain", "description": "haslerd: cancels the highest boost (never clips)",
+                       "parameters": {"gain": master, "inverted": False, "mute": False, "scale": "dB"}}
+    for name, (kind, _neutral) in BLOCKS.items():
+        filters[name] = {"type": "Biquad", "description": None,
+                         "parameters": {"type": kind, **values["filters"][name]}}
+    names = [MASTER, *BLOCKS]
+    return {
+        "filters": filters,
+        "mixers": {MIXER: {"description": "haslerd: width (mono .. stereo)",
+                           "channels": {"in": 2, "out": 2}, "mapping": mixer_mapping(values["width"])}},
+        "pipeline": [{"type": "Mixer", "name": MIXER, "description": None, "bypassed": None}] + [
+            {"type": "Filter", "channels": [ch], "names": list(names), "description": None, "bypassed": None}
+            for ch in (0, 1)],
+        "processors": None,
+    }
+
+
+# -- the file -------------------------------------------------------------
+
+GENERATED = ("filters", "mixers", "pipeline", "processors")
+
+
+def split_top(text: str) -> list[tuple[str | None, str]]:
+    """Top-level YAML sections, in order, each (key, its lines). Comments and
+    blank lines before the first key go with key None."""
+    out: list[tuple[str | None, list[str]]] = [(None, [])]
+    for line in text.splitlines(keepends=True):
+        m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*):", line)
+        if m:
+            out.append((m.group(1), [line]))
+        else:
+            out[-1][1].append(line)
+    return [(k, "".join(v)) for k, v in out]
+
+
+def values_from_file(text: str) -> dict:
+    """The block values in the file, over neutral (needs PyYAML; else neutral)."""
+    values = neutral()
+    try:
+        import yaml
+        doc = yaml.safe_load(text) or {}
+    except Exception:
+        return values
+    filters = doc.get("filters") or {}
+    for name, (_kind, params) in BLOCKS.items():
+        got = ((filters.get(name) or {}).get("parameters") or {})
+        for key in params:
+            if isinstance(got.get(key), (int, float)) and not isinstance(got.get(key), bool):
+                values["filters"][name][key] = float(got[key])
+    try:
+        src = doc["mixers"][MIXER]["mapping"][0]["sources"]
+        same = next(s for s in src if s["channel"] == 0)
+        if same.get("scale") == "linear":
+            values["width"] = max(0.0, min(1.0, round(2 * float(same["gain"]) - 1, 3)))
+    except Exception:
+        pass
+    return values
+
+
+def dump(obj: dict) -> str:
+    try:
+        import yaml
+        return yaml.safe_dump(obj, default_flow_style=False, sort_keys=False, indent=2)
+    except ImportError:   # YAML is a superset of JSON: still a valid config
+        return "".join(f"{k}: {json.dumps(v)}\n" for k, v in obj.items())
+
+
+def render_file(text: str, values: dict, master: float) -> str:
+    """The file with its generated sections replaced; devices, title and the
+    rest kept exactly as they are (moOde's and the maker's)."""
+    keep = [(k, body) for k, body in split_top(text) if k not in GENERATED]
+    out = "".join(body for _k, body in keep)
+    if out and not out.endswith("\n"):
+        out += "\n"
+    return out + dump(sections(values, master))
+
+
+# -- the running CamillaDSP -------------------------------------------------
+
+def _ask(ws, cmd) -> dict:
+    ws.send(json.dumps(cmd))
+    reply = json.loads(ws.recv())
+    name = cmd if isinstance(cmd, str) else next(iter(cmd))
+    return reply.get(name) or {}
+
+
+def tell_live(values: dict, master: float) -> str:
+    """'patched', 'replaced', or why not ('not running', ...)."""
+    try:
+        import websocket
+    except ImportError:
+        return "no websocket module"
+    try:
+        ws = websocket.create_connection(WS, timeout=1.5)
+    except Exception:
+        return "not running"
+    try:
+        got = _ask(ws, "GetConfigJson")
+        running = json.loads(got.get("value") or "null") if got.get("result") == "Ok" else None
+        if not isinstance(running, dict):
+            return "no config"
+        want = sections(values, master)
+        same = (set((running.get("filters") or {})) == set(want["filters"])
+                and set((running.get("mixers") or {})) == set(want["mixers"])
+                and [(s.get("type"), s.get("name"), s.get("names")) for s in running.get("pipeline") or []]
+                == [(s.get("type"), s.get("name"), s.get("names")) for s in want["pipeline"]])
+        if same:
+            # Never a chunk with a boost it hasn't paid for: the master gain
+            # goes down first, the blocks change a chunk later, and only then
+            # does the master come up to where it belongs. A biquad whose
+            # coefficients jump rings for a few samples (seen on the bench:
+            # +1.6 dB over full scale for 2 samples on a 12 dB jump), so a
+            # big jump also gets TRANSIENT_DB of extra room while it settles.
+            def running_gain(name: str) -> float:
+                params = ((running.get("filters") or {}).get(name) or {}).get("parameters") or {}
+                return float(params.get("gain") or 0.0)
+
+            old = running_gain(MASTER)
+            jump = max((abs(float(f["parameters"].get("gain", 0.0)) - running_gain(n))
+                        for n, f in want["filters"].items() if n != MASTER), default=0.0)
+            rest = {"filters": {n: {"parameters": f["parameters"]} for n, f in want["filters"].items() if n != MASTER},
+                    "mixers": {MIXER: {"mapping": want["mixers"][MIXER]["mapping"]}}}
+
+            def gain(db: float) -> dict:
+                return {"filters": {MASTER: {"parameters": {**want["filters"][MASTER]["parameters"], "gain": db}}}}
+
+            low = min(old, master) - (TRANSIENT_DB if jump > TRANSIENT_JUMP_DB else 0.0)
+            steps = ([gain(round(low, 1))] if low < old else []) + [rest] + ([gain(master)] if master != low else [])
+            for i, patch in enumerate(steps):
+                if i:
+                    time.sleep(SETTLE_S)
+                r = _ask(ws, {"PatchConfig": patch})
+                if r.get("result") != "Ok":
+                    return f"patch refused: {r.get('value')}"
+            return "patched"
+        running.update(want)
+        r = _ask(ws, {"SetConfigJson": json.dumps(running)})
+        return "replaced" if r.get("result") == "Ok" else f"config refused: {r.get('value')}"
+    except Exception as exc:
+        return f"error: {exc}"
+    finally:
+        try:
+            ws.close()
+        except Exception:
+            pass
+
+
+def live_status() -> dict:
+    try:
+        import websocket
+        ws = websocket.create_connection(WS, timeout=1.5)
+    except Exception:
+        return {"running": False}
+    try:
+        doc: dict = {"running": True}
+        cfg = json.loads(_ask(ws, "GetConfigJson").get("value") or "{}")
+        doc["filters"] = {n: f.get("parameters") for n, f in (cfg.get("filters") or {}).items()}
+        doc["mixer"] = ((cfg.get("mixers") or {}).get(MIXER) or {}).get("mapping")
+        doc["clipped_samples"] = _ask(ws, "GetClippedSamples").get("value")
+        doc["processing_load"] = _ask(ws, "GetProcessingLoad").get("value")
+        doc["state"] = _ask(ws, "GetState").get("value")
+        return doc
+    except Exception as exc:
+        return {"running": True, "error": str(exc)}
+    finally:
+        ws.close()
+
+
+# -- main -----------------------------------------------------------------
+
+def apply(values: dict, text: str | None) -> dict:
+    peak, master = master_for(values)
+    saved = False
+    error = None
+    if text is not None:
+        new = render_file(text, values, master)
+        if new != text:
+            try:
+                tmp = CONFIG + ".tmp"
+                with open(tmp, "w") as f:
+                    f.write(new)
+                os.replace(tmp, CONFIG)
+                saved = True
+            except OSError as exc:
+                error = f"config not updated: {exc}"
+    live = tell_live(values, master)
+    doc = {"ok": error is None, "peak_db": peak, "master_db": master, "width": values["width"],
+           "saved": saved, "live": live,
+           "treble_db": values["filters"]["Treble"]["gain"]}
+    if error:
+        doc["error"] = error
+    return doc
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2 or argv[1] not in ("set", "tone", "reset", "status"):
+        print("usage: hasler-dsp set JSON | tone GAIN_DB | reset | status", file=sys.stderr)
+        return 2
+    try:
+        with open(CONFIG) as f:
+            text: str | None = f.read()
+    except OSError as exc:
+        text = None
+        print(f"hasler-dsp: {CONFIG}: {exc}", file=sys.stderr)
+    base = values_from_file(text) if text is not None else neutral()
+    cmd = argv[1]
+    try:
+        if cmd == "status":
+            peak, master = master_for(base)
+            print(json.dumps({"ok": True, "file": {**base, "peak_db": peak, "master_db": master},
+                              "live": live_status()}))
+            return 0
+        if cmd == "reset":
+            values = neutral()
+        elif cmd == "tone":
+            values = tone_values(base, float(argv[2]))
+        else:
+            values = merge(base, json.loads(argv[2]))
+    except (IndexError, ValueError) as exc:   # Refused, bad JSON, bad number
+        print(json.dumps({"ok": False, "error": str(exc) or "missing argument"}))
+        return 2
+    print(json.dumps(apply(values, text)))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

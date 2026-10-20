@@ -122,6 +122,7 @@ def test_integration_layout(built):
     assert integ["integration/udev/99-hasler-pwm.rules"] == 0o644
     assert integ["integration/sbin/hasler-wifi-join"] == 0o755   # 0644 in the repo, forced
     assert integ["integration/bin/hasler-tone"] == 0o755
+    assert integ["integration/bin/hasler-dsp"] == 0o755
     assert integ["integration/shutdown/hasler-lamp-halt"] == 0o755
 
 

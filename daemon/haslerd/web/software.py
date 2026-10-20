@@ -218,6 +218,21 @@ class Software:
             "busy": state.get("phase") == "trial",
         }
 
+    def installing(self) -> bool:
+        """An update is being installed now: the updater's trial (switch,
+        restart, health check - until it commits or rolls back).
+
+        The lamp's ember breath (busy, don't unplug) reads this every few
+        seconds and at haslerd's exit, so it is one small file read and never
+        raises. Before the trial (checks and pre-flight) nothing has changed
+        yet and a power cut is harmless, so that stays the standby ember.
+        """
+        try:
+            state = _read_json(self.state_file)
+        except Exception:
+            return False
+        return isinstance(state, dict) and state.get("phase") == "trial"
+
     def _fallback(self) -> str:
         if self.fallback_version is not None:
             try:

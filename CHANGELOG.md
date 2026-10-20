@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.3 - 2026-10-21
+
+- Tone knob: now a tilt (warmer <-> brighter around 800 Hz, +-6 dB) - you
+  hear it. Settings -> Knobs: choose what a knob does (tilt, treble, bass,
+  loudness, presence, 1960s radio voice, stereo width) and how strong, with
+  "Try it" before saving. Boosts never clip. The Excelsior's knobs can use
+  any of them.
+- Pilot lamp: the phone blue is really blue now; a short glow shows where PU
+  landed (amber = radio, blue = phone); magenta glows when a radio joins or
+  leaves a group; a swell when a phone pairs; a dip when the volume keys hit
+  the end; ember breathes while an update installs (don't unplug) and stays
+  a steady deep red at night.
+- Settings -> Pilot lamp -> Lamp colours: tune each colour by eye on the
+  real lamp.
+- Bluetooth: phones see the radio as a loudspeaker.
+
 ## 0.4.2 - 2026-10-21
 
 - Bluetooth pairing works: while the pairing window is open the radio says

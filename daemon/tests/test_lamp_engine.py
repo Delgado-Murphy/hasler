@@ -6,7 +6,7 @@ import time
 import pytest
 
 from haslerd.lamp import engine as eng
-from haslerd.lamp.contract import Look
+from haslerd.lamp.contract import Look, parse_reply, signature
 from haslerd.lamp.engine import LampEngine, open_lamp
 from haslerd.lamp.outputs import (
     FakeOutput, GpiozeroOutput, NullOutput, SysfsPwmOutput, discover_chips, open_output,
@@ -91,7 +91,7 @@ def test_crossfade_between_colours_lands_on_the_new_colour():
     lamp.show(AMBER)
     lamp.show(Look("blue", 0.8), fade_s=1.5)
     r, g, b = lamp.render(clock.t + 2)[0]
-    assert r == 0.0 and b == pytest.approx(0.8 ** 2.2) and g == pytest.approx(0.25 * 0.8 ** 2.2)
+    assert r == 0.0 and g == 0.0 and b == pytest.approx(0.8 ** 2.2)
 
 
 def test_same_look_again_is_a_no_op():
@@ -234,6 +234,98 @@ def test_reply_returns_to_a_look_that_changed_meanwhile():
     assert r == 0.0 and b == pytest.approx(0.8 ** 2.2)
 
 
+def test_palette_2026_10_21():
+    p = eng.DEFAULT_PALETTE
+    assert p["blue"] == (0.0, 0.0, 1.0)              # no green: it read green
+    assert p["amber_pale"] == (1.0, 0.22, 0.0)       # no blue
+    assert p["red"] == (1.0, 0.03, 0.0)
+    assert p["magenta"] == (0.25, 0.0, 1.0)          # the house
+    assert "green" not in p and "teal" not in p
+
+
+def test_signature_text_round_trips():
+    assert signature("blue", 0.3) == "signature:blue@0.3"
+    assert parse_reply(signature("magenta")) == ("signature", "magenta", None)
+    assert parse_reply("ack") == ("ack", None, None)
+    with pytest.raises(ValueError):
+        parse_reply("signature:green")
+
+
+def test_signature_crossfades_holds_and_returns():
+    lamp, _, clock = make()
+    lamp.show(AMBER)
+    lamp.reply(signature("blue", 0.5))
+    t0 = clock.t
+    assert lamp.render(t0)[0] == pytest.approx((1.0, 0.15, 0.0))
+    r, g, b = lamp.render(t0 + 0.2)[0]
+    assert 0.0 < r < 1.0 and 0.0 < b < 0.5 ** 2.2               # crossfading
+    for t in (0.41, 0.7, 0.99):                                  # held, in blue
+        assert lamp.render(t0 + t)[0] == pytest.approx((0.0, 0.0, 0.5 ** 2.2))
+    assert 0.0 < lamp.render(t0 + 1.3)[0][0] < 1.0               # on its way back
+    assert lamp.render(t0 + 1.61)[0] == pytest.approx((1.0, 0.15, 0.0))
+    assert lamp._reply is None and lamp._from is None            # no restore fade: it ends home
+
+
+def test_signature_level_defaults_to_the_look_at_least_35_percent():
+    lamp, _, clock = make()
+    lamp.show(Look("amber", 0.8))
+    lamp.reply(signature("magenta"))
+    assert lamp.render(clock.t + 0.7)[0] == pytest.approx((0.25 * 0.8 ** 2.2, 0.0, 0.8 ** 2.2))
+    lamp.show(Look("ember", 0.06))
+    lamp.reply(signature("amber"))
+    assert level(lamp, clock.t + 0.7) == pytest.approx(0.35)
+
+
+def test_new_motions_are_slower_at_night_and_capped():
+    lamp, _, clock = make()
+    lamp.set_night(True)
+    lamp.show(AMBER)
+    lamp.render(clock.t + 5)
+    clock.t += 5
+    lamp.reply(signature("blue", 0.8))
+    t0 = clock.t
+    assert lamp.render(t0 + 0.61)[0][2] == pytest.approx(eng.NIGHT_CAP ** 2.2)   # held, capped
+    assert lamp._reply == "signature"
+    assert lamp.render(t0 + 2.39)[0][2] > 0.0                   # 1.6 s x 1.5 = 2.4 s
+    lamp.render(t0 + 2.41)
+    assert lamp._reply is None
+    lamp.reply("swell")
+    t1 = clock.t
+    lamp.render(t1 + 1.19)
+    assert lamp._reply == "swell"                               # 0.8 s x 1.5
+    lamp.reply("ack")                                           # the old replies keep their pace
+    lamp.render(t1 + 0.33)
+    assert lamp._reply is None
+
+
+def test_swell_rises_25_percent_and_back():
+    lamp, _, clock = make()
+    lamp.show(Look("blue", 0.8))
+    lamp.reply("swell")
+    t0 = clock.t
+    blue = lambda t: lamp.render(t)[0][2] ** (1 / eng.GAMMA)  # noqa: E731
+    assert blue(t0) == pytest.approx(0.8)
+    assert blue(t0 + 0.4) == pytest.approx(1.0)                  # 0.8 x 1.25
+    assert blue(t0 + 0.79) == pytest.approx(0.8, abs=1e-3)
+    assert blue(t0 + 0.81) == pytest.approx(0.8) and lamp._reply is None
+
+
+def test_nudge_is_one_dip():
+    lamp, _, clock = make()
+    lamp.show(AMBER)
+    lamp.reply("nudge")
+    assert level(lamp, clock.t + 0.12) == pytest.approx(0.3)
+    assert level(lamp, clock.t + 0.33) == pytest.approx(1.0)
+
+
+def test_unknown_or_malformed_replies_are_ignored():
+    lamp, _, clock = make()
+    lamp.show(AMBER)
+    for bad in ("wink", "signature", "signature:green", "signature:blue@2", "ack:blue"):
+        lamp.reply(bad)
+        assert lamp._reply is None
+
+
 def test_a_newer_reply_replaces_an_older():
     lamp, _, clock = make()
     lamp.show(AMBER)
@@ -279,13 +371,34 @@ def test_countdown_outranks_replies():
 # -- duty floor, writes, thread, close ---------------------------------------
 
 
-def test_min_duty_keeps_deep_embers_green():
+@pytest.mark.parametrize("night", [False, True])
+def test_deep_ember_is_pure_red_and_steady(night):
+    """Ember at 6 % (2 % at night): green's 10 % share is under its floor, so
+    it goes dark rather than being lifted to the floor (which turned ember
+    yellow-orange and, at 625 ns, unsteady). Red keeps its own floor."""
     lamp, _, clock = make(min_duty=None)       # the defaults
-    lamp.show(Look("ember", 0.02))
-    r, g, b = lamp.render(clock.t)[0]
-    assert r == eng.DEFAULT_MIN_DUTY[0] and g == eng.DEFAULT_MIN_DUTY[1] and b == 0.0
+    lamp.set_night(night)
+    lamp.show(Look("ember", 0.06))
+    r, g, b = lamp.render(clock.t + 5)[0]
+    want = (0.02 if night else 0.06) ** 2.2
+    assert r == pytest.approx(max(want, eng.DEFAULT_MIN_DUTY[0])) and g == 0.0 and b == 0.0
     lamp.show(Look("ember", 0.0))
-    assert lamp.render(clock.t)[0] == (0.0, 0.0, 0.0)   # dark is dark
+    assert lamp.render(clock.t + 10)[0] == (0.0, 0.0, 0.0)   # dark is dark
+
+
+def test_min_duty_keeps_a_real_share_of_a_colour_lit():
+    lamp, _, clock = make(min_duty=(0.002, 0.001, 0.001), palette={"amber": [1.0, 0.5, 0.0]})
+    lamp.show(Look("amber", 0.05))
+    r, g, _ = lamp.render(clock.t)[0]
+    assert r == 0.002 and g == 0.001            # half of red: kept, at its floor
+    lamp.show(Look("blue", 0.01))
+    assert lamp.render(clock.t + 5)[0] == (0.0, 0.0, 0.001)   # the only channel: kept
+
+
+def test_ember_at_standby_and_amber_at_full_keep_their_mix():
+    lamp, _, clock = make(min_duty=None)
+    lamp.show(AMBER)
+    assert lamp.render(clock.t)[0] == pytest.approx((1.0, 0.15, 0.0))
 
 
 def test_step_writes_only_when_it_changes():

@@ -405,6 +405,19 @@ class TestSoftware:
                                      "reason": "MPD not answering", "at": "2026-10-19T03:05:00Z"}
         assert st["stale"] is True
 
+    def test_installing_is_the_trial_phase_only(self, box):
+        """The lamp's ember breath (docs/lamp.md): only while the updater's
+        trial runs - not probation, not before the switch, never raising."""
+        sw, root, *_ = box
+        state = root / "var/lib/hasler-apply/state.json"
+        assert sw.installing() is False                       # probation
+        state.write_text(json.dumps({"phase": "trial", "step": "restarted"}))
+        assert sw.installing() is True
+        state.write_text("{not json")
+        assert sw.installing() is False
+        state.unlink()
+        assert sw.installing() is False
+
     def test_not_installed_is_404(self, tmp_path, monkeypatch, rig):
         monkeypatch.setenv("HASLER_ROOT", str(tmp_path / "nothing"))
         app = rig[0]

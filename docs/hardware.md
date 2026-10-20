@@ -189,6 +189,9 @@ The fix is the **volume ceiling** (key page → Settings → Volume ceiling; sto
 as `volume_limit`). It caps the hardware mixer but keeps the full turn and
 resolution of the knob. Set it by ear: the steps are in the
 [build guide, Phase 3a](build-guide.md#phase-3a--keys-drive-the-music).
+The knob effects add no power: whatever a knob lifts, the DSP turns the
+whole signal down by at least as much ([sound.md](sound.md)), so under the
+ceiling no frequency ever gets more than it does with the knobs flat.
 
 **⚠️ Never wire the speaker across the two amp channels.** Class-D outputs are
 already bridged inside; connecting across two of them is a dead short that

@@ -93,7 +93,7 @@ def test_strict_release_integration(built):
               "sudoers/haslerd", "configtxt/hasler.block", "udev/99-hasler-pwm.rules",
               "sbin/hasler-audio-mono", "sbin/hasler-wifi-join", "sbin/hasler-lamp-boot",
               "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-bootcfg-guard",
-              "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "shutdown/hasler-lamp-halt",
+              "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "bin/hasler-dsp", "shutdown/hasler-lamp-halt",
               "avahi/hasler.service", "systemd/bluetooth.service.d/hasler-speaker.conf"):
         assert f"integration/{p}" in integ_files, p
     assert files["integration/sbin/hasler-ytdlp-update"][1] == 0o755

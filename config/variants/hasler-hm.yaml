@@ -44,13 +44,14 @@ io:
     # in lamp/engine.py), then a per-channel balance after gamma:
     # palette:
     #   amber: [1.0, 0.15, 0.0]
-    #   amber_pale: [1.0, 0.22, 0.02]
+    #   amber_pale: [1.0, 0.22, 0.0]
     #   ember: [1.0, 0.10, 0.0]
-    #   blue: [0.0, 0.25, 1.0]
+    #   blue: [0.0, 0.0, 1.0]
     #   white: [1.0, 0.35, 0.06]
     #   red: [1.0, 0.03, 0.0]
+    #   magenta: [0.25, 0.0, 1.0]
     # balance: {red: 1.0, green: 1.0, blue: 1.0}
-    # min_duty: {red: 0.002, green: 0.0005, blue: 0.0005}   # keeps deep ember's green
+    # min_duty: {red: 0.002, green: 0.0005, blue: 0.0005}   # only for a channel's real share
 
 controls:
   # Prototype stripboard (Paper PB3): each key sits on the MCP pin its J2
@@ -92,6 +93,12 @@ controls:
     # TODO(phase-0): first value is the ADC count AT THE DETENT. The switch
     # eats the bottom of the sweep, so the usable range starts above it.
     range: [0, 25500]
+    # What the knob does to the sound (haslerd/dsp/effects.py); the owner can
+    # pick another on the key page (Settings -> Knobs). Tilt: left warmer,
+    # right brighter, pivoting at 800 Hz - a 2.5 kHz treble shelf alone was
+    # too subtle on this speaker, which plays little above ~6 kHz.
+    effect: tilt
+    effect_params: {range_db: 6, pivot: 800}
     end_switch:
       id: power
       pin: d8              # PB0 - not d7/PA7, which cannot be an input

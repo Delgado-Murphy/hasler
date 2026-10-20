@@ -9,7 +9,8 @@ result, applying night caps, gamma and colour balance on its own.
 Priority, highest first (docs/lamp.md "Priority"):
 
  1. shutting down (the knob-off countdown itself is ``LampDriver.countdown``,
-    drawn by the engine over the standby ember)
+    drawn by the engine over the standby ember), and installing an update
+    (the same ember breath: busy, don't unplug)
  2. short replies - the engine's overlay, not a Look
  3. setup / hotspot
  4. a phone casting (it beats standby: a phone wakes the radio)
@@ -26,7 +27,7 @@ Priority, highest first (docs/lamp.md "Priority"):
 
 from __future__ import annotations
 
-from .contract import BoxState, Colour, Look
+from .contract import BoxState, Colour, Look, signature
 
 # Seconds without internet before the lamp admits it: blips stay invisible.
 OFFLINE_AFTER_S = 60.0
@@ -38,10 +39,14 @@ READY = Look("amber", 0.35)
 LOADING = Look("amber", 0.70, "breath", 1.2, 0.25)
 STANDBY = Look("ember", 0.06)
 SHUTTING_DOWN = Look("ember", 0.20, "breath", 2.5, 0.04)
+# Installing an update: the shutdown's breath, never a solid ember (which
+# reads as "asleep" - and the box must not be unplugged now).
+UPDATING = SHUTTING_DOWN
 HOTSPOT = Look("white", 0.60, "breath", 3.0, 0.15)
 PAIRING = Look("blue", 0.60, "breath", 2.0, 0.15)
 CASTING = Look("blue", 0.80)
 CAST_PAUSED = Look("blue", 0.30)
+WAITING_FOR_PHONE = 0.30    # the PU key's blue signature before a phone is there
 OFFLINE = Look("red", 0.30, "breath", 4.0, 0.10)
 PANEL_MISSING = Look("red", 0.30, "breath", 6.0, 0.10)
 
@@ -75,6 +80,37 @@ def playing_look(source: str) -> Look:
     return Look(colour, 1.0)
 
 
+def source_signature(stop: str, preset_source: str | None, phone_there: bool = False) -> str:
+    """The PU key's reply: a signature in the colour of where the cycle went.
+
+    ``stop`` is the cycle stop, ``preset_source`` the source of the preset it
+    resumes (None: nothing to resume - a phone's turn). Our own music is
+    amber (pale for playlists); a phone's stop is blue, dim (30 %) while no
+    phone is there yet.
+    """
+    if preset_source is not None:
+        return signature("amber_pale" if preset_source in PLAYLIST_SOURCES else "amber")
+    if stop in ("radio", "ytm"):
+        return signature("amber_pale" if stop in PLAYLIST_SOURCES else "amber")
+    return signature("blue") if phone_there else signature("blue", WAITING_FOR_PHONE)
+
+
+def reply_for(text: str, phone_there: bool = False) -> str:
+    """The rest of haslerd's reply words -> what the engine draws.
+
+    Actions and the multiroom group speak in events, never in colours:
+    ``"source:<stop>[:<preset source>]"`` (the PU key went there) and
+    ``"group"`` (a radio joined or left this radio's group) become
+    signatures here; everything else passes through unchanged.
+    """
+    if text == "group":
+        return signature("magenta")
+    if text.startswith("source:"):
+        _, stop, preset_source = (text.split(":", 2) + [""])[:3]
+        return source_signature(stop, preset_source or None, phone_there)
+    return text
+
+
 def offline_shows(state: BoxState) -> bool:
     """Idle red: only when the next key press would fail, and never at night."""
     return (
@@ -89,6 +125,8 @@ def look_for(state: BoxState) -> tuple[Look, float]:
     """The Look the lamp should settle into, and how long to fade into it."""
     if state.shutting_down:
         return SHUTTING_DOWN, FADE_SHUTDOWN
+    if state.updating:
+        return UPDATING, FADE_SHUTDOWN
     if state.hotspot:
         return HOTSPOT, FADE_HOTSPOT
     if state.casting:

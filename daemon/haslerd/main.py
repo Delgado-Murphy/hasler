@@ -38,12 +38,14 @@ from .actions import RENDERERS, SHUTDOWN_PREPARE_S, Actions
 from .bootresume import AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, shutdown_kind
 from .ha.rest import HomeAssistant
 from .lamp.contract import BoxState, LampDriver, Look
-from .lamp.policy import look_for
+from .lamp.policy import look_for, reply_for
 from .web import stations
 from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
 from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_floor_from, volume_limit_from
 from .web.sources_api import SourcesApi
 from .web.sources_api import apply_saved as apply_sources
+from .dsp.knobs import KnobFunctions, helper_runner
+from .web.knobs_api import KnobFunctionsApi
 
 try:    # Home Assistant's page API; optional so the radio runs without it.
     from .web.ha_api import HaApi
@@ -97,6 +99,7 @@ LOADING_POLL_S = 0.5    # "has the preset made a sound yet?", while loading
 LOADING_FAIL_S = 20.0   # no sound this long after a start: red pulses
 CAST_GRACE_S = 3.0      # blue stays this long after a phone lets go
 NIGHT_CHECK_S = 60.0    # sunset is not a thing to poll at 20 Hz
+UPDATE_POLL_S = 5.0     # "is an update being installed?" (one small file read)
 BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest...
 BOOT_RESUME_MAX_S = RESUME_WINDOW_S + 5.0   # ...unless a boot resume is still on its way
 
@@ -187,6 +190,11 @@ class LampKeeper:
         self._cast_seen: float | None = None
         self._next_source_poll = 0.0
         self._next_night = 0.0
+        # Is an update being installed (web/software.py Software.installing)?
+        # Set by main; None = never.
+        self.updating: Callable[[], bool] | None = None
+        self._updating = False
+        self._next_update_poll = 0.0
         self._counting = False
         self._settings: dict | None = None    # the page's last saved doc, if any
         # A knob that reads off at power-up never counts down: only an off
@@ -202,7 +210,13 @@ class LampKeeper:
 
     def reply(self, name: str) -> None:
         try:
-            self.driver.reply(name)
+            phone = False
+            if name.startswith("source:"):
+                try:
+                    phone = bool(self.actions.phone_has_it())
+                except Exception:
+                    phone = False
+            self.driver.reply(reply_for(name, phone))
         except Exception:
             log.debug("lamp reply failed", exc_info=True)
 
@@ -226,13 +240,26 @@ class LampKeeper:
         self._armed_at = self.clock()
 
     def settings_changed(self, doc: dict) -> None:
-        """WebApp.lamp_listeners: location or night mode changed - look again now.
+        """WebApp.lamp_listeners: location, night mode or colours changed - look again now.
 
         Runs on a web thread, so it only leaves the doc and moves the next
-        night check to the next tick; the main loop does the rest.
+        night check to the next tick; the main loop does the rest. The saved
+        colours go straight to the engine (its set_palette is thread-safe).
         """
         self._settings = dict(doc)
         self._next_night = 0.0
+        self.apply_palette(doc)
+
+    def apply_palette(self, doc: dict) -> None:
+        """settings.json ``lamp_palette`` over the release's palette (also at start)."""
+        set_palette = getattr(self.driver, "set_palette", None)
+        if not callable(set_palette):
+            return
+        try:
+            saved = doc.get("lamp_palette")
+            set_palette(saved if isinstance(saved, dict) else {})
+        except Exception:
+            log.warning("lamp: could not apply the saved colours", exc_info=True)
 
     def resume_started(self) -> None:
         """A boot resume is on its way (bootresume.py): the warm-up breath
@@ -292,6 +319,9 @@ class LampKeeper:
                 self._offline_since = None
             elif self._offline_since is None:
                 self._offline_since = now
+        if now >= self._next_update_poll:
+            self._next_update_poll = now + UPDATE_POLL_S
+            self._updating = self._update_now()
         if now >= self._next_night:
             self._next_night = now + NIGHT_CHECK_S
             night = self._night()
@@ -302,6 +332,15 @@ class LampKeeper:
                     self.driver.set_night(night)
                 except Exception:
                     log.debug("lamp set_night failed", exc_info=True)
+
+    def _update_now(self) -> bool:
+        if self.updating is None:
+            return False
+        try:
+            return bool(self.updating())
+        except Exception:
+            log.debug("update phase unreadable", exc_info=True)
+            return False
 
     def _night(self) -> bool:
         if self.night_fn is None:
@@ -367,6 +406,7 @@ class LampKeeper:
         state.boot = self.boot_stage(now)
         state.standby = actions.standby
         state.shutting_down = actions.shutting_down
+        state.updating = self._updating
         state.hotspot = bool(conn is not None and conn.hotspot)
         state.pairing = actions.pairing
         state.casting = casting
@@ -405,8 +445,12 @@ class LampKeeper:
         # Shutting down: leave the ember on through the halt - the
         # system-shutdown hook darkens it last, so dark means safe to unplug.
         # Any other exit (a restart, a crash) goes dark at once.
+        # Likewise while an update is installed: the updater restarts haslerd
+        # mid-trial, and the lamp must hold (the PWM keeps its last duty) until
+        # the new haslerd breathes again - never dark, which means unplug.
         try:
-            self.driver.close(halt_dark=not self.actions.shutting_down)
+            halt_dark = not (self.actions.shutting_down or self._update_now())
+            self.driver.close(halt_dark=halt_dark)
         except Exception:
             log.debug("lamp close failed", exc_info=True)
 
@@ -582,11 +626,29 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
 
     actions = Actions(variant, player, ha=ha, state=state)
     apply_sources(actions, settings)           # the PU cycle, resume after a cast
+    actions.dsp = build_knob_functions(actions, player, settings)
     web, app = build_web(config, actions, panel, state, ha is not None, paths=paths)
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))
     return panel, actions, lamp, config, web, app
+
+
+def build_knob_functions(actions: Actions, player, settings: dict) -> KnobFunctions:
+    """The knobs' sound effects (dsp/knobs.py), with the owner's saved choices.
+
+    hasler-dsp drives them where it is installed; elsewhere (an older box, a
+    laptop, --fake) a knob's change still reaches the player's tone command.
+    """
+    command = getattr(getattr(player, "config", None), "dsp_command", "") or ""
+    runner = helper_runner(command) if command and Path(command).exists() else None
+    if runner is None:
+        log.info("knob effects: no hasler-dsp%s; tone knobs use the player's tone command",
+                 f" at {command}" if command else "")
+    knobs = KnobFunctions(lambda: actions.variant, runner, volume=player.get_volume,
+                          legacy=player.set_tone)
+    knobs.apply_saved(settings)
+    return knobs
 
 
 def yaml_ha(config: dict) -> HomeAssistant | None:
@@ -700,6 +762,9 @@ def build_web(
         ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
         app.extra_routes.append(ha_api)
     app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
+    if actions.dsp is not None:                 # /api/knobs/functions, /api/knobs/try
+        app.knob_functions = actions.dsp
+        app.extra_routes.append(KnobFunctionsApi(app, actions.dsp))
     build_group(app, actions, int(spec.get("port", 8080)))
     app.load_saved()
     # Spotify for guests: radios made before it existed get it here, not from
@@ -910,9 +975,13 @@ def main(argv=None) -> int:
     keeper = None
     if driver is not None:
         keeper = LampKeeper(driver, actions, panel, connectivity, getattr(app, "settings_file", None))
+        if software is not None and callable(getattr(software, "installing", None)):
+            keeper.updating = software.installing    # the ember breath while it installs
         listeners = getattr(app, "lamp_listeners", None)
         if listeners is not None:
             listeners.append(keeper.settings_changed)
+        keeper.apply_palette(load_settings(getattr(app, "settings_file", None)))
+        app.lamp = driver       # the Lamp colours page's preview (web/server.py)
     log.info("haslerd up: %s, %d controls", actions.variant.name, len(panel.controls))
 
     running = True
@@ -990,7 +1059,7 @@ def main(argv=None) -> int:
                 # The phone wakes the radio: standby ends, nothing of ours
                 # resumes. A phone that connected also ends the pairing breath.
                 actions.wake_for_phone(source)
-                actions.end_pairing()
+                actions.end_pairing(paired=True)
 
             if keeper is not None and now >= next_lamp_tick:
                 next_lamp_tick = now + LAMP_TICK_S

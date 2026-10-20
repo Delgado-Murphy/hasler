@@ -26,6 +26,17 @@ lamp's ``location`` and ``night`` mode live there too (lamp/night.py); GET adds
 today's sunrise/sunset and the night being dimmed, and ``WebApp.lamp_listeners``
 hear a change at once.
 
+The lamp's colours (Settings -> Pilot lamp -> Lamp colours): ``GET
+/api/lamp/palette`` is ``{defaults, saved, effective, levels, lamp,
+preview_s}`` (names from the engine's palette, never "off"); ``PUT`` (or POST)
+``{"palette": {name: [r, g, b]}}`` replaces the saved colours (settings.json
+``lamp_palette``, linear ratios 0..1; a colour equal to the release's is not
+kept), ``DELETE`` goes back to the release's palette. ``WebApp.lamp_listeners``
+hear the doc, so the engine's ``set_palette`` follows at once.
+``POST /api/lamp/preview {"rgb": [r, g, b], "level": "full"|"night"|"ember"|0..1}``
+shows a colour on the lamp for 30 s after the last call (only the shutdown
+countdown outranks it); ``{"rgb": null}`` ends it.
+
 Knob calibration (``/api/knobs``) is the guided version of what we did by
 hand on the bench: the page asks the owner to hold each knob still at a few
 positions, reads ``GET /api/knobs/<id>/sample`` (the panel loop's own recent
@@ -73,6 +84,7 @@ from urllib.parse import parse_qs, urlparse
 from .. import __version__
 from ..actions import Actions
 from ..lamp import night
+from ..lamp import engine as lamp_engine
 from .. import boxconfig
 from ..panel import calibrate
 from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot
@@ -105,8 +117,9 @@ CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
 # Names the box answers to besides its own hostname (+ web.hostnames in box.yaml).
 OWN_NAMES = ("localhost", "hasler", "hasler.local")
 LOOPBACK = ("127.0.0.1", "::1")
-# Paths served by ``WebApp.extra_routes`` (web/ha_api.py, web/sources_api.py).
-EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/group", "/api/peer")
+# Paths served by ``WebApp.extra_routes`` (web/ha_api.py, web/sources_api.py, web/knobs_api.py).
+EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/group", "/api/peer",
+                  "/api/knobs/functions", "/api/knobs/try")   # web/knobs_api.py
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
@@ -180,6 +193,35 @@ def volume_floor_from(raw: Any, limit: int | None) -> int:
     return value
 
 
+# settings.json keys the lamp listens to (kept in memory without a settings file).
+LAMP_KEYS = ("location", "night", "lamp_palette")
+
+
+def _rgb_from(raw: Any, name: str) -> list[float]:
+    """[r, g, b], three numbers 0..1 (linear LED ratios)."""
+    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+        raise ValueError(f"{name} must be [r, g, b]")
+    out = []
+    for value in raw:
+        value = _number(value, name)
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name}: each channel must be 0..1")
+        out.append(round(value, 4))
+    return out
+
+
+def palette_from(raw: Any, known: Any) -> dict[str, list[float]]:
+    """A saved lamp palette: ``{name: [r, g, b]}`` with names from ``known``."""
+    if not isinstance(raw, dict):
+        raise ValueError("palette must be {name: [r, g, b]}")
+    out = {}
+    for name, rgb in raw.items():
+        if name not in known or name == "off":
+            raise ValueError(f"unknown lamp colour {name!r} (known: {', '.join(n for n in known if n != 'off')})")
+        out[name] = _rgb_from(rgb, name)
+    return out
+
+
 class Unavailable(Exception):
     """This radio can't do that right now (HTTP 503) - not the request's fault."""
 
@@ -230,6 +272,9 @@ class WebApp:
         self.lamp_listeners: list[Callable[[dict], None]] = []
         # Without a settings file (no state dir) the lamp's choices live here.
         self._lamp_settings: dict = {}
+        # The lamp engine (lamp/engine.LampEngine: set_palette, preview), or
+        # None for a radio without one; main() sets it once the lamp is up.
+        self.lamp: Any = None
         self.station_db = station_db
         # /api/info and /api/art/current, for the Home Assistant integration (web/integration.py).
         self.art = integration.ArtProxy(station_db)
@@ -455,14 +500,26 @@ class WebApp:
             "keys": self._keys(),
             "current_key": self._current_key(current),
             "volume_limit": self._volume_limit(),
-            # The tone knob: 0-100 and what it does to the treble (None = no tone pot read yet).
-            "tone": None if not isinstance(tone, (int, float)) or isinstance(tone, bool) else
-                    {"value": round(tone), "treble_db": treble_db(tone)},
+            # The tone knob: 0-100 and what it does (None = no tone pot read yet):
+            # {"value", "treble_db", "effect", "label", "text": "Warmer · 40%"}.
+            "tone": self._tone_doc(tone),
             # The tone knob's end switch: True = radio on, False = clicked off, None = not fitted.
             "knob_on": states.get("power") if isinstance(states.get("power"), bool) else None,
             # Multiroom: None alone, else {"role", "joining", "leader": {id, name}|None, "members": n}.
             "group": self._group_status(),
         }
+
+    def _tone_doc(self, tone: Any) -> dict | None:
+        if not isinstance(tone, (int, float)) or isinstance(tone, bool):
+            return None
+        doc = {"value": round(tone), "treble_db": treble_db(tone)}
+        knobs = getattr(self, "knob_functions", None)   # dsp/knobs.py, set by main
+        if knobs is not None and knobs.assignable("tone"):
+            try:
+                doc.update(knobs.describe("tone", tone))
+            except Exception:
+                log.debug("tone knob description failed", exc_info=True)
+        return doc
 
     def _group_status(self) -> dict | None:
         group = self.group
@@ -702,7 +759,7 @@ class WebApp:
                     self._guests = guests
                 self.spotify_guests.apply_async(guests)
             if place is not None or mode is not None:
-                self._lamp_settings = {k: doc[k] for k in ("location", "night") if k in doc}
+                self._lamp_settings = {k: doc[k] for k in LAMP_KEYS if k in doc}
                 for listener in self.lamp_listeners:
                     try:
                         listener(dict(doc))
@@ -728,6 +785,95 @@ class WebApp:
         if self.settings_file is not None:
             return load_settings(self.settings_file)
         return self._lamp_settings
+
+    # -- the lamp's colours ------------------------------------------------
+
+    def _palette_defaults(self) -> dict[str, tuple[float, float, float]]:
+        base = getattr(self.lamp, "base_palette", None)
+        if not isinstance(base, dict):
+            base = lamp_engine.DEFAULT_PALETTE
+        return {name: tuple(rgb) for name, rgb in base.items() if name != "off"}
+
+    def _saved_palette(self, defaults: dict) -> dict[str, list[float]]:
+        """settings.json ``lamp_palette``, keeping only well-formed known colours."""
+        raw = self.lamp_settings().get("lamp_palette")
+        if not isinstance(raw, dict):
+            return {}
+        saved = {}
+        for name, rgb in raw.items():
+            try:
+                saved.update(palette_from({name: rgb}, defaults))
+            except ValueError:
+                log.warning("ignoring lamp_palette %r in settings.json", name)
+        return saved
+
+    def lamp_palette(self) -> dict:
+        defaults = self._palette_defaults()
+        saved = self._saved_palette(defaults)
+        effective = {name: list(saved.get(name, rgb)) for name, rgb in defaults.items()}
+        return {
+            "defaults": {name: list(rgb) for name, rgb in defaults.items()},
+            "saved": saved,
+            "effective": effective,
+            "levels": dict(lamp_engine.PREVIEW_LEVELS),
+            "preview_s": lamp_engine.PREVIEW_S,
+            "lamp": self.lamp is not None,
+        }
+
+    def put_lamp_palette(self, body: Any) -> dict:
+        """Replace the saved colours: ``{"palette": {name: [r, g, b]}}`` ({} = release)."""
+        if not isinstance(body, dict) or "palette" not in body:
+            raise ValueError('expected {"palette": {"amber": [r, g, b], ...}}')
+        defaults = self._palette_defaults()
+        palette = palette_from(body["palette"], defaults)
+        # Only what differs from the release: a later release's retune still lands.
+        palette = {n: rgb for n, rgb in palette.items()
+                   if any(abs(a - b) > 1e-6 for a, b in zip(rgb, defaults[n]))}
+        with self.lock:
+            if self.settings_file is not None:
+                doc = load_settings(self.settings_file)
+                if palette:
+                    doc["lamp_palette"] = palette
+                else:
+                    doc.pop("lamp_palette", None)
+                doc.setdefault("schema", boxconfig.SCHEMA)
+                save_settings(self.settings_file, doc)
+            else:
+                doc = self._lamp_settings
+                if palette:
+                    doc["lamp_palette"] = palette
+                else:
+                    doc.pop("lamp_palette", None)
+            self._lamp_settings = {k: doc[k] for k in LAMP_KEYS if k in doc}
+            for listener in self.lamp_listeners:
+                try:
+                    listener(dict(doc))
+                except Exception:
+                    log.exception("a lamp settings listener failed")
+        log.info("lamp colours %s from the web page",
+                 "set (" + ", ".join(sorted(palette)) + ")" if palette else "back to the release's")
+        return self.lamp_palette()
+
+    def lamp_preview(self, body: Any) -> dict:
+        """``{"rgb": [r, g, b], "level": name|0..1}`` on the lamp for a while; ``{"rgb": null}`` ends it."""
+        if not isinstance(body, dict) or "rgb" not in body:
+            raise ValueError('expected {"rgb": [r, g, b], "level": "full"|"night"|"ember"} or {"rgb": null}')
+        rgb = None if body["rgb"] is None else _rgb_from(body["rgb"], "rgb")
+        raw = body.get("level", "full")
+        if isinstance(raw, str):
+            if raw not in lamp_engine.PREVIEW_LEVELS:
+                raise ValueError("level must be one of " + ", ".join(lamp_engine.PREVIEW_LEVELS))
+            level = lamp_engine.PREVIEW_LEVELS[raw]
+        else:
+            level = _number(raw, "level")
+            if not 0.0 <= level <= 1.0:
+                raise ValueError("level must be 0..1")
+        lamp = self.lamp
+        preview = getattr(lamp, "preview", None)
+        if callable(preview):
+            preview(rgb, level)
+        return {"lamp": lamp is not None, "showing": rgb is not None and lamp is not None,
+                "expires_s": lamp_engine.PREVIEW_S if rgb is not None else 0}
 
     def _lamp_doc(self) -> dict:
         saved = self.lamp_settings()
@@ -1331,6 +1477,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._font(url.path[len("/fonts/"):]))
             elif url.path == "/api/settings":
                 self._guard(lambda: self._json(200, app.settings(self.headers.get("Host"))))
+            elif url.path == "/api/lamp/palette":
+                self._guard(lambda: self._json(200, app.lamp_palette()))
             elif url.path == "/api/knobs":
                 self._guard(lambda: self._json(200, app.knobs()))
             elif (m := KNOB_ID.match(url.path)) and m.group(2) == "sample":
@@ -1403,6 +1551,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                     200, {"ok": True, **app.put_calibration(m.group(1), self._body())}))
             elif path == "/api/software/settings":
                 self._guard(lambda: self._json(200, {"ok": True, **app.software_settings(self._body())}))
+            elif path == "/api/lamp/palette":
+                self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -1425,6 +1575,10 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(play)
             elif path == "/api/stop":
                 self._guard(lambda: (app.stop(), self._json(200, {"ok": True})))
+            elif path == "/api/lamp/preview":
+                self._guard(lambda: self._json(200, {"ok": True, **app.lamp_preview(self._body())}))
+            elif path == "/api/lamp/palette":       # as PUT, for clients that only POST
+                self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
             elif path == "/api/settings":            # as PUT, for clients that only POST
                 self._guard(lambda: self._json(
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
@@ -1470,6 +1624,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: (app.software.cancel_install(), self._json(200, {"ok": True})))
             elif path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_out()}))
+            elif path == "/api/lamp/palette":
+                self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette({"palette": {}})}))
             elif (m := KNOB_ID.match(path)) and m.group(2) == "calibration":
                 self._guard(lambda: self._json(200, {"ok": True, **app.delete_calibration(m.group(1))}))
             else:

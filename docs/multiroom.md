@@ -84,8 +84,8 @@ follow  snapclient-hasler (leader) ─▶ hasler_local ─▶ card ─▶ speake
   delay that jumps in ~90 ms steps, and snapclient re-syncs (audibly) on every
   jump. So while grouped, and only if the tone DSP is on, `camilladsp-hasler`
   runs one CamillaDSP from a second Loopback substream to the card, with the
-  same `Hasler Tone.yml` and the same websocket port (1234). `hasler-tone`
-  turns it live, so the knob feels the same.
+  same `Hasler Tone.yml` and the same websocket port (1234). `hasler-dsp`
+  turns it live, so every knob effect works the same ([sound.md](sound.md)).
 - ALSA reads its routing when a device opens. After a switch `haslerd` restarts
   a playing MPD; the other players move at their next open.
 

@@ -100,6 +100,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-ytdlp-update", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-bootcfg-guard", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-tone", "integration/bin/", mode=0o755),
+    Rule("scripts/hasler-dsp", "integration/bin/", mode=0o755),
     Rule("scripts/hasler-lamp-halt", "integration/shutdown/", mode=0o755),
     Rule("config/sudoers/haslerd", "integration/sudoers/"),
     Rule("config/systemd-dropins/bluetooth.service.d/hasler-*.conf", "integration/systemd/bluetooth.service.d/"),

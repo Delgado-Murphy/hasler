@@ -185,6 +185,11 @@ def grouped(lan):
     living.play("k2")
     status, doc = living.route("PUT", "/api/group", {"members": [lan.kitchen.id, lan.study.id]})
     assert status == 200, doc
+    # The lamp's magenta signature on both sides of each join (docs/lamp.md).
+    assert living.replies[-2:] == ["group", "group"]          # after its own key's reply
+    assert lan.kitchen.replies == ["group"] and lan.study.replies == ["group"]
+    for radio in (living, lan.kitchen, lan.study):
+        radio.replies.clear()
     return living, lan.kitchen, lan.study
 
 
@@ -366,7 +371,8 @@ class TestJoinKey:
         assert lan.kitchen.group.role == "follow" and lan.kitchen.group.leader.id == lan.living.id
         assert lan.living.group.role == "lead" and list(lan.living.group.members) == [lan.kitchen.id]
         assert lan.kitchen.log[-1] == ("audio", "follow", "10.0.0.1", 1704)
-        assert lan.kitchen.replies == []                     # no fail; the breath was the reply
+        # No fail: the breath, then the magenta signature on both radios.
+        assert lan.kitchen.replies == ["group"] and lan.living.replies == ["ack", "group"]
 
     def test_prefers_a_leader_then_the_most_recent(self, lan, tmp_path):
         lan.living.play()
@@ -407,8 +413,10 @@ class TestJoinKey:
         lan.living.play()
         lan.kitchen.press("k1", "hold")
         lan.kitchen.press("k1", "hold")
-        assert lan.kitchen.group.role == "alone" and lan.kitchen.replies == ["ack"]
+        # Joined (signature), the key's dip, left (signature) - on both radios.
+        assert lan.kitchen.group.role == "alone" and lan.kitchen.replies == ["group", "ack", "group"]
         assert lan.living.group.role == "alone"             # told; its only member left
+        assert lan.living.replies == ["ack", "group", "group"]   # its own key, then join, leave
 
     def test_on_a_leader_it_fails(self, lan):
         grouped(lan)
@@ -848,6 +856,35 @@ class TestHandover:
         assert living.player.current().n == 3
 
 
+# -- the lamp's magenta signature (docs/lamp.md) ----------------------------------------
+
+
+class TestSignatures:
+    def test_a_follower_standing_by_shows_ember_not_magenta_its_leader_magenta(self, lan):
+        living, kitchen, study = grouped(lan)
+        kitchen.press("power", "off")
+        assert "group" not in kitchen.replies
+        assert living.replies == ["group"] and study.replies == []
+
+    def test_ticking_a_member_off_signs_on_both(self, lan):
+        living, kitchen, study = grouped(lan)
+        status, _ = living.route("PUT", "/api/group", {"members": [study.id]})
+        assert status == 200
+        assert living.replies == ["group"] and kitchen.replies == ["group"] and study.replies == []
+
+    def test_a_leader_leaving_from_its_page_signs_and_so_does_each_follower(self, lan):
+        living, kitchen, study = grouped(lan)
+        living.group.leave_doc()
+        assert living.replies == ["group"]
+        assert kitchen.replies == ["group"] and study.replies == ["group"]
+
+    def test_a_handover_moves_without_magenta(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        kitchen.press("k4")
+        assert "group" not in kitchen.replies + living.replies + study.replies
+
+
 # -- standby ---------------------------------------------------------------------------
 
 
@@ -908,7 +945,7 @@ class TestHeartbeat:
         living, kitchen, _ = grouped(lan)
         living.group.role, living.group.members = "alone", {}     # it lost power and came back
         kitchen.group.check()
-        assert kitchen.group.role == "alone" and kitchen.replies == []
+        assert kitchen.group.role == "alone" and kitchen.replies == ["group"]   # out: no red
 
     def test_leader_drops_a_member_that_came_back_alone(self, lan):
         living, kitchen, study = grouped(lan)

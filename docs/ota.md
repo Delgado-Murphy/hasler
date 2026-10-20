@@ -93,7 +93,8 @@ Optional `haslerd` override blocks, the same as the old `config/haslerd.yaml`
 
 - `moode:` `mpd_host`, `mpd_port`, `mixer` (the hardware mixer, `Digital`),
   `card` (`sndrpihifiberry`), `volume_limit` (mixer ceiling %; the key page's
-  saved one wins), `volume_floor`, `tone_commands`, `source_flags`,
+  saved one wins), `volume_floor`, `dsp_command` (`/usr/local/bin/hasler-dsp`, the knob effects;
+  `""` = off), `tone_commands` (only without `dsp_command`), `source_flags`,
   `renderer_units`, the tool paths (`moodeutl`, `amixer`, `bluetoothctl`),
   `spotify:` (`enabled`, `base_url` `http://127.0.0.1:3678`, `timeout`,
   `status_timeout`) and `ytm:` (`enabled`, `port` 8099 - keep it fixed,
@@ -252,7 +253,8 @@ button (confirmed on the radio), run through the same switch + health path.
   available" + changelog, "install tonight / now", last result (ok / rolled
   back and why), "go back to X".
 - **Lamp:** nothing during check/download; installs happen in standby, and
-  the box **holds ember - never dark - until the update is committed** (dark
+  the box **breathes ember (the shutdown look: busy) - never dark, never a solid
+  "asleep" ember - while the update is installed** (dark
   means safe to unplug); pressing a key aborts the update until tomorrow; a failed update never shows red on its own (nobody asked) -
   it goes to the page. Optional later: one slow amber swell at the first wake
   after an update.

@@ -8,7 +8,7 @@ from conftest import VARIANTS
 
 from haslerd.actions import Actions
 from haslerd.lamp import policy
-from haslerd.lamp.contract import BoxState
+from haslerd.lamp.contract import BoxState, signature
 from haslerd.lamp.policy import look_for
 from haslerd.main import LampKeeper
 from haslerd.panel.controls import EndSwitch, Event
@@ -29,6 +29,21 @@ class TestPriority:
     def test_1_shutting_down_beats_everything(self):
         assert look(shutting_down=True, hotspot=True, casting=True, standby=True) == policy.SHUTTING_DOWN
         assert policy.SHUTTING_DOWN.colour == "ember" and policy.SHUTTING_DOWN.motion == "breath"
+
+    def test_1_installing_an_update_is_the_ember_breath_never_solid(self):
+        # Installs happen in standby: busy, don't unplug - not "asleep".
+        assert look(updating=True, standby=True) == policy.UPDATING == policy.SHUTTING_DOWN
+        assert look(updating=True, hotspot=True, casting=True, playing=True) == policy.UPDATING
+        assert policy.UPDATING.motion == "breath" and policy.UPDATING.colour == "ember"
+
+    def test_magenta_is_never_a_look(self):
+        flags = ("standby", "shutting_down", "updating", "hotspot", "pairing", "casting",
+                 "cast_paused", "loading", "playing", "panel_missing", "night")
+        for i in range(1 << len(flags)):
+            on = {f: bool(i >> k & 1) for k, f in enumerate(flags)}
+            for group in ("", "joining", "following"):
+                state = replace(IDLE, **on, group=group, group_playing=True, offline_s=120.0)
+                assert look_for(state)[0].colour != "magenta"
 
     def test_3_hotspot_beats_a_phone_and_standby(self):
         assert look(hotspot=True, casting=True, standby=True) == policy.HOTSPOT
@@ -89,6 +104,26 @@ class TestPriority:
         assert look(playing=True, source="radio").colour == "amber"
         assert look(playing=True, source="ytm").colour == "amber_pale"
         assert look(playing=True, source="spotify").colour == "amber_pale"
+
+
+class TestReplies:
+    def test_pu_signature_is_the_destination(self):
+        assert policy.reply_for("source:radio:radio") == signature("amber")
+        assert policy.reply_for("source:radio:ytm") == signature("amber_pale")   # a YTM preset
+        assert policy.reply_for("source:spotify:spotify") == signature("amber_pale")
+        assert policy.reply_for("source:radio") == signature("amber")
+        assert policy.reply_for("source:ytm") == signature("amber_pale")
+        # A phone's stop: dim blue while no phone is there, blue once one is.
+        assert policy.reply_for("source:bluetooth") == signature("blue", 0.3)
+        assert policy.reply_for("source:airplay", phone_there=True) == signature("blue")
+        assert policy.reply_for("source:spotify") == signature("blue", 0.3)
+
+    def test_group_is_the_magenta_signature(self):
+        assert policy.reply_for("group") == signature("magenta") == "signature:magenta"
+
+    def test_everything_else_passes_through(self):
+        for name in ("ack", "next", "stop", "fail", "ha", "swell", "nudge"):
+            assert policy.reply_for(name) == name
 
 
 # -- the keeper ------------------------------------------------------------
@@ -257,6 +292,81 @@ class TestKeeper:
         keeper.close()
         # The ember stays through the halt; the shutdown hook darkens it.
         assert driver.closed is False
+
+    def test_installing_an_update_breathes_ember_and_never_goes_dark(self, box):
+        clock, _, actions, driver, _, keeper, _ = box
+        installing = [False]
+        keeper.updating = lambda: installing[0]
+        actions.dispatch(Event("power", "off"))
+        keeper.tick(clock())
+        assert last(driver) == policy.STANDBY
+        installing[0] = True
+        clock.t += 5.1
+        keeper.tick(clock())
+        assert last(driver) == policy.UPDATING
+        # The updater restarts haslerd mid-trial: the lamp holds, it doesn't go dark.
+        keeper.close()
+        assert driver.closed is False
+        installing[0] = False
+        clock.t += 5.1
+        keeper.tick(clock())
+        assert last(driver) == policy.STANDBY
+
+    def test_an_unreadable_update_phase_is_no_update(self, box):
+        clock, _, _, driver, _, keeper, _ = box
+        keeper.updating = lambda: 1 / 0
+        keeper.tick(clock())
+        keeper.close()
+        assert last(driver) == policy.READY and driver.closed is True
+
+    def test_pu_key_replies_a_signature_of_where_it_went(self, box):
+        clock, player, actions, driver, _, keeper, _ = box
+        player.select_source = lambda source: player.calls.append(("select_source", source))
+        actions.dispatch(Event("pu", "tap"))         # radio -> bluetooth: no phone there yet
+        assert driver.replies == [signature("blue", 0.3)]   # the signature, not a dip
+        player.source = "airplay"                    # a phone is casting already
+        actions.dispatch(Event("pu", "tap"))         # -> airplay
+        assert driver.replies[-1] == signature("blue")
+        actions.dispatch(Event("k1", "tap"))         # a radio preset, remembered
+        player.stop()
+        player.source = "radio"
+        actions.source_cycle, actions._cycle_at = ("radio", "bluetooth"), "bluetooth"
+        actions.dispatch(Event("pu", "tap"))         # -> radio: resumes it
+        assert driver.replies[-1] == signature("amber")
+
+    def test_a_phone_pairing_swells_once_then_casting_blue(self, box):
+        clock, player, actions, driver, _, keeper, _ = box
+        actions.dispatch(Event("pu", "hold"))
+        player.source = "bluetooth"
+        clock.t += 2.1
+        keeper.tick(clock())
+        actions.end_pairing(paired=True)
+        assert driver.replies == ["swell"] and last(driver) == policy.CASTING
+        actions.end_pairing(paired=True)             # already closed: nothing more
+        assert driver.replies == ["swell"]
+
+    def test_the_window_ending_otherwise_does_not_swell(self, box):
+        _, _, actions, driver, _, _, _ = box
+        actions.dispatch(Event("pu", "hold"))
+        actions.end_pairing()
+        assert driver.replies == []
+
+    def test_volume_keys_nudge_once_at_the_ends(self, box):
+        clock, player, actions, driver, _, _, _ = box
+        player.volume = 96.0
+        for _ in range(5):                           # held: 98, 100, 100, 100, 100
+            actions.dispatch(Event("k6", "hold"))
+            clock.t += 0.15
+        assert driver.replies == ["nudge"] and player.volume == 100.0
+        clock.t += 1.0                               # let go, press again
+        actions.dispatch(Event("k6", "hold"))
+        assert driver.replies == ["nudge", "nudge"]
+        actions.dispatch(Event("k5", "hold"))        # down, in range: silent
+        assert driver.replies == ["nudge", "nudge"]
+        player.volume = 1.0
+        actions.dispatch(Event("k5", "hold"))
+        actions.dispatch(Event("k5", "hold"))
+        assert driver.replies == ["nudge", "nudge", "nudge"] and player.volume == 0.0
 
     def test_any_other_exit_goes_dark_at_once(self, box):
         _, _, _, driver, _, keeper, _ = box

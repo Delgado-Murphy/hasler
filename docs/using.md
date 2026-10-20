@@ -49,8 +49,18 @@ remembers the last key you pressed, even after you unplug it.
 **Volume** (one knob) works for everything the radio plays: stations,
 playlists, and music from your phone.
 
-**Tone** (the other knob) changes the treble. It also has a click at the far
-left end, like the on/off switch of the old radio:
+**Tone** (the other knob) shapes the sound. Out of the box it is a *tilt*:
+left is warmer (more bass, less treble), right is brighter, the middle is
+flat. You can give it another effect on the key page (**Settings → Knobs**):
+treble, bass, loudness (fuller sound when quiet), presence (voices forward),
+*1960s radio* (the old radio's voice, blended in as you turn) or stereo width.
+**Listen** tries an effect for 30 seconds before you save it. Whatever it does,
+the radio turns its own level down to pay for any lift, so the knob never
+makes the old speaker work harder - a strong setting can sound a little
+quieter; turn the volume up.
+
+The tone knob also has a click at the far left end, like the on/off switch of
+the old radio (it keeps it, whatever effect the knob plays):
 
 | You do this | What happens |
 |---|---|
@@ -74,12 +84,13 @@ is doing, like the lamp of an old valve radio.
 | **Amber, bright** | Playing music from a key. Playlists are a slightly paler amber. |
 | **Amber, dim** | On and ready, but quiet. Press a key. |
 | **Amber, breathing slowly** | Starting up or loading music, or joining another room's music. Wait a moment. |
-| A short **dip** in brightness | The radio heard your key press. |
+| A short **dip** in brightness | The radio heard your key press. On a volume key, a dip means it is as loud (or as quiet) as it goes. |
+| A short **flash of colour**, then back | The **PU** key changed the source: amber for the radio and your playlists, blue for a phone (dim blue while it waits for one). **Magenta** means another Hasler: this radio joined or left a group. |
 | **Blue** | A phone is playing through the radio (Bluetooth, AirPlay or Spotify). Brighter when playing, dimmer when paused. |
-| **Blue, breathing** | Bluetooth pairing is open. Connect your phone now. |
+| **Blue, breathing** | Bluetooth pairing is open. Connect your phone now. One brief swell when a phone has connected. |
 | **Warm white, breathing** | The radio needs Wi-Fi details. See [Wi-Fi](#wi-fi). |
-| **Very dim orange-red** (ember) | Asleep (standby), or installing an update. |
-| **Ember, breathing** | Shutting down. Wait. |
+| **Very dim orange-red** (ember) | Asleep (standby). |
+| **Ember, breathing** | Busy: shutting down, or installing an update. Wait, and do not unplug it. |
 | **Dark** | Off. Safe to unplug. |
 | **Three red pulses** | Something you asked for did not work (for example, a station is down). |
 | **Red, breathing softly** | The radio has had no internet for more than a minute. |
@@ -270,7 +281,7 @@ Tap the gear icon.
 | **Sources & casting** | What the **PU** key steps through, and in what order. Under *Play from a phone*: switch AirPlay, Bluetooth and UPnP on or off, see the name each one shows, open Bluetooth for **A new phone**, and allow Spotify for guests. **Back to the radio when a phone stops** brings your music back when a phone is done. |
 | **Multiroom** | **Play in several rooms** lets this radio play together with other Haslers (off by default). *Keys on this radio while it follows another*: **Control the whole group** (default), or **Leave and play alone**. See [Music in several rooms](#music-in-several-rooms). |
 | **Pilot lamp** | When the lamp dims for the night: *by the sun*, *fixed hours* or *never*. For "by the sun", choose the city where the radio stands. |
-| **Knobs** | Shows each knob live. **Calibrate** starts a short guide: you turn the knob to a few positions and the radio learns them. **Reset to factory** undoes it. |
+| **Knobs** | Shows each knob live. **Calibrate** starts a short guide: you turn the knob to a few positions and the radio learns them. **Reset to factory** undoes it. Each knob except the volume can also be given an **effect** (see [The two knobs](#the-two-knobs)). |
 | **About this radio** | The radio's **room name** (for example *Kitchen*): shown in the multiroom list, in Home Assistant and at the top of this page. Its address (*hasler.local*) stays the same; the page shows it under the name. A second Hasler on the same Wi-Fi gets *hasler-2.local* by itself. **Use the room name for casting** makes phones see *Hasler Kitchen* (off: just *Hasler*). Also the software version and updates; see [Updates](#updates). |
 
 ### "Press any key on the radio"

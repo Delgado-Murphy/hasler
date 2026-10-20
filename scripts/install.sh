@@ -170,6 +170,7 @@ rm -f "$TMP"
 # --- helpers -----------------------------------------------------------------
 say "helpers: mono switch, tone knob, Wi-Fi join"
 put_file "$REPO/scripts/hasler-audio-mono" /usr/local/sbin/hasler-audio-mono 0755 || true
+put_file "$REPO/scripts/hasler-dsp" /usr/local/bin/hasler-dsp 0755 || true
 put_file "$REPO/scripts/hasler-tone" /usr/local/bin/hasler-tone 0755 || true
 put_file "$REPO/scripts/hasler-wifi-join" /usr/local/sbin/hasler-wifi-join 0755 || true
 

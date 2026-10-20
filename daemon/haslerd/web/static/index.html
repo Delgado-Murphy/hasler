@@ -385,6 +385,19 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .kn-tag.box{border-color:rgba(255,178,56,.45);color:var(--amber)}
 .kn-num{margin-left:auto;color:var(--brass);font:600 20px/24px var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .kn-body{display:flex;flex-direction:column;gap:12px;padding:0 16px 16px}
+.lc-wrap{border-top:1px solid var(--line)}
+.lc-wrap:first-child{border-top:0}
+.lc-body{gap:14px}
+.lc-list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--well);overflow:hidden}
+.lc-col + .lc-col{border-top:1px solid var(--line)}
+.lc-head{min-height:56px}
+.lc-sw{flex:none;width:28px;height:28px;border-radius:50%;background:var(--line)}
+.lc-ch{display:flex;flex-direction:column}
+.lc-chrow{display:flex;justify-content:space-between;align-items:baseline;gap:12px;color:var(--cream);font:600 14px/18px var(--sans)}
+.lc-fine{color:var(--muted);font-weight:500;font-size:12px}
+.lc-r input[type=range]{--amber:#E2553F}
+.lc-g input[type=range]{--amber:#5DBB63}
+.lc-b input[type=range]{--amber:#5A8CE8}
 .kn-bar{position:relative;height:8px;border-radius:4px;background:var(--well);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
 .kn-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:4px;background:linear-gradient(90deg,#8C6A3A,var(--amber));transition:width .2s}
 .kn-raw{margin:0;color:var(--muted);font:11px/15px var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
@@ -393,6 +406,33 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .kn-pos{display:flex;flex-wrap:wrap;gap:6px}
 .kn-pos span{min-height:30px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font:700 13px/16px var(--sans)}
 .kn-pos span[aria-current="true"]{background:var(--cream);border-color:var(--cream);color:#1E140C}
+/* knobs: what each knob does (/api/knobs/functions) */
+.kn-sub{padding:6px 4px 0}
+.fx-now{color:var(--muted);font:13px/18px var(--sans)}
+.fx-q{margin:0;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.fx-opts{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0;padding:0;border:0;min-width:0}
+.fx-opts legend{grid-column:1 / -1}
+.fx-desc{margin:-4px 0 0;color:var(--text2);font:13px/18px var(--sans)}
+@media (max-width:599px){ .fx-od{display:none} .fx-opt{align-items:center} }
+@media (min-width:600px){ .fx-desc{display:none} }
+.fx-opt{position:relative;display:flex;align-items:flex-start;gap:10px;min-height:48px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--well);cursor:pointer}
+.fx-opt:hover{border-color:var(--line2)}
+.fx-opt input{appearance:none;-webkit-appearance:none;flex:none;width:18px;height:18px;margin:1px 0 0;border:1.5px solid var(--line2);border-radius:50%;background:none;cursor:pointer}
+.fx-opt input:checked{border-color:var(--amber);background:radial-gradient(circle,var(--amber) 0 4px,transparent 4.5px)}
+.fx-opt input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.fx-opt:has(input:checked){border-color:rgba(255,178,56,.55);background:rgba(255,178,56,.06)}
+.fx-ot{display:flex;flex-direction:column;gap:2px;min-width:0}
+.fx-ol{color:var(--cream);font:600 14px/18px var(--sans)}
+.fx-ol small{margin-left:6px;color:var(--muted);font:9px/12px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.fx-od{color:var(--muted);font:12.5px/17px var(--sans)}
+.fx-par{display:flex;flex-direction:column;gap:0}
+.fx-ph{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.fx-ph label{color:var(--cream);font:600 14px/18px var(--sans)}
+.fx-pos{display:flex;flex-direction:column;gap:6px}
+.fx-ends{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font:11px/14px var(--sans)}
+.fx-try{margin:0;padding:10px 12px;border-left:2px solid var(--amber);background:rgba(255,178,56,.06);color:var(--cream);font:13.5px/18px var(--sans)}
+.fx-try b{color:var(--amber);font-variant-numeric:tabular-nums}
+.fx-pars details.how > div{display:flex;flex-direction:column;gap:4px}
 .wz{display:flex;flex-direction:column;gap:14px}
 .wz-say{margin:0;color:var(--title);font:600 26px/31px var(--serif)}
 .wz-note{margin:0;color:var(--text2);font-size:14px;line-height:20px}
@@ -591,9 +631,9 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 
     <div class="tone" id="tone" hidden aria-live="off">
       <span>Tone</span>
-      <span aria-hidden="true">Dark</span>
+      <span aria-hidden="true" id="toneLo">Dark</span>
       <div class="tone-bar" role="meter" id="toneBar" aria-label="Tone" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="tone-mid"></span><span class="tone-dot" id="toneDot" style="left:50%"></span></div>
-      <span aria-hidden="true">Bright</span>
+      <span aria-hidden="true" id="toneHi">Bright</span>
       <span class="tone-db" id="toneDb">—</span>
     </div>
 
@@ -1197,10 +1237,14 @@ function paintTone(){
   $('toneDot').style.left = Math.max(0, Math.min(100, t.value)) + '%';
   $('toneBar').setAttribute('aria-valuenow', String(t.value));
   const db = t.treble_db, off = status.knob_on === false;
-  const txt = off ? 'Knob off' : (db === 0 ? 'Flat' : (db > 0 ? '+' : '−') + Math.abs(db).toFixed(1) + ' dB');
+  // Newer radios say what the knob does ("Warmer · 40%"); older ones only a treble dB.
+  const txt = off ? 'Knob off' : (t.text ? t.text
+    : (db === 0 ? 'Flat' : (db > 0 ? '+' : '−') + Math.abs(db).toFixed(1) + ' dB'));
   $('toneDb').textContent = txt;
+  const ends = Array.isArray(t.ends) && t.ends.length === 2 ? t.ends : ['Dark', 'Bright'];
+  $('toneLo').textContent = ends[0]; $('toneHi').textContent = ends[1];
   $('toneDb').classList.toggle('tone-off', off);
-  $('toneBar').setAttribute('aria-valuetext', off ? 'Tone knob switched off' : 'Treble ' + txt);
+  $('toneBar').setAttribute('aria-valuetext', off ? 'Tone knob switched off' : (t.label || 'Treble') + ' ' + txt);
 }
 
 /* ================= router ================= */
@@ -1274,6 +1318,7 @@ function screenTop(title, backTo){
 }
 // Re-render the panel without losing the caret in the field being typed in.
 function rerender(){
+  if (lcalHold()) return;      // a Lamp colours slider is being dragged
   const a = document.activeElement, id = a && a.id && $('panel').contains(a) ? a.id : null;
   const range = id && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null;
   const y = window.scrollY;
@@ -2492,7 +2537,7 @@ function lampSettings(){
       h('button', {type:'button', class:'btn small primary', id:'lampSave', disabled: lampUi.busy || !lampUi.dirty, onclick: saveLocation}, 'Save place')));
   return h('section', {class:'grp-sec', 'aria-label':'Pilot lamp'},
     h('span', {class:'mono grp-lbl'}, 'Pilot lamp'),
-    h('div', {class:'list'}, box, place));
+    h('div', {class:'list'}, box, place, lampColours()));
 }
 function useHere(){
   lampUi.busy = true; lampUi.err = ''; rerender();
@@ -2526,6 +2571,208 @@ async function saveLamp(body){
   } catch (_) { lampUi.busy = false; toast('Couldn’t reach the radio.', true); }
   if (view === 'settings') rerender();
 }
+/* ---- pilot lamp: Lamp colours (calibrate the palette by eye; GET/PUT /api/lamp/palette, POST /api/lamp/preview) ---- */
+const LCAL_NAMES = {amber:'Amber', amber_pale:'Pale amber', ember:'Ember', blue:'Blue', magenta:'Magenta', white:'Warm white', red:'Red'};
+const LCAL_LEVELS = {full:'Full', night:'Night', ember:'Ember'};
+const LCAL_PAIRS = [['amber','ember'], ['blue','magenta'], ['amber','red']];
+const LCAL_CH = [['Red', 'r', false], ['Green', 'g', true], ['Blue', 'b', true]];   // label, id, square-root scale
+const lcal = {open:false, data:null, err:'', loading:false, busy:false, draft:{}, level:{}, sel:null, pair:0,
+  run:null, live:'', showing:false, drag:false, pending:false, sent:0, timer:null, queued:null};
+const lcalName = n => LCAL_NAMES[n] || n.replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+const lcalNames = () => lcal.data ? Object.keys(lcal.data.defaults) : [];
+const lcalSame = (a, b) => !!a && !!b && a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
+const lcalDirty = () => lcalNames().some(n => !lcalSame(lcal.draft[n], lcal.data.effective[n]));
+const lcalLevelOf = n => lcal.level[n] || (n === 'ember' ? 'ember' : 'full');
+// The swatch: the LED's linear mix seen through gamma, never fully dark so dim levels still read.
+function lcalCss(rgb, lv){
+  const k = 0.4 + 0.6 * ((lcal.data && lcal.data.levels[lv]) ?? 1);
+  return 'rgb(' + rgb.map(c => Math.round(255 * k * Math.pow(Math.min(1, Math.max(0, c)), 1 / 2.2))).join(',') + ')';
+}
+function lcalSw(n){ const c = lcalCss(lcal.draft[n], lcalLevelOf(n)); return 'background:' + c + ';box-shadow:inset 0 0 0 1px rgba(237,227,204,.18),0 0 12px ' + c; }
+async function lcalLoad(){
+  lcal.loading = true; lcal.err = '';
+  try {
+    const r = await api('GET', '/api/lamp/palette');
+    if (r.ok && r.json && r.json.defaults){ lcal.data = r.json; lcalAdopt(); }
+    else lcal.err = r.status === 404 ? 'This radio’s software is too old for this — update it first.' : 'Couldn’t read the lamp colours.';
+  } catch (_) { lcal.err = 'Couldn’t reach the radio.'; }
+  lcal.loading = false;
+  if (view === 'settings') rerender();
+}
+function lcalAdopt(){
+  lcal.draft = {};
+  for (const n of lcalNames()) lcal.draft[n] = lcal.data.effective[n].slice();
+  if (!lcal.sel || !lcal.draft[lcal.sel]) lcal.sel = null;
+}
+// At most ~10 previews a second; the last one always goes.
+function lcalPreview(body){
+  lcal.queued = body;
+  if (lcal.timer) return;
+  lcal.timer = setTimeout(lcalFlush, Math.max(0, lcal.sent + 100 - Date.now()));
+}
+function lcalFlush(){
+  lcal.timer = null;
+  const body = lcal.queued; lcal.queued = null;
+  if (!body) return;
+  lcal.sent = Date.now(); lcal.showing = body.rgb != null;
+  api('POST', '/api/lamp/preview', body).catch(() => {});
+}
+function lcalShow(n){ lcalPreview({rgb: lcal.draft[n], level: lcalLevelOf(n)}); }
+// Back to what the lamp was doing: Done, collapsing, leaving Settings, hiding the page.
+function lcalEnd(){
+  lcalStop(false);
+  clearTimeout(lcal.timer); lcal.timer = null; lcal.queued = null;
+  if (!lcal.showing) return;
+  lcal.showing = false;
+  try {
+    fetch('/api/lamp/preview', {method:'POST', keepalive:true, cache:'no-store',
+      headers:{'Content-Type':'application/json'}, body:'{"rgb":null}'}).catch(() => {});
+  } catch (_) {}
+}
+function lcalSay(text){ lcal.live = text; const el = $('lcalLive'); if (el) el.textContent = text; }
+function lcalStop(render = true){
+  if (!lcal.run) return;
+  clearTimeout(lcal.run.timer); lcal.run = null; lcalSay('');
+  if (render && view === 'settings') rerender();
+}
+function lcalCycle(){
+  if (lcal.run){ lcalStop(); lcalEnd(); return; }
+  const names = lcalNames(); let i = 0;
+  lcal.run = {kind:'cycle', timer:null};
+  const step = () => {
+    if (!lcal.run || lcal.run.kind !== 'cycle') return;
+    if (i >= names.length){ lcalStop(); lcalEnd(); lcalSay('Cycle done.'); return; }
+    const n = names[i++];
+    lcalShow(n); lcalSay('On the lamp: ' + lcalName(n) + ' (' + i + ' of ' + names.length + ')');
+    lcal.run.timer = setTimeout(step, 3000);
+  };
+  rerender(); step();
+}
+function lcalCompare(){
+  if (lcal.run){ lcalStop(); lcalEnd(); return; }
+  const pair = lcalPairs()[lcal.pair] || lcalPairs()[0]; if (!pair) return;
+  let i = 0;
+  lcal.run = {kind:'compare', timer:null};
+  const step = () => {
+    if (!lcal.run || lcal.run.kind !== 'compare') return;
+    if (i >= 80){ lcalStop(); lcalEnd(); lcalSay('Compare stopped after two minutes.'); return; }
+    const n = pair[i++ % 2];
+    lcalShow(n); lcalSay('On the lamp: ' + lcalName(n) + ' — then ' + lcalName(pair[i % 2]));
+    lcal.run.timer = setTimeout(step, 1500);
+  };
+  rerender(); step();
+}
+const lcalPairs = () => LCAL_PAIRS.filter(p => p.every(n => lcal.draft[n]));
+async function lcalSave(){
+  lcal.busy = true; rerender();
+  try {
+    const r = await api('PUT', '/api/lamp/palette', {palette: lcal.draft});
+    if (r.ok && r.json && r.json.defaults){
+      lcal.data = r.json; lcalAdopt();
+      toast(Object.keys(r.json.saved).length ? 'Lamp colours saved' : 'Lamp back to its shipped colours');
+    } else toast((r.json && r.json.error) || 'Couldn’t save the colours.', true);
+  } catch (_) { toast('Couldn’t reach the radio.', true); }
+  lcal.busy = false;
+  if (view === 'settings') rerender();
+}
+function lcalToggle(){
+  lcal.open = !lcal.open;
+  if (!lcal.open) lcalEnd();
+  else if (!lcal.data && !lcal.loading) lcalLoad();
+  rerender();
+}
+function lcalSlider(n, [label, ch, sqrt], idx){
+  const v = lcal.draft[n][idx], id = 'lc-' + n + '-' + ch;
+  const pos = Math.round((sqrt ? Math.sqrt(v) : v) * 1000);
+  const set = e => {
+    const p = +e.target.value / 1000, val = Math.round((sqrt ? p * p : p) * 10000) / 10000;
+    lcal.draft[n][idx] = val;
+    e.target.style.setProperty('--pct', (p * 100) + '%');
+    e.target.setAttribute('aria-valuetext', val.toFixed(3));
+    const out = $(id + '-v'); if (out) out.textContent = val.toFixed(3);
+    const sw = $('lcsw-' + n); if (sw) sw.style.cssText = lcalSw(n);
+    const tag = $('lctag-' + n); if (tag) tag.textContent = lcalTag(n);
+    const sv = $('lcalSave'); if (sv) sv.disabled = lcal.busy || !lcalDirty();
+    const rs = $('lcrs-' + n); if (rs) rs.disabled = lcalSame(lcal.draft[n], lcal.data.defaults[n]);
+    if (lcal.run) lcalStop();
+    lcalShow(n);
+  };
+  return h('div', {class:'lc-ch lc-' + ch},
+    h('div', {class:'lc-chrow'}, h('label', {for:id}, label, sqrt ? h('span', {class:'lc-fine'}, ' · fine near 0') : null),
+      h('span', {class:'li-val', id: id + '-v', 'aria-hidden':'true'}, v.toFixed(3))),
+    h('input', {type:'range', id, min:'0', max:'1000', step:'1', value: String(pos), 'aria-valuetext': v.toFixed(3),
+      style:'--pct:' + (pos / 10) + '%', oninput: set,
+      onpointerdown: () => { lcal.drag = true; }}));
+}
+function lcalTag(n){
+  if (!lcalSame(lcal.draft[n], lcal.data.effective[n])) return 'Not saved';
+  return lcal.data.saved[n] ? 'Yours' : 'As shipped';
+}
+function lcalColour(n){
+  const open = lcal.sel === n, lv = lcalLevelOf(n), tag = lcalTag(n);
+  const head = h('button', {type:'button', class:'kn-head lc-head', 'aria-expanded': String(open), 'aria-controls':'lcb-' + n,
+      onclick: () => { lcal.sel = open ? null : n; if (!open) lcalShow(n); rerender(); }},
+    h('span', {class:'lc-sw', id:'lcsw-' + n, style: lcalSw(n), 'aria-hidden':'true'}),
+    h('span', {class:'kn-txt'}, h('span', {class:'kn-name'}, lcalName(n)),
+      h('span', {class:'kn-tag' + (tag === 'As shipped' ? '' : ' box'), id:'lctag-' + n}, tag)),
+    h('span', {class:'chev', style:'margin-left:auto'}, IC.chev()));
+  if (!open) return h('div', {class:'lc-col'}, head);
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label': lcalName(n) + ' brightness'});
+  for (const [k, val] of Object.entries(lcal.data.levels)){
+    seg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(lv === k), tabindex: lv === k ? '0' : '-1',
+      onclick: () => { lcal.level[n] = k; lcalShow(n); rerender(); }},
+      LCAL_LEVELS[k] || k, h('small', null, Math.round(val * 100) + '%')));
+  }
+  const shipped = lcalSame(lcal.draft[n], lcal.data.defaults[n]);
+  return h('div', {class:'lc-col open'}, head,
+    h('div', {class:'kn-body', id:'lcb-' + n, role:'group', 'aria-label': lcalName(n)},
+      LCAL_CH.map((c, i) => lcalSlider(n, c, i)),
+      seg,
+      h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn small', id:'lcrs-' + n, disabled: shipped, 'aria-label':'Reset ' + lcalName(n) + ' to as shipped',
+          onclick: () => { lcal.draft[n] = lcal.data.defaults[n].slice(); lcalShow(n); rerender(); }}, 'Reset'))));
+}
+function lampColours(){
+  const head = h('button', {type:'button', class:'kn-head', 'aria-expanded': String(lcal.open), 'aria-controls':'lcalBody', onclick: lcalToggle},
+    h('span', {class:'kn-txt'}, h('span', {class:'li-title'}, 'Lamp colours'),
+      h('span', {class:'li-sub'}, 'Fine-tune each colour by eye')),
+    h('span', {class:'chev', style:'margin-left:auto'}, IC.chev()));
+  if (!lcal.open) return h('div', {class:'lc-wrap'}, head);
+  let body;
+  if (!lcal.data) body = h('p', {class: lcal.err ? 'err' : 'hint', role: lcal.err ? 'alert' : null}, lcal.err || 'Reading the colours…');
+  else {
+    const pairs = lcalPairs(), running = lcal.run && lcal.run.kind;
+    const pseg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Colours to compare'});
+    pairs.forEach((p, i) => pseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(lcal.pair === i), tabindex: lcal.pair === i ? '0' : '-1',
+      disabled: running === 'compare', onclick: () => { lcal.pair = i; rerender(); }}, lcalName(p[0]), h('small', null, 'and ' + lcalName(p[1]).toLowerCase()))));
+    body = [
+      h('p', {class:'hint'}, 'Best at night with the room light off, looking through the window. Blue should look blue, not green; ember deep orange-red, steady.'),
+      !lcal.data.lamp ? h('p', {class:'note-warn'}, 'No lamp on this radio — the swatches are only a guide.') : null,
+      h('div', {class:'lc-list'}, lcalNames().map(lcalColour)),
+      h('p', {class:'hint', id:'lcalLive', 'aria-live':'polite'}, lcal.live),
+      h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn small', 'aria-pressed': String(running === 'cycle'), onclick: lcalCycle}, running === 'cycle' ? 'Stop' : 'Cycle'),
+        h('button', {type:'button', class:'btn small', 'aria-pressed': String(running === 'compare'), disabled: !pairs.length, onclick: lcalCompare}, running === 'compare' ? 'Stop' : 'Compare')),
+      pairs.length ? pseg : null,
+      h('p', {class:'hint'}, 'The lamp goes back to normal 30 s after your last change.'),
+      h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn small primary', id:'lcalSave', disabled: lcal.busy || !lcalDirty(), onclick: lcalSave}, 'Save colours'),
+        h('button', {type:'button', class:'btn small', disabled: lcal.busy || lcalNames().every(n => lcalSame(lcal.draft[n], lcal.data.defaults[n])),
+          onclick: () => { for (const n of lcalNames()) lcal.draft[n] = lcal.data.defaults[n].slice(); if (lcal.sel) lcalShow(lcal.sel);
+            lcalSay('All back to the shipped colours — Save to keep them.'); rerender(); }}, 'Reset all'),
+        h('button', {type:'button', class:'btn small', onclick: () => { lcal.open = false; lcal.sel = null; lcalEnd(); rerender(); }}, 'Done')),
+    ];
+  }
+  return h('div', {class:'lc-wrap'}, head, h('div', {class:'kn-body lc-body', id:'lcalBody'}, body));
+}
+// A drag in progress must not be torn down by a background rerender: hold it until the finger lifts.
+const lcalHold = () => { if (!lcal.drag) return false; lcal.pending = true; return true; };
+const lcalLift = () => { if (!lcal.drag) return; lcal.drag = false; if (lcal.pending){ lcal.pending = false; if (view === 'settings') rerender(); } };
+window.addEventListener('pointerup', lcalLift);
+window.addEventListener('pointercancel', lcalLift);
+window.addEventListener('hashchange', () => { if (view !== 'settings') lcalEnd(); });
+window.addEventListener('pagehide', lcalEnd);
+document.addEventListener('visibilitychange', () => { if (document.hidden) lcalEnd(); });
 async function saveLimit(v){
   try {
     const r = await api('PUT', '/api/settings', {volume_limit:v});
@@ -3474,6 +3721,7 @@ function knobText(k, v){
 function liveOf(k){ const s = knobUi.live[k.id]; return s && !s.err ? s : null; }
 
 async function loadKnobs(){
+  loadFx();   // what each knob does: its own API, hidden on a radio without it
   try {
     const r = await api('GET', '/api/knobs');
     if (r.status === 404) knobs = {missing:true};
@@ -3492,6 +3740,7 @@ function adoptKnob(k){
 function knobPollIds(){
   if (view !== 'settings' || document.hidden || !knobs || !knobs.knobs) return [];
   const want = new Set(knobUi.open);
+  for (const id of fxUi.open) want.add(id);   // the effect card's "knob now" bar
   if (wiz && $('dlg').open) want.add(wiz.k.id);
   return knobs.knobs.filter(k => want.has(k.id)).map(k => k.id);
 }
@@ -3510,7 +3759,7 @@ async function knobTick(){
       const r = await api('GET', knobUrl(id, '/sample?n=5'));
       knobUi.live[id] = r.ok && r.json && isFinite(r.json.raw) ? Object.assign({at: Date.now()}, r.json) : {err: r.status};
     } catch (_) { knobUi.live[id] = {err: 0}; }
-    paintKnobLive(id);
+    paintKnobLive(id); paintFxLive(id);
     if (wiz && wiz.k.id === id) paintWiz();
   }));
   knobBusy = false;
@@ -3576,15 +3825,17 @@ function dialSvg(k, steps, i){
 
 /* settings section: one card per knob */
 function knobSettings(){
-  if (!knobs) return null;
+  const fxs = fxSection();
+  if (!knobs && !fxs) return null;
   const wrap = (...kids) => h('section', {class:'grp-sec', 'aria-label':'Knobs'},
-    h('span', {class:'mono grp-lbl'}, 'Knobs'), ...kids);
+    h('span', {class:'mono grp-lbl'}, 'Knobs'), fxs, fxs ? h('span', {class:'mono grp-lbl kn-sub'}, 'Calibration') : null, ...kids);
+  if (!knobs) return wrap();
   if (knobs.missing) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Knob calibration'), h('span', {class:'li-sub'}, KNOB_OLD)))));
   if (knobs.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Knobs'), h('span', {class:'li-sub'}, knobs.err)),
     h('button', {type:'button', class:'li-act', onclick: () => { knobs = null; loadKnobs(); }}, 'Retry'))));
-  if (!knobs.knobs.length) return null;
+  if (!knobs.knobs.length) return fxs ? h('section', {class:'grp-sec', 'aria-label':'Knobs'}, h('span', {class:'mono grp-lbl'}, 'Knobs'), fxs) : null;
   return wrap(h('div', {class:'list'}, knobs.knobs.map(knobCard)),
     h('p', {class:'hint', style:'padding:0 4px'}, 'Each knob’s raw reading is mapped to 0–100 by a curve. Calibrate one if the radio and its knob disagree.'));
 }
@@ -3646,6 +3897,221 @@ async function resetKnob(k){
     else toast(r.status === 404 ? KNOB_OLD : (r.json && r.json.error) || 'Couldn’t reset (error ' + r.status + ').', true);
   } catch (_) { toast('Couldn’t reach the radio.', true); }
   if (view === 'settings') rerender();
+}
+
+/* ---------- knobs: what each knob does (/api/knobs/functions) ---------- */
+// fx: null = loading, {missing} = an older radio (no such API: the cards stay hidden), {err}, or the GET body.
+let fx = null;
+const fxUi = {open: new Set(), draft: {}, err: {}, busy: {}, trying: {}, tick: null, resend: {}};
+const FX_TRY_S = 30;
+// What the two ends of the knob mean, per effect (the radio may send its own as `ends`).
+const FX_ENDS = {treble:['Less treble', 'More treble'], bass:['Less bass', 'More bass'], tilt:['Warmer', 'Brighter'],
+  loudness:['Off', 'Full'], presence:['Softer voices', 'Clearer voices'], vintage:['Today', '1960s radio'], width:['Mono', 'Wide stereo']};
+const fxEffect = id => (fx && fx.effects || []).find(e => e.id === id) || null;
+const fxKnob = id => (fx && fx.knobs || []).find(k => k.id === id) || null;
+const fxName = k => k.label || k.id;
+function fxParamsFor(e, given){
+  const out = {};
+  for (const p of (e && e.params) || []){
+    const v = given && given[p.id] != null && isFinite(given[p.id]) ? +given[p.id] : +p.default;
+    out[p.id] = Math.max(+p.min, Math.min(+p.max, isFinite(v) ? v : +p.min));
+  }
+  return out;
+}
+const fxSaved = k => ({effect: k.effect, params: fxParamsFor(fxEffect(k.effect), k.params)});
+const fxDefault = k => ({effect: k.default_effect, params: fxParamsFor(fxEffect(k.default_effect), k.default_params)});
+const fxSame = (a, b) => a.effect === b.effect && JSON.stringify(a.params) === JSON.stringify(fxParamsFor(fxEffect(a.effect), b.params));
+const fxDraft = k => fxUi.draft[k.id] || fxSaved(k);
+function fxFmt(e, p, v){
+  const u = p.unit || '', n = +v;
+  const num = x => String(+(+x).toFixed(2));
+  if (/^hz$/i.test(u)) return n >= 1000 ? num(n / 1000) + ' kHz' : num(n) + ' Hz';
+  const pm = p.plusminus || (/^db$/i.test(u) && /strength|range|depth|amount/i.test(p.id) && e && /^(treble|bass|tilt|presence)$/.test(e.id));
+  return (pm && n > 0 ? '±' : '') + num(n) + (u === '%' ? '%' : u ? ' ' + u : '');
+}
+function fxSummary(k){
+  const e = fxEffect(k.effect);
+  if (!e) return k.effect || '—';
+  const ps = (e.params || []).slice(0, 1).map(p => fxFmt(e, p, fxParamsFor(e, k.params)[p.id]));
+  return e.label + (ps.length ? ' · ' + ps[0] : '');
+}
+
+async function loadFx(){
+  try {
+    const r = await api('GET', '/api/knobs/functions');
+    if (r.status === 404) fx = {missing:true};
+    else if (r.ok && r.json && Array.isArray(r.json.knobs) && Array.isArray(r.json.effects)) fx = r.json;
+    else fx = {err: (r.json && r.json.error) || 'Couldn’t read what the knobs do (error ' + r.status + ').'};
+  } catch (_) { fx = {err:'Couldn’t reach the radio.'}; }
+  if (view === 'settings'){ rerender(); knobPoll(true); }
+}
+function adoptFx(doc){
+  if (doc && Array.isArray(doc.knobs) && Array.isArray(doc.effects)) fx = doc;
+}
+
+function fxSection(){
+  if (!fx || fx.missing) return null;
+  if (fx.err) return h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+      h('span', {class:'li-title'}, 'What the knobs do'), h('span', {class:'li-sub'}, fx.err)),
+    h('button', {type:'button', class:'li-act', onclick: () => { fx = null; loadFx(); }}, 'Retry')));
+  if (!fx.knobs.length) return null;
+  return h('div', {class:'list'}, fx.knobs.map(fxCard));
+}
+function fxCard(k){
+  const id = kid(k.id);
+  if (!k.assignable) return h('div', {class:'li', style:'min-height:64px'}, h('div', {class:'kn-txt'},
+    h('span', {class:'kn-name'}, fxName(k)),
+    h('span', {class:'fx-now'}, k.note || (/vol/i.test(k.id + ' ' + (k.label || '')) ? 'Always the volume — this one can’t be changed.' : 'This one can’t be changed.'))));
+  const open = fxUi.open.has(k.id), d = fxDraft(k), dirty = !fxSame(d, fxSaved(k));
+  const head = h('button', {type:'button', class:'kn-head', 'aria-expanded': String(open), 'aria-controls':'fxb-' + id,
+      onclick: () => { if (open) fxUi.open.delete(k.id); else fxUi.open.add(k.id); rerender(); knobPoll(true); }},
+    h('span', {class:'kn-txt'}, h('span', {class:'kn-name'}, fxName(k)),
+      h('span', {class:'fx-now'}, fxSummary(k)),
+      dirty ? h('span', {class:'kn-tag box'}, 'Not saved') : null),
+    h('span', {class:'chev', style:'margin-left:auto'}, IC.chev()));
+  const li = h('div', {class:'li kn'}, head);
+  if (!open) return li;
+  const e = fxEffect(d.effect), busy = fxUi.busy[k.id], tr = fxUi.trying[k.id];
+  const isDef = fxSame(fxSaved(k), fxDefault(k));
+  li.append(h('div', {class:'kn-body', id:'fxb-' + id},
+    h('fieldset', {class:'fx-opts'},
+      h('legend', {class:'fx-q', style:'padding:0;margin-bottom:6px'}, 'What this knob does'),
+      fx.effects.map(ef => h('label', {class:'fx-opt'},
+        h('input', {type:'radio', name:'fx-' + id, id:'fxo-' + id + '-' + kid(ef.id), value: ef.id, checked: ef.id === d.effect,
+          onchange: () => fxPick(k, ef.id)}),
+        h('span', {class:'fx-ot'}, h('span', {class:'fx-ol'}, ef.label || ef.id, ef.id === k.default_effect ? h('small', null, 'standard') : null),
+          ef.description ? h('span', {class:'fx-od'}, ef.description) : null)))),
+    e && e.description ? h('p', {class:'fx-desc', 'aria-hidden':'true'}, e.description) : null,
+    fxParams(k, e, d),
+    fxPosBox(k, e),
+    tr ? h('p', {class:'fx-try', id:'fxt-' + id, 'aria-live':'polite'}, fxTryText(k)) : null,
+    fxUi.err[k.id] ? h('p', {class:'err', role:'alert'}, fxUi.err[k.id]) : null,
+    h('div', {class:'acts', style:'align-items:center'},
+      h('button', {type:'button', class:'btn small', disabled: !!busy, onclick: () => fxTry(k)}, tr ? 'Try again' : 'Try it'),
+      h('button', {type:'button', class:'btn small primary', disabled: !!busy || !dirty, onclick: () => fxSave(k)}, busy === 'save' ? 'Saving…' : 'Save'),
+      !isDef || !fxSame(d, fxDefault(k)) ? h('button', {type:'button', class:'link quiet', disabled: !!busy, onclick: () => fxReset(k)}, 'Back to default') : null)));
+  return li;
+}
+function fxParams(k, e, d){
+  const ps = (e && e.params) || [];
+  if (!e || e.id === 'none') return h('p', {class:'hint'}, 'The knob does nothing while this is chosen.');
+  if (!ps.length) return null;
+  const rows = ps.map(p => fxSlider(k, e, p, d.params[p.id]));
+  if (rows.length <= 2) return h('div', {class:'fx-pars'}, rows);
+  return h('div', {class:'fx-pars'}, rows.slice(0, 2),
+    h('details', {class:'how', open: fxUi.more && fxUi.more[k.id] ? true : null,
+        ontoggle: ev => { fxUi.more = fxUi.more || {}; fxUi.more[k.id] = ev.target.open; }},
+      h('summary', null, 'More'), h('div', null, rows.slice(2))));
+}
+function fxSlider(k, e, p, v){
+  const sid = 'fxp-' + kid(k.id) + '-' + kid(p.id), lo = +p.min, hi = +p.max;
+  const pct = x => ((x - lo) / ((hi - lo) || 1) * 100) + '%';
+  return h('div', {class:'fx-par'},
+    h('div', {class:'fx-ph'}, h('label', {for: sid}, p.label || p.id),
+      h('span', {class:'li-val', id: sid + '-v', 'aria-hidden':'true'}, fxFmt(e, p, v))),
+    h('input', {type:'range', id: sid, min: String(lo), max: String(hi), step: String(p.step || 1), value: String(v),
+      'aria-valuetext': fxFmt(e, p, v), style:'--pct:' + pct(v),
+      oninput: ev => {
+        const n = +ev.target.value, d = fxUi.draft[k.id] || (fxUi.draft[k.id] = clone(fxDraft(k)));
+        d.params[p.id] = n;
+        ev.target.style.setProperty('--pct', pct(n));
+        ev.target.setAttribute('aria-valuetext', fxFmt(e, p, n));
+        $(sid + '-v').textContent = fxFmt(e, p, n);
+        fxPaintDirty(k);
+        // While trying, slider moves go straight to the speaker.
+        if (fxUi.trying[k.id]){ clearTimeout(fxUi.resend[k.id]); fxUi.resend[k.id] = setTimeout(() => fxTry(k, true), 300); }
+      }}));
+}
+// Save / tag follow the draft in place: a re-render would drop the slider mid-drag.
+function fxPaintDirty(k){
+  const b = $('fxb-' + kid(k.id)); if (!b) return;
+  const save = b.querySelector('.btn.primary'); if (save && !fxUi.busy[k.id]) save.disabled = fxSame(fxDraft(k), fxSaved(k));
+}
+function fxPosBox(k, e){
+  const id = kid(k.id), live = knobs && knobs.knobs && knobs.knobs.some(x => x.id === k.id);
+  if (!live && k.position == null) return null;
+  const ends = (e && (e.ends || FX_ENDS[e.id])) || null;
+  return h('div', {class:'fx-pos'},
+    h('div', {class:'fx-ph'}, h('span', {class:'fx-q'}, 'The knob now'), h('span', {class:'li-val', id:'fxn-' + id}, '—')),
+    h('div', {class:'kn-bar', role:'meter', id:'fxm-' + id, 'aria-label': fxName(k) + ' knob position', 'aria-valuemin':'0', 'aria-valuemax':'100'},
+      h('span', {class:'kn-fill', id:'fxf-' + id})),
+    ends && e.id !== 'none' ? h('div', {class:'fx-ends', 'aria-hidden':'true'}, h('span', null, ends[0]), h('span', null, ends[1])) : null);
+}
+// 0-100: the live sample when the calibration poll has one, else the doc's position (0..1).
+function fxPos(k){
+  const s = knobs && knobs.knobs ? knobUi.live[k.id] : null;
+  if (s && !s.err && isFinite(s.value)) return Math.max(0, Math.min(100, +s.value));
+  return k.position == null || !isFinite(k.position) ? null : Math.max(0, Math.min(100, k.position * 100));
+}
+function paintFxLive(knobId){
+  const k = fxKnob(knobId); if (!k) return;
+  const id = kid(k.id), v = fxPos(k);
+  const n = $('fxn-' + id); if (n) n.textContent = v == null ? '—' : String(Math.round(v));
+  const f = $('fxf-' + id); if (f) f.style.width = (v == null ? 0 : v) + '%';
+  const m = $('fxm-' + id); if (m && v != null) m.setAttribute('aria-valuenow', String(Math.round(v)));
+}
+function fxPick(k, effectId){
+  const saved = fxSaved(k), def = fxDefault(k);
+  const params = effectId === saved.effect ? saved.params : effectId === def.effect ? def.params : fxParamsFor(fxEffect(effectId), null);
+  fxUi.draft[k.id] = {effect: effectId, params: clone(params)};
+  if (fxSame(fxUi.draft[k.id], saved)) delete fxUi.draft[k.id];
+  fxUi.err[k.id] = '';
+  rerender();
+  if (fxUi.trying[k.id]) fxTry(k, true);
+}
+
+/* try: the radio plays the draft for 30 s without saving */
+function fxTryText(k){
+  const left = Math.max(0, Math.ceil(((fxUi.trying[k.id] || 0) - Date.now()) / 1000));
+  return h('span', null, 'Trying it for ', h('b', null, left + ' s'), ' — turn the ' + fxName(k) + ' knob to hear it. Nothing is saved yet.');
+}
+function fxTickAll(){
+  let any = false;
+  for (const [knobId, end] of Object.entries(fxUi.trying)){
+    const k = fxKnob(knobId);
+    if (!k || Date.now() >= end){ delete fxUi.trying[knobId]; if (k) toast(fxName(k) + ' is back to how it was'); if (view === 'settings') rerender(); continue; }
+    any = true;
+    const el = $('fxt-' + kid(k.id)); if (el){ el.textContent = ''; el.append(fxTryText(k)); }
+  }
+  if (!any){ clearInterval(fxUi.tick); fxUi.tick = null; }
+}
+async function fxTry(k, quiet){
+  const d = fxDraft(k);
+  fxUi.err[k.id] = '';
+  try {
+    const r = await api('POST', '/api/knobs/try', {knob: k.id, effect: d.effect, params: d.params});
+    if (r.ok){
+      const s = r.json && isFinite(r.json.seconds) ? +r.json.seconds : r.json && isFinite(r.json.expires_in) ? +r.json.expires_in : FX_TRY_S;
+      const was = fxUi.trying[k.id];
+      fxUi.trying[k.id] = Date.now() + s * 1000;
+      if (!fxUi.tick) fxUi.tick = setInterval(fxTickAll, 1000);
+      if (!quiet || !was) rerender(); else fxTickAll();
+      return;
+    }
+    fxUi.err[k.id] = r.status === 404 ? 'Trying needs a newer haslerd.' : (r.json && r.json.error) || 'Couldn’t try it (error ' + r.status + ').';
+  } catch (_) { fxUi.err[k.id] = 'Couldn’t reach the radio.'; }
+  rerender();
+}
+async function fxPut(k, body, done){
+  fxUi.busy[k.id] = body[k.id] ? 'save' : 'reset'; fxUi.err[k.id] = ''; rerender();
+  try {
+    const r = await api('PUT', '/api/knobs/functions', body);
+    if (r.ok){
+      adoptFx(r.json);
+      delete fxUi.draft[k.id]; delete fxUi.trying[k.id];
+      toast(done(fxKnob(k.id) || k));
+    } else fxUi.err[k.id] = (r.json && r.json.error) || 'Couldn’t save (error ' + r.status + ').';
+  } catch (_) { fxUi.err[k.id] = 'Couldn’t reach the radio.'; }
+  delete fxUi.busy[k.id];
+  if (view === 'settings') rerender();
+}
+function fxSave(k){
+  const d = fxDraft(k);
+  return fxPut(k, {[k.id]: {effect: d.effect, params: d.params}}, nk => fxName(nk) + ' now does ' + ((fxEffect(nk.effect) || {}).label || nk.effect).toLowerCase());
+}
+function fxReset(k){
+  if (fxSame(fxSaved(k), fxDefault(k))){ delete fxUi.draft[k.id]; fxUi.err[k.id] = ''; rerender(); if (fxUi.trying[k.id]) fxTry(k, true); return; }
+  return fxPut(k, {[k.id]: null}, nk => fxName(nk) + ' is back to ' + ((fxEffect(nk.effect) || {}).label || 'its default').toLowerCase());
 }
 
 /* the wizard: one capture per step, then fit, try, save */

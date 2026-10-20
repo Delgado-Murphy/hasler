@@ -25,7 +25,10 @@ YouTube Music playlist it is "next track".
 
 The pilot lamp is told through hooks, never imported: ``on_reply`` gets the
 one-off replies of docs/lamp.md (a dip for a key, "next"/"stop" for the same
-key again, two dips for Home Assistant, red pulses for a failure),
+key again, two dips for Home Assistant, red pulses for a failure,
+"source:<stop>[:<preset source>]" for the PU key - the lamp turns that into a
+signature of where it went - "nudge" for a volume key at its end and "swell"
+for a phone paired),
 ``on_start`` hears that a preset is about to start (the loading breath must be
 up *before* a slow start blocks the loop) and ``on_change`` that standby,
 pairing or shutdown flipped.
@@ -79,9 +82,13 @@ RENDERERS = ("bluetooth", "airplay", "dlna")
 # power knob get nothing - the ear is the feedback.
 ACK_KINDS = ("tap", "select")
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
-SELF_REPLYING = ("preset", "preset_by_index", "join_group")
+SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source")
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation", "ha_light", "ha_service")
 DEFAULT_PAIR_S = 120
+# A held volume key repeats every 0.15 s (web/keymap.py) and a new press
+# takes the 0.8 s hold to fire: a gap longer than this is a new press, which
+# nudges again at the end of the scale.
+VOLUME_NUDGE_GAP_S = 0.6
 SHUTDOWN_PREPARE_S = 20.0   # YouTube Music's next-boot opener, before poweroff
 
 
@@ -137,7 +144,9 @@ class Actions:
         self.state = state
         # Called when starting a preset raises (the lamp drops its loading breath).
         self.on_play_error = on_play_error
-        # The lamp's one-off replies: "ack", "next", "stop", "fail", "ha".
+        # The lamp's one-off replies: "ack", "next", "stop", "fail", "ha",
+        # "nudge", "swell", "source:<stop>[:<preset source>]" (and "group",
+        # from multiroom/group.py).
         self.on_reply = on_reply
         # A preset is about to start; called before the (possibly slow) start.
         self.on_start: Callable[[Preset], None] | None = None
@@ -152,6 +161,9 @@ class Actions:
         # multiroom.group.Group when multiroom is installed, else None. A
         # follower's preset keys, standby and the PU key go through it.
         self.group: Any = None
+        # dsp.knobs.KnobFunctions when wired (main.py): the knobs' sound
+        # effects. Without it set_tone & co. go to the player's tone command.
+        self.dsp: Any = None
         # Booted after following a group (state.json "follower"): the boot
         # resume plays nothing - a follower comes back alone and silent.
         self._resume_blocked = False
@@ -165,6 +177,9 @@ class Actions:
         # Bluetooth discoverable until this clock time (the lamp's blue breath).
         self.pairing_until = 0.0
         self._last_preset: int | None = None
+        # volume_step at an end: which (0/100) and when last, for one nudge per press.
+        self._volume_end: float | None = None
+        self._volume_end_at = float("-inf")
         # Preset numbers, most recent first - the PU cycle's memory per source.
         self._recent: list[int] = []
         # Where the PU cycle last put us, for renderers that are selected but
@@ -194,6 +209,7 @@ class Actions:
             "set_tone": self._set_tone,
             "set_treble": self._set_tone,
             "set_bass": self._set_tone,
+            "knob_effect": self._set_tone,
             "mute": self._mute,
             "speaker_route": self._speaker_route,
             "volume_step": self._volume_step,
@@ -215,11 +231,18 @@ class Actions:
         """The Bluetooth pairing window is open."""
         return self.clock() < self.pairing_until
 
-    def end_pairing(self) -> None:
-        """A phone connected (or the window is moot): stop the pairing breath."""
+    def end_pairing(self, paired: bool = False) -> None:
+        """A phone connected (or the window is moot): stop the pairing breath.
+
+        ``paired``: a phone connected while the window was open - one swell
+        on the blue that follows.
+        """
         if self.pairing_until:
+            was_open = self.pairing
             self.pairing_until = 0.0
             self._changed()
+            if paired and was_open:
+                self._reply("swell")
 
     @property
     def cycle_position(self) -> str | None:
@@ -231,6 +254,11 @@ class Actions:
     def dispatch(self, event: Event) -> None:
         spec = self.variant.actions.get(f"{event.control}.{event.kind}")
         if not spec:
+            # A pot the descriptor gives an effect but no binding: its knob
+            # still plays the effect (dsp/knobs.py), no code per cabinet.
+            if event.kind == "change" and self.dsp is not None and self.dsp.handles(event.control):
+                self._set_tone(event, {})
+                return
             log.debug("unmapped event %s", event)
             return
         spec = dict(spec)
@@ -538,6 +566,8 @@ class Actions:
         self._cycle_at = nxt
         pool = self._cycle_pool(nxt, order)
         preset = self._recent_preset(pool) if pool else None
+        # The lamp's signature of where we went (before a slow start blocks).
+        self._reply(f"source:{nxt}" + (f":{preset.source}" if preset is not None else ""))
         if preset is not None:
             self._remember(preset.n)
             self._persist()
@@ -776,7 +806,11 @@ class Actions:
         self.player.set_volume(float(event.value))
 
     def _set_tone(self, event, spec):
-        self.player.set_tone(event.control, float(event.value))
+        """set_tone / set_treble / set_bass / knob_effect: the knob's effect."""
+        if self.dsp is not None:
+            self.dsp.knob_moved(event.control, float(event.value))
+        else:
+            self.player.set_tone(event.control, float(event.value))
 
     def _volume_step(self, event, spec):
         """Nudge the volume relative to where it is now, on the knob scale.
@@ -791,7 +825,19 @@ class Actions:
         current = self.player.get_volume()
         if current is None:
             current = float(spec.get("from", 40.0))
-        self.player.set_volume(max(0.0, min(100.0, current + delta)))
+        target = max(0.0, min(100.0, current + delta))
+        self.player.set_volume(target)
+        # At the floor or ceiling: one nudge as the key gets there, not one
+        # per repeat while it is held (a new press after a pause nudges again).
+        end = 100.0 if delta > 0 else 0.0
+        now = self.clock()
+        if target == end:
+            if self._volume_end != end or now - self._volume_end_at > VOLUME_NUDGE_GAP_S:
+                self._reply("nudge")
+            self._volume_end = end
+            self._volume_end_at = now
+        else:
+            self._volume_end = None
 
     def _mute(self, event, spec):
         self.player.set_mute(bool(spec.get("state", True)))
