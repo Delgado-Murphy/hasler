@@ -2858,11 +2858,11 @@ function renderRadio(panel){
     setRow('wifi', 'Wi-Fi', !w ? 'Checking…' : w.hotspot ? 'Setup mode — not on your home Wi-Fi' : w.ssid ? 'On ' + w.ssid : 'Not connected', '/wifi'))));
   panel.append(setGroup('software', 'Software', h('div', {class:'set-list'},
     setRow('updates', 'Updates', updatesSummary(), '#settings/radio/updates'))));
-  const hg = helpGroup(); if (hg) panel.append(hg);
   const miss = ((haState && haState.missing) || []).length;
   panel.append(setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
     setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha'))));
   panel.append(setGroup('ytm', 'YouTube Music', accountCard()));
+  const hg = helpGroup(); if (hg) panel.append(hg);   // last: rarely needed
 }
 function updatesSummary(){
   const v = swVer();
