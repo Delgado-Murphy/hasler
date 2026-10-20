@@ -138,6 +138,16 @@ class SpotifySource:
     def close(self) -> None:
         """Nothing to release: every call is a fresh, short-lived request."""
 
+    def reopen(self, settle_s: float = 2.0) -> None:
+        """Pause and resume a playing session, so go-librespot reopens the ALSA
+        device (multiroom: _audioout just moved). It lets the card go a moment
+        after a pause, hence the settle."""
+        if not self._fetch_active():
+            return
+        self._post("/player/pause")
+        time.sleep(settle_s)
+        self._post("/player/resume")
+
     # -- internals -----------------------------------------------------------
 
     def _remember(self, active: bool) -> None:

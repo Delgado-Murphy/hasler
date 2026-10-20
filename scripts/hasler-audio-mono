@@ -2,21 +2,28 @@
 # hasler-audio-mono - sum L+R into both outputs, for a one-speaker cabinet.
 #
 # Run as root by haslerd (sudoers allows exactly this file):
-#     hasler-audio-mono on|off|status|dsp-on|dsp-off
+#     hasler-audio-mono on|off|status|dsp-on|dsp-off|refresh
 # Prints one JSON object: {"ok": true, "mono": bool, "dsp": bool} or {"ok": false, "error": "..."}.
 #
 # dsp-on/dsp-off route _audioout through CamillaDSP (moOde's "camilladsp"
 # ALSA plugin, config "Hasler Tone.yml") so the tone knob can shape the sound
 # live; moOde's own CamillaDSP switch stays off, so its volume handling is
-# untouched. Mono and DSP are independent markers; the override is written
-# whenever either is set.
+# untouched. Mono and DSP are independent markers; the _audioout override is
+# written whenever either is set. refresh re-renders from the markers as they
+# are (hasler-multiroom runs it before it reroutes).
+#
+# The same chain is always defined a second time as "hasler_local": this
+# radio's own card, after mono and tone, whatever _audioout points at (with
+# neither marker it is moOde's output). While the radio is in a multiroom
+# group, hasler-multiroom points _audioout at the ALSA Loopback and the local
+# snapclient plays into hasler_local.
 #
 # moOde sends MPD, Bluetooth and AirPlay to the ALSA device "_audioout", and
 # haslerd points go-librespot there too. "on" overrides that name with a route
 # plugin that mixes the two channels, slaved to whatever moOde's own
 # _audioout.conf currently plays into (so a changed output device in moOde is
 # picked up the next time this runs - haslerd runs it at every start). "off"
-# removes the override and moOde's definition applies again. moOde never
+# drops the _audioout override and moOde's definition applies again. moOde never
 # touches this file. Players see the change the next time they open the device.
 #
 # Long-running players (MPD, go-librespot, bluealsa-aplay) keep ALSA's config
@@ -40,29 +47,48 @@ report() { say "{\"ok\": true, \"mono\": $(flag "$MONO_MARK"), \"dsp\": $(flag "
 
 [ "$(id -u)" -eq 0 ] || fail "must run as root"
 
-# An override from before the markers existed meant "mono on".
-if [ -e "$OVERRIDE" ] && [ ! -e "$MONO_MARK" ] && [ ! -e "$DSP_MARK" ]; then touch "$MONO_MARK"; fi
+# An override from before the markers existed meant "mono on" (one that
+# only defines hasler_local is ours from below, not that).
+if [ -e "$OVERRIDE" ] && [ ! -e "$MONO_MARK" ] && [ ! -e "$DSP_MARK" ] \
+   && grep -q '^pcm\.!_audioout' "$OVERRIDE"; then touch "$MONO_MARK"; fi
 
 case "${1:-}" in
 on)      touch "$MONO_MARK" ;;
 off)     rm -f "$MONO_MARK" ;;
 dsp-on)  touch "$DSP_MARK" ;;
 dsp-off) rm -f "$DSP_MARK" ;;
+refresh) ;;
 status)  report; exit 0 ;;
-*)       fail "usage: hasler-audio-mono on|off|status|dsp-on|dsp-off" ;;
+*)       fail "usage: hasler-audio-mono on|off|status|dsp-on|dsp-off|refresh" ;;
 esac
 
+moode_slave() {
+    slave=""
+    [ -r "$MOODE" ] && slave=$(sed -n 's/^slave\.pcm *"\([^"]*\)".*/\1/p' "$MOODE" | head -n 1)
+    case "$slave" in
+        ""|_audioout|*'"'*|*'\'*) slave=$FALLBACK ;;
+    esac
+}
+
+tmp=$(mktemp /etc/alsa/conf.d/.hasler-mono.XXXXXX)
 if [ ! -e "$MONO_MARK" ] && [ ! -e "$DSP_MARK" ]; then
-    rm -f "$OVERRIDE"
+    moode_slave
+    cat > "$tmp" <<EOF
+#########################################
+# Written by haslerd (hasler-audio-mono) - not by moOde.
+# Mono and CamillaDSP are off: _audioout is moOde's own. hasler_local is
+# this radio's card for the multiroom client (hasler-multiroom).
+#########################################
+pcm.hasler_local {
+type plug
+slave.pcm "$slave"
+}
+EOF
 else
     if [ -e "$DSP_MARK" ]; then
         slave="plug:camilladsp"
     else
-        slave=""
-        [ -r "$MOODE" ] && slave=$(sed -n 's/^slave\.pcm *"\([^"]*\)".*/\1/p' "$MOODE" | head -n 1)
-        case "$slave" in
-            ""|_audioout|*'"'*|*'\'*) slave=$FALLBACK ;;
-        esac
+        moode_slave
     fi
     if [ -e "$MONO_MARK" ]; then
         ttable="0.0 0.5; 1.0 0.5; 0.1 0.5; 1.1 0.5"
@@ -71,22 +97,32 @@ else
         ttable="0.0 1; 1.1 1"
         what="Stereo (mono is off); this file only routes through CamillaDSP."
     fi
-    tmp=$(mktemp /etc/alsa/conf.d/.hasler-mono.XXXXXX)
     cat > "$tmp" <<EOF
 #########################################
 # Written by haslerd (hasler-audio-mono) - not by moOde.
 # $what
 # Into: $slave. Switch Mono off on the key page (and dsp-off) to remove it.
+# hasler_local is the same chain, for the multiroom client (hasler-multiroom).
 #########################################
 pcm.!_audioout {
 type route
 slave { pcm "$slave"; channels 2 }
 ttable { $ttable }
 }
+pcm.hasler_local {
+type route
+slave { pcm "$slave"; channels 2 }
+ttable { $ttable }
+}
 EOF
-    chmod 0644 "$tmp"
-    mv -f "$tmp" "$OVERRIDE"
 fi
+chmod 0644 "$tmp"
+mv -f "$tmp" "$OVERRIDE"
 
 [ -e "$ALSA_TOP" ] && touch "$ALSA_TOP"   # make running players reload (see top)
+# A multiroom client keeps hasler_local open while grouped: reopen it.
+# (Not for refresh - hasler-multiroom runs that and starts the client itself.)
+if [ "$1" != refresh ]; then
+    systemctl try-restart snapclient-hasler.service >/dev/null 2>&1 || true
+fi
 report

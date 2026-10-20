@@ -71,7 +71,7 @@ is doing, like the lamp of an old valve radio.
 |---|---|
 | **Amber, bright** | Playing music from a key. Playlists are a slightly paler amber. |
 | **Amber, dim** | On and ready, but quiet. Press a key. |
-| **Amber, breathing slowly** | Starting up or loading music. Wait a moment. |
+| **Amber, breathing slowly** | Starting up or loading music, or joining another room's music. Wait a moment. |
 | A short **dip** in brightness | The radio heard your key press. |
 | **Blue** | A phone is playing through the radio (Bluetooth, AirPlay or Spotify). Brighter when playing, dimmer when paused. |
 | **Blue, breathing** | Bluetooth pairing is open. Connect your phone now. |
@@ -101,6 +101,45 @@ The radio also works as a speaker for your phone. Its name on the network is
 
 While a phone plays, the lamp is blue. A phone can wake the radio from standby.
 To take the radio back from the phone, tap any numbered key.
+
+## Music in several rooms
+
+Two or more Haslers on the same Wi-Fi can play the same music at the same
+time, in step. One radio **leads**: what it plays is what everyone hears. The
+others **follow**. This is off until you switch it on (key page, Settings →
+**Multiroom**) on every radio that should take part.
+
+**To start:** on the leading radio's key page, under **Also play on**, tick the
+other radios (for example *Kitchen*, *Study*). They start playing within a few
+seconds. Untick a radio to give it back its own music.
+
+**Or from the other room:** give a key's *hold* the action **Join the music in
+another room** (Edit keys). Holding it joins the radio that leads a group, or
+else the radio that is playing. If several are, it joins the one that started
+its music most recently. Hold it again to leave.
+
+While a radio follows:
+
+- Its lamp breathes while it joins, then shows the leader's amber (pale for a
+  playlist). Three red pulses mean the leader could not be reached; the radio
+  is then on its own again.
+- **Numbered keys** change the music for the whole group: the leader plays the
+  station or playlist of the key you pressed. The same radio key again stops
+  the music everywhere (the leader goes to standby). In Settings → Multiroom
+  you can choose instead that a key takes *that* radio out of the group and
+  plays the station there alone.
+- **Volume and tone** stay with each radio.
+- **Standby** on a follower: only that radio sleeps and leaves the group. The
+  others keep playing.
+- **Standby on the leader** ends the group. Each other radio goes back to
+  how it was before it joined: asleep if it was asleep, otherwise quiet and
+  ready.
+- **PU**, **Test on the radio**, or a phone casting to a follower also take that
+  radio out of the group first.
+
+**After a power cut** every radio comes back on its own. A radio that was
+following comes back quiet (dim amber), not playing; it does not join again by
+itself. Tick it again on the leader's page, or hold its join key.
 
 ## The key page
 
@@ -155,6 +194,7 @@ Tap the gear icon.
 | **Mono** | Mixes left and right into the one speaker, so nothing is lost. On by default. |
 | **moOde player** | Opens the music system inside the radio (for advanced use). |
 | **Reset keys to defaults** | Puts the factory stations back on every key. |
+| **Multiroom** | Lets this radio play together with other Haslers (off by default). *Keys on a following radio*: change the whole group (default), or leave the group and play alone. See [Music in several rooms](#music-in-several-rooms). |
 | **Pilot lamp** | When the lamp dims for the night: *by the sun*, *fixed hours* or *never*. For "by the sun", choose the city where the radio stands. |
 | **Knobs** | Shows each knob live. **Calibrate** starts a short guide: you turn the knob to a few positions and the radio learns them. **Reset to factory** undoes it. |
 | **About this radio** | Software version and updates. See [Updates](#updates). |
@@ -243,6 +283,8 @@ You can read what changed in each version on the
 - If the power comes back **at night**, the radio stays asleep (ember) so it
   does not wake anyone. Press a key in the morning.
 - If the tone knob is clicked off, the radio stays asleep.
+- A radio that was following another room's music comes back quiet, on its
+  own (see [Music in several rooms](#music-in-several-rooms)).
 - If the music cannot come back (for example, no internet), you see three red
   pulses and then dim amber. Press a key to try again.
 

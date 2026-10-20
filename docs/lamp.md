@@ -69,8 +69,18 @@ G 0.15, B 0 for amber - calibrate by eye at night.
 | Phone casting (Bluetooth, AirPlay, Spotify Connect) | Blue | 80% playing, 30% paused | 1.5 s crossfade | while the phone has it; amber 3 s after it lets go |
 | **Phone casts while in standby** | Ember -> Blue | 80% | 1.5 s crossfade | **the phone wakes it** (standby ends, mixer unmuted) |
 | Home Assistant (key hold) | current | two dips | 2 x 150 ms at the hold threshold | 0.5 s; red pulses only if it failed |
+| **Joining a group** (multiroom follower) | Amber | 25-70% | breath, 1.2 s (as loading) | until the leader's stream plays; red pulses if it can't |
+| **Following a group** | Amber (pale if the leader plays a playlist) | 100% | 1.5 s fade, then solid | while the leader plays; ready amber 35% while it is silent |
+| Group leader can't be reached (follower) | Red | 60% | 3 soft pulses | ~2 s, then ready (the radio is alone again) |
+| Preset key on a follower | current | dip, as key press | 0.3 s | the leader then shows loading/playing; the follower's tint follows within ~5 s |
 | Night (sunset -> sunrise) | same colours | cap 35%, ember 2% | fades x1.5; idle red suppressed | the night |
 | Panel board missing | Red | 10-30% | slow breath | until fixed (the keys can't work) |
+
+A multiroom **leader** looks like any radio playing: nothing new. The
+follower's states come from `BoxState.group` (`""`, `"joining"`,
+`"following"`), `group_source` and `group_playing`, filled from
+`multiroom/group.py` (`Group.lamp()`); the follower learns the leader's source
+by reading its `/api/info` every 5 s.
 
 **No change at all for:** volume, tone, track changes nobody asked for,
 metadata, network blips under 60 s, offline while a phone plays locally, and
@@ -86,9 +96,11 @@ anything in standby except setup and a phone waking it.
 5. Standby
 6. Boot warm-up
 7. Bluetooth pairing window
-8. Loading
-9. Offline idle red (only when the next key press would fail)
-10. Playing / ready
+8. Loading, and joining a group (the same breath)
+9. Following a group whose leader plays (the leader's tint; never idle red
+   over it - it plays)
+10. Offline idle red (only when the next key press would fail)
+11. Playing / ready
 
 ## Boot and shutdown
 

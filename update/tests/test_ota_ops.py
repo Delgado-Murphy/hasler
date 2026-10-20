@@ -152,7 +152,8 @@ def test_sudoers_source_is_todays_rules():
     text = (ROOT / "config/sudoers/haslerd").read_text()
     rules = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
     assert rules == ["pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, "
-                     "/usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono"]
+                     "/usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, "
+                     "/usr/local/sbin/hasler-multiroom"]
     if shutil.which("visudo"):
         assert subprocess.run(["visudo", "-cf", str(ROOT / "config/sudoers/haslerd")]).returncode == 0
 

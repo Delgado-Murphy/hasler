@@ -79,7 +79,7 @@ RENDERERS = ("bluetooth", "airplay", "dlna")
 # power knob get nothing - the ear is the feedback.
 ACK_KINDS = ("tap", "select")
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
-SELF_REPLYING = ("preset", "preset_by_index")
+SELF_REPLYING = ("preset", "preset_by_index", "join_group")
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation", "ha_light", "ha_service")
 DEFAULT_PAIR_S = 120
 SHUTDOWN_PREPARE_S = 20.0   # YouTube Music's next-boot opener, before poweroff
@@ -146,6 +146,15 @@ class Actions:
         self.on_change: Callable[[], None] | None = None
         self.clock = clock
         self._started_at = float("-inf")   # clock() when a preset last started
+        # Wall clock (time.time) of the last start: which Hasler started most
+        # recently, for another radio's join_group (multiroom/group.py).
+        self.started_wall: float | None = None
+        # multiroom.group.Group when multiroom is installed, else None. A
+        # follower's preset keys, standby and the PU key go through it.
+        self.group: Any = None
+        # Booted after following a group (state.json "follower"): the boot
+        # resume plays nothing - a follower comes back alone and silent.
+        self._resume_blocked = False
         self.presets = build_presets(variant.presets, variant.name)
         self.standby = False
         self.shutting_down = False
@@ -195,6 +204,7 @@ class Actions:
             "ha_automation": self._ha_automation,
             "ha_light": self._ha_light,
             "ha_service": self._ha_service,
+            "join_group": self._join_group,
         }
         # (kind, entity) already reported as dropped for want of HA - say it
         # once, not on every press.
@@ -280,6 +290,16 @@ class Actions:
             log.warning("no preset %s in %s", n, self.variant.name)
             self._reply("ack")
             return
+        group = self.group
+        if group is not None and group.following:
+            if group.follower_keys == "group":
+                # The whole group changes: the leader plays it (and judges
+                # "same key again" against what it plays).
+                self._reply("ack")
+                self._hand += 1
+                group.forward_preset(preset)
+                return
+            group.leave("a preset key (follower_keys: leave)")
         # Asked once: on the real player this is an HTTP call plus shell-outs.
         active = self.player.active_source()
         current = self.player.current()
@@ -316,7 +336,64 @@ class Actions:
         self._persist()
         self._start(preset)
 
+    def play_forwarded(self, preset: Preset) -> None:
+        """A follower's preset key, played here for the whole group (the leader).
+
+        "Again" is judged by what plays (source and link, not the key number:
+        the follower numbers its presets its own way): a radio station again
+        is standby - which ends the group - and a playlist again is the next
+        track. A preset that is also one of this radio's own is remembered as
+        if pressed here; a foreign one plays without changing what this radio
+        resumes after a power cut.
+        """
+        active = self.player.active_source()
+        current = self.player.current()
+        if (
+            not self.standby
+            and current is not None
+            and current.source == preset.source
+            and current.uri == preset.uri
+            and active == current.source
+        ):
+            if self.clock() - self._started_at < AGAIN_GUARD_S:
+                return
+            if preset.source == "radio":
+                self._reply("stop")
+                self._standby(None, {})
+            else:
+                self._reply("next")
+                self.player.next_track()
+            return
+        if active in RENDERERS:
+            self.player.select_source("radio")
+        if self.standby:
+            self._wake()
+        own = next((p for p in self.presets.values()
+                    if p.source == preset.source and p.uri == preset.uri), None)
+        if own is not None:
+            self._remember(own.n)
+            self._persist()
+            preset = own
+        else:
+            self._cycle_at = None
+        self._start(preset)
+
+    def join_group_playback(self) -> None:
+        """This radio now plays a leader's stream (multiroom/group.py).
+
+        Awake (a sleeping radio added to a group wakes, as a phone wakes it),
+        and state.json says "follower", so a power cut brings it back silent.
+        The group's worker stops the local players and unmutes.
+        """
+        self.standby = False
+        self._cycle_at = None
+        self._hand += 1
+        self.touch()
+        self._changed()
+        self._persist()
+
     def _remember(self, n: int) -> None:
+        self._resume_blocked = False
         self._last_preset = n
         self._cycle_at = None
         self._recent = [n] + [m for m in self._recent if m != n]
@@ -335,6 +412,7 @@ class Actions:
         start (yt-dlp expanding a playlist) holds up the loop.
         """
         self._started_at = self.clock()
+        self.started_wall = time.time()
         self._hand += 1
         self.touch()
         if self.on_start is not None:
@@ -420,6 +498,10 @@ class Actions:
         none, "spotify" just clears the way for a phone to cast, exactly as
         bluetooth and airplay do.
         """
+        group = self.group
+        if group is not None and group.following:
+            # Sources and casting are this radio's own: out of the group first.
+            group.leave("the source key")
         order = tuple(spec.get("order") or self.source_cycle) or SOURCE_CYCLE
         position = self._cycle_position(order)
         skip = self.cycle_availability(order)
@@ -541,12 +623,25 @@ class Actions:
         self.standby = True
         self._cycle_at = None
         self._hand += 1
+        if persist:
+            self._resume_blocked = False
+        self._group_standby()
         self._changed()
         if persist:
             self._persist()
         self.player.stop()
         self.player.set_mute(True)
         self.prepare_for_boot()
+
+    def _group_standby(self) -> None:
+        """Standby/shutdown: a follower leaves its group, a leader ends it."""
+        group = self.group
+        if group is None:
+            return
+        try:
+            group.standby_entered()
+        except Exception:
+            log.exception("multiroom: leaving the group failed")
 
     def prepare_for_boot(self, wait_s: float = 0.0) -> bool:
         """Have YouTube Music put the next boot's opening track on disk.
@@ -587,6 +682,7 @@ class Actions:
     def _shutdown(self, event, spec):
         # The ember breath first: poweroff below can take seconds to return.
         self.shutting_down = True
+        self._group_standby()
         self._changed()
         self.player.stop()
         # The lamp breathes on its own thread meanwhile.
@@ -597,7 +693,11 @@ class Actions:
 
     def _persist(self) -> None:
         if self.state is not None:
-            self.state.save({"last_preset": self._last_preset, "standby": self.standby})
+            data: dict[str, Any] = {"last_preset": self._last_preset, "standby": self.standby}
+            group = self.group
+            if group is not None and group.following:
+                data["follower"] = True
+            self.state.save(data)
 
     def restore(self) -> None:
         """Load what the box was doing before it lost power. Plays nothing.
@@ -614,6 +714,11 @@ class Actions:
         if isinstance(last, int) and last in self.presets:
             self._last_preset = last
             self._recent = [last]
+        if data.get("follower") and not data.get("standby"):
+            # It was playing a group's music: it comes back alone and silent,
+            # not with this radio's own old preset (docs/using.md, Multiroom).
+            log.info("was following a group before the restart: not resuming")
+            self._resume_blocked = True
         if data.get("standby"):
             try:
                 self._standby(None, {})
@@ -621,8 +726,9 @@ class Actions:
                 log.exception("could not re-apply standby at boot")
 
     def resume_preset(self) -> Preset | None:
-        """What ``resume_last`` would play now (None: standby, or nothing kept)."""
-        if self.standby or self._last_preset is None:
+        """What ``resume_last`` would play now (None: standby, nothing kept, or
+        it was following a group when it lost power)."""
+        if self.standby or self._last_preset is None or self._resume_blocked:
             return None
         return self.presets.get(self._last_preset)
 
@@ -634,7 +740,7 @@ class Actions:
         A failure gets the lamp's red pulses unless ``quiet`` (an attempt that
         will be retried - the pulses wait for the last one).
         """
-        if self.standby or self._last_preset is None:
+        if self.standby or self._last_preset is None or self._resume_blocked:
             return True
         preset = self.presets.get(self._last_preset)
         if preset is None:
@@ -730,6 +836,18 @@ class Actions:
 
     def _ha_service(self, event, spec):
         self._fire_ha("service", dict(spec))
+
+    # -- multiroom ---------------------------------------------------------
+
+    def _join_group(self, event, spec):
+        """Join the group of the Hasler leading one (else the one playing);
+        on a follower, leave. Red pulses with no multiroom (multiroom/group.py)."""
+        group = self.group
+        if group is None:
+            log.info("join_group: multiroom isn't set up on this radio")
+            self._reply("fail")
+            return
+        group.join_key()
 
     def _ha_scene_by_index(self, event, spec):
         scenes = spec.get("scenes") or self.variant.actions.get("_scenes", [])

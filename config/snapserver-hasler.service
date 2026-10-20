@@ -1,0 +1,21 @@
+[Unit]
+Description=Snapcast server for a Hasler multiroom group (this radio leads)
+# Shipped in every release; never enabled. hasler-multiroom (run by haslerd)
+# starts it when this radio leads a group and stops it otherwise, so nothing
+# runs while multiroom is off. Debian's own snapserver.service stays masked
+# (scripts/bootstrap.sh). It captures the ALSA Loopback that every local
+# player plays into while leading (docs: scripts/hasler-multiroom).
+After=sound.target network.target avahi-daemon.service
+
+[Service]
+# '+' = as root: the Loopback card (snd-aloop) is loaded only while grouped.
+ExecStartPre=+/usr/sbin/modprobe snd-aloop
+ExecStart=/usr/bin/snapserver --config /opt/hasler/current/app/config/snapcast/snapserver.conf
+User=_snapserver
+Group=_snapserver
+SupplementaryGroups=audio
+# Client and group settings snapserver writes (server.json); nothing we read.
+StateDirectory=snapserver-hasler
+Restart=on-failure
+RestartSec=2
+Nice=-5

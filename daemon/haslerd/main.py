@@ -61,6 +61,17 @@ except ImportError:
         log.warning("lamp engine unavailable; no lamp")
         return None
 
+try:    # Multiroom between Haslers (multiroom/group.py); optional likewise.
+    from .multiroom.group import Group
+    from .web.group_api import GroupApi
+except ImportError:
+    Group = GroupApi = None
+
+try:    # Its audio, Snapcast (multiroom/audio.py): without it multiroom can't be switched on.
+    from .multiroom.audio import SnapAudio
+except ImportError:
+    SnapAudio = None
+
 try:    # Sunset..sunrise (and the page's fixed-hours mode) for the lamp.
     from .lamp.night import night_mode_active
 except ImportError:
@@ -368,6 +379,13 @@ class LampKeeper:
         )
         state.source = current.source if current is not None else self.source
         state.panel_missing = bool(self.panel is not None and getattr(self.panel, "absent", False))
+        group = getattr(actions, "group", None)
+        if group is not None:
+            try:
+                state.group, state.group_source, state.group_playing = group.lamp()
+            except Exception:
+                log.debug("multiroom lamp state failed", exc_info=True)
+                state.group, state.group_playing = "", False
         return state
 
     def refresh(self, now: float | None = None) -> Look:
@@ -674,6 +692,7 @@ def build_web(
         ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
         app.extra_routes.append(ha_api)
     app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
+    build_group(app, actions, int(spec.get("port", 8080)))
     app.load_saved()
     if not spec.get("enabled", True):
         return None, app
@@ -684,6 +703,45 @@ def build_web(
         log.exception("key page could not listen on port %s; carrying on without it", server.port)
         return None, app
     return server, app
+
+
+def build_group(app: WebApp, actions: Actions, api_port: int = 8080) -> object | None:
+    """Multiroom (/api/group, /api/peer), from settings.json's ``multiroom``.
+
+    Without Snapcast's side (multiroom/audio.py) the page still answers, but
+    multiroom can't be switched on.
+    """
+    if Group is None:
+        return None
+    from .web import integration
+    audio = None
+    if SnapAudio is not None:
+        try:
+            audio = SnapAudio()
+            mpd_reopen = audio._reopen
+            spotify = (getattr(actions.player, "sources", None) or {}).get("spotify")
+
+            def reopen() -> None:
+                # Every playing source must reopen _audioout to follow a switch.
+                mpd_reopen()
+                if spotify is not None and hasattr(spotify, "reopen"):
+                    spotify.reopen()
+            audio._reopen = reopen
+        except Exception:
+            log.exception("multiroom audio unavailable")
+    try:
+        group = Group(actions, audio,
+                      identity=lambda: (integration.radio_id(app.machine_id_file), integration.radio_name()),
+                      api_port=api_port)
+        group.actions_lock = app.lock
+        group.apply_saved(load_settings(app.settings_file))
+    except Exception:
+        log.exception("multiroom unavailable")
+        return None
+    actions.group = group
+    app.group = group
+    app.extra_routes.append(GroupApi(app, group))
+    return group
 
 
 class HaPublisher:
@@ -915,6 +973,8 @@ def main(argv=None) -> int:
                 # Spotify resume would otherwise read as a phone.)
                 resume.cancel(f"a phone ({source})")
             actions.watch_cast(source, now)        # resume_after_cast, when a cast ends
+            if actions.group is not None:
+                actions.group.tick(now, source)     # multiroom: keep in touch (on its own thread)
             if (actions.standby or actions.pairing) and actions.phone_has_it(source):
                 # The phone wakes the radio: standby ends, nothing of ours
                 # resumes. A phone that connected also ends the pairing breath.

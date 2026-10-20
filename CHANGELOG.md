@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 - 2026-10-21
+
+- Music in several rooms: Haslers on the same network can play in step
+  (Snapcast). Turn it on in Settings -> Multiroom, then "Also play on..." on
+  the front page, or give a key "Join another Hasler". Keys on a following
+  radio control the whole group (or leave it - a setting); volume, tone and
+  standby stay with each radio. Off by default; grouped, sound starts about
+  1 s after a key press.
+- AirPlay works: shairport-sync (classic AirPlay) is installed by bootstrap,
+  started by moOde as before.
+- A casting target's own reason ("not installed") is shown.
+
 ## 0.3.9 - 2026-10-20
 
 - Casting: a target whose program isn't installed (AirPlay without

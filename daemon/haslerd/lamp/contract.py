@@ -70,6 +70,11 @@ class BoxState:
     source: str = "radio"            # radio | ytm | spotify | bluetooth | airplay | ...
     panel_missing: bool = False
     night: bool = False
+    # Multiroom (multiroom/group.py): "" alone or leading, "joining" while
+    # this radio joins a group, "following" while it plays a leader's music.
+    group: str = ""
+    group_source: str = "radio"      # following: the leader's source (the tint)
+    group_playing: bool = False      # following: the leader makes sound
 
 
 class Output(Protocol):

@@ -48,7 +48,8 @@ also need a press on the radio (web/confirm.py); ``/api/software`` is the
 "About this radio" card (web/software.py).
 
 ``/api/browse`` serves the curated library (web/catalog.py), and anything under
-``/api/ha`` (and ``/api/sources``, ``/api/casting``) is handed to
+``/api/ha`` (and ``/api/sources``, ``/api/casting``, ``/api/group``,
+``/api/peer`` - web/group_api.py, multiroom) is handed to
 ``WebApp.extra_routes`` - objects with ``route(method, path, body) -> (status,
 doc) | None`` (web/ha_api.py, web/sources_api.py) - so Home Assistant's
 endpoints live with Home Assistant's code. ``/api/info`` and
@@ -103,12 +104,13 @@ CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
 OWN_NAMES = ("localhost", "hasler", "hasler.local")
 LOOPBACK = ("127.0.0.1", "::1")
 # Paths served by ``WebApp.extra_routes`` (web/ha_api.py, web/sources_api.py).
-EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting")
+EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/group", "/api/peer")
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
     "cycle_source": "Next source",
     "standby_toggle": "Standby",
+    "join_group": "Join group",
     "volume_up": "Volume up",
     "volume_down": "Volume down",
     "bt_pair": "Bluetooth pairing",
@@ -219,6 +221,8 @@ class WebApp:
         self.mono = mono
         # Handlers for /api/ha/*: ``route(method, path, body) -> (status, doc) | None``.
         self.extra_routes: list[Any] = []
+        # multiroom.group.Group (web/group_api.py), or None: multiroom not installed.
+        self.group: Any = None
         # Called with the whole saved settings doc after the lamp's location or
         # night mode changes, so the lamp needn't re-read settings.json.
         self.lamp_listeners: list[Callable[[dict], None]] = []
@@ -395,6 +399,9 @@ class WebApp:
         if spec is None:
             raise keymap.Invalid(errors)
         preset = Preset.from_spec(spec)
+        group = self.group
+        if group is not None and group.following:
+            group.leave("the Test button")      # it plays here, alone
         with self.lock:
             if self.actions.standby:
                 self.actions._wake()
@@ -444,11 +451,36 @@ class WebApp:
                     {"value": round(tone), "treble_db": treble_db(tone)},
             # The tone knob's end switch: True = radio on, False = clicked off, None = not fitted.
             "knob_on": states.get("power") if isinstance(states.get("power"), bool) else None,
+            # Multiroom: None alone, else {"role", "joining", "leader": {id, name}|None, "members": n}.
+            "group": self._group_status(),
         }
 
+    def _group_status(self) -> dict | None:
+        group = self.group
+        if group is None:
+            return None
+        try:
+            return group.status_doc()
+        except Exception:
+            log.debug("multiroom status failed", exc_info=True)
+            return None
+
     def info(self) -> dict:
-        """``GET /api/info``: who this radio is, for the Home Assistant integration."""
-        return integration.info(self.actions.variant.name, self._release_version(), self.machine_id_file)
+        """``GET /api/info``: who this radio is, for the Home Assistant integration
+        and for other Haslers (``multiroom``: {enabled, role, leader, members,
+        playing, source, since} - multiroom/group.py ``info_doc``)."""
+        doc = integration.info(self.actions.variant.name, self._release_version(), self.machine_id_file)
+        group = self.group
+        try:
+            if group is not None:
+                # The id other radios list as a member must be the group's own.
+                doc["id"], doc["name"] = group.identity()
+            doc["multiroom"] = group.info_doc() if group is not None else \
+                {"enabled": False, "role": "alone", "leader": None, "members": [], "playing": False,
+                 "source": None, "since": None}
+        except Exception:
+            log.debug("multiroom info failed", exc_info=True)
+        return doc
 
     def art_current(self) -> tuple[bytes, str, str] | None:
         """``GET /api/art/current``: (bytes, content type, etag), or None."""

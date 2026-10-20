@@ -1,6 +1,8 @@
 """What the Home Assistant integration reads from the radio: who it is, and the art.
 
-* ``GET /api/info`` -> ``{"id", "name", "variant", "version", "api": 1}``. ``id``
+* ``GET /api/info`` -> ``{"id", "name", "variant", "version", "api": 1,
+  "multiroom": {...}}`` (WebApp.info adds ``multiroom``, which other Haslers
+  read: multiroom/group.py). ``id``
   is the first 12 hex digits of sha256(/etc/machine-id): stable for the life of
   the SD card's OS, never the machine-id itself (systemd asks that it not be
   exposed), and the same value the HA integration uses as its unique_id.

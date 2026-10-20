@@ -18,6 +18,9 @@ player itself rather than for a timer or the internet probe:
   resume, or until moOde sets ``wrkready``, a preset that stops without a hand
   on the radio is started again once, and moOde's flip to ready re-asserts the
   knob's volume.
+* **Not after following a group.** A radio that was playing another Hasler's
+  music (multiroom) comes back alone and silent: ``Actions.resume_preset`` is
+  None when state.json says ``"follower": true``, so the resume is "nothing".
 * **Not at night after a power cut.** A box that lost power while playing and
   comes back in the small hours stays asleep (ember). Clean vs power cut is a
   marker hasler-clean-shutdown.service leaves (``shutdown_kind``).

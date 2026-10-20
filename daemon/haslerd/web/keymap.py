@@ -43,6 +43,9 @@ VERBS: list[dict[str, Any]] = [
     {"do": "volume_up", "label": "Volume up (ramps while held)"},
     {"do": "volume_down", "label": "Volume down (ramps while held)"},
     {"do": "standby_toggle", "label": "Standby / wake"},
+    # Multiroom (multiroom/group.py): follow the Hasler leading a group, else
+    # the one playing; on a follower, leave the group.
+    {"do": "join_group", "label": "Join the music in another room (again: leave)"},
     {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity", "transition"], "domains": ["scene"]},
     {"do": "ha_script", "label": "Run a Home Assistant script", "params": ["entity"], "domains": ["script"]},
     {"do": "ha_toggle", "label": "Toggle a Home Assistant device", "params": ["entity"],
@@ -101,7 +104,7 @@ def to_page(spec: dict | None) -> dict | None:
         if not delta:
             return None
         return {"do": "volume_up" if delta > 0 else "volume_down"}
-    if verb in ("standby_toggle", "cycle_source"):
+    if verb in ("standby_toggle", "cycle_source", "join_group"):
         return {"do": verb}
     if verb == "preset":
         return {"do": "preset", "n": int(spec["n"])}
@@ -253,7 +256,7 @@ def action_from_page(raw: Any, where: str, preset_ns: set[int], current: dict | 
         except behaviour.Problem as exc:
             errors.append({"where": where, "message": str(exc)})
             return None
-    return {"do": verb}         # cycle_source, standby_toggle
+    return {"do": verb}         # cycle_source, standby_toggle, join_group
 
 
 def parse(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict | None]]:

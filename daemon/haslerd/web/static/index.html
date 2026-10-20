@@ -437,6 +437,37 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .now-line{margin:0;padding:12px 16px;color:var(--text2);font-size:14px;line-height:20px;border-bottom:1px solid var(--line)}
 .now-line b{color:var(--cream);font-weight:600}
 
+/* ---------- multiroom: rooms on the remote, Multiroom in settings ---------- */
+.rooms{border:1px solid var(--line);border-radius:14px;background:var(--sheet);overflow:hidden}
+.rooms:empty{display:none}
+.rooms-head{display:flex;align-items:center;gap:12px;min-height:60px;padding:8px 8px 8px 14px}
+.rooms-ic{flex:none;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--brass);border:1px solid var(--line2)}
+.rooms.grouped .rooms-ic{color:var(--amber);border-color:rgba(255,178,56,.5);box-shadow:0 0 10px rgba(255,178,56,.18)}
+.rooms-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rooms-title{color:var(--cream);font:600 14px/18px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rooms-title b{color:var(--title);font:600 15px/18px var(--serif)}
+.rooms-sub{color:var(--muted);font-size:12.5px;line-height:16px;overflow-wrap:anywhere}
+.rooms-btn{flex:none;display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0 10px;border:0;background:none;color:var(--brass);font:600 13px/16px var(--sans)}
+.rooms-btn:hover{color:#E0BC78}
+.rooms-btn .chev{color:inherit;transition:transform .15s}
+.rooms-btn[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.rooms-body{display:flex;flex-direction:column;gap:2px;padding:0 14px 12px;border-top:1px solid var(--line)}
+.rooms-body .hint{padding:10px 0 4px}
+.room{display:flex;align-items:center;gap:10px;min-height:56px;border-top:1px solid var(--line)}
+.room:first-of-type{border-top:0}
+.room .switch{flex:1;min-width:0}
+.room .li-txt{gap:1px}
+.room-sub{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:12.5px;line-height:16px}
+.room-sub::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--line2)}
+.room-sub.on::before{background:#5FBF7A;box-shadow:0 0 6px rgba(95,191,122,.6)}
+.room-sub.wait::before{background:var(--amber);box-shadow:0 0 6px rgba(255,178,56,.6)}
+.room.off .li-title{color:var(--text2)}
+.room .switch input:disabled{opacity:.4;cursor:default}
+.rooms-empty{margin:0;padding:14px 0 6px;color:var(--text2);font-size:13.5px;line-height:19px}
+.rooms-empty b{display:block;color:var(--cream);font-weight:600}
+.rooms-err{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 0 4px}
+.picker.plain{border:0;padding:0;background:none}
+
 /* ---------- Home Assistant behaviours on a key ---------- */
 .lp-list{max-height:360px;overflow:auto}
 .lp-row{display:flex;align-items:center;gap:12px;min-height:48px;padding:6px 10px;border-radius:8px;cursor:pointer}
@@ -559,6 +590,8 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
       <span class="tone-db" id="toneDb">—</span>
     </div>
 
+    <div class="rooms" id="rooms" role="region" aria-label="Rooms"></div>
+
     <div class="foot">
       <p class="hint-line">Tap a key to play · hold for its second job</p>
       <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
@@ -657,10 +690,11 @@ const SRC = [{id:'radio', label:'Radio'}, {id:'spotify', label:'Spotify'}, {id:'
 const SRC_HEAD = {radio:'Radio', spotify:'Spotify', ytm:'YouTube Music', bluetooth:'Bluetooth', airplay:'AirPlay'};
 const SHORT = {none:'Nothing', preset:'Play music', cycle_source:'Cycle sources', bt_pair:'Bluetooth pairing', volume_up:'Volume up', volume_down:'Volume down',
   standby_toggle:'Standby / wake', standby:'Standby', ha_scene:'Scene', ha_script:'Script', ha_toggle:'Toggle', ha_automation:'Automation',
-  ha_light:'Light', ha_service:'Other action', custom:'Custom'};
+  ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler'};
 // What each choice in the "A tap… / Holding…" list says under its name.
 const VERB_DESC = {
   cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Sources & casting',
+  join_group:'Join the music playing on another Hasler',
   ha_light:'Turn lights on or off, dim them, change their colour',
   ha_scene:'Set a scene from Home Assistant',
   ha_script:'Run a Home Assistant script',
@@ -815,6 +849,7 @@ function tapName(k){
   }
   if (v === 'none') return '—';
   if (v === 'cycle_source') return 'Source';
+  if (v === 'join_group') return 'Join';
   return verbShort(v);
 }
 function keyName(k){
@@ -1011,6 +1046,10 @@ function renderDial(){
     head = 'Tuning…'; name = 'Hasler'; setSong('', '', '', 'none');
   } else if (status.standby){
     head = 'Standby'; name = 'Standby'; setSong('', 'Tap any key to wake the radio', '', 'none');
+  } else if (!status.playing && mrOn() && grp.role === 'follow'){
+    const L = roomName(grp.leader);
+    head = 'Rooms · with ' + L; name = L; setSong('Playing along', 'Same music as ' + L, '', 'note');
+    live = 'Playing with ' + L;
   } else if (cur && (!status.playing || status.current_key !== cur) && optimistic){
     const k = cfg.keys.find(x => x.id === cur), p = presetIn(cfg, k.tap.n);
     head = keyLabel(k) + ' · ' + (SRC_HEAD[p && p.source] || ''); name = p ? p.name : keyLabel(k);
@@ -1142,7 +1181,7 @@ function renderRemote(){
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
   $('nextBtn').disabled = !canNext;
   $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
-  paintTone();
+  paintTone(); paintRooms();
 }
 function paintTone(){
   const t = status && status.tone, row = $('tone');
@@ -1180,10 +1219,12 @@ function onRoute(){
   renderPanel();
   if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); }
   if (changed && (view === 'ha' || view === 'settings')) refreshHa();
-  if (view === 'settings') wantSrcScroll = next.arg === 'sources';
+  if (view === 'settings'){ wantSrcScroll = next.arg === 'sources'; wantMrScroll = next.arg === 'multiroom'; }
+  if (changed && (view === 'remote' || view === 'settings')) loadGroup().then(() => { paintGroup(); if (view === 'settings'){ if (!$('mrBox') && grp && !grp.missing) rerender(); maybeScrollMr(); } grpSchedule(); });
+  if (changed) watchGroup();
   if (changed && view === 'settings'){
-    loadSettings().then(() => { if (view === 'settings'){ rerender(); maybeScrollSrc(); } }); loadKnobs(); loadSoftware();
-    loadSources().then(() => { if (view === 'settings'){ rerender(); maybeScrollSrc(); } });
+    loadSettings().then(() => { if (view === 'settings'){ rerender(); maybeScrollSrc(); maybeScrollMr(); } }); loadKnobs(); loadSoftware();
+    loadSources().then(() => { if (view === 'settings'){ rerender(); maybeScrollSrc(); maybeScrollMr(); } });
     castSchedule();
   }
   if (changed && view === 'edit' && cfg && !isDirty()) refreshConfig();
@@ -1192,7 +1233,7 @@ function onRoute(){
     const f = view === 'remote' ? null : $('panel').querySelector('[data-focus]');
     if (f) f.focus({preventScroll:true});
   }
-  maybeScrollSrc();
+  maybeScrollSrc(); maybeScrollMr();
 }
 window.addEventListener('hashchange', onRoute);
 // Arrow keys move between the choices of any segmented control (Enter/Space picks).
@@ -1632,7 +1673,7 @@ function actionSection(sheet, k, slot){
   sheet.append(h('div', {class:'choice'},
     h('span', {class:'thumb blank', 'aria-hidden':'true'}, IC.dots()),
     h('div', {class:'choice-txt'}, h('span', {class:'choice-name'}, v === 'custom' ? (a.label || 'Custom') : verbShort(v)),
-      h('span', {class:'choice-type'}, v === 'custom' ? 'Set by hand on the radio' : v === 'cycle_source' ? 'Steps through your sources' : (verbDef(v) ? verbDef(v).label : ''))),
+      h('span', {class:'choice-type'}, v === 'custom' ? 'Set by hand on the radio' : v === 'cycle_source' ? 'Steps through your sources' : v === 'join_group' ? 'Plays along with another radio' : (verbDef(v) ? verbDef(v).label : ''))),
     h('button', {type:'button', class:'link', id:'chg-' + slot, onclick: () => { ed.pick = slot; rerender(); }}, 'Change')));
   sheet.append(paramsFor(k, slot));
   const err = errText(k.id + '.' + slot); if (err) sheet.append(h('p', {class:'err', role:'alert'}, err));
@@ -1662,11 +1703,11 @@ function verbPicker(k, slot){
   const ul = h('div', {class:'picker', role:'radiogroup', 'aria-label': slot === 'tap' ? 'What a tap does' : 'What holding does'});
   let haHead = false;
   for (const vb of verbs){
-    const needsHa = isHa(vb.do) && !(haState && haState.connected);
+    const needsHa = isHa(vb.do) && !(haState && haState.connected), needsMr = vb.do === 'join_group' && !mrOn();
     if (isHa(vb.do) && !haHead){ haHead = true; ul.append(h('div', {class:'grp', 'aria-hidden':'true'}, 'Home Assistant' + (needsHa ? ' · not connected' : ''))); }
     const label = vb.do === 'preset' ? 'Play music' : verbShort(vb.do);
     const base = vb.do === 'preset' ? 'A station, playlist or album' : VERB_DESC[vb.do] || (vb.label !== label ? vb.label : '');
-    const desc = base + (needsHa ? (base ? ' · ' : '') + 'needs Home Assistant' : '');
+    const desc = base + (needsHa ? (base ? ' · ' : '') + 'needs Home Assistant' : '') + (needsMr ? ' · turn on Multiroom in Settings' : '');
     ul.append(h('button', {type:'button', role:'radio', 'aria-checked': String(cur === vb.do),
       onclick: () => {
         if (vb.do !== 'custom') setVerb(k, slot, vb.do);
@@ -1694,6 +1735,8 @@ function paramsFor(k, slot){
   } else if (v === 'cycle_source'){
     wrap.append(h('p', {class:'hint'}, 'Each press moves the radio on to the next source.'),
       h('div', null, h('button', {type:'button', class:'link', onclick: () => go('settings/sources')}, 'Choose the sources and their order')));
+  } else if (v === 'join_group'){
+    joinHelp(wrap, slot);
   } else if (v === 'ha_light'){
     lightEditor(wrap, k, slot);
   } else if (v === 'ha_service'){
@@ -2370,6 +2413,7 @@ function renderSettings(){
     h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'moOde player'), h('span', {class:'li-sub'}, 'For advanced use: library, queue, Bluetooth, AirPlay')),
       h('a', {class:'li-act', href:moode, target:'_blank', rel:'noopener'}, 'Open', IC.ext()))),
     accountCard()));
+  const mr = multiroomGroup(); if (mr) panel.append(mr);
   if (settings && settings.location) panel.append(lampSettings());
   const kn = knobSettings(); if (kn) panel.append(kn);
   panel.append(softwareSettings());
@@ -2378,7 +2422,7 @@ function renderSettings(){
   panel.append(h('div', {class:'about'},
     h('p', null, 'Hasler HM · Bern 1964 · restored 2026' + (settings && settings.version ? ' · ' + settings.version : '')),
     h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
-  watchCasting();
+  watchCasting(); watchGroup();
 }
 /* ---- pilot lamp: night = sunset..sunrise where the radio stands (lamp/night.py) ---- */
 const CITIES = [
@@ -2806,6 +2850,259 @@ async function resetDefaults(){
     if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); toast('Built-in keys restored'); refreshHa(); }
     else toast((r.json && r.json.error) || 'Reset failed (error ' + r.status + ').', true);
   } catch (_) { toast('Couldn’t reach the radio.', true); }
+}
+
+/* ---- multiroom: Haslers playing the same music in step (/api/group) ---- */
+// grp: null = not asked yet, {missing} = an older radio (no multiroom anywhere on the page), or GET /api/group.
+let grp = null, grpErr = null, grpTimer = null, grpObs = null, grpVisible = false, grpLoading = null, wantMrScroll = false;
+let grpSeen = {}, roomsSig = '', mrSig = '';
+const grpUi = {open:false, busy:{}, mrBusy:false, focus:null};   // focus: the control to give focus back to after a change
+const mrOn = () => !!(grp && !grp.missing && grp.enabled);
+const grpRooms = () => (grp && grp.members) || [];
+const rid = id => String(id).replace(/[^\w-]/g, '_');
+const roomName = r => (r && r.name) || 'another Hasler';
+function nameList(rooms){
+  const n = rooms.map(roomName);
+  return n.length <= 1 ? n.join('') : n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1];
+}
+const roomsIcon = () => icon('<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="1.5" y="5" width="7" height="9" rx="1.5"/><rect x="9.5" y="3" width="7" height="11" rx="1.5"/></g><circle cx="5" cy="10.5" r="1.4" fill="currentColor"/><circle cx="13" cy="9.5" r="1.8" fill="currentColor"/>', 18, 17);
+function adoptGroup(doc){
+  if (!doc || typeof doc !== 'object' || !('enabled' in doc || 'role' in doc)) return false;
+  grp = Object.assign({enabled:false, role:'alone', leader:null, members:[], others:[], follower_keys:'group'}, doc);
+  if (!Array.isArray(grp.members)) grp.members = [];
+  if (!Array.isArray(grp.others)) grp.others = [];
+  grpErr = null;
+  return true;
+}
+function loadGroup(){
+  if (grpLoading) return grpLoading;
+  grpLoading = (async () => {
+    try {
+      const r = await api('GET', '/api/group');
+      if (r.status === 404) grp = {missing:true};
+      else if (!(r.ok && adoptGroup(r.json)))
+        grpErr = {msg: capFirst((r.json && r.json.error) || 'Couldn’t ask about the other rooms (error ' + r.status + ')') + '.', retry: refreshGroup};
+    } catch (_) { grpErr = {msg:'Couldn’t reach the radio.', retry: refreshGroup}; }
+    grpLoading = null;
+  })();
+  return grpLoading;
+}
+async function refreshGroup(){ await loadGroup(); paintGroup(); }
+function paintGroup(){ paintRooms(); paintMr(); if (remoteShown()) renderDial(); }
+// Ask every 3 s, only while the rooms (front page or Settings) are on screen.
+function grpSchedule(){
+  clearTimeout(grpTimer); grpTimer = null;
+  if (document.hidden || (grp && grp.missing)) return;
+  grpTimer = setTimeout(async () => {
+    if (grpVisible && !document.hidden && !Object.keys(grpUi.busy).length && !grpUi.mrBusy) await refreshGroup();
+    grpSchedule();
+  }, 3000);
+}
+function watchGroup(){
+  if (!('IntersectionObserver' in window)){ grpVisible = true; return; }
+  if (!grpObs) grpObs = new IntersectionObserver(es => {
+    for (const e of es) grpSeen[e.target.id] = e.isIntersecting;
+    grpVisible = Object.values(grpSeen).some(Boolean);
+  });
+  grpObs.disconnect(); grpSeen = {}; grpVisible = false;
+  for (const id of ['rooms', 'mrBox']){ const el = $(id); if (el) grpObs.observe(el); }
+}
+// Change, then adopt the group the radio sends back (or ask for it).
+async function grpCall(method, url, body, retry){
+  try {
+    const r = await api(method, url, body);
+    if (r.ok){ if (!adoptGroup(r.json)) await loadGroup(); return true; }
+    grpErr = {msg: capFirst((r.json && r.json.error) || 'That didn’t work (error ' + r.status + ')') + '.', retry};
+  } catch (_) { grpErr = {msg:'Couldn’t reach the radio.', retry}; }
+  return false;
+}
+async function setRoom(r, on){
+  const ids = grpRooms().map(m => m.id).filter(x => x !== r.id);
+  if (on) ids.push(r.id);
+  grpUi.busy[r.id] = on ? 'on' : 'off'; grpUi.focus = 'room-' + rid(r.id); paintRooms();
+  const ok = await grpCall('PUT', '/api/group', {members: ids}, () => setRoom(r, on));
+  delete grpUi.busy[r.id];
+  if (ok) toast(on ? roomName(r) + ' is playing along' : roomName(r) + ' plays on its own again');
+  paintGroup(); grpUi.focus = null; pollSoon();
+}
+async function joinGroup(r){
+  grpUi.busy.join = r.id; grpUi.focus = 'join-' + rid(r.id); paintRooms();
+  const ok = await grpCall('POST', '/api/group/join', {leader: r.id}, () => joinGroup(r));
+  delete grpUi.busy.join;
+  if (ok){ grpUi.open = false; toast('Playing with ' + roomName(r)); }
+  paintGroup(); grpUi.focus = null; pollSoon();
+  if (ok){ const b = $('grpLeave'); if (b) b.focus({preventScroll:true}); }
+}
+async function leaveGroup(){
+  grpUi.busy.leave = true; grpUi.focus = 'grpLeave'; paintRooms();
+  const ok = await grpCall('POST', '/api/group/leave', {}, leaveGroup);
+  delete grpUi.busy.leave;
+  if (ok) toast('Playing on its own again');
+  paintGroup(); grpUi.focus = null; pollSoon();
+  if (ok){ const b = $('roomsBtn'); if (b) b.focus({preventScroll:true}); }
+}
+function grpErrRow(id){
+  if (!grpErr) return null;
+  return h('div', {class:'rooms-err', role:'alert'}, h('p', {class:'err'}, grpErr.msg),
+    h('button', {type:'button', class:'btn small inline', id, onclick: () => { const f = grpErr && grpErr.retry; grpErr = null; paintGroup(); if (f) f(); }}, 'Retry'));
+}
+function roomState(r, inGroup){
+  const b = grpUi.busy[r.id];
+  if (b) return {cls:'wait', txt: b === 'on' ? 'Joining…' : 'Stopping…'};
+  if (inGroup) return r.online === false ? {cls:'wait', txt:'Not answering — it rejoins by itself'} : {cls:'on', txt:'Playing along'};
+  if (r.online === false) return {cls:'', txt:'Off or asleep'};
+  return {cls:'', txt: r.playing ? 'Playing its own music' : 'Quiet'};
+}
+function roomRow(r, inGroup){
+  const st = roomState(r, inGroup), id = 'room-' + rid(r.id);
+  const dis = !!grpUi.busy[r.id] || !!grpUi.busy.join || (!inGroup && r.online === false);
+  const row = h('div', {class:'room' + (inGroup || r.online !== false ? '' : ' off')},
+    h('label', {class:'switch', for:id},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, roomName(r)), h('span', {class:'room-sub ' + st.cls}, st.txt)),
+      h('input', {type:'checkbox', role:'switch', id, checked: inGroup, disabled: dis, 'aria-label':'Play on ' + roomName(r),
+        onchange: e => setRoom(r, e.target.checked)})));
+  if (!inGroup && r.playing && r.online !== false && grp.role === 'alone')
+    return [row, h('div', {style:'margin:-8px 0 2px'}, h('button', {type:'button', class:'link quiet', id:'join-' + rid(r.id), disabled: dis,
+      onclick: () => joinGroup(r)}, grpUi.busy.join === r.id ? 'Joining…' : 'Or listen to ' + roomName(r) + ' here instead'))];
+  return row;
+}
+// The front page: "Also play on…" (alone), the rooms in the group (lead), "Playing with…" (follow).
+function paintRooms(){
+  const box = $('rooms'); if (!box) return;
+  const show = mrOn() && online;
+  const sig = show ? JSON.stringify([grp, grpErr && grpErr.msg, grpUi.open, grpUi.busy, !!(status && status.standby)]) : '';
+  if (sig === roomsSig) return;
+  roomsSig = sig;
+  const a = document.activeElement, fid = (a && box.contains(a) && a.id) || grpUi.focus;
+  box.textContent = '';
+  box.classList.toggle('grouped', show && (grp.role === 'follow' || (grp.role === 'lead' && grpRooms().length > 0)));
+  if (!show) return;
+  if (grp.role === 'follow'){
+    const L = grp.leader;
+    box.append(h('div', {class:'rooms-head'}, h('span', {class:'rooms-ic', 'aria-hidden':'true'}, roomsIcon()),
+      h('div', {class:'rooms-txt'},
+        h('span', {class:'rooms-title'}, 'Playing with ', h('b', null, roomName(L))),
+        h('span', {class:'rooms-sub'}, grp.follower_keys === 'leave' ? 'A preset key here leaves and plays on its own.' : 'Keys here change the music in every room.',
+          ' Volume stays on this radio.')),
+      h('button', {type:'button', class:'btn small inline', id:'grpLeave', disabled: !!grpUi.busy.leave, onclick: leaveGroup}, grpUi.busy.leave ? 'Leaving…' : 'Leave')));
+    const er = grpErrRow('grpRetry'); if (er) box.append(h('div', {class:'rooms-body'}, er));
+  } else {
+    const members = grpRooms(), memberIds = new Set(members.map(m => m.id));
+    const others = (grp.others || []).filter(o => !memberIds.has(o.id));
+    const lead = members.length > 0;
+    const n = others.length;
+    box.append(h('div', {class:'rooms-head'}, h('span', {class:'rooms-ic', 'aria-hidden':'true'}, roomsIcon()),
+      h('div', {class:'rooms-txt'},
+        h('span', {class:'rooms-title'}, lead ? ['Also in ', h('b', null, nameList(members))] : 'Only this room'),
+        h('span', {class:'rooms-sub'}, lead ? (members.length + 1) + ' rooms, in step'
+          : n ? (n === 1 ? '1 other Hasler' : n + ' other Haslers') + ' at home' : 'No others found yet')),
+      h('button', {type:'button', class:'rooms-btn', id:'roomsBtn', 'aria-expanded': String(grpUi.open), 'aria-controls':'roomsBody',
+        onclick: () => { grpUi.open = !grpUi.open; paintRooms(); if (grpUi.open) refreshGroup(); }},
+        lead ? 'Rooms' : 'Also play on…', h('span', {class:'chev'}, IC.chev()))));
+    if (grpUi.open){
+      const body = h('div', {class:'rooms-body', id:'roomsBody', role:'group', 'aria-label':'Rooms to play on'});
+      if (members.length || n) body.append(h('p', {class:'hint'}, 'They play what this radio plays. A room can start about a second late — that’s normal. Each radio keeps its own volume.'));
+      const er = grpErrRow('grpRetry'); if (er) body.append(er);
+      if (!members.length && !n)
+        body.append(h('p', {class:'rooms-empty'}, h('b', null, 'No other Haslers found on this network'),
+          'Switch the other radio on, check it’s on the same Wi-Fi, and turn on Multiroom in its Settings.'));
+      for (const m of members) body.append(...[].concat(roomRow(m, true)));
+      for (const o of others) body.append(...[].concat(roomRow(o, false)));
+      box.append(body);
+    }
+  }
+  const f = fid && $(fid); if (f) f.focus({preventScroll:true});
+}
+// Settings → Multiroom
+function joinKeys(){
+  const out = [];
+  for (const k of (cfg && cfg.keys) || []) for (const s of ['hold', 'tap'])
+    if (k[s] && k[s].do === 'join_group') out.push({id:k.id, slot:s, text: keyLabel(k) + (s === 'hold' ? ' (hold)' : ' (tap)')});
+  return out;
+}
+function multiroomGroup(){
+  if (!grp || grp.missing) return null;
+  mrSig = '';
+  const box = h('div', {class:'list', id:'mrBox'});
+  fillMr(box);
+  return h('section', {class:'grp-sec', id:'mrGroup', 'aria-label':'Multiroom'}, h('span', {class:'mono grp-lbl'}, 'Multiroom'), box);
+}
+function fillMr(box){
+  box.textContent = '';
+  const on = !!grp.enabled, fk = grp.follower_keys === 'leave' ? 'leave' : 'group', busy = grpUi.mrBusy;
+  box.append(h('div', {class:'li'}, h('label', {class:'switch', for:'mrOn', style:'flex:1'},
+    h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Play in several rooms'),
+      h('span', {class:'li-sub'}, on ? 'This radio can play along with other Haslers at home, in step. Add rooms from the front page.'
+        : 'Let this radio play the same music as other Haslers at home, in step.')),
+    h('input', {type:'checkbox', role:'switch', id:'mrOn', checked: on, disabled: busy, onchange: e => saveMr({enabled: e.target.checked}, e.target)}))));
+  const er = grpErrRow('mrRetry'); if (er) box.append(h('div', {class:'li col', style:'min-height:0'}, er));
+  if (!on) return;
+  const opts = [['group', 'Control the whole group', 'A preset key changes the music in every room'],
+    ['leave', 'Leave and play alone', 'A preset key takes this radio out of the group']];
+  const pick = h('div', {class:'picker plain', role:'radiogroup', 'aria-labelledby':'mrKeysLbl'});
+  for (const [v, t, d] of opts)
+    pick.append(h('button', {type:'button', role:'radio', id:'mrk-' + v, 'aria-checked': String(fk === v), disabled: busy,
+      onclick: () => { if (fk !== v) saveMr({follower_keys: v}); }},
+      h('span', {class:'radio-dot', 'aria-hidden':'true'}), h('span', null, t, h('small', null, d))));
+  box.append(h('div', {class:'li col', style:'gap:6px'},
+    h('span', {class:'li-title', id:'mrKeysLbl'}, 'Keys on this radio while it follows another'), pick));
+  const held = joinKeys();
+  box.append(h('div', {class:'li col', style:'gap:6px'},
+    h('span', {class:'li-title'}, 'Join from a key'),
+    h('span', {class:'li-sub'}, 'Hold a key on this radio to join the music playing on another Hasler.'),
+    h('div', {class:'hstack', style:'justify-content:space-between'},
+      h('span', {class:'li-sub'}, held.length ? ['Set on: ', h('b', {style:'color:var(--cream);font-weight:600'}, held.map(x => x.text).join(', '))] : 'No key does this yet.'),
+      h('button', {type:'button', class:'link', onclick: () => go(held.length === 1 ? 'edit/' + held[0].id + '/' + held[0].slot : 'edit')},
+        held.length ? 'Change in Edit keys' : 'Choose a key in Edit keys'))));
+  box.append(h('div', {class:'li', style:'min-height:0'},
+    h('span', {class:'li-sub'}, 'Volume, tone and standby stay with each radio: putting one to sleep doesn’t stop the others.')));
+}
+function paintMr(){
+  const box = $('mrBox'); if (!box || !grp || grp.missing) return;
+  const sig = JSON.stringify([grp.enabled, grp.follower_keys, grpErr && grpErr.msg, grpUi.mrBusy, joinKeys()]);
+  if (sig === mrSig) return;
+  mrSig = sig;
+  const a = document.activeElement, fid = (a && box.contains(a) && a.id) || grpUi.mrFocus;
+  fillMr(box);
+  const f = fid && $(fid); if (f) f.focus({preventScroll:true});
+}
+async function saveMr(change, box){
+  const was = {enabled: !!grp.enabled, follower_keys: grp.follower_keys === 'leave' ? 'leave' : 'group'};
+  if (change.enabled === false && (grp.role === 'lead' && grpRooms().length || grp.role === 'follow')
+      && !confirm(grp.role === 'follow' ? 'This radio stops playing with ' + roomName(grp.leader) + '. Turn Multiroom off?'
+        : 'The other rooms stop playing along. Turn Multiroom off?')){ if (box) box.checked = true; return; }
+  const want = Object.assign({}, was, change);
+  const act = document.activeElement;
+  grpUi.mrFocus = act && act.id && $('mrBox') && $('mrBox').contains(act) ? act.id : null;
+  grpUi.mrBusy = true; mrSig = ''; paintMr();
+  try {
+    const r = await api('PUT', '/api/group', want);
+    if (r.ok){
+      const m = (r.json && 'enabled' in r.json) ? r.json : want;
+      grp.enabled = !!m.enabled; grp.follower_keys = m.follower_keys === 'leave' ? 'leave' : 'group';
+      toast('enabled' in change ? (grp.enabled ? 'Multiroom on — add rooms from the front page' : 'Multiroom off')
+        : grp.follower_keys === 'leave' ? 'Keys here will leave the group' : 'Keys here will control the whole group');
+      grpUi.mrBusy = false;
+      await loadGroup();
+    } else toast(capFirst((r.json && r.json.error) || 'Couldn’t change Multiroom (error ' + r.status + ')'), true);
+  } catch (_) { toast('Couldn’t reach the radio.', true); }
+  grpUi.mrBusy = false; mrSig = '';
+  paintGroup(); grpUi.mrFocus = null; grpSchedule();
+}
+function maybeScrollMr(){
+  if (!wantMrScroll || view !== 'settings') return;
+  const g = $('mrGroup'); if (!g || !srcDoc || !settings) return;
+  wantMrScroll = false;
+  g.scrollIntoView({block:'start'});
+  const s = $('mrOn'); if (s) s.focus({preventScroll:true});
+}
+// Edit keys: the help under "Join another Hasler".
+function joinHelp(wrap, slot){
+  const again = slot === 'hold' ? 'Hold it again' : 'Press it again';
+  wrap.append(h('p', {class:'hint'}, (slot === 'hold' ? 'Hold this key' : 'Press this key') + ' to play along with another Hasler that’s playing. '
+    + again + ' to leave' + (grp && grp.follower_keys === 'leave' ? ' — or press a preset key.' : ', or use Leave on the front page.')));
+  if (!mrOn()) wrap.append(h('p', {class:'note-warn'}, 'Multiroom is off on this radio, so this key won’t do anything yet.'),
+    h('div', null, h('button', {type:'button', class:'link', onclick: () => go('settings/multiroom')}, 'Turn on Multiroom in Settings')));
 }
 
 /* ---------- a press on the radio (web/confirm.py) ---------- */
@@ -3691,7 +3988,7 @@ function schedule(){
   pollTimer = setTimeout(async () => { await poll(); schedule(); }, !online ? 3000 : remoteShown() ? 1000 : 4000);
 }
 function pollSoon(){ clearTimeout(pollTimer); pollTimer = setTimeout(async () => { await poll(); schedule(); }, 250); }
-document.addEventListener('visibilitychange', () => { if (document.hidden){ clearTimeout(pollTimer); pollTimer = null; } else { poll().then(schedule); castSchedule(); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden){ clearTimeout(pollTimer); pollTimer = null; } else { poll().then(schedule); castSchedule(); refreshGroup().then(grpSchedule); } });
 
 /* ================= boot ================= */
 // Pick up changes made elsewhere (another phone, Browse) before editing.
@@ -3707,7 +4004,7 @@ async function loadConfig(){
     if (!r.ok || !r.json || !Array.isArray(r.json.keys)) throw new Error('bad');
     adopt(r.json);
   } catch (_) { cfg = cfg || undefined; }
-  buildBank(); renderRemote();
+  buildBank(); renderRemote(); paintMr();
   if (view === 'edit'){ onRoute(); }
 }
 window.addEventListener('beforeunload', e => { if (isDirty()){ e.preventDefault(); e.returnValue = ''; } });
@@ -3721,6 +4018,7 @@ loadAccount();
 loadSoftware();
 loadSettings().then(() => { if (view === 'settings') rerender(); if (settings && settings.volume_limit != null){ K.limit = +settings.volume_limit; paintKnob(); } });
 refreshHa();
+loadGroup().then(() => { paintGroup(); watchGroup(); grpSchedule(); if (view === 'settings' && grp && !grp.missing) rerender(); });
 })();
 </script>
 </body>

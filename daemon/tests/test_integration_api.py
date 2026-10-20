@@ -64,7 +64,8 @@ class TestInfo:
         assert doc["variant"] == "hasler-hm" and doc["api"] == 1
         assert isinstance(doc["version"], str) and doc["version"]
         assert doc["name"] and "." not in doc["name"]
-        assert set(doc) == {"id", "name", "variant", "version", "api"}
+        assert set(doc) == {"id", "name", "variant", "version", "api", "multiroom"}
+        assert doc["multiroom"]["enabled"] is False and doc["multiroom"]["role"] == "alone"
 
     def test_id_without_machine_id_is_still_stable(self, tmp_path):
         assert integration.radio_id(tmp_path / "nope") == integration.radio_id(tmp_path / "nope")

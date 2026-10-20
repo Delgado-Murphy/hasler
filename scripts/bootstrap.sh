@@ -15,6 +15,7 @@
 # Idempotent: safe to re-run (after a moOde update, re-run it for the moOde
 # patch). What it does:
 #   - apt packages the box needs at runtime (zstd, liblgpio1, ...)
+#   - multiroom: snapserver + snapclient, Debian's own units masked
 #   - I2C on, the daemon user in gpio/i2c/audio
 #   - system users: hasler-update (the unprivileged updater), ytdlp (yt-dlp)
 #   - /var/lib/haslerd
@@ -45,7 +46,7 @@ while (( $# )); do
     --eeprom) EEPROM=1 ;;
     --early-mpd) EARLY_MPD=1 ;;
     --no-early-mpd) EARLY_MPD=0 ;;
-    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
     *) echo "bootstrap: unknown argument $1" >&2; exit 2 ;;
   esac
   shift
@@ -180,6 +181,23 @@ if [[ -f /var/www/inc/renderer.php ]] && ! command -v shairport-sync >/dev/null 
     && run systemctl disable --now shairport-sync \
     && run install -m 0644 "$REPO/config/moode/shairport-sync.conf" /etc/shairport-sync.conf \
     || warn "shairport-sync not installed - AirPlay stays unavailable"
+fi
+# Multiroom between Haslers (Snapcast, Debian's 0.31). Off by default: the
+# release's snapserver-hasler/snapclient-hasler/camilladsp-hasler units are
+# never enabled - hasler-multiroom starts them only while grouped. Debian's
+# own units are masked before the install, so they never start (not even
+# from the package's postinst) and an upgrade can't bring them back.
+SNAP_MISSING=()
+for p in snapserver snapclient; do dpkg -s "$p" >/dev/null 2>&1 || SNAP_MISSING+=("$p"); done
+if (( SYSTEMD )); then
+  for u in snapserver.service snapclient.service; do
+    [[ "$(systemctl is-enabled "$u" 2>/dev/null)" == masked ]] || run systemctl mask --quiet --now "$u"
+  done
+fi
+if (( ${#SNAP_MISSING[@]} )); then
+  say "multiroom: installing ${SNAP_MISSING[*]} (Debian's units masked; off until grouped)"
+  run apt-get install -y -q --no-install-recommends "${SNAP_MISSING[@]}" \
+    || warn "snapcast not installed - multiroom stays unavailable"
 fi
 if command -v moodeutl >/dev/null 2>&1 && \
    [[ "$(moodeutl -q "select value from cfg_system where param='spotifysvc'" 2>/dev/null)" == 1 ]]; then

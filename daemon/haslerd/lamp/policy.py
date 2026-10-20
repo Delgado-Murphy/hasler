@@ -16,10 +16,12 @@ Priority, highest first (docs/lamp.md "Priority"):
  5. standby
  6. boot warm-up
  7. Bluetooth pairing window
- 8. loading
- 9. offline idle red (only when the next key press would fail), and the
+ 8. loading, and joining a group (the same breath)
+ 9. following a group whose leader plays (the leader's tint; it plays, so
+    no idle red)
+10. offline idle red (only when the next key press would fail), and the
     missing panel board
-10. playing / ready
+11. playing / ready
 """
 
 from __future__ import annotations
@@ -101,8 +103,10 @@ def look_for(state: BoxState) -> tuple[Look, float]:
         return BOOT.get(state.boot, BOOT["daemon"]), FADE_BOOT
     if state.pairing:
         return PAIRING, FADE_LOADING
-    if state.loading:
+    if state.loading or state.group == "joining":
         return LOADING, FADE_LOADING
+    if state.group == "following" and state.group_playing:
+        return playing_look(state.group_source), FADE_PLAYING
     if offline_shows(state):
         return OFFLINE, FADE_ALERT
     if state.panel_missing and not state.playing:

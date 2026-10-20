@@ -369,3 +369,15 @@ def test_channel_promote_halt_refresh(built, tmp_path):
     assert ch.main(["check", str(idx)]) == 1
     assert ch.main(["refresh", str(idx)]) == 0
     assert ch.main(["check", str(idx)]) == 0
+
+
+def test_multiroom_files_ship_from_the_worktree():
+    """Snapcast multiroom: the helper, three never-enabled units, the server config."""
+    srcs, links = br.sources_from_worktree(ROOT)
+    files = br.select(srcs, links, ROOT)
+    assert files["integration/sbin/hasler-multiroom"][1] == 0o755
+    for unit in ("snapserver-hasler", "snapclient-hasler", "camilladsp-hasler"):
+        assert files[f"integration/systemd/{unit}.service"][1] == 0o644
+    assert b"[stream]" in files["app/config/snapcast/snapserver.conf"][0]
+    assert b"hasler-multiroom" in files["integration/sudoers/haslerd"][0]
+    assert not [p for p in br.lint_integration(files) if "hasler" in p and "snap" in p]

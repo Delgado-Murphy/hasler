@@ -78,6 +78,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     # data that install.sh puts in system places the contract's integration/
     # allowlist has no destination for yet (see docs/release.md "Gaps")
     Rule("config/camilladsp/*.yml", "app/config/camilladsp/"),
+    Rule("config/snapcast/*.conf", "app/config/snapcast/"),
     Rule("config/captive/*.conf", "app/config/captive/"),
     Rule("config/go-librespot/config.yml", "app/config/go-librespot/"),
     Rule("config/moode/*", "app/config/moode/"),
@@ -92,6 +93,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("update/systemd/*", "integration/systemd/"),
     Rule("update/bin/hasler-*", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-audio-mono", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-multiroom", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-wifi-join", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-lamp-boot", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-ytdlp-update", "integration/sbin/", mode=0o755),
