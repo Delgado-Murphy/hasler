@@ -92,12 +92,13 @@ from ..player.base import Preset
 from ..player.glr_config import SpotifyGuests, guests_from
 from ..player.moode import treble_db
 from . import keymap, stations
-from ..net import HOTSPOT_ADDR
+from ..net import HOTSPOT_ADDRS
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
 from . import integration
 from .room import Room
 from .software import NotInstalled, Software, SoftwareError
 from .wifi import Wifi
+from . import wifi_page
 
 log = logging.getLogger(__name__)
 
@@ -120,7 +121,8 @@ LOOPBACK = ("127.0.0.1", "::1")
 # Paths served by ``WebApp.extra_routes`` (web/ha_api.py, web/sources_api.py, web/knobs_api.py).
 EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "/api/group", "/api/peer",
                   "/api/knobs/functions", "/api/knobs/try",   # web/knobs_api.py
-                  "/api/help")                                # web/help_api.py
+                  "/api/help",                                # web/help_api.py
+                  "/api/spotify")                             # web/spotify_account_api.py
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
@@ -317,7 +319,7 @@ class WebApp:
         # Local addresses that are the setup hotspot: Wi-Fi changes from a phone
         # joined to it need no key press (that phone is next to the radio, and
         # the radio has no other network then).
-        self.hotspot_addrs: set[str] = {HOTSPOT_ADDR}
+        self.hotspot_addrs: set[str] = set(HOTSPOT_ADDRS)
 
     def _lamp_reply(self, name: str) -> None:
         reply = getattr(self.actions, "_reply", None)
@@ -336,7 +338,7 @@ class WebApp:
     # -- who may change things ------------------------------------------------
 
     def own_names(self) -> set[str]:
-        names = set(OWN_NAMES) | set(LOOPBACK) | {HOTSPOT_ADDR} | self.allowed_hosts
+        names = set(OWN_NAMES) | set(LOOPBACK) | set(HOTSPOT_ADDRS) | self.allowed_hosts
         try:
             host = socket.gethostname().lower().rstrip(".")
             if host:
@@ -345,14 +347,19 @@ class WebApp:
             pass
         return names
 
-    def request_refusal(self, method: str, headers: Any, local_addr: str | None) -> str | None:
+    def request_refusal(self, method: str, headers: Any, local_addr: str | None,
+                        form: bool = False) -> str | None:
         """Why a state-changing request is refused (CSRF / DNS rebinding), or None.
 
         ``headers`` is the request's (``.get``); ``local_addr`` the address the
-        client connected to - a Host that is that very IP is the box.
+        client connected to - a Host that is that very IP is the box. ``form``
+        also takes a plain HTML form post (the Wi-Fi page without JavaScript);
+        its Host and Origin are checked all the same.
         """
         ctype = (headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        if ctype != "application/json":
+        if form and ctype == "application/x-www-form-urlencoded":
+            pass
+        elif ctype != "application/json":
             return f"{method} needs Content-Type: application/json"
         host_header = (headers.get("Host") or "").strip().lower()
         host = _host_only(host_header).strip("[]").rstrip(".")
@@ -380,6 +387,17 @@ class WebApp:
         if (local_addr or "") not in self.hotspot_addrs:
             self.confirm.consume(body.get("confirm"), "wifi", {"ssid": ssid})
         self.wifi.join(ssid, str(body.get("password", "")), str(body.get("security", "auto")))
+
+    def wifi_retry(self, body: Any) -> dict:
+        """Setup mode's "try my Wi-Fi again" (haslerd/wifiwatch.py). No key press:
+        the helper does nothing unless the radio is its own hotspot, and then the
+        only way here is from a phone on that hotspot. ``force`` (default) drops
+        that phone for the minute it takes."""
+        body = body if isinstance(body, dict) else {}
+        force = bool(body.get("force", True))
+        watch = getattr(self.wifi, "watch", None)
+        reply = watch.try_now(force=force) if watch is not None else self.wifi.retry(force=force)
+        return {"ok": bool(reply.get("ok", True)), **{k: v for k, v in reply.items() if k != "ok"}}
 
     def confirmed_reset(self, body: Any) -> dict:
         body = body if isinstance(body, dict) else {}
@@ -1448,8 +1466,10 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             if self._extra("GET"):
                 return
             url = urlparse(self.path)
-            if url.path in ("/", "/index.html", "/wifi"):
-                page = STATIC / ("wifi.html" if url.path == "/wifi" else "index.html")
+            if url.path == "/wifi":
+                self._wifi_page(parse_qs(url.query).get("lang", [""])[0])
+            elif url.path in ("/", "/index.html"):
+                page = STATIC / "index.html"
                 if page.exists():
                     self._send(200, page.read_bytes(), "text/html; charset=utf-8")
                 else:
@@ -1558,7 +1578,55 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             else:
                 self._send(404, b"not found", "text/plain")
 
+        def _wifi_page(self, lang: str | None, status: int = 200, form: dict | None = None, **kw: Any) -> None:
+            """The Wi-Fi setup page, rendered for this phone (web/wifi_page.py)."""
+            page = STATIC / "wifi.html"
+            if not page.exists():
+                self._send(404, b"page not installed", "text/plain")
+                return
+            lang = wifi_page.pick_lang(lang, self.headers.get("Accept-Language"))
+            try:
+                wifi = {} if kw.get("state") == "done" else app.wifi.status()
+            except Exception:
+                log.warning("wifi status failed", exc_info=True)
+                wifi = {}
+            html = wifi_page.render(page.read_text("utf-8"), wifi, lang, form=form, **kw)
+            self._send(status, html.encode(), "text/html; charset=utf-8")
+
+        def _wifi_form(self) -> None:
+            """POST /wifi: the setup page's form without JavaScript. Same rules as
+            /api/wifi (a key press unless the phone is on the setup network)."""
+            why = app.request_refusal("POST", self.headers, self._local_addr(), form=True)
+            if why is not None:
+                log.warning("web: refused POST /wifi: %s", why)
+                self._send(403, why.encode(), "text/plain; charset=utf-8")
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            if length > MAX_BODY:
+                self._send(413, b"request too large", "text/plain")
+                return
+            form = wifi_page.parse_form(self.rfile.read(length) if length else b"")
+            lang = wifi_page.pick_lang(form.get("lang"), self.headers.get("Accept-Language"))
+            strings = wifi_page.strings((STATIC / "wifi.html").read_text("utf-8"))
+            s = {**strings.get("en", {}), **strings.get(lang, {})}
+            try:
+                body = wifi_page.join_body(form)
+                app.wifi_join(body, self._local_addr())
+            except wifi_page.FormError as exc:
+                error = s.get(exc.key, exc.key)
+            except (ConfirmError, ConfirmUnavailable):
+                error = s.get("err_confirm_js", "")
+            except ValueError as exc:
+                error = s.get("err_save", "{error}").replace("{error}", str(exc))
+            else:
+                self._wifi_page(lang, state="done", saved_ssid=body["ssid"])
+                return
+            self._wifi_page(lang, 400, form=form, error=error)
+
         def do_POST(self) -> None:
+            if urlparse(self.path).path == "/wifi":
+                self._wifi_form()
+                return
             if self._refused() or self._extra("POST"):
                 return
             path = urlparse(self.path).path
@@ -1584,6 +1652,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif path == "/api/settings":            # as PUT, for clients that only POST
                 self._guard(lambda: self._json(
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
+            elif path == "/api/wifi/retry":
+                self._guard(lambda: self._json(200, app.wifi_retry(self._body())))
             elif path == "/api/wifi":
                 def join() -> None:
                     app.wifi_join(self._body(), self._local_addr())

@@ -6,7 +6,8 @@ name stay moOde's (``/api/casting``). The owner's settings live in
 applied live on a PUT:
 
     "bluetooth": {"keys": {"enabled": true, "again": "next", "hold": "pause"},
-                  "reconnect": {"on_select": true, "on_wake": true}}
+                  "reconnect": {"on_select": true, "on_wake": true},
+                  "phone_volume": true}
 
 ``keys``: while a phone plays over Bluetooth, the key whose tap is the
 ``bluetooth`` verb, pressed again, does ``again`` (next | previous | none) on
@@ -14,12 +15,14 @@ the phone, and held does ``hold`` (pause = pause/play | next | previous |
 none) instead of whatever the hold is bound to. ``reconnect``: choosing
 Bluetooth (that key, or the PU cycle landing there) and waking a radio that
 slept on Bluetooth call the most recently used phone in range.
+``phone_volume``: the phone's volume slider is the radio's volume, both ways
+(player/btvolume.py); off, it is BlueALSA's attenuation on top, as before.
 
     GET  /api/bluetooth             {available, on, name, devices, playing, settings, pairing}
     POST /api/bluetooth/connect     {"address": "B0:9C:B2:EB:15:F9"}
     POST /api/bluetooth/disconnect  {"address": ...} or {} for every connected one
     POST /api/bluetooth/forget      {"address": ...}  - removes the pairing
-    PUT  /api/bluetooth/settings    {"keys": {...}} and/or {"reconnect": {...}}
+    PUT  /api/bluetooth/settings    {"keys": {...}}, {"reconnect": {...}} and/or {"phone_volume": bool}
 
 Errors are {"ok": false, "error"}: 400 a bad request or unknown device, 409
 BlueZ said no (a phone out of range), 503 no Bluetooth on this radio.
@@ -48,11 +51,12 @@ def apply_saved(actions: Actions, settings: dict) -> None:
     if not isinstance(doc, dict) or not doc:
         return
     try:
-        merged = bt_settings_from({k: v for k, v in doc.items() if k in ("keys", "reconnect")})
+        merged = bt_settings_from({k: v for k, v in doc.items() if k in ("keys", "reconnect", "phone_volume")})
     except ValueError as exc:
         log.warning("ignoring saved bluetooth settings %r: %s", doc, exc)
         return
     actions.bt_keys, actions.bt_reconnect = merged["keys"], merged["reconnect"]
+    actions.bt_phone_volume = merged["phone_volume"]
 
 
 class BluetoothApi:
@@ -117,7 +121,8 @@ class BluetoothApi:
             "devices": [bt.public(d) for d in devices or []],
             "playing": playing,
             "reconnecting": bool(getattr(bt, "reconnecting", False)),
-            "settings": {"keys": dict(actions.bt_keys), "reconnect": dict(actions.bt_reconnect)},
+            "settings": {"keys": dict(actions.bt_keys), "reconnect": dict(actions.bt_reconnect),
+                         "phone_volume": bool(actions.bt_phone_volume)},
             "choices": {"again": list(BT_AGAIN), "hold": list(BT_HOLD)},
             # Which keys carry the Bluetooth verb, e.g. ["k6.tap"].
             "bound_to": sorted(k for k, v in actions.variant.actions.items()
@@ -152,12 +157,14 @@ class BluetoothApi:
 
     def put_settings(self, body: Any) -> dict:
         actions = self.actions
-        merged = bt_settings_from(body, {"keys": actions.bt_keys, "reconnect": actions.bt_reconnect})
+        merged = bt_settings_from(body, {"keys": actions.bt_keys, "reconnect": actions.bt_reconnect,
+                                         "phone_volume": actions.bt_phone_volume})
         with self.app.lock:
             if self.app.settings_file is not None:
                 doc = load_settings(self.app.settings_file)
                 doc["bluetooth"] = merged
                 save_settings(self.app.settings_file, doc)
             actions.bt_keys, actions.bt_reconnect = merged["keys"], merged["reconnect"]
+            actions.bt_phone_volume = merged["phone_volume"]
         log.info("bluetooth settings from the web page: %s", merged)
         return self.doc()

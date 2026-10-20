@@ -415,7 +415,7 @@ class TestBuildWeb:
         monkeypatch.setattr(main, "HaApi", None)
         monkeypatch.setattr(main, "Catalog", None)
         server, app = main.build_web({"web": {"enabled": False}}, actions, None, StateStore(None), True)
-        assert app.ha_api is None and [type(r).__name__ for r in app.extra_routes] == ["SourcesApi", "BluetoothApi", "HelpApi", "GroupApi"] and app.config()["ha"] is True
+        assert app.ha_api is None and [type(r).__name__ for r in app.extra_routes] == ["SourcesApi", "BluetoothApi", "HelpApi", "SpotifyAccountApi", "GroupApi"] and app.config()["ha"] is True
         assert app.browse is None and app.settings_file is None
 
     def test_publisher_runs_off_loop_and_throttles(self, rig):

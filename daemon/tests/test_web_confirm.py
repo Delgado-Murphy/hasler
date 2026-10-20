@@ -327,6 +327,21 @@ class TestConfirmHttp:
         status, page = call(hp, "GET", "/wifi", None, {"Host": "172.24.1.1:8080"})
         assert status == 200 and b"/api/confirm/request" in page
 
+    def test_wifi_retry_goes_to_the_watchdog_and_forces_by_default(self, base):
+        hp, app = base
+        asked = []
+
+        class Watch:
+            def try_now(self, force=False):
+                asked.append(force)
+                return {"ok": True, "result": "not-hotspot"}
+
+        app.wifi.watch = Watch()
+        status, doc = call(hp, "POST", "/api/wifi/retry", {})
+        assert status == 200 and doc == {"ok": True, "result": "not-hotspot"} and asked == [True]
+        call(hp, "POST", "/api/wifi/retry", {"force": False})
+        assert asked == [True, False]
+
 
 # -- software ----------------------------------------------------------------------------
 

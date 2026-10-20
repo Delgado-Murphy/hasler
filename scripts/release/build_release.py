@@ -89,6 +89,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/bootstrap.sh", "app/setup/scripts/", mode=0o755),
     Rule("scripts/ota-bootstrap.sh", "app/setup/scripts/", mode=0o755),
     Rule("scripts/hasler-boot-report", "app/setup/scripts/", mode=0o755),
+    Rule("scripts/hasler-wifi-rescue", "app/setup/scripts/", mode=0o755),   # bootstrap.sh installs it
     Rule("scripts/hasler-install", "app/setup/scripts/", mode=0o755),
     Rule("config/update/**", "app/setup/config/update/", strip="config/update"),
     Rule("config/firstboot/*", "app/setup/config/firstboot/"),
@@ -115,6 +116,8 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-lamp-halt", "integration/shutdown/", mode=0o755),
     Rule("config/sudoers/haslerd", "integration/sudoers/"),
     Rule("config/systemd-dropins/bluetooth.service.d/hasler-*.conf", "integration/systemd/bluetooth.service.d/"),
+    Rule("config/systemd-dropins/bluealsa-aplay@.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay@.service.d/"),
+    Rule("config/systemd-dropins/bluealsa-aplay.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay.service.d/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
     Rule("config/avahi/hasler.service", "integration/avahi/"),
     # licensing, at the top next to bin/ and wheelhouse/ it describes: our MIT

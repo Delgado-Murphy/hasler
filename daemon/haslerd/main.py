@@ -29,7 +29,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 import yaml
 
@@ -37,6 +37,8 @@ from . import boxconfig
 from .actions import RENDERERS, SHUTDOWN_PREPARE_S, Actions
 from .bootresume import AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, shutdown_kind
 from .ha.rest import HomeAssistant
+from .player.bluetooth import Bluetooth
+from .player.btvolume import PhoneVolume
 from .lamp.contract import BoxState, LampDriver, Look
 from .lamp.policy import look_for, reply_for
 from .web import stations
@@ -46,6 +48,7 @@ from .web.bluetooth_api import BluetoothApi
 from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
 from .web.help_api import MAKERS_TAILNET, HelpApi
+from .web.spotify_account_api import SpotifyAccountApi
 from .web.sources_api import apply_saved as apply_sources
 from .dsp.knobs import KnobFunctions, helper_runner
 from .web.knobs_api import KnobFunctionsApi
@@ -82,6 +85,7 @@ try:    # Sunset..sunrise (and the page's fixed-hours mode) for the lamp.
 except ImportError:
     night_mode_active = None
 from .net import Connectivity, tcp_probe
+from .wifiwatch import HotspotWatchdog
 from .player.base import FakePlayer, Preset
 from .player.moode import MoodeConfig, MoodePlayer
 from .state import StateStore
@@ -767,10 +771,13 @@ def build_web(
         # clear-missing rewrites keys.yaml: same file, same lock as the page
         ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
         app.extra_routes.append(ha_api)
+    # /api/spotify/account: sign the radio in to Spotify with a code (also in /api/casting)
+    app.spotify_account = SpotifyAccountApi(app)
     app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
     app.extra_routes.append(BluetoothApi(app))  # /api/bluetooth
     # /api/help: "Let the makers help (24 h)" - off until the owner asks
     app.extra_routes.append(HelpApi(app, tailnet=spec.get("help_tailnet", MAKERS_TAILNET)))
+    app.extra_routes.append(app.spotify_account)
     if actions.dsp is not None:                 # /api/knobs/functions, /api/knobs/try
         app.knob_functions = actions.dsp
         app.extra_routes.append(KnobFunctionsApi(app, actions.dsp))
@@ -779,6 +786,7 @@ def build_web(
     # Spotify for guests: radios made before it existed get it here, not from
     # a release (go-librespot's config.yml is theirs after the bootstrap).
     app.apply_spotify_guests()
+    app.spotify_account.resume()             # a sign-in left waiting gets its deadline back
     if not spec.get("enabled", True):
         return None, app
     server = WebServer(app, host=spec.get("host", "0.0.0.0"), port=int(spec.get("port", 8080)))
@@ -884,6 +892,23 @@ def build_connectivity(config: dict) -> Connectivity:
     return conn
 
 
+def build_wifiwatch(app: Any, conn: Connectivity, fake: bool = False) -> HotspotWatchdog | None:
+    """The hotspot watchdog (wifiwatch.py): moOde never leaves its setup
+    hotspot by itself, so this tries the saved Wi-Fi again now and then."""
+    wifi = getattr(app, "wifi", None)
+    if wifi is None or fake:
+        return None
+    settings_file = getattr(app, "settings_file", None)
+    if settings_file is not None:
+        wifi.hotspot_file = Path(settings_file).parent / "hotspot.txt"   # /var/lib/haslerd
+    idle = getattr(app, "_idle", None)
+    watch = HotspotWatchdog(wifi, hotspot=lambda: conn.hotspot,
+                            idle=idle if callable(idle) else (lambda: True),
+                            offline=lambda: not conn.online)
+    wifi.watch = watch
+    return watch
+
+
 def settle(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S) -> None:
     """Restore what the box was doing and let the panel settle. Plays nothing.
 
@@ -955,6 +980,15 @@ def boot_resume(
     return resume
 
 
+def build_phone_volume(actions: Actions) -> PhoneVolume | None:
+    """The phone's Bluetooth volume as the radio's (player/btvolume.py), on a
+    player with real BlueZ/BlueALSA behind it."""
+    if not isinstance(actions.bluetooth, Bluetooth):
+        return None
+    player = actions.player
+    return PhoneVolume(player.get_volume, player.set_volume, lambda: bool(actions.bt_phone_volume))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="haslerd", description=__doc__.splitlines()[0])
     ap.add_argument("--variant", help="descriptor path or shipped name (ignored once box.yaml names one)")
@@ -981,6 +1015,8 @@ def main(argv=None) -> int:
     confirm = getattr(app, "confirm", None)
     software = getattr(app, "software", None)
     connectivity = build_connectivity(config)
+    wifiwatch = build_wifiwatch(app, connectivity, args.fake)
+    phone_volume = build_phone_volume(actions)
     keeper = None
     if driver is not None:
         keeper = LampKeeper(driver, actions, panel, connectivity, getattr(app, "settings_file", None))
@@ -1039,6 +1075,8 @@ def main(argv=None) -> int:
                 actions.last_active_at = now        # awake = in use (health.py's idle)
 
             connectivity.poll(now)
+            if wifiwatch is not None:
+                wifiwatch.poll(now)                # out of setup mode when the Wi-Fi is back
             if not net_announced and getattr(connectivity, "seen_up", False):
                 net_announced = True
                 network_up(actions)
@@ -1064,6 +1102,8 @@ def main(argv=None) -> int:
             actions.watch_cast(source, now)        # resume_after_cast, when a cast ends
             if source == "bluetooth" and actions.bluetooth is not None:
                 actions.bluetooth.observe_async()   # the phone's "last used", off-thread
+            if phone_volume is not None:            # the phone's slider is the radio's volume
+                phone_volume.tick(now, source == "bluetooth" and not actions.standby)
             if actions.group is not None:
                 actions.group.tick(now, source)     # multiroom: keep in touch (on its own thread)
             if (actions.standby or actions.pairing) and actions.phone_has_it(source):

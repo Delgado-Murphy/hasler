@@ -169,12 +169,20 @@ class SourcesApi:
             name = self.spotify_name() if spotify else None
         except Exception:
             name = None
-        targets.append({
+        target = {
             "id": "spotify", "label": "Spotify Connect", "available": spotify, "on": spotify,
             "name": name or "", "running": None, "managed_by": "haslerd", "read_only": True,
             "reason": None if spotify else "Spotify isn't set up on this radio",
             "note": "Shown in the Spotify app of the account the radio is signed in to",
-        })
+        }
+        # The radio's own account and signing it in (web/spotify_account_api.py).
+        account = getattr(self.app, "spotify_account", None)
+        if spotify and account is not None:
+            try:
+                target["account"] = account.doc()
+            except Exception:
+                log.exception("could not read the Spotify account")
+        targets.append(target)
         return targets
 
     def _now(self) -> dict:

@@ -7,9 +7,10 @@ get is set here, at runtime: the Spotify Connect name (web/room.py) and
 ``zeroconf_enabled`` - Spotify for guests on the Wi-Fi (settings.json
 ``spotify_guests``, default on; ``SpotifyGuests`` below).
 
-Edits touch one top-level ``key: value`` line and keep every other line,
-comment and the file's mode; the write is atomic. credentials / state.json is
-never touched. go-librespot reads its config only at start, so a change ends
+Edits touch one top-level ``key: value`` line (or, for the Spotify account,
+``credentials:``'s ``type:`` - web/spotify_account_api.py) and keep every other
+line, comment and the file's mode; the write is atomic, one edit at a time
+(``EDIT_LOCK``). state.json is web/spotify_account_api.py's. go-librespot reads its config only at start, so a change ends
 in ``systemctl try-restart go-librespot.service`` (config/sudoers/haslerd
 allows exactly that line; try-restart leaves a stopped service stopped).
 """
@@ -30,6 +31,9 @@ log = logging.getLogger(__name__)
 
 RESTART = ["sudo", "-n", "/usr/bin/systemctl", "try-restart", "go-librespot.service"]
 GUESTS_DEFAULT = True          # owner, 2026-10: guests on the network can play
+# Every read-modify-write of config.yml (room name, guests, the account's
+# credentials type) holds this, so two edits can't lose one another.
+EDIT_LOCK = threading.RLock()
 
 
 def restart_go_librespot() -> None:
@@ -58,7 +62,12 @@ def set_top_level(path: Path, key: str, value: str, *, append: bool = True,
     A line whose value already counts as ``value`` (``same``; default: equal
     text) is left alone, comment and all. A missing key is added at the end
     (``append``) or the top. Raises OSError (missing / unwritable file)."""
-    path = Path(path)
+    with EDIT_LOCK:
+        return _set_top_level(Path(path), key, value, append, same)
+
+
+def _set_top_level(path: Path, key: str, value: str, append: bool,
+                   same: Callable[[str], bool] | None) -> bool:
     lines = path.read_text().splitlines()
     want = f"{key}: {value}"
     found = _top_level(lines, key)
@@ -74,6 +83,74 @@ def set_top_level(path: Path, key: str, value: str, *, append: bool = True,
     mode = path.stat().st_mode & 0o777
     boxconfig.atomic_write_text(path, "\n".join(lines) + "\n", mode=mode)
     return True
+
+
+CREDENTIAL_TYPES = ("interactive", "device_auth", "spotify_token", "zeroconf")
+CREDENTIALS_DEFAULT = "zeroconf"      # go-librespot's, with no credentials block
+
+
+def _credentials_block(lines: list[str]) -> tuple[int, int, str] | None:
+    """(header index, end index, child indent) of the top-level ``credentials:``
+    block: the lines after the header that are blank or indented."""
+    found = _top_level(lines, "credentials")
+    if found is None:
+        return None
+    i = found[0]
+    j, indent = i + 1, ""
+    while j < len(lines) and (not lines[j].strip() or lines[j][:1] in (" ", "\t")):
+        if not indent and lines[j].strip() and not lines[j].lstrip().startswith("#"):
+            indent = lines[j][: len(lines[j]) - len(lines[j].lstrip())]
+        j += 1
+    return i, j, indent or "  "
+
+
+def _type_line(lines: list[str], block: tuple[int, int, str]) -> tuple[int, str] | None:
+    i, j, indent = block
+    for k in range(i + 1, j):
+        m = re.match(rf"{re.escape(indent)}type\s*:(.*)$", lines[k])
+        if m:
+            return k, re.sub(r"\s+#.*$", "", m.group(1)).strip().strip("'\"")
+    return None
+
+
+def credentials_type(path: Path = GO_LIBRESPOT_CONFIG) -> str | None:
+    """``credentials: type:`` - interactive | device_auth | zeroconf | ... -
+    go-librespot's default (zeroconf) if absent; None if the file can't be read."""
+    try:
+        lines = Path(path).read_text().splitlines()
+    except OSError:
+        return None
+    block = _credentials_block(lines)
+    found = _type_line(lines, block) if block is not None else None
+    return (found[1] or CREDENTIALS_DEFAULT) if found is not None else CREDENTIALS_DEFAULT
+
+
+def set_credentials_type(path: Path, value: str) -> bool:
+    """Make ``credentials: type: value``, keeping the block's other lines (the
+    interactive callback port...). True if the file changed. Raises OSError."""
+    if value not in CREDENTIAL_TYPES:
+        raise ValueError(f"unknown credentials type {value!r}")
+    path = Path(path)
+    with EDIT_LOCK:
+        lines = path.read_text().splitlines()
+        block = _credentials_block(lines)
+        if block is None:
+            lines += ["credentials:", f"  type: {value}"]
+        else:
+            i, _, indent = block
+            if _top_level(lines, "credentials")[1]:        # "credentials: {...}" inline
+                lines[i:i + 1] = ["credentials:", f"{indent}type: {value}"]
+            else:
+                found = _type_line(lines, block)
+                if found is not None and found[1] == value:
+                    return False
+                if found is not None:
+                    lines[found[0]] = f"{indent}type: {value}"
+                else:
+                    lines.insert(i + 1, f"{indent}type: {value}")
+        mode = path.stat().st_mode & 0o777
+        boxconfig.atomic_write_text(path, "\n".join(lines) + "\n", mode=mode)
+        return True
 
 
 def set_device_name(path: Path, name: str) -> bool:

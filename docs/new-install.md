@@ -121,7 +121,7 @@ and an account, so the radio can't do them alone:
 | **Home Assistant** (optional) | key page → Settings → This radio → Home Assistant → paste a token | a token from your HA ([build guide, Phase 5](build-guide.md#phase-5--home-assistant)) |
 | **Knob calibration** (if the knobs feel off) | key page → Settings → Keys & knobs → **Calibrate** | turning the real knobs |
 | **Room name** (two or more Haslers) | key page → Settings → This radio | yours to choose |
-| **Hotspot password** | moOde → Network → Access Point | moOde's setup hotspot "Hasler"; set it and give it to the owner ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)) |
+| **Hotspot password** | `curl -s hasler.local:8080/api/wifi` → `setup.password` | the setup hotspot "Hasler" gets a random one on the first start; write it down for the owner, or choose your own in moOde → Network → Access Point ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)) |
 
 Spotify casting from a phone (*Hasler* in the Spotify app's device list),
 AirPlay, Bluetooth and UPnP work without any of this.
@@ -243,12 +243,15 @@ The kit files on the boot partition can stay; cloud-init runs them only once
   computer and read `hasler-install.log` on bootfs. No log at all: the
   first-boot files were not found (check they sit next to `config.txt`), or
   Imager's settings did not take (no Wi-Fi: see below).
-- **No Wi-Fi.** After 90 s without a known network moOde opens its setup
-  hotspot (moOde's own name and password until Hasler's settings arrive).
-  Join it and set the Wi-Fi on moOde's page at `http://172.24.1.1`; once the
-  release is installed the radio's own Wi-Fi page does this
-  ([Using your Hasler](using.md#wi-fi)). The installer waits for the network
-  and carries on by itself.
+- **No Wi-Fi** (Imager's Wi-Fi name or password mistyped). Before the
+  install there is **no** setup hotspot: moOde's import of Imager's Wi-Fi
+  leaves the hotspot without a password, and moOde can't start it then. Either
+  plug a network cable into the Pi (it is then `hasler.local` over Ethernet
+  and the install carries on), or write the card again with the right Wi-Fi.
+  After the install (haslerd gives the hotspot a password) the radio's own Wi-Fi page
+  does this ([Using your Hasler](using.md#wi-fi)), and `hasler-wifi.txt` on
+  bootfs works at any time ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)).
+  The installer waits for the network and carries on by itself.
 - **"there is no 'stable' channel yet"**: no release has been promoted to
   stable yet; use `channel = bench`.
 - **"this release cannot set up a new radio"**: releases before 1.0 do not

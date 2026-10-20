@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.1 - 2026-10-21
+
+- Spotify: sign the radio in from the key page - a code to enter at
+  spotify.com/pair, no laptop. Change account or sign out there too.
+- Bluetooth: the phone's volume is the radio's volume (and follows the
+  knob); a steadier start after a phone connects (1 s buffer); phones see a
+  loudspeaker; the Bluetooth service can no longer hang at start.
+- Wi-Fi setup: the radio's setup network works again after a Wi-Fi change,
+  any web address on it opens the setup page, and after a power cut where
+  the router is slower the radio keeps trying your Wi-Fi instead of staying
+  in setup mode. The setup page works without JavaScript, in English and
+  Spanish, and says what the lamp will do. A file on the memory card can set
+  the Wi-Fi as a last resort.
+- This radio: remove the room name with one tap.
+
 ## 1.0.0 - 2026-10-21
 
 The first stable version. Nothing you set up changes: your keys, stations,

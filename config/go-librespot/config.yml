@@ -3,8 +3,9 @@
 # Keys checked against config_schema.json at go-librespot v0.10.3.
 #
 # Credentials and player state live next to this file in state.json, written
-# after the one-time login (older releases used credentials.json). Delete it to
-# log out. Logged in: curl 127.0.0.1:3678/status gives JSON; 204 = not yet.
+# after the one-time login (older releases used credentials.json). Sign in and
+# out from the key page. Logged in: curl 127.0.0.1:3678/status gives JSON;
+# 204 = not yet; curl 127.0.0.1:3678/auth/code = the pairing code it waits on.
 
 device_name: Hasler
 device_type: speaker
@@ -34,13 +35,16 @@ ignore_last_volume: true
 
 bitrate: 320
 
-# Log in once with the browser flow; credentials persist in state.json.
-# callback_port is fixed so the login can be tunnelled over SSH - see
-# docs/build-guide.md, Phase 3c. (Alternative with no tunnel: type: device_auth,
-# then enter the printed code at spotify.com/pair.)
+# Signing in: with no account in state.json, go-librespot asks Spotify for a
+# pairing code and the key page shows it (Settings -> Phones & casting ->
+# Spotify: "go to spotify.com/pair and enter ..."); the account then persists in
+# state.json. haslerd switches this type (web/spotify_account_api.py): zeroconf
+# when signed out, device_auth to sign in. Guests' zeroconf logins are never
+# stored (persist_credentials stays off). The interactive callback_port is
+# kept for the SSH-tunnel login in docs/build-guide.md, Phase 3c.
 zeroconf_enabled: true   # owner: guests on the Wi-Fi see "Hasler" in Spotify too
 credentials:
-  type: interactive
+  type: device_auth
   interactive:
     callback_port: 36842
 

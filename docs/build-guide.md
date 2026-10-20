@@ -301,24 +301,31 @@ Steps:
       ```sh
       moodeutl -q "select value from cfg_system where param='spotifysvc'"   # expect 0
       ```
-- [ ] **Log go-librespot in, once.** It has no screen, so tunnel the login from a
-      laptop:
-      ```sh
-      ssh -L 36842:127.0.0.1:36842 pi@hasler.local
-      journalctl -u go-librespot -n 50 | grep -o 'https://accounts.spotify.com[^ "]*'
-      ```
-      Open that link in the laptop's browser and log in with the **Premium**
-      account. The answer comes back through the tunnel, and the login is saved
-      (in `~/.config/go-librespot/state.json`; on a release radio in
-      `/var/lib/go-librespot`).
-      - No tunnel? Copy the failed `127.0.0.1:36842/login?code=…` address from the
-        browser and `curl` it on the Pi.
-      - No browser at all? Set `credentials: {type: device_auth}` in
-        go-librespot's `config.yml`, restart it, and enter the code from its log
-        at `spotify.com/pair`.
-      ```sh
-      curl -s -o /dev/null -w '%{http_code}\n' 127.0.0.1:3678/status   # 200 = logged in, 204 = not
-      ```
+- [ ] **Sign the radio in to Spotify.** No laptop, no tunnel: key page →
+      **Settings → Phones & casting → Spotify Connect → Sign in**, press any key
+      on the radio to confirm, then on a phone go to **spotify.com/pair**, sign
+      in with the **Premium** account and enter the code the page shows. The
+      page switches to *Signed in as jd······fe* by itself.
+      - How it works (`web/spotify_account_api.py`): haslerd backs up
+        `/var/lib/go-librespot/state.json` (`state.json.before-sign-in`),
+        clears its credentials, sets `credentials: type: device_auth` in
+        go-librespot's `config.yml` and restarts it. go-librespot asks Spotify
+        for a pairing code and offers it on `127.0.0.1:3678/auth/code`; once
+        approved it stores the account in `state.json` (as before). No approval
+        within 15 min, or **Cancel**: the old account is put back. **Sign out**
+        backs up to `state.json.before-sign-out` and sets `type: zeroconf`
+        (guests only). Guests' logins are never stored.
+      - A fresh radio (config from `config/go-librespot/config.yml`, already
+        `device_auth`) shows a code on the page right away.
+      - Check from the Pi:
+        ```sh
+        curl -s -o /dev/null -w '%{http_code}\n' 127.0.0.1:3678/status      # 200 = logged in, 204 = not
+        curl -s -o /dev/null -w '%{http_code}\n' 127.0.0.1:3678/auth/code   # 200 = a code is waiting
+        ```
+      - The old way still works, for a radio without the key page: tunnel the
+        browser login (`credentials: type: interactive`, `callback_port: 36842`):
+        `ssh -L 36842:127.0.0.1:36842 pi@hasler.local`, then open the
+        `https://accounts.spotify.com…` link from `journalctl -u go-librespot`.
 - [ ] **Check that yt-dlp works, with deno.** Without deno, YouTube gives fewer
       formats or none, with no clear error:
       ```sh
@@ -567,12 +574,48 @@ page (or open `http://172.24.1.1:8080/wifi`). Choose the network, type the
 password, press **Connect**; the radio restarts onto it. The owner's steps are in
 [Using your Hasler](using.md#wi-fi).
 
-- The hotspot password is set in moOde → Network → Access Point. Keep it out of
-  this repository and give it to the owner.
-- The hotspot only starts at boot. If the Wi-Fi drops later, the radio keeps
-  trying it; unplug and replug to get the hotspot.
+- **The hotspot password.** moOde's import of Raspberry Pi Imager's Wi-Fi
+  leaves the hotspot without one, and a hotspot without a password never
+  starts. haslerd checks at every start (30 s in, `Wifi.ensure_hotspot` →
+  `hasler-wifi-join` `"hotspot"`, `"ensure"`): no password → it sets a random
+  one (`abcd-efgh-jkmn`, no 0/o/1/l) and keeps it in
+  `/var/lib/haslerd/hotspot.txt` (0600); `GET /api/wifi` returns it as
+  `setup.password` - write it down for the owner. A profile without its
+  address (`address1=`, see below) is regenerated. A password you chose in
+  moOde → Network → Access Point is never replaced (it is stored only as a
+  key, so `/api/wifi` says `password_set` without it). Keep it out of this
+  repository.
+- **`address1=`.** moOde's `cfgNetworks()` takes the hotspot's address
+  (`ap_network_addr`, 172.24.1.1/24) from moOde's PHP session. Run outside
+  moOde (from a CLI, or `hasler-wifi-join` before 2026-10-21) it writes an
+  empty `address1=`, and NetworkManager puts the hotspot on 10.42.0.1, where
+  the captive DNS, the lamp and the page's no-key-press rule all miss it.
+  Check: `sudo grep address1 /etc/NetworkManager/system-connections/Hotspot.nmconnection`.
+- **When it starts.** moOde's worker waits up to 90 s (`ipaddr_timeout`) for
+  wlan0 to get an address, then brings up its `Hotspot` profile
+  (`activateHotspot()`) - only at boot, and it never leaves it by itself.
+  haslerd's watchdog (`haslerd/wifiwatch.py`) does: 3 min after the hotspot
+  appears, then after 5, 10, 15 and every 30 min, while no phone is on the
+  hotspot and nothing plays, it asks `hasler-wifi-join` (`"retry"`) to look
+  for moOde's network and the saved ones. If one is back, the helper joins it
+  and restarts the radio onto it; a wrong password waits an hour. So a power
+  cut where the router boots slower than the radio heals by itself.
+- **Captive portal.** The hotspot's DNS answers every name with `172.24.1.1`
+  (`config/captive/dnsmasq-hotspot.conf`), and nginx sends every `http://`
+  request that arrives at that address to `:8080/wifi`
+  (`config/captive/nginx-captive.conf`) - that is what opens the phone's
+  "sign in to network" sheet. moOde stays reachable on the hotspot at
+  `http://172.24.1.1/index.php`, and its Network page at
+  `http://172.24.1.1/net-config.php` is the fallback if haslerd is down.
 - On the home network, Settings → This radio → Wi-Fi → **Change** on the key page does the
-  same, after a press on the radio.
+  same, after a press on the radio. The network it replaces stays saved: if
+  the new one fails at boot, NetworkManager goes back to the old one.
+- **No network at all** (a mistyped Wi-Fi in Imager, no hotspot): a network
+  cable to the Pi's Ethernet socket (it gets an address by DHCP), or
+  `hasler-wifi.txt` on the boot partition (`ssid = …`, `password = …`,
+  optionally `hotspot_password = …`): `hasler-wifi-rescue.service` applies it
+  before moOde's worker looks for a network, deletes it and writes
+  `hasler-wifi-result.txt` ([Using your Hasler](using.md#if-nothing-works-a-file-on-the-memory-card)).
 
 ---
 

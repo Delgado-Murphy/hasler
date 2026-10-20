@@ -138,7 +138,17 @@ The radio is also a speaker for your phone. On the network it is called
 - **Spotify:** in the Spotify app, tap the speaker icon and choose **Hasler**.
   This needs Spotify Premium. Guests on your Wi-Fi can do the same with their
   own Spotify, no password needed. To allow only the radio's own account,
-  switch off **Guests on your Wi-Fi can play**.
+  switch off **Guests on your Wi-Fi can play**. A guest never replaces the
+  radio's own account: when they stop, the keys play from it again.
+- **The radio's own Spotify account** (the one Spotify keys play from):
+  **Settings → Phones & casting → Spotify Connect** says *Signed in as
+  jd······fe*. To sign in or change it, tap **Sign in** (or **Change account**)
+  and press any key on the radio to confirm. The page shows a code: on your
+  phone or computer go to **spotify.com/pair**, sign in with a Premium account
+  and enter it. The radio signs in by itself within a few seconds. **Cancel**
+  keeps the old account; so does doing nothing for 15 minutes. While a code
+  is waiting, Spotify plays nothing on the radio. **Sign out** (also with a key
+  press) stops the Spotify keys; guests can still play.
 - **AirPlay** (iPhone, iPad, Mac): choose **Hasler** from the AirPlay list.
 - **Bluetooth:** hold **PU** until the lamp breathes blue (or tap **Pair a new
   phone** on the key page), then choose **Hasler** in your phone's Bluetooth
@@ -175,6 +185,11 @@ off, your Bluetooth phones, and the names phones see.
   **Reconnect to the last phone** (*When I switch to Bluetooth* and *When the
   radio wakes up*), in **Settings → Phones & casting → Bluetooth**. Both are
   on to start.
+- **Phone volume is the radio's volume.** While a phone plays over Bluetooth,
+  its volume buttons turn the radio up and down (in the knob's safe range) and
+  its slider follows the knob and keys; after a change on the phone, the next
+  turn of the knob sets the volume from where the knob is. Switch: **Phone
+  volume controls the radio** (on to start).
 - **A Bluetooth key.** In **Edit keys**, choose a key and set its tap to
   **Bluetooth**. Tapping it switches the radio to Bluetooth and calls your
   phone. While your phone plays, tapping it again skips to the **next track**,
@@ -362,22 +377,51 @@ If the radio can't find a Wi-Fi network it knows:
    radio has made its own small Wi-Fi network called **Hasler**.
 2. On your phone, join the Wi-Fi network **Hasler**. The person who built the
    radio can give you its password.
-3. A page opens by itself. If it doesn't, open **http://172.24.1.1:8080/wifi**.
-4. Choose your home network, type its password and press **Connect**.
+3. A page opens by itself. If it doesn't, open **http://172.24.1.1:8080/wifi**
+   (any `http://` address works too, for example **http://neverssl.com**).
+4. Choose your home network, type its password and press **Connect**. No key
+   press is needed here: only someone next to the radio can be on **Hasler**.
 5. The radio restarts. After about a minute, put your phone back on your home
    Wi-Fi. The music comes back by itself.
 
 If the lamp breathes warm white again, the password was wrong: join **Hasler**
-again and try once more.
+again and try once more. (If the radio knew another network before, and that
+one is in range, it goes back to it instead.)
 
-The radio only makes the **Hasler** network when it starts. If your Wi-Fi
-drops out later, the radio keeps trying it; to get the setup network, unplug
-the radio and plug it in again.
+**After a power cut** the radio may start before your router does and make
+the **Hasler** network. You don't need to do anything: every few minutes,
+while nobody is on **Hasler**, it looks for your Wi-Fi again and goes back to
+it by itself (it checks less often as time goes on, at least every half hour).
+To hurry it, unplug the radio and plug it in again once the router is up.
+
+If your Wi-Fi drops out while the radio is on, it keeps trying it; it only
+makes the **Hasler** network when it starts.
 
 ### Changing networks at home
 
 **Settings → This radio → Wi-Fi → Change**. Choose the new network, then press
-a key on the radio when the page asks.
+a key on the radio when the page asks. If the new network doesn't work, the
+radio goes back to the old one when it is in range, and otherwise makes the
+**Hasler** network.
+
+### If nothing works: a file on the memory card
+
+1. Unplug the radio and take out its memory card (or ask the person who built
+   it). Put the card in a computer: a drive called **bootfs** appears.
+2. In it, make a plain text file called **hasler-wifi.txt** with two lines:
+
+   ```
+   ssid = the name of your Wi-Fi
+   password = its password
+   ```
+
+3. Put the card back and plug the radio in. It reads the file, deletes it and
+   joins that network. What happened is in **hasler-wifi-result.txt** on the
+   same drive.
+
+A network cable from the router to the radio's Ethernet socket also works:
+the radio is then at **http://hasler.local:8080** and you can set the Wi-Fi
+there.
 
 ## Updates
 
@@ -455,8 +499,10 @@ Bluetooth from a phone still works.
 
 - YouTube Music: if you signed in, the sign-in may have expired after some
   months. Sign in again in **Settings → This radio → YouTube Music**.
-- Spotify on a key needs a Premium account set up on the radio by the person
-  who built it.
+- Spotify on a key needs the radio signed in to a Premium account: see
+  **Settings → Phones & casting → Spotify Connect**. If it says *Signed in*
+  but keys still don't play (the password was changed, or the radio was
+  removed in Spotify's account page), tap **Change account** and sign in again.
 
 **My phone won't connect over Bluetooth.** Check that Bluetooth is on in
 **Settings → Phones & casting**. If the phone is listed but won't connect,

@@ -3642,6 +3642,8 @@ function castRow(t){
   if (t.read_only){
     row.append(h('div', {class:'cast-head'}, title));
     row.append(h('p', {class:'li-sub'}, (t.name ? 'Shows as “' + t.name + '”. ' : '') + (t.note || '')));
+    // The radio's own Spotify account (web/spotify_account_api.py).
+    if (t.id === 'spotify' && t.available && t.account && t.account.available) row.append(spAccount(t.account));
     // Spotify for guests (settings.json spotify_guests -> go-librespot zeroconf).
     if (t.id === 'spotify' && t.available && settings && typeof settings.spotify_guests === 'boolean'){
       const on = settings.spotify_guests;
@@ -3733,6 +3735,68 @@ async function putCast(id, change, back){
   delete castUi.busy[id];
   paintCast();
 }
+// Spotify account: signed in as…, or a pairing code to enter at spotify.com/pair.
+function spAccount(a){
+  const busy = castUi.busy.spacct, box = h('div', {class:'li col', id:'spAcct', style:'gap:8px;padding-left:0;padding-right:0'});
+  const btn = (id, label, fn, primary) => h('button', {type:'button', class:'btn small' + (primary ? ' primary' : ''), id, disabled: !!busy, onclick: fn}, label);
+  const err = castUi.spErr ? h('p', {class:'err', role:'alert'}, castUi.spErr) : '';
+  const st = a.flow_state;
+  if (st === 'waiting' || st === 'starting' || (st === 'failed' && a.sign_in_until)){
+    const url = /^https:\/\/[^\s"<>]+$/.test(a.url || '') ? a.url : 'https://www.spotify.com/pair';
+    box.append(h('span', {class:'li-title'}, 'Signing in to Spotify'));
+    if (st === 'waiting') box.append(
+      h('p', {class:'li-sub'}, 'On your phone or computer, go to ', h('a', {href:url, target:'_blank', rel:'noopener', style:'color:var(--brass);font-weight:600'}, 'spotify.com/pair'),
+        ', sign in with the radio’s Spotify Premium account and enter this code:'),
+      h('p', {style:'margin:0'}, h('b', {id:'spCode', style:'font-size:1.6em;letter-spacing:.08em;font-variant-numeric:tabular-nums;user-select:all'}, a.code || '')),
+      h('p', {class:'hint'}, 'The radio signs in by itself once you approve it. A new code appears if this one runs out.'));
+    else if (st === 'starting') box.append(h('p', {class:'li-sub', 'aria-live':'polite'}, 'Asking Spotify for a code…'));
+    else box.append(h('p', {class:'err', role:'alert'}, a.error || 'No code yet.'));
+    box.append(h('div', {class:'acts'}, btn('spCancel', busy === 'cancel' ? 'Cancelling…' : a.previous ? 'Cancel — keep ' + a.previous : 'Cancel', spCancel)), err);
+    return box;
+  }
+  if (a.signed_in){
+    box.append(h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Signed in as ' + (a.user || 'a Spotify account')),
+      h('span', {class:'li-sub'}, 'Spotify keys play from this account.')),
+      h('div', {class:'acts'}, btn('spChange', busy === 'start' ? 'Starting…' : 'Change account', () => spSignIn(true)),
+        btn('spOut', busy === 'out' ? 'Signing out…' : 'Sign out', spSignOut)), err);
+    return box;
+  }
+  box.append(h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Not signed in'),
+    h('span', {class:'li-sub'}, 'Spotify keys need the radio signed in to a Spotify Premium account. You’ll get a code to enter at spotify.com/pair.')),
+    st === 'failed' && a.error ? h('p', {class:'hint'}, a.error) : '',
+    h('div', {class:'acts'}, btn('spIn', busy === 'start' ? 'Starting…' : 'Sign in', () => spSignIn(false), true)), err);
+  return box;
+}
+function spAdopt(doc){
+  const t = castDoc && (castDoc.targets || []).find(x => x.id === 'spotify');
+  if (t && doc && doc.flow_state) t.account = doc;
+}
+async function spRun(kind, method, url, body, fail){
+  castUi.busy.spacct = kind; castUi.spErr = ''; paintCast();
+  let r = null;
+  try { r = await api(method, url, body); } catch (_) {}
+  delete castUi.busy.spacct;
+  if (r && r.ok && r.json) spAdopt(r.json);
+  else castUi.spErr = !r ? NET_ERR : r.status === 403 ? 'The radio didn’t get a key press, so nothing changed.'
+    : capFirst((r.json && r.json.error) || fail + ' (error ' + r.status + ')') + '.';
+  paintCast();
+  const f = $('spCancel') || $('spChange') || $('spIn'); if (f) f.focus({preventScroll:true});
+  return !!(r && r.ok);
+}
+async function spSignIn(change){
+  const a = ((castDoc && (castDoc.targets || []).find(x => x.id === 'spotify')) || {}).account || {};
+  const token = await radioConfirm({action:'spotify', args:{do:'sign_in'}, title: change ? 'Change the radio’s Spotify account?' : 'Sign the radio in to Spotify?',
+    sub: (change && a.user ? 'Spotify keys stop until the new account is approved (Cancel puts ' + a.user + ' back). ' : '') + 'Press a key on the radio to say yes.'});
+  if (!token) return;
+  await spRun('start', 'POST', '/api/spotify/account/start', {confirm: token}, 'Couldn’t start signing in');
+}
+async function spSignOut(){
+  const token = await radioConfirm({action:'spotify', args:{do:'sign_out'}, title:'Sign the radio out of Spotify?',
+    sub:'Spotify keys stop playing. Guests on your Wi-Fi can still pick the radio in their Spotify app. Press a key on the radio to say yes.'});
+  if (!token) return;
+  if (await spRun('out', 'DELETE', '/api/spotify/account', {confirm: token}, 'Couldn’t sign out')) toast('Signed out of Spotify');
+}
+async function spCancel(){ await spRun('cancel', 'POST', '/api/spotify/account/cancel', {}, 'Couldn’t cancel'); }
 async function setGuests(want, undoable){
   castUi.busy.spguests = true; paintCast();
   try {
@@ -3963,6 +4027,7 @@ function btSettings(s){
   sec.append(h('span', {class:'li-title', style:'margin-top:8px'}, 'Reconnect to the last phone'));
   sec.append(btSwitch('bt-rsel', 'When I switch to Bluetooth', 'The radio calls the phone you used last', rc.on_select, v => btPutSet({reconnect:{on_select:v}}, true)));
   sec.append(btSwitch('bt-rwake', 'When the radio wakes up', 'Out of standby, the last phone connects by itself', rc.on_wake, v => btPutSet({reconnect:{on_wake:v}}, true)));
+  sec.append(btSwitch('bt-pvol', 'Phone volume controls the radio', s.phone_volume !== false ? 'The phone’s volume is the radio’s; the knob moves it too' : 'The phone’s volume works on top of the radio’s', s.phone_volume !== false, v => btPutSet({phone_volume:v}, true)));
   return sec;
 }
 // Edit keys, on a key that plays Bluetooth: what it does to the phone. Applies at once (not part of the key's Save).
@@ -3983,6 +4048,7 @@ function btKeyOptions(wrap){
 }
 function btSetMsg(p){
   const k = p.keys || {}, rc = p.reconnect || {};
+  if ('phone_volume' in p) return p.phone_volume ? 'The phone’s volume controls the radio' : 'The phone’s volume works on top of the radio’s';
   if ('enabled' in k) return k.enabled ? 'The radio keys control the phone' : 'The radio keys leave the phone alone';
   if ('again' in k) return 'Press again: ' + (k.again === 'none' ? 'does nothing' : BT_CHOICE[k.again].toLowerCase());
   if ('hold' in k) return 'Hold: ' + (k.hold === 'none' ? 'does nothing' : BT_CHOICE[k.hold].toLowerCase());
@@ -3994,7 +4060,9 @@ async function btPutSet(patch, undoable){
   const old = btDoc.settings;
   const back = {};
   for (const grpK of ['keys', 'reconnect']) if (patch[grpK]){ back[grpK] = {}; for (const f of Object.keys(patch[grpK])) back[grpK][f] = (old[grpK] || {})[f]; }
+  if ('phone_volume' in patch) back.phone_volume = old.phone_volume !== false;
   const next = {keys: Object.assign({}, old.keys, patch.keys), reconnect: Object.assign({}, old.reconnect, patch.reconnect)};
+  if ('phone_volume' in patch || 'phone_volume' in old) next.phone_volume = 'phone_volume' in patch ? patch.phone_volume : old.phone_volume;
   btDoc.settings = next; btUi.err = null; paintCast(); if (view === 'edit') rerender();
   const seq = ++btSetSeq; btUi.saving++;
   let fail = '';

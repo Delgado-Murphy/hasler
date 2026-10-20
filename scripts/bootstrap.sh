@@ -21,7 +21,8 @@
 #   - system users: hasler-update (the unprivileged updater), ytdlp (yt-dlp)
 #   - /var/lib/haslerd
 #   - CamillaDSP "Hasler Tone.yml" (seeded once, owned by the daemon user, 0644)
-#   - the captive portal for moOde's fallback hotspot (dnsmasq + nginx)
+#   - the captive portal for moOde's fallback hotspot (dnsmasq + nginx), and
+#     the boot-partition Wi-Fi rescue (hasler-wifi-rescue + its unit)
 #   - moOde: playlist-cover permissions, the YouTube cover-art patch
 #   - yt-dlp off root: /opt/yt-dlp owned by ytdlp, two venv slots, a weekly
 #     upgrade that switches only after a self-check, polkit for "update now"
@@ -157,6 +158,43 @@ if [[ -d /etc/nginx/sites-enabled ]] && put "$REPO/config/captive/nginx-captive.
     warn "nginx rejected hasler-captive.conf - removing it; moOde's web UI is unaffected"
     rm -f /etc/nginx/sites-enabled/hasler-captive.conf
   fi
+fi
+
+# The setup hotspot itself (moOde's apd0) - a password if it has none (moOde's
+# import of Raspberry Pi Imager's Wi-Fi blanks it, and then it never starts),
+# its address if the profile lost it - is haslerd's job at every start
+# (haslerd/wifiwatch.py, Wifi.ensure_hotspot), so OTA radios get it too.
+
+# Wi-Fi from the SD card: hasler-wifi.txt on the boot partition (ssid=,
+# password=, hotspot_password=), applied before moOde's worker looks for a
+# network, then deleted. The last way back when the radio has no network at
+# all (docs/using.md "Wi-Fi").
+if put "$REPO/scripts/hasler-wifi-rescue" /usr/local/sbin/hasler-wifi-rescue 0755 || [[ -x /usr/local/sbin/hasler-wifi-rescue ]]; then
+  RESCUE_UNIT="$(mktemp)"
+  cat > "$RESCUE_UNIT" <<'EOF'
+# scripts/bootstrap.sh -> scripts/hasler-wifi-rescue; docs/using.md "Wi-Fi".
+[Unit]
+Description=Hasler: Wi-Fi from hasler-wifi.txt on the SD card's boot partition
+# Only when the file is there. Before rc-local, which starts moOde's worker:
+# the worker's 90 s wait for an address (then its hotspot) sees the network.
+ConditionPathExists=/boot/firmware/hasler-wifi.txt
+After=NetworkManager.service local-fs.target
+Wants=NetworkManager.service
+Before=rc-local.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hasler-wifi-rescue
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  if put "$RESCUE_UNIT" /etc/systemd/system/hasler-wifi-rescue.service 0644 && (( SYSTEMD )); then
+    run systemctl daemon-reload
+  fi
+  rm -f "$RESCUE_UNIT"
+  if (( SYSTEMD )); then run systemctl enable --quiet hasler-wifi-rescue.service || true; fi
 fi
 
 # --- moOde ---------------------------------------------------------------------------

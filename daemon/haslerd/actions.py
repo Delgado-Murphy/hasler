@@ -97,20 +97,28 @@ SHUTDOWN_PREPARE_S = 20.0   # YouTube Music's next-boot opener, before poweroff
 # ``bluetooth`` verb pressed again does ``again`` and held does ``hold``,
 # both on the phone (AVRCP). reconnect: selecting Bluetooth, or waking a
 # radio that slept on Bluetooth, connects the last phone used.
+# phone_volume: the phone's volume slider is the radio's volume
+# (player/btvolume.py), not BlueALSA's attenuation on top of it.
 BT_AGAIN = ("next", "previous", "none")
 BT_HOLD = ("pause", "next", "previous", "none")
 BT_KEYS_DEFAULT = {"enabled": True, "again": "next", "hold": "pause"}
 BT_RECONNECT_DEFAULT = {"on_select": True, "on_wake": True}
+BT_PHONE_VOLUME_DEFAULT = True
 
 
 def bt_settings_from(raw: Any, current: dict | None = None) -> dict:
     """A submitted (partial) ``bluetooth`` settings doc merged onto ``current``,
-    or ValueError saying why. -> {"keys": {...}, "reconnect": {...}}"""
+    or ValueError saying why. -> {"keys": {...}, "reconnect": {...}, "phone_volume": bool}"""
     current = current or {}
-    if not isinstance(raw, dict) or not raw or set(raw) - {"keys", "reconnect"}:
-        raise ValueError("expected {\"keys\": {...}} and/or {\"reconnect\": {...}}")
+    if not isinstance(raw, dict) or not raw or set(raw) - {"keys", "reconnect", "phone_volume"}:
+        raise ValueError("expected {\"keys\": {...}}, {\"reconnect\": {...}} and/or {\"phone_volume\": bool}")
     keys = dict(current.get("keys") or BT_KEYS_DEFAULT)
     reconnect = dict(current.get("reconnect") or BT_RECONNECT_DEFAULT)
+    phone_volume = current.get("phone_volume", BT_PHONE_VOLUME_DEFAULT)
+    if "phone_volume" in raw:
+        if not isinstance(raw["phone_volume"], bool):
+            raise ValueError("phone_volume must be true or false")
+        phone_volume = raw["phone_volume"]
     if "keys" in raw:
         k = raw["keys"]
         if not isinstance(k, dict) or set(k) - set(BT_KEYS_DEFAULT):
@@ -130,7 +138,7 @@ def bt_settings_from(raw: Any, current: dict | None = None) -> dict:
             if not isinstance(value, bool):
                 raise ValueError(f"reconnect.{name} must be true or false")
         reconnect.update(r)
-    return {"keys": keys, "reconnect": reconnect}
+    return {"keys": keys, "reconnect": reconnect, "phone_volume": bool(phone_volume)}
 
 
 def cycle_from(raw: Any) -> tuple[str, ...]:
@@ -234,6 +242,8 @@ class Actions:
         # Phones over Bluetooth (settings.json ``bluetooth``; bt_settings_from).
         self.bt_keys: dict = dict(BT_KEYS_DEFAULT)
         self.bt_reconnect: dict = dict(BT_RECONNECT_DEFAULT)
+        # The phone's volume slider is the radio's (player/btvolume.py).
+        self.bt_phone_volume: bool = BT_PHONE_VOLUME_DEFAULT
         # What standby interrupted: "bluetooth" if the radio slept on it, so
         # waking goes back there (and calls the phone) rather than to a preset.
         self.standby_source: str | None = None

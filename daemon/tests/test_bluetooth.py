@@ -509,11 +509,12 @@ class TestSettings:
     def test_partial_merge(self):
         doc = bt_settings_from({"keys": {"again": "none"}})
         assert doc == {"keys": {"enabled": True, "again": "none", "hold": "pause"},
-                       "reconnect": {"on_select": True, "on_wake": True}}
+                       "reconnect": {"on_select": True, "on_wake": True}, "phone_volume": True}
 
     @pytest.mark.parametrize("raw", [{}, None, {"keys": {"again": "skip"}}, {"keys": {"enabled": 1}},
                                      {"keys": {"volume": "up"}}, {"reconnect": {"on_select": "yes"}},
-                                     {"reconnect": {"always": True}}, {"other": {}}, {"keys": []}])
+                                     {"reconnect": {"always": True}}, {"other": {}}, {"keys": []},
+                                     {"phone_volume": "yes"}, {"phone_volume": 1}])
     def test_refused(self, raw):
         with pytest.raises(ValueError):
             bt_settings_from(raw)
@@ -522,6 +523,12 @@ class TestSettings:
         actions = rig[0]
         apply_saved(actions, {"bluetooth": {"keys": {"hold": "none"}, "reconnect": {"on_wake": False}}})
         assert actions.bt_keys["hold"] == "none" and actions.bt_reconnect == {"on_select": True, "on_wake": False}
+
+    def test_apply_saved_phone_volume(self, rig):
+        actions = rig[0]
+        assert actions.bt_phone_volume is True              # default on
+        apply_saved(actions, {"bluetooth": {"phone_volume": False}})
+        assert actions.bt_phone_volume is False and actions.bt_keys["hold"] == "pause"
 
     def test_apply_saved_ignores_a_bad_value(self, rig):
         actions = rig[0]
@@ -555,7 +562,7 @@ class TestApi:
         assert doc["playing"] == {"address": PHONE, "name": "Pixel", "codec": "SBC", "rate": 44100,
                                   "title": "", "artist": "", "paused": False}
         assert doc["settings"] == {"keys": {"enabled": True, "again": "next", "hold": "pause"},
-                                   "reconnect": {"on_select": True, "on_wake": True}}
+                                   "reconnect": {"on_select": True, "on_wake": True}, "phone_volume": True}
         assert doc["pairing"] == {"open": False, "seconds_left": 0}
         assert doc["bound_to"] == ["k6.tap"]
 
@@ -613,7 +620,15 @@ class TestApi:
         assert actions.bt_reconnect["on_select"] is False
         saved = json.loads((tmp / "settings.json").read_text())["bluetooth"]
         assert saved == {"keys": {"enabled": True, "again": "next", "hold": "none"},
-                         "reconnect": {"on_select": False, "on_wake": True}}
+                         "reconnect": {"on_select": False, "on_wake": True}, "phone_volume": True}
+
+    def test_put_phone_volume_persists_and_applies(self, api):
+        bluetooth, actions, _, _, tmp = api
+        status, doc = bluetooth.route("PUT", "/api/bluetooth/settings", {"phone_volume": False})
+        assert status == 200 and doc["settings"]["phone_volume"] is False
+        assert actions.bt_phone_volume is False
+        saved = json.loads((tmp / "settings.json").read_text())["bluetooth"]
+        assert saved["phone_volume"] is False and saved["keys"]["hold"] == "pause"
 
     def test_put_settings_bad_is_400(self, api):
         with pytest.raises(ValueError):
