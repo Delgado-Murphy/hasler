@@ -185,7 +185,7 @@ class SourcesApi:
         except Exception:
             source = "radio"
         casting = bool(actions.phone_has_it(source))
-        who = {"device": "", "title": "", "artist": ""}
+        who: dict = {"device": "", "title": "", "artist": "", "codec": None, "rate": None}
         if source == "bluetooth":
             info = getattr(player, "renderer_info", None)
             try:
@@ -201,7 +201,10 @@ class SourcesApi:
                 pass
         return {"source": source, "casting": casting,
                 "renderer": source if source in RENDERERS or (casting and source == "spotify") else None,
-                **{k: str(who.get(k) or "") for k in ("device", "title", "artist")}}
+                **{k: str(who.get(k) or "") for k in ("device", "title", "artist")},
+                # Bluetooth only: "aptX HD", 48000 - None otherwise or unknown.
+                "codec": who.get("codec") or None,
+                "rate": who.get("rate") if isinstance(who.get("rate"), int) else None}
 
     def casting(self) -> dict:
         actions = self.actions

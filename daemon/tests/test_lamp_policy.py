@@ -60,9 +60,9 @@ class TestPriority:
     def test_4_a_phone_beats_offline(self):
         assert look(casting=True, offline_s=600, source="airplay") == policy.CASTING
 
-    def test_5_standby_is_ember_6_percent_and_never_red(self):
+    def test_5_standby_is_ember_and_never_red(self):
         assert look(standby=True, offline_s=600, panel_missing=True) == policy.STANDBY
-        assert (policy.STANDBY.colour, policy.STANDBY.level) == ("ember", 0.06)
+        assert (policy.STANDBY.colour, policy.STANDBY.level) == ("ember", 0.22)
 
     def test_6_boot_warm_up_beats_pairing_loading_and_offline(self):
         for stage in ("daemon", "network"):

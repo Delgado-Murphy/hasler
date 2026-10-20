@@ -118,7 +118,7 @@ CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
 OWN_NAMES = ("localhost", "hasler", "hasler.local")
 LOOPBACK = ("127.0.0.1", "::1")
 # Paths served by ``WebApp.extra_routes`` (web/ha_api.py, web/sources_api.py, web/knobs_api.py).
-EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/group", "/api/peer",
+EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "/api/group", "/api/peer",
                   "/api/knobs/functions", "/api/knobs/try")   # web/knobs_api.py
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
@@ -129,6 +129,7 @@ TAP_LABELS = {
     "volume_up": "Volume up",
     "volume_down": "Volume down",
     "bt_pair": "Bluetooth pairing",
+    "bluetooth": "Bluetooth",
     "ha_scene": "Scene",
     "ha_script": "Script",
     "ha_toggle": "Toggle",

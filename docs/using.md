@@ -113,7 +113,8 @@ The radio also works as a speaker for your phone. Its name on the network is
 - **AirPlay** (iPhone, iPad, Mac): choose **Hasler** from the AirPlay list.
 - **Bluetooth:** hold **PU** until the lamp breathes blue (or tap **A new
   phone** on the key page). On your phone, choose **Hasler** in the Bluetooth
-  settings. The next time, the phone connects by itself.
+  settings. The next time, the phone connects by itself, or the radio
+  calls it (see [Bluetooth](#bluetooth)).
 - **UPnP / DLNA** (music apps on Android, Windows and many NAS boxes): choose
   **Hasler** as the player.
 
@@ -124,6 +125,27 @@ switch that off: **Back to the radio when a phone stops**).
 
 Which of these are switched on, and the name each one shows, is in
 **Settings → Sources & casting**, under *Play from a phone*.
+
+### Bluetooth
+
+- **A Bluetooth key.** On the key page, set a key to **Bluetooth**. A tap
+  switches the radio to Bluetooth and calls the phone you used last (then the
+  one before, if that one is away). The lamp is dim blue while it waits.
+  While your phone plays, the same key tapped again skips to the **next
+  track**, and held it **pauses** or plays again. Choose what *again* and
+  *hold* do (next, previous, pause, or nothing) under **Bluetooth** on the
+  key page; the hold's own action is used whenever no phone plays.
+- **Back to the phone.** When the **PU** key lands on Bluetooth, the radio
+  calls your last phone too. If the radio went to standby while on
+  Bluetooth, waking it goes back to Bluetooth and calls the phone, instead of
+  playing a station. Both can be switched off (**Reconnect**).
+- **Your phones.** The key page lists the paired phones: which one is
+  connected, its battery if the phone tells, and when it was last used.
+  **Connect**, **Disconnect** or **Forget** (removes the pairing; pair it
+  again with **A new phone**).
+- **Sound quality.** While a phone plays, the page shows the codec it uses
+  (SBC, aptX or aptX HD) and the sample rate. Which one is up to the phone;
+  on Android it is under *Developer options → Bluetooth audio codec*.
 
 **More than one Hasler?** Give each one a room name (Settings → **About this
 radio**) and switch on **Use the room name for casting**: phones then show

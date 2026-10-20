@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.4 - 2026-10-21
+
+- Bluetooth: paired phones on the key page (connect, disconnect, forget,
+  battery, last used); which codec is playing (SBC / aptX / aptX HD); a
+  "Bluetooth" key action - tap to switch and call your last phone, again for
+  the next track, hold to pause (configurable); reconnect to the last phone
+  when you switch to Bluetooth or wake the radio (configurable).
+- Pilot lamp: ember is visible again - standby 22 % (night 15 %), picked by
+  eye; it was too faint to see, so standby looked like "safe to unplug".
+
 ## 0.4.3 - 2026-10-21
 
 - Tone knob: now a tilt (warmer <-> brighter around 800 Hz, +-6 dB) - you

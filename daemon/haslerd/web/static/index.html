@@ -483,6 +483,27 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .cast-name input{flex:1;min-width:0}
 .now-line{margin:0;padding:12px 16px;color:var(--text2);font-size:14px;line-height:20px;border-bottom:1px solid var(--line)}
 .now-line b{color:var(--cream);font-weight:600}
+/* Bluetooth: phones, what's playing, the radio keys (/api/bluetooth) */
+.bt-sec{display:flex;flex-direction:column;gap:8px;padding:14px 16px;border-top:1px solid var(--line)}
+.bt-h{margin:0;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.bt-dev{display:grid;grid-template-columns:36px minmax(0,1fr);column-gap:12px;row-gap:4px;align-items:center;padding:10px 0 4px;border-top:1px solid var(--line)}
+.bt-h + .bt-dev{border-top:0;padding-top:4px}
+.bt-ic{width:36px;height:36px;border-radius:50%;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;color:var(--brass)}
+.bt-dev.on .bt-ic,.bt-play .bt-ic{color:var(--amber);border-color:rgba(255,178,56,.5);box-shadow:0 0 10px rgba(255,178,56,.18)}
+.bt-name{color:var(--cream);font:600 15px/20px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-acts{grid-column:2;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bt-acts .link{padding:10px 8px}
+.bt-play{display:grid;grid-template-columns:36px minmax(0,1fr);column-gap:12px;align-items:start}
+.bt-play .li-txt{gap:4px}
+.bt-song{color:var(--text2);font-size:14px;line-height:19px;overflow-wrap:anywhere}
+.bt-codec{align-self:flex-start;display:inline-flex;align-items:center;min-height:24px;margin-top:2px;padding:2px 10px;border:1px solid var(--line2);border-radius:999px;color:var(--brass);font:600 11px/16px var(--mono);letter-spacing:.04em;cursor:help}
+.bt-codec.hi{color:var(--amber);border-color:rgba(255,178,56,.5)}
+.bt-sec .switch{min-height:52px}
+.bt-opt{display:flex;flex-direction:column;gap:6px;padding:2px 0 6px}
+.bt-opt > span{color:var(--text2);font:600 13px/18px var(--sans)}
+.bt-err{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+#castBox .bt-sec p{margin:0}
+.bt-busy{opacity:.55;cursor:default}
 
 /* ---------- multiroom: rooms on the remote, Multiroom in settings ---------- */
 .rooms{border:1px solid var(--line);border-radius:14px;background:var(--sheet);overflow:hidden}
@@ -2850,6 +2871,7 @@ function adoptCasting(doc){
   if (castUi.pairEnd) startPairTick();
 }
 async function loadSources(){
+  const btP = loadBt();
   try {
     const r = await api('GET', '/api/sources');
     if (r.ok && r.json && Array.isArray(r.json.stops)){
@@ -2858,6 +2880,7 @@ async function loadSources(){
     }
     else srcDoc = r.status === 404 ? {missing:true} : {err: (r.json && r.json.error) || 'Couldn’t read the sources (error ' + r.status + ').'};
   } catch (_) { srcDoc = {err:'Couldn’t reach the radio.'}; }
+  await btP;
 }
 const draftCycle = () => (srcDraft || []).filter(s => s.on).map(s => s.id);
 const srcDirty = () => !!(srcDoc && srcDoc.cycle && srcDraft) && JSON.stringify(draftCycle()) !== JSON.stringify(srcDoc.cycle);
@@ -3017,19 +3040,28 @@ function fillCast(box){
   }
   if (!castDoc){ box.append(h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'))); return; }
   const nl = nowLine(); if (nl) box.append(nl);
-  for (const t of castDoc.targets || []) box.append(castRow(t));
-  // Bluetooth pairing window
   const bt = (castDoc.targets || []).find(t => t.id === 'bluetooth');
+  // A radio with /api/bluetooth gets its phones, what's playing and the key options right under
+  // the Bluetooth row, with the pairing window among the phones. An older one keeps just the pairing row.
+  const btFull = btShown(bt);
+  for (const t of castDoc.targets || []){
+    box.append(castRow(t));
+    if (t.id === 'bluetooth' && btFull) btFill(box, t);
+  }
+  if (!btFull) box.append(pairRow(bt));
+}
+// Bluetooth pairing window
+function pairRow(bt){
   const btOff = bt && bt.available && !bt.on;
   const left = Math.max(0, Math.round((castUi.pairEnd - Date.now()) / 1000));
   const pairing = left > 0;
-  box.append(h('div', {class:'li col', style:'gap:8px'},
+  return h('div', {class:'li col', style:'gap:8px'},
     h('span', {class:'li-title'}, 'A new phone'),
     pairing ? h('p', {class:'li-sub', id:'pairLeft', 'aria-live':'polite'}, pairText(left, bt))
       : h('span', {class:'li-sub'}, btOff ? 'Turn Bluetooth on above first.' : 'Opens Bluetooth so a phone can find the radio. Phones that paired before connect on their own.'),
     castUi.pairMsg ? h('p', {class:'err', role:'alert'}, castUi.pairMsg) : null,
     h('div', null, h('button', {type:'button', class:'btn small inline', id:'pairBtn', disabled: pairing || btOff || !!castUi.busy.pair, onclick: pairPhone},
-      castUi.busy.pair ? 'Opening…' : pairing ? 'Ready to pair' : 'Pair a phone (2 min)'))));
+      castUi.busy.pair ? 'Opening…' : pairing ? 'Ready to pair' : 'Pair a phone (2 min)')));
 }
 function pairText(left, bt){
   const m = Math.floor(left / 60), s = String(left % 60).padStart(2, '0');
@@ -3079,12 +3111,238 @@ function startPairTick(){
     if (el){ const bt = castDoc && (castDoc.targets || []).find(t => t.id === 'bluetooth'); el.textContent = pairText(left, bt); }
   }, 1000);
 }
+/* ---- Bluetooth (web/bluetooth_api.py): paired phones, what plays, what the radio keys do ---- */
+// btDoc: null = not asked yet, {missing} = an older radio (it keeps the plain pairing row), {err}, or GET /api/bluetooth.
+let btDoc = null, btSoonT = [], btSetSeq = 0;
+const btUi = {busy:{}, err:null, saving:0};
+const BT_CODEC = {
+  'sbc': ['SBC', 'The basic codec every phone has. Fine for talk and radio, a little soft on music.'],
+  'sbc xq': ['SBC XQ', 'A better-tuned SBC. Close to AAC on most music.'],
+  'aac': ['AAC', 'What iPhones use. Close to CD on most music.'],
+  'aptx': ['aptX', 'A step up from SBC, with little delay.'],
+  'aptx hd': ['aptX HD', 'Finer detail than aptX, on Android phones that have it.', true],
+  'aptx adaptive': ['aptX Adaptive', 'Adjusts to the signal: high quality while the phone is close.', true],
+  'aptx ll': ['aptX LL', 'Made for low delay, sounds like aptX.'],
+  'ldac': ['LDAC', 'High resolution, the best Bluetooth can do. Keep the phone close.', true],
+  'lc3': ['LC3', 'The newer LE Audio codec: good sound from little data.'],
+  'lc3plus': ['LC3plus', 'A newer codec: good sound from little data.'],
+  'mp3': ['MP3', 'Rare over Bluetooth. Sounds like a good MP3 file.'],
+  'opus': ['Opus', 'A modern codec: good sound from little data.'],
+  'faststream': ['FastStream', 'An old low-delay codec. Sounds like SBC.'],
+};
+const BT_FAIL = {connect:'Couldn’t connect', disconnect:'Couldn’t disconnect', forget:'Couldn’t forget it'};
+const BT_CHOICE = {next:'Next track', previous:'Previous track', pause:'Pause / play', none:'Do nothing'};
+const BT_BUSY = {connect:'Connecting…', disconnect:'Disconnecting…', forget:'Forgetting…'};
+const btKey = a => String(a || '').replace(/[^A-Za-z0-9]/g, '');
+// Full Bluetooth block only when the radio has /api/bluetooth and an adapter to go with it.
+function btShown(bt){ return !!(btDoc && !btDoc.missing && bt && bt.available && (btDoc.err || btDoc.available !== false)); }
+function adoptBt(doc){
+  // A settings change still on its way wins over an older poll.
+  if (btUi.saving && btDoc && btDoc.settings) doc.settings = btDoc.settings;
+  btDoc = doc;
+  if (btUi.err && btUi.err.load) btUi.err = null;   // a failed action stays until the next try
+  const p = doc.pairing || {};
+  if (p.open && p.seconds_left > 0 && castUi.pairEnd <= Date.now()){ castUi.pairEnd = Date.now() + p.seconds_left * 1000; startPairTick(); }
+}
+async function loadBt(){
+  try {
+    const r = await api('GET', '/api/bluetooth');
+    if (r.ok && r.json && Array.isArray(r.json.devices)) adoptBt(r.json);
+    else if (r.status === 404) btDoc = {missing:true};
+    else btFail(capFirst((r.json && r.json.error) || 'Couldn’t read Bluetooth (error ' + r.status + ')') + '.', loadBt);
+  } catch (_) { if (!btDoc || !Array.isArray(btDoc.devices)) btDoc = {err:'Couldn’t reach the radio.'}; }
+}
+// Keep the last good list on screen and say what went wrong above it.
+function btFail(msg, retry){ if (btDoc && Array.isArray(btDoc.devices)) btUi.err = {msg, retry, load:true}; else btDoc = {err: msg}; }
+// After connect / disconnect / forget: look again soon, BlueZ takes a moment.
+function btSoon(){
+  btSoonT.forEach(clearTimeout);
+  btSoonT = [800, 2500, 6000].map(ms => setTimeout(async () => { if (view !== 'settings' || document.hidden) return; await loadBt(); paintCast(); }, ms));
+}
+function btIcon(kind){
+  const k = String(kind || '');
+  const g = k.startsWith('phone') ? '<rect x="5" y="1.5" width="8" height="15" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 13.5h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
+    : k.startsWith('computer') ? '<rect x="3" y="3.5" width="12" height="8.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M1 14.5h16" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
+    : k.startsWith('audio') ? '<path d="M3 11.5V9a6 6 0 0 1 12 0v2.5" fill="none" stroke="currentColor" stroke-width="1.4"/><rect x="2" y="10.5" width="3.5" height="5" rx="1.2" fill="currentColor"/><rect x="12.5" y="10.5" width="3.5" height="5" rx="1.2" fill="currentColor"/>'
+    : '<path d="M5 5.5l8 7-4 3.5V2l4 3.5-8 7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
+  return icon(g, 18, 18);
+}
+function btUsed(iso){
+  const t = Date.parse(iso || ''); if (!t) return '';
+  const a = new Date(t), n = new Date();
+  const days = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - new Date(a.getFullYear(), a.getMonth(), a.getDate())) / 864e5);
+  if (days <= 0) return 'used today';
+  if (days === 1) return 'used yesterday';
+  if (days < 7) return 'used ' + days + ' days ago';
+  return 'used ' + a.toLocaleDateString(undefined, a.getFullYear() === n.getFullYear() ? {day:'numeric', month:'short'} : {day:'numeric', month:'short', year:'numeric'});
+}
+function btCodec(pl){
+  if (!pl || !pl.codec) return null;
+  const c = BT_CODEC[String(pl.codec).toLowerCase().replace(/[-_]+/g, ' ').trim()];
+  let label = c ? c[0] : String(pl.codec);
+  const hz = Number(pl.rate);
+  if (hz > 0){ const k = hz >= 1000 ? hz / 1000 : hz; label += ' · ' + (Math.round(k * 10) / 10) + ' kHz'; }
+  return {label, why: c ? c[1] : 'The codec the phone chose for this connection.', hi: !!(c && c[2])};
+}
+function btErrRow(id, msg, retry){
+  return h('div', {class:'bt-err', role:'alert'}, h('p', {class:'err'}, msg),
+    h('button', {type:'button', class:'btn small inline', id, onclick: retry}, 'Retry'));
+}
+function btFill(box, t){
+  if (btDoc.err){
+    box.append(h('div', {class:'bt-sec'}, btErrRow('btRetry', btDoc.err, async () => { await loadBt(); paintCast(); })));
+    box.append(pairRow(t));
+    return;
+  }
+  const off = !t.on || btDoc.on === false;
+  if (btDoc.playing && !off) box.append(btPlaying(btDoc.playing));
+  const sec = h('div', {class:'bt-sec', role:'group', 'aria-labelledby':'btPhonesH'}, h('h3', {class:'bt-h', id:'btPhonesH', tabindex:'-1'}, 'Paired phones'));
+  if (btUi.err) sec.append(btErrRow('btRetry', btUi.err.msg, () => { const f = btUi.err.retry; btUi.err = null; paintCast(); f(); }));
+  const devs = (btDoc.devices || []).filter(d => d.paired !== false)
+    .sort((a, b) => (b.connected ? 1 : 0) - (a.connected ? 1 : 0) || (Date.parse(b.last_used || '') || 0) - (Date.parse(a.last_used || '') || 0));
+  // Empty: the pairing row right below is the way in.
+  if (!devs.length) sec.append(h('p', {class:'li-sub'}, 'No phones paired yet. Pair one below.'));
+  if (btDoc.reconnecting && !off) sec.append(h('p', {class:'hint', role:'status'}, 'Calling the last phone…'));
+  for (const d of devs) sec.append(btDevRow(d, off));
+  if (off && devs.length) sec.append(h('p', {class:'hint'}, 'Bluetooth is off. Turn it on above to connect a phone.'));
+  box.append(sec);
+  box.append(pairRow(t));
+  if (btDoc.settings) box.append(btSettings(btDoc.settings));
+}
+function btPlaying(pl){
+  const dev = (btDoc.devices || []).find(d => d.address === pl.address);
+  const c = btCodec(pl);
+  return h('div', {class:'bt-sec'},
+    h('h3', {class:'bt-h'}, 'Playing over Bluetooth'),
+    h('div', {class:'bt-play'}, h('span', {class:'bt-ic'}, btIcon((dev && dev.icon) || 'phone')),
+      h('span', {class:'li-txt'}, h('span', {class:'bt-name'}, pl.name || (dev && dev.name) || 'A phone'),
+        pl.title || pl.paused ? h('span', {class:'bt-song'}, (pl.paused ? 'Paused' + (pl.title ? ' · ' : '') : '') + (pl.title ? pl.title + (pl.artist ? ' – ' + pl.artist : '') : '')) : null,
+        c ? h('span', {class:'bt-codec' + (c.hi ? ' hi' : ''), title: c.why, 'aria-describedby':'btCodecWhy'}, c.label) : null,
+        c ? h('span', {class:'li-sub', id:'btCodecWhy'}, c.why) : null)));
+}
+function btDevRow(d, off){
+  const key = btKey(d.address), busy = btUi.busy[d.address], name = d.name || d.address;
+  const bits = [];
+  if (d.battery != null && d.connected) bits.push('battery ' + d.battery + ' %');
+  if (!d.connected){ const u = btUsed(d.last_used); if (u) bits.push(u); }
+  const state = busy ? BT_BUSY[busy] : d.connected ? 'Connected' : d.in_range ? 'In range' : 'Not connected';
+  return h('div', {class:'bt-dev' + (d.connected ? ' on' : ''), role:'group', 'aria-label': name},
+    h('span', {class:'bt-ic'}, btIcon(d.icon)),
+    h('span', {class:'li-txt'}, h('span', {class:'bt-name'}, name),
+      h('span', {class:'li-sub'}, h('span', {class:'cast-state' + (busy ? ' wait' : d.connected ? ' on' : '')}, state), bits.length ? ' · ' + bits.join(' · ') : '')),
+    h('div', {class:'bt-acts'},
+      // One id for Connect and Disconnect, and aria-disabled while busy, so focus stays put.
+      h('button', {type:'button', class:'btn small inline' + (busy ? ' bt-busy' : ''), id:'bt-go-' + key, disabled: off && !d.connected, 'aria-disabled': busy ? 'true' : null,
+        onclick: () => { if (!btUi.busy[d.address]) btAct(d.connected ? 'disconnect' : 'connect', d); }}, d.connected ? 'Disconnect' : 'Connect'),
+      h('button', {type:'button', class:'link quiet' + (busy ? ' bt-busy' : ''), id:'bt-fg-' + key, 'aria-disabled': busy ? 'true' : null,
+        onclick: () => { if (!btUi.busy[d.address]) btForget(d); }}, 'Forget')));
+}
+async function btAct(kind, d){
+  const name = d.name || 'the phone';
+  btUi.busy[d.address] = kind; btUi.err = null; paintCast();
+  let ok = false;
+  try {
+    const r = await api('POST', '/api/bluetooth/' + kind, {address: d.address});
+    if (r.ok && r.json && r.json.ok !== false){
+      ok = true;
+      if (Array.isArray(r.json.devices)) adoptBt(r.json);
+      else if (kind === 'forget' && btDoc && btDoc.devices) btDoc.devices = btDoc.devices.filter(x => x.address !== d.address);
+      const now = btDoc && (btDoc.devices || []).find(x => x.address === d.address);
+      toast(kind === 'forget' ? name + ' forgotten' : kind === 'disconnect' ? name + ' disconnected'
+        : now && now.connected ? 'Connected to ' + name : 'Connecting to ' + name + '…');
+    } else {
+      const msg = capFirst((r.json && r.json.error) || BT_FAIL[kind] + ' (error ' + r.status + ')') + '.';
+      btUi.err = {msg, retry: () => btAct(kind, d)}; toast(msg, true);
+    }
+  } catch (_) { btUi.err = {msg:'Couldn’t reach the radio.', retry: () => btAct(kind, d)}; toast('Couldn’t reach the radio.', true); }
+  delete btUi.busy[d.address];
+  paintCast();
+  if (ok && kind === 'forget'){ const hd = $('btPhonesH'); if (hd) hd.focus({preventScroll:true}); }
+  if (ok) btSoon();
+}
+function btForget(d){
+  if (!confirm('Forget ' + (d.name || 'this phone') + '? You’ll need to pair it again.')) return;
+  btAct('forget', d);
+}
+function btSwitch(id, title, sub, on, change){
+  return h('label', {class:'switch', for:id},
+    h('span', {class:'li-txt'}, h('span', {class:'li-title'}, title), h('span', {class:'li-sub'}, sub)),
+    h('input', {type:'checkbox', role:'switch', id, checked: !!on, onchange: e => change(e.target.checked)}));
+}
+function btSeg(label, id, opts, cur, pick){
+  const choose = v => { if (v !== cur) pick(v); const b = $(id + '-' + v); if (b) b.focus(); };
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-labelledby': id + '-l',
+    onkeydown: e => {
+      const d = {ArrowRight:1, ArrowDown:1, ArrowLeft:-1, ArrowUp:-1}[e.key]; if (!d) return;
+      e.preventDefault();
+      const i = Math.max(0, opts.findIndex(o => o[0] === cur));
+      choose(opts[(i + d + opts.length) % opts.length][0]);
+    }});
+  for (const [v, l] of opts) seg.append(h('button', {type:'button', role:'radio', id: id + '-' + v, 'aria-checked': String(cur === v),
+    tabindex: cur === v ? '0' : '-1', onclick: () => choose(v)}, l));
+  return h('div', {class:'bt-opt'}, h('span', {id: id + '-l'}, label), seg);
+}
+// "key 6", from bound_to ["k6.tap"]; '' when no key carries the Bluetooth verb.
+function btKeyName(){
+  const b = btDoc && btDoc.bound_to;
+  if (!Array.isArray(b)) return 'its key';
+  if (!b.length) return '';
+  const k = cfg && cfg.keys.find(x => x.id === String(b[0]).split('.')[0]);
+  return (k ? keyLabel(k) : String(b[0]).split('.')[0].toUpperCase()).replace(/^Key/, 'key');
+}
+const btCap = t => t.charAt(0).toUpperCase() + t.slice(1);
+function btSettings(s){
+  const k = s.keys || {}, rc = s.reconnect || {};
+  const sec = h('div', {class:'bt-sec', role:'group', 'aria-labelledby':'btSetH'}, h('h3', {class:'bt-h', id:'btSetH'}, 'Phone and radio keys'));
+  sec.append(btSwitch('bt-keys', 'Radio keys control the phone',
+    !btKeyName() ? 'No key plays Bluetooth yet. Choose one in Edit keys.'
+      : k.enabled ? 'While Bluetooth plays, ' + btKeyName() + ' works the phone’s music' : btCap(btKeyName()) + ' only switches to Bluetooth',
+    k.enabled, v => btPutSet({keys:{enabled:v}})));
+  if (k.enabled){
+    const opts = (base, cur) => (base.includes(cur) || !BT_CHOICE[cur] ? base : base.concat(cur)).map(v => [v, BT_CHOICE[v]]);
+    sec.append(btSeg('Press again', 'bt-again', opts(['next', 'none'], k.again), k.again, v => btPutSet({keys:{again:v}})));
+    sec.append(btSeg('Hold', 'bt-hold', opts(['pause', 'none'], k.hold), k.hold, v => btPutSet({keys:{hold:v}})));
+  }
+  sec.append(h('span', {class:'li-title', style:'margin-top:8px'}, 'Reconnect to the last phone'));
+  sec.append(btSwitch('bt-rsel', 'When I switch to Bluetooth', 'The radio calls the phone you used last', rc.on_select, v => btPutSet({reconnect:{on_select:v}})));
+  sec.append(btSwitch('bt-rwake', 'When the radio wakes up', 'Out of standby, the last phone connects by itself', rc.on_wake, v => btPutSet({reconnect:{on_wake:v}})));
+  return sec;
+}
+function btSetMsg(p){
+  const k = p.keys || {}, rc = p.reconnect || {};
+  if ('enabled' in k) return k.enabled ? 'The radio keys control the phone' : 'The radio keys leave the phone alone';
+  if ('again' in k) return 'Press again: ' + (k.again === 'none' ? 'does nothing' : BT_CHOICE[k.again].toLowerCase());
+  if ('hold' in k) return 'Hold: ' + (k.hold === 'none' ? 'does nothing' : BT_CHOICE[k.hold].toLowerCase());
+  if ('on_select' in rc) return rc.on_select ? 'Calls the last phone when you switch to Bluetooth' : 'Waits for the phone when you switch to Bluetooth';
+  return rc.on_wake ? 'Calls the last phone when the radio wakes' : 'Waits for the phone when the radio wakes';
+}
+// Shown at once; put back if the radio says no.
+async function btPutSet(patch){
+  const old = btDoc.settings;
+  const next = {keys: Object.assign({}, old.keys, patch.keys), reconnect: Object.assign({}, old.reconnect, patch.reconnect)};
+  btDoc.settings = next; btUi.err = null; paintCast();
+  const seq = ++btSetSeq; btUi.saving++;
+  let fail = '';
+  try {
+    const r = await api('PUT', '/api/bluetooth/settings', next);
+    btUi.saving--;
+    if (seq !== btSetSeq) return;   // a newer change is on its way
+    if (r.ok && r.json && r.json.ok !== false){
+      if (Array.isArray(r.json.devices)) adoptBt(r.json); else if (r.json.settings) btDoc.settings = r.json.settings;
+      toast(btSetMsg(patch));
+    } else fail = capFirst((r.json && r.json.error) || 'Not saved (error ' + r.status + ')') + '.';
+  } catch (_) { btUi.saving--; if (seq !== btSetSeq) return; fail = 'Couldn’t reach the radio.'; }
+  if (fail){ btDoc.settings = old; btUi.err = {msg: fail, retry: () => btPutSet(patch)}; toast(fail, true); }
+  paintCast();
+}
 async function pollCasting(){
+  const btP = btDoc && btDoc.missing ? null : loadBt();
   try {
     const r = await api('GET', '/api/casting');
     if (r.ok && r.json && Array.isArray(r.json.targets)) adoptCasting(r.json);
     else if (r.status !== 404) castErr = {msg: capFirst((r.json && r.json.error) || 'Couldn’t read the casting status (error ' + r.status + ')') + '.', retry: pollCasting};
   } catch (_) { castErr = {msg:'Couldn’t reach the radio.', retry: pollCasting}; }
+  await btP;
   paintCast();
 }
 // Ask every 3 s, only while the casting list is on screen.

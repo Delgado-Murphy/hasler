@@ -37,8 +37,10 @@ PLAYLIST_SOURCES = ("ytm", "spotify")
 
 READY = Look("amber", 0.35)
 LOADING = Look("amber", 0.70, "breath", 1.2, 0.25)
-STANDBY = Look("ember", 0.06)
-SHUTTING_DOWN = Look("ember", 0.20, "breath", 2.5, 0.04)
+# Ember levels: 6 % (0.2 % duty) was invisible behind the window; the owner
+# picked ~3.5 % duty by eye (2026-10-21), i.e. level 0.22.
+STANDBY = Look("ember", 0.22)
+SHUTTING_DOWN = Look("ember", 0.35, "breath", 2.5, 0.15)
 # Installing an update: the shutdown's breath, never a solid ember (which
 # reads as "asleep" - and the box must not be unplugged now).
 UPDATING = SHUTTING_DOWN
@@ -59,7 +61,7 @@ BOOT = {
     "network": Look("amber", 0.50, "breath", 3.0, 0.30),
 }
 # Knob off at power-on: ember, never amber.
-BOOT_STANDBY = Look("ember", 0.08, "breath", 3.0, 0.02)
+BOOT_STANDBY = Look("ember", 0.25, "breath", 3.0, 0.12)
 
 # Fades into each look (seconds), docs/lamp.md "Behaviour".
 FADE_PLAYING = 1.5

@@ -441,7 +441,8 @@ class TestSourcesApi:
         spotify = doc["targets"][-1]
         assert spotify["read_only"] and spotify["name"] == "Hasler" and spotify["on"]
         assert doc["now"] == {"source": "airplay", "casting": True, "renderer": "airplay",
-                              "device": "", "title": "Song", "artist": "Band"}
+                              "device": "", "title": "Song", "artist": "Band",
+                              "codec": None, "rate": None}
         assert doc["pairing"]["open"] is False
 
     def test_put_casting_switches_one_target(self, api):

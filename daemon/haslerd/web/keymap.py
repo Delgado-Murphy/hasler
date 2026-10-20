@@ -40,6 +40,9 @@ VERBS: list[dict[str, Any]] = [
     {"do": "preset", "label": "Play a preset", "params": ["n"]},
     {"do": "cycle_source", "label": "Next source (order set in Settings → Sources & casting)"},
     {"do": "bt_pair", "label": "Bluetooth pairing", "params": ["seconds"]},
+    # Selects Bluetooth and calls the last phone; while a phone plays, again =
+    # next track and this key's hold = pause/play (Settings -> Bluetooth).
+    {"do": "bluetooth", "label": "Bluetooth (again: next track, hold: pause)"},
     {"do": "volume_up", "label": "Volume up (ramps while held)"},
     {"do": "volume_down", "label": "Volume down (ramps while held)"},
     {"do": "standby_toggle", "label": "Standby / wake"},
@@ -104,7 +107,7 @@ def to_page(spec: dict | None) -> dict | None:
         if not delta:
             return None
         return {"do": "volume_up" if delta > 0 else "volume_down"}
-    if verb in ("standby_toggle", "cycle_source", "join_group"):
+    if verb in ("standby_toggle", "cycle_source", "join_group", "bluetooth"):
         return {"do": verb}
     if verb == "preset":
         return {"do": "preset", "n": int(spec["n"])}
@@ -256,7 +259,7 @@ def action_from_page(raw: Any, where: str, preset_ns: set[int], current: dict | 
         except behaviour.Problem as exc:
             errors.append({"where": where, "message": str(exc)})
             return None
-    return {"do": verb}         # cycle_source, standby_toggle, join_group
+    return {"do": verb}         # cycle_source, standby_toggle, join_group, bluetooth
 
 
 def parse(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict | None]]:

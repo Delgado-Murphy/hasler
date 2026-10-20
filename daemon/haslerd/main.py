@@ -42,6 +42,8 @@ from .lamp.policy import look_for, reply_for
 from .web import stations
 from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
 from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_floor_from, volume_limit_from
+from .web.bluetooth_api import BluetoothApi
+from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
 from .web.sources_api import apply_saved as apply_sources
 from .dsp.knobs import KnobFunctions, helper_runner
@@ -626,6 +628,7 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
 
     actions = Actions(variant, player, ha=ha, state=state)
     apply_sources(actions, settings)           # the PU cycle, resume after a cast
+    apply_bluetooth(actions, settings)         # the Bluetooth keys, reconnecting the phone
     actions.dsp = build_knob_functions(actions, player, settings)
     web, app = build_web(config, actions, panel, state, ha is not None, paths=paths)
     # Background: YTM presets resolve their opening track now, not on first
@@ -762,6 +765,7 @@ def build_web(
         ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
         app.extra_routes.append(ha_api)
     app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
+    app.extra_routes.append(BluetoothApi(app))  # /api/bluetooth
     if actions.dsp is not None:                 # /api/knobs/functions, /api/knobs/try
         app.knob_functions = actions.dsp
         app.extra_routes.append(KnobFunctionsApi(app, actions.dsp))
@@ -1053,6 +1057,8 @@ def main(argv=None) -> int:
                 # Spotify resume would otherwise read as a phone.)
                 resume.cancel(f"a phone ({source})")
             actions.watch_cast(source, now)        # resume_after_cast, when a cast ends
+            if source == "bluetooth" and actions.bluetooth is not None:
+                actions.bluetooth.observe_async()   # the phone's "last used", off-thread
             if actions.group is not None:
                 actions.group.tick(now, source)     # multiroom: keep in touch (on its own thread)
             if (actions.standby or actions.pairing) and actions.phone_has_it(source):

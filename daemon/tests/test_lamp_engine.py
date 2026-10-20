@@ -126,13 +126,13 @@ def test_breath_keeps_its_phase_when_only_the_floor_moves():
 # -- night -----------------------------------------------------------------
 
 
-def test_night_caps_at_35_percent_and_ember_at_2():
+def test_night_caps_at_35_percent_and_dims_ember():
     lamp, _, clock = make()
     lamp.set_night(True)
     lamp.show(AMBER)
     assert level(lamp, clock.t) == pytest.approx(0.35)
-    lamp.show(Look("ember", 0.06))
-    assert level(lamp, clock.t) == pytest.approx(0.02)
+    lamp.show(Look("ember", 0.22))
+    assert level(lamp, clock.t) == pytest.approx(0.15)
 
 
 def test_night_breath_keeps_its_shape():
@@ -271,7 +271,7 @@ def test_signature_level_defaults_to_the_look_at_least_35_percent():
     lamp.show(Look("amber", 0.8))
     lamp.reply(signature("magenta"))
     assert lamp.render(clock.t + 0.7)[0] == pytest.approx((0.25 * 0.8 ** 2.2, 0.0, 0.8 ** 2.2))
-    lamp.show(Look("ember", 0.06))
+    lamp.show(Look("ember", 0.22))
     lamp.reply(signature("amber"))
     assert level(lamp, clock.t + 0.7) == pytest.approx(0.35)
 
@@ -339,12 +339,12 @@ def test_a_newer_reply_replaces_an_older():
 # -- countdown -------------------------------------------------------------
 
 
-def test_countdown_dims_ember_linearly_to_2_percent():
+def test_countdown_dims_ember_linearly_to_night_ember():
     lamp, _, clock = make()
-    lamp.show(Look("ember", 0.06))
+    lamp.show(Look("ember", 0.22))
     for p in (0.0, 0.5, 1.0):
         lamp.countdown(p)
-        assert level(lamp, clock.t) == pytest.approx(0.06 + (0.02 - 0.06) * p)
+        assert level(lamp, clock.t) == pytest.approx(0.22 + (0.15 - 0.22) * p)
     assert not lamp.render(clock.t)[1]       # steady between progress updates
 
 
@@ -362,10 +362,10 @@ def test_countdown_cancel_restores_within_half_a_second():
 
 def test_countdown_outranks_replies():
     lamp, _, clock = make()
-    lamp.show(Look("ember", 0.06))
+    lamp.show(Look("ember", 0.22))
     lamp.countdown(1.0)
     lamp.reply("ack")
-    assert level(lamp, clock.t + 0.12) == pytest.approx(0.02)
+    assert level(lamp, clock.t + 0.12) == pytest.approx(0.15)
 
 
 # -- duty floor, writes, thread, close ---------------------------------------
@@ -373,15 +373,15 @@ def test_countdown_outranks_replies():
 
 @pytest.mark.parametrize("night", [False, True])
 def test_deep_ember_is_pure_red_and_steady(night):
-    """Ember at 6 % (2 % at night): green's 10 % share is under its floor, so
-    it goes dark rather than being lifted to the floor (which turned ember
-    yellow-orange and, at 625 ns, unsteady). Red keeps its own floor."""
+    """Ember at 22 % (15 % at night) - the level picked by eye: red at ~3.5 %
+    duty with its 10 % green, steady; blue stays dark."""
     lamp, _, clock = make(min_duty=None)       # the defaults
     lamp.set_night(night)
-    lamp.show(Look("ember", 0.06))
+    lamp.show(Look("ember", 0.22))
     r, g, b = lamp.render(clock.t + 5)[0]
-    want = (0.02 if night else 0.06) ** 2.2
-    assert r == pytest.approx(max(want, eng.DEFAULT_MIN_DUTY[0])) and g == 0.0 and b == 0.0
+    want = (0.15 if night else 0.22) ** 2.2
+    # Bright enough now (picked by eye) that ember's 10 % green is a real share, above its floor.
+    assert r == pytest.approx(want) and g == pytest.approx(0.10 * want) and b == 0.0
     lamp.show(Look("ember", 0.0))
     assert lamp.render(clock.t + 10)[0] == (0.0, 0.0, 0.0)   # dark is dark
 

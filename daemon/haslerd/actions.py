@@ -82,7 +82,7 @@ RENDERERS = ("bluetooth", "airplay", "dlna")
 # power knob get nothing - the ear is the feedback.
 ACK_KINDS = ("tap", "select")
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
-SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source")
+SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source", "bluetooth")
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation", "ha_light", "ha_service")
 DEFAULT_PAIR_S = 120
 # A held volume key repeats every 0.15 s (web/keymap.py) and a new press
@@ -90,6 +90,47 @@ DEFAULT_PAIR_S = 120
 # nudges again at the end of the scale.
 VOLUME_NUDGE_GAP_S = 0.6
 SHUTDOWN_PREPARE_S = 20.0   # YouTube Music's next-boot opener, before poweroff
+
+
+# The owner's Bluetooth settings (settings.json ``bluetooth``, web/bluetooth_api.py).
+# keys: while a phone plays over Bluetooth, the key whose tap is the
+# ``bluetooth`` verb pressed again does ``again`` and held does ``hold``,
+# both on the phone (AVRCP). reconnect: selecting Bluetooth, or waking a
+# radio that slept on Bluetooth, connects the last phone used.
+BT_AGAIN = ("next", "previous", "none")
+BT_HOLD = ("pause", "next", "previous", "none")
+BT_KEYS_DEFAULT = {"enabled": True, "again": "next", "hold": "pause"}
+BT_RECONNECT_DEFAULT = {"on_select": True, "on_wake": True}
+
+
+def bt_settings_from(raw: Any, current: dict | None = None) -> dict:
+    """A submitted (partial) ``bluetooth`` settings doc merged onto ``current``,
+    or ValueError saying why. -> {"keys": {...}, "reconnect": {...}}"""
+    current = current or {}
+    if not isinstance(raw, dict) or not raw or set(raw) - {"keys", "reconnect"}:
+        raise ValueError("expected {\"keys\": {...}} and/or {\"reconnect\": {...}}")
+    keys = dict(current.get("keys") or BT_KEYS_DEFAULT)
+    reconnect = dict(current.get("reconnect") or BT_RECONNECT_DEFAULT)
+    if "keys" in raw:
+        k = raw["keys"]
+        if not isinstance(k, dict) or set(k) - set(BT_KEYS_DEFAULT):
+            raise ValueError("keys takes enabled, again and hold")
+        if "enabled" in k and not isinstance(k["enabled"], bool):
+            raise ValueError("keys.enabled must be true or false")
+        if "again" in k and k["again"] not in BT_AGAIN:
+            raise ValueError(f"keys.again must be one of: {', '.join(BT_AGAIN)}")
+        if "hold" in k and k["hold"] not in BT_HOLD:
+            raise ValueError(f"keys.hold must be one of: {', '.join(BT_HOLD)}")
+        keys.update(k)
+    if "reconnect" in raw:
+        r = raw["reconnect"]
+        if not isinstance(r, dict) or set(r) - set(BT_RECONNECT_DEFAULT):
+            raise ValueError("reconnect takes on_select and on_wake")
+        for name, value in r.items():
+            if not isinstance(value, bool):
+                raise ValueError(f"reconnect.{name} must be true or false")
+        reconnect.update(r)
+    return {"keys": keys, "reconnect": reconnect}
 
 
 def cycle_from(raw: Any) -> tuple[str, ...]:
@@ -190,6 +231,13 @@ class Actions:
         # Take the speaker back for the last preset once a phone's Bluetooth
         # or AirPlay cast has ended (settings.json ``sources.resume_after_cast``).
         self.resume_after_cast = True   # owner: back to the station 20 s after a cast ends
+        # Phones over Bluetooth (settings.json ``bluetooth``; bt_settings_from).
+        self.bt_keys: dict = dict(BT_KEYS_DEFAULT)
+        self.bt_reconnect: dict = dict(BT_RECONNECT_DEFAULT)
+        # What standby interrupted: "bluetooth" if the radio slept on it, so
+        # waking goes back there (and calls the phone) rather than to a preset.
+        self.standby_source: str | None = None
+        self._bt_selected_at = float("-inf")
         # Bumped by every hand on the radio that chooses what plays (a preset,
         # the cycle, standby): a cast that ends after one of those is not ours
         # to follow with a resume.
@@ -201,6 +249,7 @@ class Actions:
             "preset_by_index": self._preset_by_index,
             "cycle_source": self._cycle_source,
             "bt_pair": self._bt_pair,
+            "bluetooth": self._bluetooth,
             "standby": self._standby,
             "standby_toggle": self._standby_toggle,
             "resume": self._resume,
@@ -252,6 +301,8 @@ class Actions:
     # -- dispatch ---------------------------------------------------------
 
     def dispatch(self, event: Event) -> None:
+        if event.kind == "hold" and self._bt_hold(event):
+            return
         spec = self.variant.actions.get(f"{event.control}.{event.kind}")
         if not spec:
             # A pot the descriptor gives an effect but no binding: its knob
@@ -564,6 +615,9 @@ class Actions:
             self._persist()
         self.player.select_source("radio" if nxt == "ytm" else nxt)
         self._cycle_at = nxt
+        if nxt == "bluetooth" and self.bt_reconnect.get("on_select"):
+            self._bt_selected_at = self.clock()
+            self.reconnect_phone()
         pool = self._cycle_pool(nxt, order)
         preset = self._recent_preset(pool) if pool else None
         # The lamp's signature of where we went (before a slow start blocks).
@@ -606,6 +660,94 @@ class Actions:
         log.info("%s cast ended - back to preset %s", renderer, self._last_preset)
         self._cycle_at = None
         return self.resume_last()
+
+    # -- Bluetooth phones -------------------------------------------------
+
+    @property
+    def bluetooth(self) -> Any:
+        """The player's phones (player/bluetooth.py), None where there are none."""
+        return getattr(self.player, "bluetooth", None)
+
+    def _in_bluetooth(self) -> bool:
+        """Bluetooth is what the radio is on: a phone plays, or the owner chose it."""
+        active = self.player.active_source()
+        return active == "bluetooth" or (
+            active == "radio" and self.player.current() is None and self._cycle_at == "bluetooth")
+
+    def _phone_plays(self) -> bool:
+        return not self.standby and self.player.active_source() == "bluetooth"
+
+    def _bt_hold(self, event: Event) -> bool:
+        """The hold of the key whose tap is ``bluetooth``, while a phone plays:
+        the phone's pause/play (keys.hold) instead of the hold's own binding."""
+        keys = self.bt_keys
+        if not keys.get("enabled") or keys.get("hold", "none") == "none":
+            return False
+        tap = self.variant.actions.get(f"{event.control}.tap")
+        if not isinstance(tap, dict) or tap.get("do") != "bluetooth":
+            return False
+        bt = self.bluetooth
+        try:
+            if bt is None or not self._phone_plays():
+                return False
+        except Exception:
+            return False
+        command = "toggle" if keys["hold"] == "pause" else keys["hold"]
+        log.info("%s -> bluetooth %s (a phone plays)", event, command)
+        self.touch()
+        self._reply("ack")
+        bt.control_async(command)
+        return True
+
+    def _bluetooth(self, event, spec):
+        """A key for Bluetooth: selects it (and calls the last phone), and
+        while a phone plays there, pressed again is the phone's next track
+        (keys.again)."""
+        group = self.group
+        if group is not None and group.following:
+            group.leave("the Bluetooth key")
+        bt = self.bluetooth
+        again = self.bt_keys.get("again", "none") if self.bt_keys.get("enabled") else "none"
+        if bt is not None and again != "none" and self._phone_plays():
+            if self.clock() - self._bt_selected_at < AGAIN_GUARD_S:
+                return      # contact bounce, as for a preset key
+            self._reply("next")
+            bt.control_async(again)
+            return
+        if self.cycle_availability(("bluetooth",)).get("bluetooth") is not None:
+            log.info("Bluetooth key: Bluetooth is switched off (Casting)")
+            self._reply("fail")
+            return
+        self._select_bluetooth()
+
+    def _select_bluetooth(self, reconnect: bool | None = None) -> None:
+        """Hand the speaker to Bluetooth and, unless told not to, call the phone."""
+        self._hand += 1
+        if self.standby:
+            self._wake()
+            self._persist()
+        self.player.select_source("bluetooth")
+        self._cycle_at = "bluetooth"
+        self._bt_selected_at = self.clock()
+        self._reply("source:bluetooth")
+        if self.bt_reconnect.get("on_select") if reconnect is None else reconnect:
+            self.reconnect_phone()
+
+    def reconnect_phone(self) -> bool:
+        """Call the most recently used phone, off-thread, while Bluetooth stays
+        chosen. The lamp shows its waiting blue meanwhile, as for any cast."""
+        bt = self.bluetooth
+        if bt is None:
+            return False
+        hand = self._hand
+
+        def cancelled() -> bool:
+            return self._hand != hand or self.standby or self._cycle_at != "bluetooth"
+        try:
+            return bool(bt.reconnect_async(cancelled))
+        except Exception:
+            log.exception("could not start the bluetooth reconnect")
+            return False
 
     def _bt_pair(self, event, spec):
         seconds = int(spec.get("seconds", DEFAULT_PAIR_S))
@@ -666,6 +808,12 @@ class Actions:
         The boot resume's "power cut at night" sleeps without remembering it,
         so the next daytime power cut still comes back playing.
         """
+        try:
+            # No phones without the player's Bluetooth: no source read then.
+            on_bt = self.bluetooth is not None and self._in_bluetooth()
+        except Exception:
+            on_bt = False
+        self.standby_source = "bluetooth" if on_bt else None
         self.standby = True
         self._cycle_at = None
         self._hand += 1
@@ -712,7 +860,7 @@ class Actions:
         if self.standby:
             self._wake()
             self._persist()
-            self.resume_last()
+            self._resume_after_wake()
         else:
             self._standby(event, spec)
 
@@ -723,6 +871,16 @@ class Actions:
             return
         self._wake()
         self._persist()
+        self._resume_after_wake()
+
+    def _resume_after_wake(self) -> None:
+        """Back to what standby interrupted: Bluetooth (calling the last phone)
+        if it slept there and reconnect.on_wake, else the last preset."""
+        was, self.standby_source = self.standby_source, None
+        if was == "bluetooth" and self.bt_reconnect.get("on_wake") and self.bluetooth is not None:
+            log.info("waking into Bluetooth: calling the last phone")
+            self._select_bluetooth(reconnect=True)
+            return
         self.resume_last()
 
     def _shutdown(self, event, spec):
@@ -740,6 +898,8 @@ class Actions:
     def _persist(self) -> None:
         if self.state is not None:
             data: dict[str, Any] = {"last_preset": self._last_preset, "standby": self.standby}
+            if self.standby and self.standby_source:
+                data["standby_source"] = self.standby_source
             group = self.group
             if group is not None and group.following:
                 data["follower"] = True
@@ -770,6 +930,9 @@ class Actions:
                 self._standby(None, {})
             except Exception:
                 log.exception("could not re-apply standby at boot")
+            if data.get("standby_source") == "bluetooth":
+                self.standby_source = "bluetooth"
+                self._persist()
 
     def resume_preset(self) -> Preset | None:
         """What ``resume_last`` would play now (None: standby, nothing kept, or

@@ -36,6 +36,7 @@ from typing import Callable
 
 from ..bootresume import http_answers, mpd_answers
 from .base import Preset, Source
+from .bluetooth import Bluetooth
 from .renderers import MoodeRenderers
 from .sources.radio import RadioSource
 
@@ -225,6 +226,8 @@ class MoodePlayer:
         self.moode_db = MOODE_DB            # read-only, for the renderer flags
         # moOde's casting targets (AirPlay, Bluetooth, UPnP): on/off, names.
         self.renderers = MoodeRenderers(db=MOODE_DB)
+        # The phones themselves: paired list, reconnect, AVRCP, codec (BlueZ/BlueALSA).
+        self.bluetooth = Bluetooth(state_dir)
         # The swell's bookkeeping. Every write the knob (or standby) makes
         # bumps _mixer_gen, which stops a swell in its tracks: the knob wins.
         self._mixer_lock = threading.RLock()
@@ -662,14 +665,25 @@ class MoodePlayer:
     def renderer_info(self) -> dict:
         """Who is connected over Bluetooth and what they play - for the web page.
 
-        ``{"device": "Pixel 11", "title": ..., "artist": ...}``, empty fields
-        when nobody is connected. Cached briefly: the page polls every second.
+        ``{"device": "Pixel 11", "title", "artist", "codec": "aptX HD", "rate": 48000}``,
+        empty fields when nobody is connected. BlueZ's AVRCP track first, moOde's
+        btmeta.json if the phone sends none. Cached briefly: the page polls every second.
         """
         now = self._clock()
         if self._renderer_cache is not None and now - self._renderer_cache[0] < RENDERER_INFO_S:
             return self._renderer_cache[1]
-        info = {"device": "", "title": "", "artist": ""}
-        if shutil.which(self.config.bluetoothctl) and self._bluetooth_up():
+        info: dict = {"device": "", "title": "", "artist": "", "codec": None, "rate": None}
+        try:
+            playing = self.bluetooth.playing()
+        except Exception:
+            log.debug("bluetooth state unreadable", exc_info=True)
+            playing = None
+        if playing is not None:
+            info.update({"device": playing["name"], "title": playing["title"],
+                         "artist": playing["artist"], "codec": playing["codec"],
+                         "rate": playing["rate"]})
+        elif shutil.which(self.config.bluetoothctl) and self._bluetooth_up() and self.bluetooth.adapter() is None:
+            # BlueZ not answering busctl (older box?): bluetoothctl as before.
             try:
                 out = subprocess.run(
                     [self.config.bluetoothctl, "devices", "Connected"],
@@ -678,7 +692,7 @@ class MoodePlayer:
                 info["device"] = parse_connected_device(out)
             except (OSError, subprocess.TimeoutExpired):
                 log.debug("bluetoothctl devices failed", exc_info=True)
-        if info["device"]:
+        if info["device"] and not info["title"]:
             try:
                 meta = json.loads(Path(BTMETA_FILE).read_text() or "{}")
                 info["title"] = str(meta.get("title") or "")
@@ -687,6 +701,15 @@ class MoodePlayer:
                 pass
         self._renderer_cache = (now, info)
         return info
+
+    def cast_paused(self) -> bool:
+        """A phone on Bluetooth has paused (the lamp's cast-paused look)."""
+        if self.active_source() != "bluetooth":
+            return False
+        try:
+            return self.bluetooth.paused_soon()
+        except Exception:
+            return False
 
     def bluetooth_pair(self, seconds: int) -> None:
         if not shutil.which(self.config.bluetoothctl):

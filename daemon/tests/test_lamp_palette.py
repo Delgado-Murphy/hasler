@@ -182,7 +182,7 @@ class TestPaletteApi:
         doc = app.lamp_palette()
         assert set(doc["defaults"]) == set(eng.DEFAULT_PALETTE) - {"off"}
         assert doc["saved"] == {} and doc["effective"] == doc["defaults"]
-        assert doc["levels"] == {"full": 1.0, "night": 0.35, "ember": 0.06}
+        assert doc["levels"] == {"full": 1.0, "night": 0.35, "ember": 0.22}
         assert doc["lamp"] is True and doc["preview_s"] == eng.PREVIEW_S
 
     def test_names_follow_the_engine(self, app):
@@ -291,7 +291,7 @@ class TestHttp:
         assert status == 200 and doc["ok"] and doc["saved"] == {"ember": [1.0, 0.08, 0.0]}
         status, doc = self.call(url + "/api/lamp/preview", "POST", {"rgb": [1, 0.08, 0], "level": "ember"})
         assert status == 200 and doc["showing"] and doc["expires_s"] == eng.PREVIEW_S
-        assert app.lamp.previews[-1] == ([1.0, 0.08, 0.0], 0.06)
+        assert app.lamp.previews[-1] == ([1.0, 0.08, 0.0], 0.22)
         status, doc = self.call(url + "/api/lamp/palette", "DELETE", {})
         assert status == 200 and doc["saved"] == {}
 

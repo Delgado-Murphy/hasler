@@ -55,9 +55,12 @@ G 0.15, B 0 for amber - calibrate by eye at night.
 Each channel has a minimum duty (red 0.002, green and blue 0.0005 = 625 ns
 of the 800 Hz period: below that the PWM can't draw a pulse reliably). A
 channel only gets its floor if it carries a real share of the colour (at
-least 20 % of the brightest channel); a trace under its floor goes dark. So
-ember at 6 % (2 % at night) is pure red - steady and deep orange-red - where
-lifting its 10 % green to the floor turned it yellow-orange and unsteady.
+least 20 % of the brightest channel); a trace under its floor goes dark.
+
+Ember was 6 % (2 % at night) until 2026-10-21: that is ~0.2 % red duty,
+invisible behind the window - standby looked dark, which must mean "safe to
+unplug". The owner picked ~3.5 % red duty by eye, so ember is now 22 % (15 %
+at night, ~1.5 % duty) and the shutdown breath 15-35 %.
 
 ## Behaviour
 
@@ -74,10 +77,10 @@ lifting its 10 % green to the floor turned it yellow-orange and unsteady.
 | Failure (stream down, key while offline, HA call failed) | Red | 60% | 3 soft pulses, 0.6 s each | ~2 s, then back |
 | Offline > 60 s, on and idle | Red | 10-30% | breath, 4 s | until online; not at night |
 | Volume / tone turning | - | - | **no change** | - |
-| Standby (knob clicked off, or same radio key) | Ember | 6% | 1.5 s fade from current | until woken |
-| Knob held off -> shutdown (5 s) | -> Ember | falls to 2% | linear over the 5 s; knob on snaps back in 0.5 s | 5 s |
-| Shutting down | Ember | 4-20% | breath, 2.5 s | ~10-15 s |
-| **Installing an update** (the updater's trial: switch, restart, health check) | Ember | 4-20% | breath, 2.5 s (the shutdown look: busy, don't unplug) - **never solid ember** | until it commits or rolls back (~2-3 min); held through haslerd's restart |
+| Standby (knob clicked off, or same radio key) | Ember | 22% | 1.5 s fade from current | until woken |
+| Knob held off -> shutdown (5 s) | -> Ember | falls to 15% | linear over the 5 s; knob on snaps back in 0.5 s | 5 s |
+| Shutting down | Ember | 15-35% | breath, 2.5 s | ~10-15 s |
+| **Installing an update** (the updater's trial: switch, restart, health check) | Ember | 15-35% | breath, 2.5 s (the shutdown look: busy, don't unplug) - **never solid ember** | until it commits or rolls back (~2-3 min); held through haslerd's restart |
 | Halted, still powered | dark | 0 | 2 s fade-out by the last service | until power-on |
 | Setup / hotspot | Warm white | 15-60% | breath, 3 s | until configured |
 | Bluetooth pairing window | Blue | 15-60% | breath, 2 s | up to 2 min |
@@ -91,7 +94,7 @@ lifting its 10 % green to the floor turned it yellow-orange and unsteady.
 | Group leader can't be reached (follower) | Red | 60% | 3 soft pulses | ~2 s, then ready (the radio is alone again) |
 | Preset key on a follower | current | dip, as key press | 0.3 s | the leader then shows loading/playing; the follower's tint follows within ~5 s |
 | Preset key on a follower, the leader lacks its source (handover) | Amber | 25-70%, then 100% | breath (as loading), then as playing | the pressed radio leads: breath until its music plays; the others stay playing amber, in its tint at once; red pulses on the pressed radio if the takeover fails |
-| Night (sunset -> sunrise) | same colours | cap 35%, ember 2% | fades, signatures, swells and nudges x1.5; idle red suppressed | the night |
+| Night (sunset -> sunrise) | same colours | cap 35%, ember 15% | fades, signatures, swells and nudges x1.5; idle red suppressed | the night |
 | Panel board missing | Red | 10-30% | slow breath | until fixed (the keys can't work) |
 
 A multiroom **leader** looks like any radio playing: nothing new. The
@@ -163,7 +166,7 @@ The breath grows stronger stage by stage, so the wait never looks frozen.
 | ~15 s (was ~40 s before 0.3.1) | music resumes | 1.5 s fade to solid amber 100% with the first sound |
 | same, nothing to resume | ready | settle to solid amber 35% |
 
-- **Knob off at power-on:** the early breath is ember (2-8%), then settles to
+- **Knob off at power-on:** the early breath is ember (12-25%), then settles to
   solid ember; never amber, never sound.
 - **No Wi-Fi:** amber warm-up, then a 2 s crossfade to the warm-white setup
   breath when the hotspot comes up. No red: it needs telling, not fixing.
