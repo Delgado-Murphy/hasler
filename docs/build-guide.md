@@ -372,9 +372,12 @@ Checks:
 *Optional. The radio works the same with no Home Assistant (HA) at all. Whatever
 HA the house has is connected from the key page, with no file editing.*
 
-- [ ] **Media player, no code:** in HA, Settings → Devices & services → Add
-      integration → **Music Player Daemon (MPD)** → host `hasler.local`, port
-      `6600`. You get `media_player.hasler`.
+- [ ] **Not the MPD integration.** HA may offer *Music Player Daemon* for the
+      radio: skip it. MPD only sees the internet-radio stream (not Spotify,
+      YouTube Music, Bluetooth or AirPlay, presets or standby), and an HA
+      "play"/"stop" behind the radio's back confuses it. The radio announces
+      itself on the network as `_hasler._tcp` for the Hasler integration for
+      HA instead (`GET http://hasler.local:8080/api/info` answers who it is).
 - [ ] **Make a token:** in HA, click your user (bottom left) → **Security** →
       *Long-lived access tokens* → **Create token**. Name it "Hasler radio" and
       copy it (HA shows it only once).
@@ -386,17 +389,21 @@ HA the house has is connected from the key page, with no file editing.*
       if anything. The token is saved with mode 600 and never sent back to the
       page.
 - [ ] **Give keys a job:** in Edit keys, a key's tap or hold can now run a
-      *scene*, a *script* or an *automation*, or *toggle* a light, switch, fan,
-      cover or media player. **Try it** runs it now. A key never waits for HA: if
-      HA is down, the key just does nothing.
+      *scene* (with a fade), a *script* or an *automation*, *toggle* a light,
+      switch, fan, cover or media player, or **set lights**: one light or
+      several, on / off / toggle, brightness, a colour or a white temperature,
+      and a fade time. Each bulb gets what it can do (a plain dimmable bulb
+      dims and ignores the colour). **Try it** runs it now and says what HA
+      changed. A key never waits for HA: if HA is down, the key just does
+      nothing.
 - [ ] *(Optional)* **Show what is playing:** turn on *Show the radio in Home
       Assistant*. The radio keeps `sensor.hasler_radio` up to date (state
       `playing` / `standby` / `idle`, with `station`, `title`, `artist`,
       `source`). After an HA restart it comes back with the next change, or
       within 10 minutes.
 
-**Done when:** `media_player.hasler` appears in HA, holding a key bound to a scene
-runs it, **and the radio still works with HA stopped**.
+**Done when:** holding a key bound to a scene runs it, a key set to dim a light
+dims it, **and the radio still works with HA stopped**.
 
 ### Moving to another home
 

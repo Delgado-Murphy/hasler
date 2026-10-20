@@ -41,7 +41,7 @@ from .lamp.contract import BoxState, LampDriver, Look
 from .lamp.policy import look_for
 from .web import stations
 from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
-from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_limit_from
+from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_floor_from, volume_limit_from
 from .web.sources_api import SourcesApi
 from .web.sources_api import apply_saved as apply_sources
 
@@ -426,15 +426,29 @@ class Watchdog:
 def moode_config(config: dict, settings: dict) -> MoodeConfig:
     """haslerd.yaml's ``moode:`` block, with the web page's saved settings on top.
 
-    A bad saved ``volume_limit`` is ignored (logged), never fatal: the yaml's
-    own ceiling then stands.
+    A bad saved ``volume_limit`` / ``volume_floor`` is ignored (logged), never
+    fatal: the yaml's own value then stands. So is a ``moode:`` key this
+    haslerd doesn't know - a release that drops a setting must still start
+    (else the health check fails and the update rolls back).
     """
-    spec = dict(config.get("moode") or {})
+    known = {f.name for f in dataclasses.fields(MoodeConfig)}
+    spec = {}
+    for key, value in dict(config.get("moode") or {}).items():
+        if key in known:
+            spec[key] = value
+        else:
+            log.warning("ignoring unknown setting moode.%s in box.yaml", key)
     if "volume_limit" in settings:
         try:
             spec["volume_limit"] = volume_limit_from(settings["volume_limit"])
         except ValueError as exc:
             log.warning("ignoring saved volume_limit %r: %s", settings["volume_limit"], exc)
+    if "volume_floor" in settings:
+        limit = spec.get("volume_limit", MoodeConfig.volume_limit)
+        try:
+            spec["volume_floor"] = volume_floor_from(settings["volume_floor"], limit)
+        except (TypeError, ValueError) as exc:
+            log.warning("ignoring saved volume_floor %r: %s", settings["volume_floor"], exc)
     return MoodeConfig(**spec)
 
 

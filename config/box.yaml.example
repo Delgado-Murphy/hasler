@@ -47,7 +47,7 @@ metered: false            # true: never download in the background (phone hotspo
 #   # gives ~10 W: raise slowly, by ear, then stop. The key page's saved
 #   # volume_limit wins over this.
 #   volume_limit: 70
-#   volume_floor: 0          # mixer % at the knob's first step (Digital is linear in dB)
+#   volume_floor: 28         # mixer % at the knob's first step (Digital is linear in dB); the key page's saved one wins
 #   tone_commands: {}        # per tone wheel: a command with {gain} / {value} / {control}
 #   source_flags: {...}      # moOde renderer flags (defaults in player/moode.py)
 #   renderer_units: {...}

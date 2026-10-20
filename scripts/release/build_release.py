@@ -100,6 +100,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-lamp-halt", "integration/shutdown/", mode=0o755),
     Rule("config/sudoers/haslerd", "integration/sudoers/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
+    Rule("config/avahi/hasler.service", "integration/avahi/"),
     # migrations/: NNN_name.py
     Rule("migrations/*.py", "migrations/"),
     Rule("daemon/migrations/*.py", "migrations/"),
@@ -108,7 +109,8 @@ ALLOWLIST: tuple[Rule, ...] = (
 # integration/ destinations the box accepts (docs/ota-format.md)
 INTEGRATION_OK = re.compile(
     r"^integration/(systemd/[^/]+\.(service|timer)|udev/[^/]+\.rules|sbin/hasler-[^/]+|"
-    r"bin/hasler-[^/]+|sudoers/haslerd|shutdown/hasler-[^/]+|configtxt/hasler\.block)$")
+    r"bin/hasler-[^/]+|sudoers/haslerd|shutdown/hasler-[^/]+|configtxt/hasler\.block|"
+    r"avahi/hasler\.service)$")
 MIGRATION_OK = re.compile(r"^migrations/\d{3}_[a-z0-9_]+\.py$")
 
 # skipped quietly wherever they appear

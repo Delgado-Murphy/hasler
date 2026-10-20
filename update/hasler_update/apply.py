@@ -175,6 +175,15 @@ class Hooks:
     def check_item(self, item: integ.Item) -> None:
         if item.kind == "sudoers":
             self._must(["visudo", "-cf", str(item.src)], "visudo")
+        elif item.kind == "avahi":
+            # avahi-daemon skips a file it can't parse; refuse it here instead, loudly.
+            import xml.etree.ElementTree as ET
+            try:
+                root = ET.fromstring(item.src.read_bytes())
+            except ET.ParseError as e:
+                raise ApplyError(f"{item.src.name}: not valid XML ({e})") from e
+            if root.tag != "service-group":
+                raise ApplyError(f"{item.src.name}: not an avahi service-group")
         elif item.kind == "udev" and shutil.which("udevadm"):
             proc = self.run(["udevadm", "verify", str(item.src)])
             if proc.returncode not in (0,) and "Unknown command" not in (proc.stderr or ""):

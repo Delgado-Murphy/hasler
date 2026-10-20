@@ -130,6 +130,10 @@ class Layout:
         return self._p("/usr/lib/systemd/system-shutdown")
 
     @property
+    def avahi_services(self) -> Path:
+        return self._p("/etc/avahi/services")
+
+    @property
     def config_txt(self) -> Path:
         p = self._p("/boot/firmware/config.txt")
         return p if p.exists() or not self._p("/boot/config.txt").exists() else self._p("/boot/config.txt")

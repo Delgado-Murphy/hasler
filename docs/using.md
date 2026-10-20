@@ -139,7 +139,8 @@ Tap the pencil (**Edit keys**), then choose a key.
 5. Press **Save**.
 
 You can also change what **holding** a key does, for example a Home Assistant
-scene.
+scene, or setting lights: which lights, on or off, how bright, what colour or
+how warm a white, and how slowly to fade.
 
 ### Settings
 
@@ -148,7 +149,7 @@ Tap the gear icon.
 | Setting | What it does |
 |---|---|
 | **YouTube Music** | Sign in to use your Liked songs and private playlists. The page shows the steps. |
-| **Home Assistant** | Connect your smart home, so a key can run a scene, a script or switch a light. Optional. |
+| **Home Assistant** | Connect your smart home, so a key can run a scene or a script, switch things, or set lights (brightness, colour, warm or cool white). Optional. |
 | **Wi-Fi** | Shows the network. **Change** moves the radio to another network. |
 | **Volume ceiling** | The loudest the knob can go (30 to 100). Above 95 the old speaker can distort. |
 | **Mono** | Mixes left and right into the one speaker, so nothing is lost. On by default. |

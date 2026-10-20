@@ -51,7 +51,9 @@ also need a press on the radio (web/confirm.py); ``/api/software`` is the
 ``/api/ha`` (and ``/api/sources``, ``/api/casting``) is handed to
 ``WebApp.extra_routes`` - objects with ``route(method, path, body) -> (status,
 doc) | None`` (web/ha_api.py, web/sources_api.py) - so Home Assistant's
-endpoints live with Home Assistant's code.
+endpoints live with Home Assistant's code. ``/api/info`` and
+``/api/art/current`` (web/integration.py) are what the Home Assistant
+integration reads besides ``/api/status`` (whose ``art`` points at the latter).
 """
 
 from __future__ import annotations
@@ -78,6 +80,7 @@ from ..player.moode import treble_db
 from . import keymap, stations
 from ..net import HOTSPOT_ADDR
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
+from . import integration
 from .software import NotInstalled, Software, SoftwareError
 from .wifi import Wifi
 
@@ -91,6 +94,7 @@ MAX_BODY = 256 * 1024
 PRESS_EVENTS = ("tap", "hold")
 SETTINGS_FILE = "settings.json"
 VOLUME_LIMIT_RANGE = (30, 100)   # below 30 the knob is barely audible; 100 = no ceiling
+VOLUME_FLOOR_GAP = 10            # the floor stays this far under the ceiling: the knob keeps a sweep
 VOLUME_GUESS = 40.0              # a relative nudge with no reading starts here, as volume_step does
 KNOB_ID = re.compile(r"^/api/knobs/([A-Za-z0-9_.-]{1,64})/(sample|fit|calibration)$")
 HYSTERESIS_MAX = 5000
@@ -112,6 +116,8 @@ TAP_LABELS = {
     "ha_script": "Script",
     "ha_toggle": "Toggle",
     "ha_automation": "Automation",
+    "ha_light": "Lights",
+    "ha_service": "Home Assistant",
 }
 
 
@@ -150,6 +156,23 @@ def volume_limit_from(raw: Any) -> int:
     value = int(raw)
     if not lo <= value <= hi:
         raise ValueError(f"volume_limit must be from {lo} to {hi}")
+    return value
+
+
+def volume_floor_range(limit: int | None) -> tuple[int, int]:
+    """What ``volume_floor`` may be under this ceiling: 0..limit-10."""
+    limit = VOLUME_LIMIT_RANGE[1] if limit is None else int(limit)
+    return 0, max(0, limit - VOLUME_FLOOR_GAP)
+
+
+def volume_floor_from(raw: Any, limit: int | None) -> int:
+    """A submitted floor -> int in volume_floor_range(limit), or ValueError saying why."""
+    lo, hi = volume_floor_range(limit)
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw != int(raw):
+        raise ValueError(f"volume_floor must be a whole number from {lo} to {hi}")
+    value = int(raw)
+    if not lo <= value <= hi:
+        raise ValueError(f"volume_floor must be from {lo} to {hi} (volume_limit - {VOLUME_FLOOR_GAP})")
     return value
 
 
@@ -202,6 +225,9 @@ class WebApp:
         # Without a settings file (no state dir) the lamp's choices live here.
         self._lamp_settings: dict = {}
         self.station_db = station_db
+        # /api/info and /api/art/current, for the Home Assistant integration (web/integration.py).
+        self.art = integration.ArtProxy(station_db)
+        self.machine_id_file = integration.MACHINE_ID
         self.wifi = wifi or Wifi(db=station_db)
         self.lock = threading.Lock()
         # The ytm source (for now_playing) and its catalogue, if the player has them.
@@ -392,9 +418,11 @@ class WebApp:
         except Exception:
             volume = None
         source, waiting, renderer = self._source(current)
+        playing = keymap.preset_to_page(current) if current else None
+        track = self._track() if source == "ytm" else None
         return {
             "pressed": pressed,
-            "playing": keymap.preset_to_page(current) if current else None,
+            "playing": playing,
             "standby": self.actions.standby,
             "volume": None if volume is None else round(volume),
             # What owns the speaker: radio | spotify | ytm | bluetooth | airplay.
@@ -403,7 +431,10 @@ class WebApp:
             "waiting": waiting,
             "renderer": renderer,
             # The YouTube Music track playing, named: {title, artist, album, thumb} or None.
-            "track": self._track() if source == "ytm" else None,
+            "track": track,
+            # The picture for what plays (station logo / track thumbnail), served by
+            # the radio itself; ``k`` changes with the picture. None = nothing to show.
+            "art": None if self.actions.standby else self.art.url_for(source, playing, track),
             # The remote's keys, k1..k6 then PU, and which one is lit.
             "keys": self._keys(),
             "current_key": self._current_key(current),
@@ -414,6 +445,16 @@ class WebApp:
             # The tone knob's end switch: True = radio on, False = clicked off, None = not fitted.
             "knob_on": states.get("power") if isinstance(states.get("power"), bool) else None,
         }
+
+    def info(self) -> dict:
+        """``GET /api/info``: who this radio is, for the Home Assistant integration."""
+        return integration.info(self.actions.variant.name, self._release_version(), self.machine_id_file)
+
+    def art_current(self) -> tuple[bytes, str, str] | None:
+        """``GET /api/art/current``: (bytes, content type, etag), or None."""
+        if self.actions.standby:
+            return None
+        return self.art.current(*integration.now_playing(self))
 
     def _keys(self) -> list[dict]:
         """Each key's caption from the live layout: preset name, or what its tap does."""
@@ -466,7 +507,10 @@ class WebApp:
             return None
 
     def _volume_floor(self) -> int | None:
+        """Mixer % at the knob's first step: the player's, else the saved one, else None."""
         floor = getattr(getattr(self.actions.player, "config", None), "volume_floor", None)
+        if floor is None:
+            floor = load_settings(self.settings_file).get("volume_floor")
         try:
             return None if floor is None else int(floor)
         except (TypeError, ValueError):
@@ -533,8 +577,11 @@ class WebApp:
             "volume_limit": self._volume_limit(),
             # What PUT accepts for volume_limit, so the page needn't hard-code it.
             "volume_limit_range": list(VOLUME_LIMIT_RANGE),
-            # Mixer % at the knob's first step (box.yaml moode.volume_floor); read-only here.
+            # Mixer % at the knob's first step: the quietest audible one. Saved
+            # here wins over box.yaml's moode.volume_floor.
             "volume_floor": self._volume_floor(),
+            # What PUT accepts for volume_floor under the current ceiling.
+            "volume_floor_range": list(volume_floor_range(self._volume_limit())),
             "mono": self._mono_doc(),
             **self._lamp_doc(),
             "wifi": {"ssid": ssid},
@@ -543,12 +590,22 @@ class WebApp:
         }
 
     def put_settings(self, body: Any, host: str | None = None) -> dict:
-        """Validate, persist, apply live: ``volume_limit``, ``mono``, ``location``, ``night``."""
-        if not isinstance(body, dict) or not ({"volume_limit", "mono", "location", "night"} & body.keys()):
-            raise ValueError("expected {\"volume_limit\": 30-100}, {\"mono\": true|false}, "
+        """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
+        ``location``, ``night``."""
+        keys = {"volume_limit", "volume_floor", "mono", "location", "night"}
+        if not isinstance(body, dict) or not (keys & body.keys()):
+            raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
+                             "{\"mono\": true|false}, "
                              "{\"location\": {\"name\", \"lat\", \"lon\"}} and/or "
                              "{\"night\": \"sun\"|\"off\"|\"22:00-07:00\"}")
         limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
+        floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
+                 if "volume_floor" in body else None)
+        if floor is None and limit is not None:
+            # A lower ceiling pulls a floor that no longer fits down with it.
+            current = self._volume_floor()
+            if current is not None and current > volume_floor_range(limit)[1]:
+                floor = volume_floor_range(limit)[1]
         place = night.location_from(body["location"]) if "location" in body else None
         mode = night.night_from(body["night"]) if "night" in body else None
         mono = body.get("mono")
@@ -562,12 +619,14 @@ class WebApp:
                     self.mono.set(mono)
                 except RuntimeError as exc:          # audio.MonoError
                     raise ValueError(str(exc)) from exc
-            if limit is not None:
-                self._apply_volume_limit(limit)
+            if limit is not None or floor is not None:
+                self._apply_volume_limit(limit, floor)
             if self.settings_file is not None:
                 doc = load_settings(self.settings_file)
                 if limit is not None:
                     doc["volume_limit"] = limit
+                if floor is not None:
+                    doc["volume_floor"] = floor
                 if mono is not None:
                     doc["mono"] = mono
                 if place is not None:
@@ -596,6 +655,8 @@ class WebApp:
             log.info("lamp night mode set to %s from the web page", mode)
         if limit is not None:
             log.info("volume limit set to %s%% from the web page", limit)
+        if floor is not None:
+            log.info("volume floor set to %s%% from the web page", floor)
         if mono is not None:
             log.info("output set to %s from the web page", "mono" if mono else "stereo")
         return self.settings(host)
@@ -621,8 +682,9 @@ class WebApp:
             return {"available": False, "on": False}
         return {"available": True, "on": self.mono.is_on()}
 
-    def _apply_volume_limit(self, limit: int) -> None:
-        """New ceiling, same knob position: re-set the knob so the change is heard.
+    def _apply_volume_limit(self, limit: int | None, floor: int | None = None) -> None:
+        """New ceiling and/or floor, same knob position: re-set the knob so the
+        change is heard.
 
         The knob is read under the old ceiling first, so lowering the limit
         turns the speaker down at once rather than at the next knob move. In
@@ -637,7 +699,10 @@ class WebApp:
             knob = player.get_volume()
         except Exception:
             knob = None
-        config.volume_limit = limit
+        if limit is not None:
+            config.volume_limit = limit
+        if floor is not None:
+            config.volume_floor = floor
         if knob is not None and not self.actions.standby:
             try:
                 player.set_volume(float(knob))
@@ -1199,6 +1264,10 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif (m := KNOB_ID.match(url.path)) and m.group(2) == "sample":
                 n = parse_qs(url.query).get("n", ["15"])[0]
                 self._guard(lambda: self._json(200, app.knob_sample(m.group(1), n)))
+            elif url.path == "/api/info":
+                self._guard(lambda: self._json(200, app.info()))
+            elif url.path == "/api/art/current":
+                self._guard(self._art_current)
             elif url.path == "/api/health":
                 self._guard(lambda: self._json(*app.health()))
             elif url.path == "/api/software":
@@ -1215,6 +1284,27 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, app.browse_radio(q)))
             else:
                 self._send(404, b"not found", "text/plain")
+
+        def _art_current(self) -> None:
+            pic = app.art_current()
+            if pic is None:
+                self._send(404, b"no art", "text/plain")
+                return
+            data, ctype, etag = pic
+            if self.headers.get("If-None-Match") == etag:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            # "current" changes with the music: revalidate every time (cheap: ETag).
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("ETag", etag)
+            self.end_headers()
+            self.wfile.write(data)
 
         def _art(self, vid: str) -> None:
             cover = app.cover(vid)

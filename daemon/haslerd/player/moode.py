@@ -104,7 +104,7 @@ class MoodeConfig:
     mixer: str = "Digital"          # from: moodeutl -q "select value from cfg_system where param='amixname'"
     # amixer -c takes an index or the ALSA card id. The id survives HDMI
     # cards shifting the numbering; the Amp4 Pro is "sndrpihifiberry".
-    card: int | str = 0
+    card: int | str = "sndrpihifiberry"
     moodeutl: str = "moodeutl"
     amixer: str = "amixer"
     # Ceiling on the hardware mixer, as a percentage. The Amp4 Pro can deliver
@@ -115,8 +115,10 @@ class MoodeConfig:
     volume_limit: int = 70
     # Mixer percentage at the knob's first step above zero. Digital on the
     # Amp4 Pro is linear in dB (0.5 dB per step, 0% = -103.5 dB), so without
-    # a floor the bottom half of the knob is silent. 0 keeps the plain mapping.
-    volume_floor: int = 0
+    # a floor the bottom half of the knob is silent (1% is -102.5 dB). 28%
+    # (-74.5 dB) is the quietest step heard on the bench radio; the key page's
+    # saved volume_floor wins over this. 0 keeps the plain mapping.
+    volume_floor: int = 28
     bluetoothctl: str = "bluetoothctl"
     source_flags: dict = field(default_factory=lambda: dict(DEFAULT_SOURCE_FLAGS))
     renderer_units: dict = field(default_factory=lambda: dict(DEFAULT_RENDERER_UNITS))

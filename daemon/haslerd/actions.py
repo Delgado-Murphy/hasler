@@ -37,6 +37,7 @@ import logging
 import time
 from typing import Any, Callable
 
+from .ha import behaviour
 from .panel.controls import Event
 from .player.base import PRESET_SOURCES, Player, Preset
 from .state import StateStore
@@ -79,7 +80,7 @@ RENDERERS = ("bluetooth", "airplay", "dlna")
 ACK_KINDS = ("tap", "select")
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
 SELF_REPLYING = ("preset", "preset_by_index")
-HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation")
+HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation", "ha_light", "ha_service")
 DEFAULT_PAIR_S = 120
 SHUTDOWN_PREPARE_S = 20.0   # YouTube Music's next-boot opener, before poweroff
 
@@ -192,6 +193,8 @@ class Actions:
             "ha_script": self._ha_script,
             "ha_toggle": self._ha_toggle,
             "ha_automation": self._ha_automation,
+            "ha_light": self._ha_light,
+            "ha_service": self._ha_service,
         }
         # (kind, entity) already reported as dropped for want of HA - say it
         # once, not on every press.
@@ -680,7 +683,9 @@ class Actions:
     # connects or disconnects HA on the key page: read it once per press.
     # Kinds map to services in ha/rest.SERVICES: scene -> scene.turn_on,
     # script -> script.turn_on, toggle -> homeassistant.toggle,
-    # automation -> automation.trigger.
+    # automation -> automation.trigger; "light" and "service" carry a whole
+    # behaviour (ha/behaviour.py: light.turn_on/off/toggle with brightness,
+    # colour, white temperature and fade; a fenced generic service call).
 
     def _fire_ha(self, kind: str, payload: dict[str, Any]) -> None:
         """Fire-and-forget. HA being down must never slow down a key press.
@@ -690,21 +695,26 @@ class Actions:
         A call that fails later, on the transport's own thread, is not seen.
         """
         ha = self.ha
+        entities = behaviour.entity_ids(payload)
         if ha is None:
-            key = (kind, str(payload.get("entity", "")))
+            key = (kind, ",".join(entities))
             level = logging.DEBUG if key in self._ha_dropped else logging.INFO
             self._ha_dropped.add(key)
             log.log(level, "Home Assistant not connected; %s %s does nothing", kind, key[1])
             self._reply("fail")
             return
-        if payload.get("entity") in (getattr(ha, "missing", None) or ()):
+        missing = getattr(ha, "missing", None) or ()
+        if entities and all(e in missing for e in entities):
             self._reply("fail")
         else:
             self._reply("ha")
         ha(kind, payload)
 
     def _ha_scene(self, event, spec):
-        self._fire_ha("scene", {"entity": spec["entity"]})
+        payload = {"entity": spec["entity"]}
+        if spec.get("transition") is not None:
+            payload["transition"] = spec["transition"]
+        self._fire_ha("scene", payload)
 
     def _ha_script(self, event, spec):
         self._fire_ha("script", {"entity": spec["entity"]})
@@ -714,6 +724,12 @@ class Actions:
 
     def _ha_automation(self, event, spec):
         self._fire_ha("automation", {"entity": spec["entity"]})
+
+    def _ha_light(self, event, spec):
+        self._fire_ha("light", dict(spec))
+
+    def _ha_service(self, event, spec):
+        self._fire_ha("service", dict(spec))
 
     def _ha_scene_by_index(self, event, spec):
         scenes = spec.get("scenes") or self.variant.actions.get("_scenes", [])

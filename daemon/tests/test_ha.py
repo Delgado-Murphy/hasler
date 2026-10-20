@@ -100,6 +100,11 @@ class FakeClient:
     def run(self, kind, entity):
         self.ran.append((kind, entity))
 
+    def run_calls(self, calls):
+        self.ran.extend(calls)
+        return [{"entity_id": data["entity_id"] if isinstance(data["entity_id"], str) else data["entity_id"][0],
+                 "state": "on"} for _, _, data in calls]
+
     def set_state_async(self, entity_id, state, attributes):
         self.pushed.append((entity_id, state, attributes))
 
@@ -424,7 +429,10 @@ class TestVerbs:
         verbs = {v["do"]: v for v in keymap.VERBS}
         assert verbs["ha_toggle"]["domains"] == ["light", "switch", "input_boolean", "fan", "cover", "media_player"]
         assert verbs["ha_script"]["params"] == ["entity"]
-        assert set(keymap.HA_VERBS) == {"ha_scene", "ha_script", "ha_toggle", "ha_automation"}
+        assert set(keymap.HA_VERBS) == {"ha_scene", "ha_script", "ha_toggle", "ha_automation",
+                                        "ha_light", "ha_service"}
+        assert verbs["ha_light"]["domains"] == ["light"]
+        assert "media_player" in verbs["ha_service"]["domains"]
 
     def test_config_doc_ha_flag_accepts_callable_or_api(self, actions, tmp_path):
         assert keymap.config_doc(actions, {}, lambda: True)["ha"] is True
@@ -577,8 +585,11 @@ class TestHaApi:
         api = make_api(actions, tmp_path)
         assert api.route("POST", "/api/ha/try", {"do": "ha_toggle", "entity": "light.kitchen"})[0] == 409
         api.connect({"url": URL, "token": TOKEN})
-        assert api.route("POST", "/api/ha/try", {"do": "ha_toggle", "entity": "light.kitchen"}) == (200, {"ok": True})
-        assert api.client.ran == [("toggle", "light.kitchen")]
+        code, doc = api.route("POST", "/api/ha/try", {"do": "ha_toggle", "entity": "light.kitchen"})
+        assert code == 200 and doc["ok"] is True
+        assert doc["calls"] == [{"service": "homeassistant.toggle", "data": {"entity_id": "light.kitchen"}}]
+        assert doc["changed"] == [{"entity_id": "light.kitchen", "state": "on"}] and doc["warnings"] == []
+        assert api.client.ran == [("homeassistant", "toggle", {"entity_id": "light.kitchen"})]
         code, doc = api.route("POST", "/api/ha/try", {"do": "ha_scene", "entity": "light.kitchen"})
         assert code == 400 and "isn't a scene" in doc["error"]
         assert api.route("POST", "/api/ha/try", {"do": "preset", "entity": "x.y"})[0] == 400
@@ -587,9 +598,9 @@ class TestHaApi:
         api = make_api(actions, tmp_path)
         api.connect({"url": URL, "token": TOKEN})
 
-        def fail(kind, entity):
+        def fail(calls):
             raise HaError("Can't reach that address")
-        api.client.run = fail
+        api.client.run_calls = fail
         assert api.route("POST", "/api/ha/try", {"do": "ha_script", "entity": "script.x"}) == \
             (502, {"ok": False, "error": "Can't reach that address"})
 

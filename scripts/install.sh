@@ -240,6 +240,10 @@ if put_file "$REPO/config/udev/99-hasler-pwm.rules" /etc/udev/rules.d/99-hasler-
   sudo udevadm trigger --subsystem-match=pwm --action=change || true
 fi
 
+say "mDNS: announce the radio's API (_hasler._tcp) for Home Assistant"
+# avahi-daemon watches /etc/avahi/services: no reload needed.
+put_file "$REPO/config/avahi/hasler.service" /etc/avahi/services/hasler.service 0644 || true
+
 # --- go-librespot ------------------------------------------------------------
 # Spotify presets. A Spotify Connect device haslerd drives over 127.0.0.1:3678.
 if (( ARM64 )); then

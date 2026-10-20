@@ -23,6 +23,7 @@ import yaml
 
 from ..actions import Actions, build_presets
 from ..boxconfig import SCHEMA as KEYS_SCHEMA, atomic_write_text
+from ..ha import behaviour
 from ..panel.controls import Momentary
 from ..player.base import Preset
 
@@ -42,12 +43,18 @@ VERBS: list[dict[str, Any]] = [
     {"do": "volume_up", "label": "Volume up (ramps while held)"},
     {"do": "volume_down", "label": "Volume down (ramps while held)"},
     {"do": "standby_toggle", "label": "Standby / wake"},
-    {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity"], "domains": ["scene"]},
+    {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity", "transition"], "domains": ["scene"]},
     {"do": "ha_script", "label": "Run a Home Assistant script", "params": ["entity"], "domains": ["script"]},
     {"do": "ha_toggle", "label": "Toggle a Home Assistant device", "params": ["entity"],
      "domains": ["light", "switch", "input_boolean", "fan", "cover", "media_player"]},
     {"do": "ha_automation", "label": "Trigger a Home Assistant automation", "params": ["entity"],
      "domains": ["automation"]},
+    # After ha_toggle: a page that picks "the first verb whose domains hold this
+    # entity's domain" keeps toggling a light rather than switching it on.
+    {"do": "ha_light", "label": "Set Home Assistant lights",
+     "params": ["entities", "mode", "brightness", "color", "kelvin", "transition"], "domains": ["light"]},
+    {"do": "ha_service", "label": "Call a Home Assistant service (advanced)",
+     "params": ["service", "entities", "data"], "domains": list(behaviour.SAFE_SERVICES)},
 ]
 VERB_NAMES = {v["do"] for v in VERBS}
 
@@ -55,7 +62,7 @@ VERB_NAMES = {v["do"] for v in VERBS}
 # entity picker with the same lists (the "domains" hint above); the daemon
 # re-checks here, because a hand-edited request must not toggle a scene.
 HA_VERBS: dict[str, list[str]] = {v["do"]: v["domains"] for v in VERBS if "domains" in v}
-ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
+ENTITY_ID = behaviour.ENTITY_ID
 
 SPOTIFY_URI = re.compile(r"^spotify:(playlist|album|track|artist|show|episode):[A-Za-z0-9]{22}$")
 SPOTIFY_LINK = re.compile(
@@ -101,7 +108,7 @@ def to_page(spec: dict | None) -> dict | None:
     if verb == "bt_pair":
         return {"do": "bt_pair", "seconds": int(spec.get("seconds", 120))}
     if verb in HA_VERBS:
-        return {"do": verb, "entity": str(spec.get("entity", ""))}
+        return behaviour.to_page(spec)
     # Something the page has no control for (set in the descriptor by hand):
     # shown, kept as-is on save.
     return {"do": "custom", "label": verb or "?", "spec": dict(spec)}
@@ -171,18 +178,12 @@ def check_uri(source: str, uri: str) -> str | None:
 
 def check_entity(verb: str, entity: str) -> str | None:
     """Why ``entity`` can't be the target of HA ``verb``, or None if it can."""
-    domains = HA_VERBS[verb]
-    example = {"scene": "scene.living_room", "script": "script.good_night",
-               "automation": "automation.lights_out"}.get(domains[0], "light.kitchen")
-    if not entity:
-        return f"pick a Home Assistant entity, e.g. {example}"
-    if not ENTITY_ID.match(entity):
-        if verb == "ha_scene":
-            return "a scene id looks like scene.living_room"
-        return f"an entity id looks like {example}"
-    if entity.split(".", 1)[0] not in domains:
-        kinds = ", ".join(domains[:-1]) + (" or " if len(domains) > 1 else "") + domains[-1]
-        return f"{entity} isn't a {kinds} - pick one like {example}"
+    if verb in behaviour.SIMPLE:
+        return behaviour.check_entity(verb, entity)
+    try:
+        behaviour.normalise({"do": verb, "entity": entity})
+    except behaviour.Problem as exc:
+        return str(exc)
     return None
 
 
@@ -247,12 +248,11 @@ def action_from_page(raw: Any, where: str, preset_ns: set[int], current: dict | 
             return None
         return {"do": "bt_pair", "seconds": seconds}
     if verb in HA_VERBS:
-        entity = str(raw.get("entity") or "").strip()
-        problem = check_entity(verb, entity)
-        if problem:
-            errors.append({"where": where, "message": problem})
+        try:
+            return behaviour.normalise(raw)
+        except behaviour.Problem as exc:
+            errors.append({"where": where, "message": str(exc)})
             return None
-        return {"do": verb, "entity": entity}
     return {"do": verb}         # cycle_source, standby_toggle
 
 
@@ -316,13 +316,15 @@ def apply(actions: Actions, panel: Any, specs: list[dict], table: dict[str, dict
 
 
 def ha_entries(actions: Actions) -> list[tuple[str, str, dict]]:
-    """Every key action that targets a Home Assistant entity: (key, event, spec)."""
+    """Every key action that targets Home Assistant entities: (key, event, spec).
+
+    ``behaviour.entity_ids(spec)`` lists them (one ``entity``, or ``entities``)."""
     table = actions.variant.actions
     out = []
     for cid in key_ids(actions):
         for event in EVENTS:
             spec = table.get(f"{cid}.{event}")
-            if spec and spec.get("do") in HA_VERBS and spec.get("entity"):
+            if spec and spec.get("do") in HA_VERBS and behaviour.entity_ids(spec):
                 out.append((cid, event, dict(spec)))
     return out
 

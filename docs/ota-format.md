@@ -37,7 +37,9 @@ hasler-<version>/
 `/usr/local/bin/`, `sudoers/haslerd` -> `/etc/sudoers.d/haslerd` (visudo -cf
 first), `shutdown/hasler-*` -> `/usr/lib/systemd/system-shutdown/`,
 `configtxt/hasler.block` -> the marked block in `/boot/firmware/config.txt`
-(tryboot in v2; v1: only if unchanged or with explicit reboot flag).
+(tryboot in v2; v1: only if unchanged or with explicit reboot flag),
+`avahi/hasler.service` -> `/etc/avahi/services/hasler.service` (must parse as
+an avahi `service-group`; avahi-daemon picks it up by itself).
 Units reference `/opt/hasler/current/...`, never a version path.
 
 ## `release.json` (signed: `release.json.sig`)

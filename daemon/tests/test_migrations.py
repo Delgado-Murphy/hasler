@@ -36,7 +36,7 @@ def box(tmp_path):
     (legacy / "config" / "variants" / "hasler-hm.yaml").write_text(text)
     (legacy / "config" / "haslerd.yaml").write_text(yaml.safe_dump({
         "moode": {"mpd_host": "localhost", "mixer": "Digital", "card": "sndrpihifiberry",
-                  "volume_limit": 70, "spotify": {"enabled": True},
+                  "volume_limit": 65, "spotify": {"enabled": True},
                   "ytm": {"enabled": True, "port": 8099, "cookies": ""}},
         "state_file": str(tmp_path / "state" / "state.json"),
         "web": {"enabled": True, "port": 8080},
@@ -85,7 +85,7 @@ def test_apply_writes_box_overlay_secrets_and_schema(box):
     assert len(doc["box_id"]) == 36
     assert doc["migrations"] == [M001]
     # only what differs from the code defaults; no secrets, no default state_file
-    assert doc["moode"] == {"card": "sndrpihifiberry"}
+    assert doc["moode"] == {"volume_limit": 65}     # the Amp4 Pro card is the code default
     assert "web" not in doc and "state_file" not in doc and "home_assistant" not in doc
     assert "SECRET" not in paths.box_file.read_text()
 

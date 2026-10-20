@@ -9,9 +9,17 @@ under ``/api/ha`` to ``HaApi.route(method, path, body)`` and sends back the
     PATCH  /api/ha               {"publish": bool} -> status
     DELETE /api/ha               -> status (disconnected)
     GET    /api/ha/discover      -> {"instances": [{"name", "url"}], "note": str|null}
-    GET    /api/ha/entities[?refresh=1] -> {"areas": [...], "entities": [...]} | 409 | 502
-    POST   /api/ha/try           {"do": "ha_scene|ha_script|ha_toggle|ha_automation", "entity"} -> {"ok": true}
+    GET    /api/ha/entities[?refresh=1][&domains=scene,script] -> {"areas": [...], "entities": [...]} | 409 | 502
+    GET    /api/ha/scenes[?refresh=1] -> the same, scenes only
+    GET    /api/ha/lights[?refresh=1] -> {"areas": [...], "lights": [...]} | 409 | 502   (states <= 3 s old)
+    GET    /api/ha/services      -> {"services": [{"service", "data", "required"}]}  (what ha_service may call)
+    POST   /api/ha/try           {"action": <behaviour>} (or the behaviour itself, as older pages send)
+                                 -> {"ok": true, "calls": [...], "changed": [...], "warnings": [...]}
     POST   /api/ha/clear-missing -> status, plus "cleared": n
+
+A behaviour is ha/behaviour.py's dict (``ha_light``, ``ha_scene``, ``ha_script``,
+``ha_automation``, ``ha_toggle``, ``ha_service``) - the same thing a key's tap
+or hold stores in keys.yaml.
 
 The status doc::
 
@@ -54,6 +62,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
+from ..ha import behaviour
 from ..ha import config as ha_config
 from ..ha import discover as ha_discover
 from ..ha.rest import HaError, HomeAssistant
@@ -65,6 +74,7 @@ log = logging.getLogger(__name__)
 DOMAINS = ("scene", "script", "automation", "light", "switch", "input_boolean", "fan",
            "cover", "media_player", "button", "input_button", "climate")
 CACHE_S = 60.0
+LIGHTS_CACHE_S = 3.0      # the lights list shows live on/off and brightness
 PUBLISH_MIN_S = 5.0       # at most one sensor push per 5 s
 REPUSH_S = 600.0          # re-push an unchanged state this often: HA forgets it on restart
 SENSOR = "sensor.hasler_radio"
@@ -105,6 +115,7 @@ class HaApi:
         self.info: dict = {}
         self.error: str | None = None
         self._states: tuple[float, list[dict], list[dict]] | None = None   # (when, states, areas)
+        self._areas_t = float("-inf")
         self._uuids: dict[str, str] = {}          # url -> zeroconf uuid, from discovery
         self._pub_last: dict | None = None
         self._pub_t = float("-inf")
@@ -179,31 +190,44 @@ class HaApi:
 
     # -- entities and missing actions --------------------------------------
 
-    def _fetch_states(self, refresh: bool = False) -> tuple[list[dict], list[dict]]:
-        """(states, areas), cached CACHE_S. Raises HaError. Updates client.missing."""
+    def _fetch_states(self, refresh: bool = False, max_age: float = CACHE_S) -> tuple[list[dict], list[dict]]:
+        """(states, areas), states cached ``max_age``, areas CACHE_S. Raises HaError.
+
+        Updates client.missing and client.lights."""
         client = self.client
         if client is None:
             raise HaError("not connected")
         cached = self._states
-        if not refresh and cached is not None and self.clock() - cached[0] < CACHE_S:
+        now = self.clock()
+        if not refresh and cached is not None and now - cached[0] < max_age:
             return cached[1], cached[2]
         states = client.states()
-        try:
-            areas = client.areas()
-        except Exception:
-            areas = []
+        if not refresh and cached is not None and now - self._areas_t < CACHE_S:
+            areas = cached[2]               # areas change rarely: no template call for a fresh light list
+            areas_t = self._areas_t
+        else:
+            try:
+                areas = client.areas()
+            except Exception:
+                areas = []
+            areas_t = now
         with self._lock:
             if self.client is client:
-                self._states = (self.clock(), states, areas)
-        self._learn(client, {s["entity_id"] for s in states})
+                self._states = (now, states, areas)
+                self._areas_t = areas_t
+        self._learn(client, states)
         return states, areas
 
-    def _learn(self, client: Any, known: set[str]) -> None:
-        """Tell the client which bound entities don't exist; record a consistent layout."""
+    def _learn(self, client: Any, states: list[dict]) -> None:
+        """Tell the client which bound entities don't exist and what each light can do;
+        record a consistent layout."""
+        known = {s["entity_id"] for s in states}
         bound = keymap.ha_entries(self.actions)
-        missing = frozenset(spec["entity"] for _, _, spec in bound if spec["entity"] not in known)
+        missing = frozenset(e for _, _, spec in bound for e in behaviour.entity_ids(spec) if e not in known)
+        lights = {s["entity_id"]: behaviour.light_caps(s) for s in states if s["entity_id"].startswith("light.")}
         try:
             client.missing = missing
+            client.lights = lights
         except AttributeError:
             pass
         settings = self.settings
@@ -227,16 +251,17 @@ class HaApi:
             reason, known = "not found", {s["entity_id"] for s in states}
         out = []
         for cid, event, spec in bound:
-            if known is not None and spec["entity"] in known:
-                continue
-            out.append({
-                "key": cid,
-                "event": event,
-                "do": spec["do"],
-                "entity": spec["entity"],
-                "label": f"Key {keymap.label_for(cid)} {event}: {spec['entity']}",
-                "reason": reason,
-            })
+            for entity in behaviour.entity_ids(spec):
+                if known is not None and entity in known:
+                    continue
+                out.append({
+                    "key": cid,
+                    "event": event,
+                    "do": spec["do"],
+                    "entity": entity,
+                    "label": f"Key {keymap.label_for(cid)} {event}: {entity}",
+                    "reason": reason,
+                })
         return out
 
     def previous_instance(self) -> str | None:
@@ -249,18 +274,27 @@ class HaApi:
             return None
         return (layout or {}).get("name") or "another Home Assistant"
 
-    def entities(self, refresh: bool = False) -> dict:
-        states, areas = self._fetch_states(refresh)
+    @staticmethod
+    def _area_of(areas: list[dict]) -> dict[str, str]:
         area_of: dict[str, str] = {}
         for area in areas:
             for entity_id in area["entities"]:
                 area_of.setdefault(entity_id, area["area_id"])
+        return area_of
+
+    @staticmethod
+    def _areas_doc(areas: list[dict]) -> list[dict]:
+        return sorted(({"id": a["area_id"], "name": a["name"]} for a in areas), key=lambda a: a["name"].lower())
+
+    def entities(self, refresh: bool = False, domains: tuple[str, ...] | None = None) -> dict:
+        states, areas = self._fetch_states(refresh)
+        area_of = self._area_of(areas)
         rank = {d: i for i, d in enumerate(DOMAINS)}
         entities = []
         for s in states:
             entity_id = s["entity_id"]
             domain = entity_id.split(".", 1)[0]
-            if domain not in rank:
+            if domain not in rank or (domains and domain not in domains):
                 continue
             attrs = s.get("attributes") if isinstance(s.get("attributes"), dict) else {}
             entities.append({
@@ -271,10 +305,45 @@ class HaApi:
                 "state": str(s.get("state", "")),
             })
         entities.sort(key=lambda e: (rank[e["domain"]], e["name"].lower()))
-        return {
-            "areas": sorted(({"id": a["area_id"], "name": a["name"]} for a in areas), key=lambda a: a["name"].lower()),
-            "entities": entities,
-        }
+        return {"areas": self._areas_doc(areas), "entities": entities}
+
+    def lights(self, refresh: bool = False) -> dict:
+        """Every light with what it is doing and what it can do (states <= LIGHTS_CACHE_S old)."""
+        states, areas = self._fetch_states(refresh, max_age=LIGHTS_CACHE_S)
+        area_of = self._area_of(areas)
+        names = {a["area_id"]: a["name"] for a in areas}
+        lights = []
+        for s in states:
+            entity_id = s["entity_id"]
+            if not entity_id.startswith("light."):
+                continue
+            attrs = s.get("attributes") if isinstance(s.get("attributes"), dict) else {}
+            state = str(s.get("state", ""))
+            raw_b = attrs.get("brightness")
+            brightness = (round(raw_b * 100 / 255) if isinstance(raw_b, (int, float)) and not isinstance(raw_b, bool)
+                          and state == "on" else None)
+            rgb = attrs.get("rgb_color")
+            rgb = [int(x) for x in rgb] if isinstance(rgb, (list, tuple)) and len(rgb) == 3 and state == "on" else None
+            kelvin = attrs.get("color_temp_kelvin")
+            kelvin = int(kelvin) if isinstance(kelvin, (int, float)) and not isinstance(kelvin, bool) and state == "on" \
+                else None
+            members = attrs.get("entity_id")
+            area = area_of.get(entity_id)
+            lights.append({
+                "entity_id": entity_id,
+                "name": str(attrs.get("friendly_name") or entity_id),
+                "area": area,
+                "area_name": names.get(area) if area else None,
+                "state": state,
+                "brightness": brightness,
+                "rgb": rgb,
+                "color": "#%02x%02x%02x" % tuple(rgb) if rgb else None,
+                "kelvin": kelvin,
+                "supported": behaviour.light_caps(s),
+                "members": [m for m in members if isinstance(m, str)] if isinstance(members, list) else None,
+            })
+        lights.sort(key=lambda x: ((x["area_name"] or "~").lower(), x["name"].lower()))
+        return {"areas": self._areas_doc(areas), "lights": lights}
 
     # -- status -----------------------------------------------------------
 
@@ -371,20 +440,44 @@ class HaApi:
         return 200, self.status()
 
     def try_action(self, body: Any) -> tuple[int, dict]:
-        if not isinstance(body, dict) or body.get("do") not in keymap.HA_VERBS:
-            return 400, {"ok": False, "error": "pick a Home Assistant action"}
-        verb, entity = body["do"], str(body.get("entity") or "").strip()
-        problem = keymap.check_entity(verb, entity)
-        if problem:
-            return 400, {"ok": False, "error": problem}
+        """Run one behaviour now and report what HA did (the page's "Try it")."""
+        raw = body.get("action") if isinstance(body, dict) and isinstance(body.get("action"), dict) else body
+        try:
+            spec = behaviour.normalise(raw)
+        except behaviour.Problem as exc:
+            return 400, {"ok": False, "error": str(exc)}
         client = self.client
         if client is None:
             return 409, {"ok": False, "error": "not connected"}
+        caps: dict[str, dict | None] = {}
+        names: dict[str, str] = {}
+        if spec["do"] == "ha_light":
+            try:
+                states, _ = self._fetch_states(max_age=LIGHTS_CACHE_S)
+            except HaError:
+                states = []             # can't tell what the lights do: send everything, HA decides
+            for s in states:
+                if s["entity_id"] in behaviour.entity_ids(spec):
+                    caps[s["entity_id"]] = behaviour.light_caps(s)
+                    attrs = s.get("attributes") if isinstance(s.get("attributes"), dict) else {}
+                    names[s["entity_id"]] = str(attrs.get("friendly_name") or s["entity_id"])
+        calls = behaviour.calls(spec, caps)
         try:
-            client.run(verb[len("ha_"):], entity)
+            changed = client.run_calls(calls)
         except HaError as exc:
             return 502, {"ok": False, "error": str(exc)}
-        return 200, {"ok": True}
+        with self._lock:
+            cached = self._states
+            if self.client is client and cached is not None:
+                self._states = (float("-inf"), cached[1], cached[2])   # next list shows the new states
+        return 200, {
+            "ok": True,
+            "action": spec,
+            "calls": [{"service": f"{d}.{sv}", "data": data} for d, sv, data in calls],
+            "changed": [{"entity_id": c.get("entity_id"), "state": c.get("state")}
+                        for c in changed if isinstance(c.get("entity_id"), str)],
+            "warnings": behaviour.warnings(spec, caps, names),
+        }
 
     def clear_missing(self) -> tuple[int, dict]:
         gone = self.missing()
@@ -494,19 +587,28 @@ class HaApi:
                     return self.disconnect()
             elif p == "/api/ha/discover" and method == "GET":
                 return self.find()
-            elif p == "/api/ha/entities" and method == "GET":
+            elif p in ("/api/ha/entities", "/api/ha/scenes", "/api/ha/lights") and method == "GET":
                 if not self.connected:
                     return 409, {"error": "not connected"}
-                refresh = parse_qs(url.query).get("refresh", [""])[0] in ("1", "true", "yes")
+                query = parse_qs(url.query)
+                refresh = query.get("refresh", [""])[0] in ("1", "true", "yes")
                 try:
-                    return 200, self.entities(refresh)
+                    if p == "/api/ha/lights":
+                        return 200, self.lights(refresh)
+                    if p == "/api/ha/scenes":
+                        return 200, self.entities(refresh, ("scene",))
+                    wanted = tuple(d for d in query.get("domains", [""])[0].split(",") if d)
+                    return 200, self.entities(refresh, wanted or None)
                 except HaError as exc:
                     return 502, {"error": str(exc)}
+            elif p == "/api/ha/services" and method == "GET":
+                return 200, behaviour.services_doc()
             elif p == "/api/ha/try" and method == "POST":
                 return self.try_action(body)
             elif p == "/api/ha/clear-missing" and method == "POST":
                 return self.clear_missing()
-            if p in ("/api/ha", "/api/ha/discover", "/api/ha/entities", "/api/ha/try", "/api/ha/clear-missing"):
+            if p in ("/api/ha", "/api/ha/discover", "/api/ha/entities", "/api/ha/scenes", "/api/ha/lights",
+                     "/api/ha/services", "/api/ha/try", "/api/ha/clear-missing"):
                 return 405, {"ok": False, "error": f"{method} not allowed here"}
             return 404, {"ok": False, "error": "not found"}
         except Exception as exc:

@@ -1,0 +1,20 @@
+<?xml version="1.0" standalone='no'?><!--*-nxml-*-->
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!--
+  The radio's own API on the LAN, so Home Assistant's Hasler integration finds it
+  (manifest: zeroconf "_hasler._tcp.local."). Installed by hasler-update to
+  /etc/avahi/services/hasler.service; avahi-daemon notices the file by itself.
+
+  The same file ships to every radio, so it holds no per-radio values: the
+  integration reads id, name, variant and version from GET <path> (/api/info).
+  api = the version of the radio's JSON API the integration may rely on.
+-->
+<service-group>
+  <name replace-wildcards="yes">Hasler radio %h</name>
+  <service>
+    <type>_hasler._tcp</type>
+    <port>8080</port>
+    <txt-record>api=1</txt-record>
+    <txt-record>path=/api/info</txt-record>
+  </service>
+</service-group>

@@ -175,7 +175,8 @@ cannot verify. Renew the keyring well before `expires`.
   scripts/bootstrap.sh puts in NetworkManager/nginx/camilladsp/moOde places, which the
   integration allowlist has no destination for yet.
 - Integration sources: `config/*.service|*.timer` (OTA units, `/opt/hasler/current`),
-  `config/sudoers/haslerd`, `config/configtxt/hasler.block`, `config/udev/`, `scripts/hasler-*`,
+  `config/sudoers/haslerd`, `config/configtxt/hasler.block`, `config/udev/`, `config/avahi/hasler.service`,
+  `scripts/hasler-*`,
   `update/systemd/`, `update/bin/`. The legacy rsync layout's units live in `config/legacy/`
   (used only by `scripts/install.sh`, never shipped). Not in releases: the polkit rules and
   the watchdog (`config/update/`, put in place by `scripts/ota-bootstrap.sh` /

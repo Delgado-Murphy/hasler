@@ -58,6 +58,9 @@ def _rules(layout: Layout) -> list[tuple[str, re.Pattern, Callable[[str], Path],
         ("sudoers", re.compile(r"^haslerd$"), lambda n: layout.sudoers, 0o440),
         ("shutdown", re.compile(r"^hasler-[A-Za-z0-9._-]+$"), lambda n: layout.shutdown_dir / n, 0o755),
         ("configtxt", re.compile(r"^hasler\.block$"), lambda n: layout.config_txt, 0o644),
+        # mDNS announcement of the radio's API (_hasler._tcp, for Home Assistant);
+        # avahi-daemon watches the directory, so no reload hook is needed.
+        ("avahi", re.compile(r"^hasler\.service$"), lambda n: layout.avahi_services / n, 0o644),
     ]
 
 
@@ -211,15 +214,27 @@ class Integrator:
         planned = {str(it.dest) for it in items}
         for dest in obsolete:
             if str(dest) not in planned and dest != self.layout.config_txt:
-                self.remove(dest, "systemd" if dest.suffix in (".service", ".timer") else "other")
+                self.remove(dest, self._kind_of(dest))
+
+    def _kind_of(self, dest: Path) -> str:
+        """Which reload a destination needs, from where it lives."""
+        if dest == self.layout.config_txt:
+            return "configtxt"
+        if dest.parent == self.layout.avahi_services:
+            return "avahi"
+        if dest.suffix == ".rules":
+            return "udev"
+        if dest.suffix in (".service", ".timer"):
+            return "systemd"
+        return "other"
 
     def restore(self) -> set[str]:
         """Put back everything recorded for this tag. Idempotent. Returns kinds touched."""
         touched: set[str] = set()
         for key, info in self.manifest().items():
             dest = Path(key)
-            kind = "configtxt" if dest == self.layout.config_txt else (
-                "udev" if dest.suffix == ".rules" else "systemd")
+            kind = self._kind_of(dest)
+            kind = "systemd" if kind == "other" else kind     # (as before: a daemon-reload is harmless)
             if info.get("was") == "file":
                 copy = self.dir / "files" / dest.relative_to(self.layout.root).as_posix()
                 if not copy.exists() and not copy.is_symlink():

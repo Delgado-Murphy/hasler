@@ -93,7 +93,8 @@ def test_strict_release_integration(built):
               "sudoers/haslerd", "configtxt/hasler.block", "udev/99-hasler-pwm.rules",
               "sbin/hasler-audio-mono", "sbin/hasler-wifi-join", "sbin/hasler-lamp-boot",
               "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-bootcfg-guard",
-              "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "shutdown/hasler-lamp-halt"):
+              "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "shutdown/hasler-lamp-halt",
+              "avahi/hasler.service"):
         assert f"integration/{p}" in integ_files, p
     assert files["integration/sbin/hasler-ytdlp-update"][1] == 0o755
     unit = files["integration/systemd/haslerd.service"][0].decode()
@@ -107,6 +108,44 @@ def test_strict_release_integration(built):
         if p.startswith("integration/systemd/"):
             assert b"/home/pi" not in data, p
     assert not any("legacy" in p for p in files)
+
+
+def test_avahi_service_plan_and_check(tmp_path):
+    """integration/avahi/hasler.service -> /etc/avahi/services/hasler.service; nothing else there."""
+    layout = Layout(tmp_path / "root")
+    rel = tmp_path / "rel"
+    (rel / "integration/avahi").mkdir(parents=True)
+    src = ROOT / "config/avahi/hasler.service"
+    shutil.copy2(src, rel / "integration/avahi/hasler.service")
+    items = integ.plan(layout, rel)
+    assert [(i.kind, i.dest, i.mode) for i in items] == \
+        [("avahi", tmp_path / "root/etc/avahi/services/hasler.service", 0o644)]
+    text = src.read_text()
+    for needle in ("<type>_hasler._tcp</type>", "<port>8080</port>", "<txt-record>api=1</txt-record>",
+                   "<txt-record>path=/api/info</txt-record>"):
+        assert needle in text, needle
+    from hasler_update.apply import ApplyError, Hooks
+    check = Hooks(layout).check_item
+    check(items[0])                                           # the shipped file parses
+    (rel / "integration/avahi/hasler.service").write_text("<service-group><oops></service-group>")
+    with pytest.raises(ApplyError, match="not valid XML"):
+        check(integ.plan(layout, rel)[0])
+    (rel / "integration/avahi/other.service").write_text("<service-group/>")
+    with pytest.raises(integ.IntegrateError, match="allowlist"):
+        integ.plan(layout, rel)
+
+
+def test_avahi_service_put_in_place_and_rolled_back(tmp_path):
+    layout = Layout(tmp_path / "root")
+    rel = tmp_path / "rel"
+    (rel / "integration/avahi").mkdir(parents=True)
+    (rel / "integration/avahi/hasler.service").write_text("<service-group/>\n")
+    ig = integ.Integrator(layout, "1.1.0")
+    ig.apply(integ.plan(layout, rel))
+    dest = layout.avahi_services / "hasler.service"
+    assert dest.read_text() == "<service-group/>\n" and "avahi" in ig.changed
+    assert integ.Integrator(layout, "1.1.0").restore() == {"avahi"}
+    assert not dest.exists()
 
 
 def test_sudoers_source_is_todays_rules():
