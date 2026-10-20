@@ -36,6 +36,32 @@ phone casting to this radio also take it out first. Volume and tone stay
 local. Standby (knob, key, page) on a follower takes only that radio out:
 the rest play on.
 
+**Handover.** In "group" mode, a forwarded preset whose *source* the leader
+lacks (Spotify not set up there; the leader answers 409 with ``"reason":
+"no_source"``) makes the radio where the key was pressed the leader, if it
+has that source itself. A stream that fails to play is not a handover. With
+F the pressing follower, L the old leader, M the other members:
+
+1. Prepare: F -> L ``POST /api/peer/handover {"id", "name", "host", "port",
+   "token"}``. L checks F is its member and no other handover is open, holds
+   this one open for HANDOVER_S (another follower's key, join or handover
+   meanwhile: 409 ``"reason": "busy"`` - so two followers pressing at once
+   give exactly one new leader) and answers with its members. L plays on.
+2. Commit, on F: role lead, members = M + L, ``audio.lead()``, the preset
+   plays here (``Actions.lead_preset``; on its own account - the point for
+   Spotify). Then F asks each M, and L last, ``POST /api/peer/follow`` with
+   ``"handover": token, "previous": L``. An M takes it only while it still
+   follows L; L only while that very handover is open. Each moves without
+   the joining breath (its lamp stays playing amber, in F's tint). L stops
+   its players and follows F like any follower (standby, knob: as above).
+3. Failures. Before anything moved (F's audio or play fails, F's owner
+   changes their mind): F tells L ``POST /api/peer/handover/abort`` and is
+   alone with red pulses; L leads the rest as before. An M that doesn't
+   take the move is dropped (it notices L no longer leads it and is alone).
+   If L never commits (gone, or its HANDOVER_S ran out first), L's members
+   have moved and L drops them at its next check - alone. No step ever
+   leaves a radio following two leaders, and L refuses keys meanwhile.
+
 **On the leader.** Standby or shutdown ends the group: each follower is
 released and goes back to what it was before it joined - asleep if it was
 asleep, otherwise ready (silent amber). The last member leaving ends the
@@ -66,6 +92,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import secrets
 import threading
 import time
 from dataclasses import dataclass
@@ -87,11 +114,20 @@ LEADER_CHECK_S = 15.0       # a leader reads its members this often
 LEADER_MISSES = 3           # unanswered reads before a follower gives up (~15 s)
 MEMBER_MISSES = 8           # unanswered reads before a leader drops a member (~2 min)
 AFTER_KEY_CHECK_S = 1.5     # a forwarded key: read the leader again this soon
+HANDOVER_S = 30.0           # the old leader holds a handover open this long
+NOTICE_S = 20.0             # the page toasts a notice younger than this
 SOURCE_LABELS = {"radio": "Radio", "spotify": "Spotify", "ytm": "YouTube Music"}
 
 
 class GroupError(Exception):
-    """The request is understood but can't be done now (HTTP 409)."""
+    """The request is understood but can't be done now (HTTP 409).
+
+    ``reason`` is for the other radio: "no_source" (a forwarded preset whose
+    source isn't set up here), "busy" (a handover is open)."""
+
+    def __init__(self, message: str, reason: str | None = None) -> None:
+        super().__init__(message)
+        self.reason = reason
 
 
 def settings_from(raw: Any) -> dict:
@@ -231,6 +267,9 @@ class Group:
         self.lead_since: float | None = None         # wall clock
         self._leader_state: dict = {}                # following: the leader's playing/source/members
         self._before_standby = False                 # following: asleep when it joined?
+        self._handover: dict | None = None           # leading: {"to", "name", "token", "until"} while open
+        self.taking_over = False                     # following: asking the leader for its group
+        self._notice: tuple[int, str, float] | None = None   # (n, text, clock) for the page's toast
         self._misses = 0
         self._gen = 0
         self._next_check = 0.0
@@ -303,7 +342,7 @@ class Group:
 
     def lamp(self) -> tuple[str, str, bool]:
         """("" | "joining" | "following", the leader's source, the leader plays?)."""
-        if self.joining:
+        if self.joining or self.taking_over:
             return "joining", "radio", False
         if self.role == "follow":
             state = self._leader_state
@@ -395,7 +434,18 @@ class Group:
             "searching": self.peers.searching,
             "note": self.peers.note,
             "error": self.error,
+            "notice": self._notice_doc(),
         }
+
+    def _notice_doc(self) -> dict | None:
+        notice = self._notice
+        if notice is None or self.clock() - notice[2] >= NOTICE_S:
+            return None
+        return {"id": notice[0], "text": notice[1]}
+
+    def _say(self, text: str) -> None:
+        """A one-off line for this radio's page (a toast), e.g. after a handover."""
+        self._notice = (int(self.wall() * 1000), text, self.clock())
 
     # -- small helpers ------------------------------------------------------------
 
@@ -471,6 +521,8 @@ class Group:
             self.role = "alone"
             self.members = {}
             self.lead_since = None
+            self._handover = None
+            self.taking_over = False
             self._gen += 1
         log.info("multiroom: group ended (%s)", reason)
         me = self.self_id
@@ -496,6 +548,7 @@ class Group:
             if self.role == "follow":
                 name = self.leader.name if self.leader else "another radio"
                 raise GroupError(f"{self.self_name} plays {name}'s music - leave that group first")
+            self._refuse_while_handing_over()
             add: list[Member] = []
             for pid in wanted:
                 if pid in self.members:
@@ -530,12 +583,13 @@ class Group:
         except PeerUnreachable as exc:
             log.info("multiroom: could not release %s: %s", m.name, exc)
 
-    def _invite(self, m: Member, gen: int) -> None:
+    def _invite(self, m: Member, gen: int, extra: dict | None = None) -> bool:
+        """Ask ``m`` to follow; True if it does. ``extra``: a handover's fields."""
         with self._lock:
-            if self.role != "lead" or self.members.get(m.id) is not m:
-                return
+            if self.role != "lead" or self.members.get(m.id) is not m or gen != self._gen:
+                return False
         body = {"leader_id": self.self_id, "name": self.self_name, "host": self.towards(m.host),
-                "port": SNAP_PORT, "api_port": self.api_port}
+                "port": SNAP_PORT, "api_port": self.api_port, **(extra or {})}
         try:
             status, doc = self._call(m, "POST", "/api/peer/follow", body)
             why = None if status == 200 else self._why(status, doc)
@@ -543,22 +597,27 @@ class Group:
             why = "isn't answering"
         with self._lock:
             if self.members.get(m.id) is not m:
-                return
+                return False
             m.pending = False
             if why is None:
                 m.online, m.misses = True, 0
                 log.info("multiroom: %s follows", m.name)
-                return
+                return True
             self.members.pop(m.id, None)
             self.error = f"{m.name}: {why}"
             ending = self.role == "lead" and not self.members
         log.warning("multiroom: %s could not join: %s", m.name, why)
         if ending:
             self._end_lead("nobody could join", release=False)
+        return False
 
     # -- following ----------------------------------------------------------------
 
-    def _become_follower(self, leader: Member, snap_host: str, snap_port: int) -> None:
+    def _become_follower(self, leader: Member, snap_host: str, snap_port: int,
+                         moved: dict | None = None) -> None:
+        """Follow ``leader``. ``moved``: a handover moves this radio, already
+        playing in the group, to the new leader - no joining breath, and the
+        lamp takes the new leader's {"source", "playing"} at once."""
         actions = self.actions
         with self._lock:
             old = self.leader if self.role == "follow" else None
@@ -568,9 +627,13 @@ class Group:
             self.role = "follow"
             self.leader = leader
             self.members = {}
-            self.joining = True
+            self.lead_since = None
+            self._handover = None
+            self.taking_over = False
+            self.joining = moved is None
             self.error = None
-            self._leader_state = {"playing": False, "source": None, "members": []}
+            self._leader_state = {"playing": bool(moved and moved.get("playing")),
+                                  "source": (moved or {}).get("source"), "members": []}
             self._misses = 0
             self._next_check = self.clock() + FOLLOWER_CHECK_S
             self._gen += 1
@@ -615,6 +678,7 @@ class Group:
             self.role = "alone"
             self.leader = None
             self.joining = False
+            self.taking_over = False
             self._leader_state = {}
             self._gen += 1
             if fail:
@@ -747,7 +811,8 @@ class Group:
 
     def forward_preset(self, preset: Preset) -> None:
         """A follower's preset key, in "group" mode: the leader plays it. Never blocks."""
-        leader = self.leader
+        with self._lock:
+            leader, gen = self.leader, self._gen
         if leader is None:
             return
         body = {"from": self.self_id, "preset": {"n": preset.n, "name": preset.name, "source": preset.source,
@@ -761,12 +826,163 @@ class Group:
                 self._reply("fail")
                 return
             if status != 200:
-                log.warning("multiroom: %s didn't take the key: %s", leader.name, self._why(status, doc))
+                why = self._why(status, doc)
+                reason = doc.get("reason") if isinstance(doc, dict) else None
+                if reason == "no_source" and self.follower_keys == "group" and self._can_play(preset.source):
+                    log.info("multiroom: %s can't play it (%s): taking the group over", leader.name, why)
+                    self._spawn(lambda: self._with_ops(lambda: self._take_over(leader, preset, gen)))
+                    return
+                log.warning("multiroom: %s didn't take the key: %s", leader.name, why)
                 self._reply("fail")
                 return
             self._next_check = min(self._next_check, self.clock() + AFTER_KEY_CHECK_S)
         log.info("multiroom: preset %s (%s) forwarded to %s", preset.n, preset.name, leader.name)
         self._spawn(lambda: self._with_ops(job))
+
+    # -- handover (see the module docstring) ---------------------------------------
+
+    def _can_play(self, source: str) -> bool:
+        sources = getattr(self.actions.player, "sources", None)
+        return sources is None or source in sources
+
+    def _refuse_while_handing_over(self) -> None:
+        """Under self._lock, leading: 409 "busy" while a handover is open."""
+        h = self._handover
+        if self.role == "lead" and h is not None:
+            raise GroupError(f"{self.self_name} is handing the group to {h['name']} - try again in a moment",
+                             reason="busy")
+
+    def _take_over(self, leader: Member, preset: Preset, gen: int) -> None:
+        """Step 1, on the pressing follower: ask the leader for its group."""
+        with self._lock:
+            if gen != self._gen or self.role != "follow" or self.leader is not leader:
+                return                  # the owner changed something meanwhile: the key is moot
+            self.taking_over = True
+        self._changed()                 # the lamp breathes from now on
+        token = secrets.token_hex(8)
+        body = {"id": self.self_id, "name": self.self_name, "host": self.towards(leader.host),
+                "port": self.api_port, "token": token}
+        try:
+            status, doc = self._call(leader, "POST", "/api/peer/handover", body)
+        except PeerUnreachable:
+            self._take_over_failed(gen, f"{leader.name} isn't answering")
+            return
+        if status != 200 or not isinstance(doc, dict):
+            self._take_over_failed(gen, f"{leader.name}: {self._why(status, doc)}")
+            return
+        others: list[Member] = []
+        me = self.self_id
+        for raw in doc.get("members") or []:
+            try:
+                pid = _text(raw.get("id"), "id", 64)
+                host = _text(raw.get("host"), "host", 255)
+                port = _port(raw.get("port"), "port", API_PORT)
+            except (ValueError, AttributeError):
+                continue
+            if pid not in (me, leader.id):
+                others.append(Member(pid, str(raw.get("name") or pid)[:60], host, port))
+        self._spawn(lambda: self._with_ops(lambda: self._take_over_commit(leader, preset, gen, token, others)))
+
+    def _take_over_failed(self, gen: int, why: str) -> None:
+        with self._lock:
+            if gen == self._gen:
+                self.taking_over = False
+                self.error = f"couldn't take the group over: {why}"
+        log.warning("multiroom: couldn't take the group over: %s", why)
+        self._reply("fail")
+        self._changed()
+
+    def _abort_handover(self, leader: Member, token: str, left: bool) -> None:
+        """Tell the old leader the handover is off (``left``: and this radio is out)."""
+        try:
+            self._call(leader, "POST", "/api/peer/handover/abort",
+                       {"id": self.self_id, "token": token, "left": left})
+        except PeerUnreachable as exc:
+            log.info("multiroom: could not call the handover off at %s: %s", leader.name, exc)
+
+    def _take_over_commit(self, leader: Member, preset: Preset, gen: int, token: str,
+                          others: list[Member]) -> None:
+        """Step 2: lead, play the preset here, then move the members over."""
+        with self._lock:
+            ok = gen == self._gen and self.role == "follow" and self.leader is leader
+            if ok:
+                now = self.clock()
+                self.role = "lead"
+                self.leader = None
+                self._leader_state = {}
+                self.joining = False
+                self.lead_since = self.wall()
+                self.error = None
+                self._gen += 1
+                gen = self._gen
+                self._next_check = now + LEADER_CHECK_S
+                self.members = {}
+                for m in others:
+                    m.added_at, m.pending = now, True
+                    self.members[m.id] = m
+                old = Member(leader.id, leader.name, leader.host, leader.port, added_at=now, pending=True)
+                self.members[old.id] = old
+        if not ok:
+            self._abort_handover(leader, token, left=False)
+            self._take_over_failed(gen, "this radio changed its mind")
+            return
+        log.info("multiroom: leading the group %s led (%d other members)", leader.name, len(others))
+        try:
+            self._audio("lead")
+            with self.actions_lock:
+                self.actions.lead_preset(preset)
+        except Exception as exc:
+            log.exception("multiroom: could not lead the group")
+            self._take_over_rollback(leader, token, gen, f"could not play here ({exc})")
+            return
+        with self._lock:
+            if gen != self._gen:        # standby or leave meanwhile: _end_lead released everyone
+                cancelled = True
+            else:
+                cancelled = False
+                self.taking_over = False
+        if cancelled:
+            self._abort_handover(leader, token, left=True)
+            return
+        self._say(f"{self.self_name} is now playing for the group")
+        self._changed()
+        moved = {"handover": token, "previous": leader.id, "source": preset.source, "playing": True}
+        for m in others:
+            self._invite(m, gen, moved)
+        if not self._invite(old, gen, moved):
+            self._abort_handover(leader, token, left=False)
+        with self._lock:
+            alone = self.role != "lead"
+        if alone:
+            self._reply("fail")         # nobody came along: it plays here, on its own
+
+    def _take_over_rollback(self, leader: Member, token: str, gen: int, why: str) -> None:
+        """Nothing has moved yet: this radio is alone, the old leader keeps the rest."""
+        with self._lock:
+            if gen == self._gen:
+                self.role = "alone"
+                self.members = {}
+                self.lead_since = None
+                self.taking_over = False
+                self._gen += 1
+                self.error = f"couldn't take the group over: {why}"
+        self._abort_handover(leader, token, left=True)
+        self._audio_quiet("alone")
+        self._persist()
+        self._reply("fail")
+        self._changed()
+
+    def _expire_handover(self) -> None:
+        """Leading: a handover held open too long is over (``check`` then reads the members)."""
+        with self._lock:
+            h = self._handover
+            if h is None or self.clock() < h["until"]:
+                return
+            self._handover = None
+            ending = self.role == "lead" and not self.members
+        log.info("multiroom: the handover to %s ran out", h["name"])
+        if ending:
+            self._end_lead("no members left after a handover", release=False)
 
     # -- peer endpoints (radio to radio) ----------------------------------------
 
@@ -778,14 +994,30 @@ class Group:
         port = _port(body.get("port"), "port", SNAP_PORT)
         api_port = _port(body.get("api_port"), "api_port", API_PORT)
         name = str(body.get("name") or leader_id)[:60]
+        token = body.get("handover")
+        moved = None
+        if token is not None:
+            token = _text(token, "handover", 64)
+            moved = {"source": body.get("source") if body.get("source") in PRESET_SOURCES else None,
+                     "playing": bool(body.get("playing"))}
         self._require_enabled()
         with self._lock:
-            if self.role == "lead":
-                raise GroupError(f"{self.self_name} leads its own group")
             old = self.leader if self.role == "follow" else None
             if old is not None and old.id == leader_id and old.host == host:
                 return {"ok": True, "id": self.self_id, "name": self.self_name, "role": self.role}
-        self._become_follower(Member(leader_id, name, host, api_port), host, port)
+            if token is not None:
+                # A handover moves only radios still in the old leader's group,
+                # and the old leader only while that very handover is open.
+                h = self._handover
+                if self.role == "lead":
+                    if h is None or h["token"] != token or h["to"] != leader_id:
+                        raise GroupError(f"{self.self_name} leads its own group")
+                    log.info("multiroom: handing the group to %s", name)
+                elif old is None or old.id != body.get("previous"):
+                    raise GroupError(f"{self.self_name} isn't in that group any more")
+            elif self.role == "lead":
+                raise GroupError(f"{self.self_name} leads its own group")
+        self._become_follower(Member(leader_id, name, host, api_port), host, port, moved=moved)
         return {"ok": True, "id": self.self_id, "name": self.self_name, "role": "follow"}
 
     def _tell_left(self, leader: Member) -> None:
@@ -817,6 +1049,7 @@ class Group:
             if self.role == "follow":
                 leader = self.leader
                 raise GroupError(f"{self.self_name} plays {leader.name if leader else 'another'}'s music")
+            self._refuse_while_handing_over()
             if self.role == "alone":
                 self._become_leader()
             self.members[pid] = Member(pid, name, host, port, added_at=self.clock())
@@ -830,7 +1063,7 @@ class Group:
         pid = _text(body.get("id"), "id", 64)
         with self._lock:
             gone = self.members.pop(pid, None)
-            ending = self.role == "lead" and gone is not None and not self.members
+            ending = self.role == "lead" and gone is not None and not self.members and self._handover is None
         if gone is not None:
             log.info("multiroom: %s left the group", gone.name)
         if ending:
@@ -857,9 +1090,10 @@ class Group:
         with self._lock:
             if self.role != "lead" or sender not in self.members:
                 raise GroupError(f"{self.self_name} doesn't lead a group with that radio in it")
-        sources = getattr(self.actions.player, "sources", None)
-        if sources is not None and source not in sources:
-            raise GroupError(f"{SOURCE_LABELS.get(source, source)} isn't set up on {self.self_name}")
+            self._refuse_while_handing_over()
+        if not self._can_play(source):
+            raise GroupError(f"{SOURCE_LABELS.get(source, source)} isn't set up on {self.self_name}",
+                             reason="no_source")
 
         def job() -> None:
             with self.actions_lock:
@@ -871,6 +1105,43 @@ class Group:
         self._spawn(job)
         return {"ok": True}
 
+    def peer_handover(self, body: Any) -> dict:
+        """``POST /api/peer/handover`` from a member that takes this group over."""
+        body = body if isinstance(body, dict) else {}
+        pid = _text(body.get("id"), "id", 64)
+        token = _text(body.get("token"), "token", 64)
+        name = str(body.get("name") or pid)[:60]
+        self._require_enabled()
+        with self._lock:
+            if self.role != "lead" or pid not in self.members:
+                raise GroupError(f"{self.self_name} doesn't lead a group with that radio in it")
+            name = self.members[pid].name if body.get("name") is None else name
+            h = self._handover
+            if h is not None and h["token"] != token:
+                self._refuse_while_handing_over()
+            self._handover = {"to": pid, "name": name, "token": token, "until": self.clock() + HANDOVER_S}
+            others = [{"id": m.id, "name": m.name, "host": m.host, "port": m.port}
+                      for m in self.members.values() if m.id != pid]
+        log.info("multiroom: %s takes the group over", name)
+        return {"ok": True, "leader": {"id": self.self_id, "name": self.self_name}, "members": others,
+                "hold_s": HANDOVER_S}
+
+    def peer_handover_abort(self, body: Any) -> dict:
+        """``POST /api/peer/handover/abort``: the taker called it off (``left``: and is out)."""
+        body = body if isinstance(body, dict) else {}
+        pid = _text(body.get("id"), "id", 64)
+        token = _text(body.get("token"), "token", 64)
+        with self._lock:
+            h = self._handover
+            if h is not None and h["token"] == token and h["to"] == pid:
+                self._handover = None
+                log.info("multiroom: %s called the handover off", h["name"])
+            gone = self.members.pop(pid, None) if body.get("left") is True else None
+            ending = self.role == "lead" and gone is not None and not self.members and self._handover is None
+        if ending:
+            self._end_lead("the last member left", release=False)
+        return {"ok": True, "role": self.role}
+
     # -- keeping in touch -------------------------------------------------------
 
     def tick(self, now: float, source: str | None = None) -> None:
@@ -881,6 +1152,9 @@ class Group:
                     and self.actions.phone_has_it(source):
                 self.leave(f"a phone is casting ({source})")
                 return
+            h = self._handover
+            if role == "lead" and h is not None and now >= h["until"]:
+                self._next_check = now
             if role == "alone" or self._checking or now < self._next_check:
                 return
             self._checking = True
@@ -899,7 +1173,9 @@ class Group:
         if self.role == "follow":
             self._check_leader()
         elif self.role == "lead":
-            self._check_members()
+            self._expire_handover()
+            if self._handover is None and self.role == "lead":
+                self._check_members()       # not while a handover is open
 
     def _check_leader(self) -> None:
         with self._lock:
@@ -965,7 +1241,7 @@ class Group:
             for m in drop:
                 if self.members.get(m.id) is m:
                     self.members.pop(m.id)
-            ending = self.role == "lead" and not self.members
+            ending = self.role == "lead" and not self.members and self._handover is None
         log.info("multiroom: %s dropped from the group", ", ".join(m.name for m in drop))
         if ending:
             self._end_lead("no members left", release=False)

@@ -82,6 +82,7 @@ from . import keymap, stations
 from ..net import HOTSPOT_ADDR
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
 from . import integration
+from .room import Room
 from .software import NotInstalled, Software, SoftwareError
 from .wifi import Wifi
 
@@ -232,6 +233,9 @@ class WebApp:
         # /api/info and /api/art/current, for the Home Assistant integration (web/integration.py).
         self.art = integration.ArtProxy(station_db)
         self.machine_id_file = integration.MACHINE_ID
+        # The room name and the casting names that follow it (web/room.py).
+        self.room = Room(settings_file, renderers=lambda: getattr(self.actions.player, "renderers", None))
+        self.room.load(load_settings(settings_file))
         self.wifi = wifi or Wifi(db=station_db)
         self.lock = threading.Lock()
         # The ytm source (for now_playing) and its catalogue, if the player has them.
@@ -472,6 +476,7 @@ class WebApp:
         doc = integration.info(self.actions.variant.name, self._release_version(), self.machine_id_file)
         group = self.group
         try:
+            doc["name"] = self.room.name()
             if group is not None:
                 # The id other radios list as a member must be the group's own.
                 doc["id"], doc["name"] = group.identity()
@@ -617,19 +622,21 @@ class WebApp:
             "mono": self._mono_doc(),
             **self._lamp_doc(),
             "wifi": {"ssid": ssid},
+            "room": self.room.doc(),
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
 
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
-        ``location``, ``night``."""
-        keys = {"volume_limit", "volume_floor", "mono", "location", "night"}
+        ``location``, ``night``, ``room`` (web/room.py)."""
+        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
                              "{\"location\": {\"name\", \"lat\", \"lon\"}} and/or "
-                             "{\"night\": \"sun\"|\"off\"|\"22:00-07:00\"}")
+                             "{\"night\": \"sun\"|\"off\"|\"22:00-07:00\"}, "
+                             "{\"room\": {\"name\", \"casting_names\"}}")
         limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
         floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
                  if "volume_floor" in body else None)
@@ -640,6 +647,7 @@ class WebApp:
                 floor = volume_floor_range(limit)[1]
         place = night.location_from(body["location"]) if "location" in body else None
         mode = night.night_from(body["night"]) if "night" in body else None
+        room = self.room.change(body["room"]) if "room" in body else None
         mono = body.get("mono")
         if "mono" in body and not isinstance(mono, bool):
             raise ValueError("mono must be true or false")
@@ -665,6 +673,8 @@ class WebApp:
                     doc["location"] = place
                 if mode is not None:
                     doc["night"] = mode
+                if room is not None:
+                    doc["room"] = room
                 doc.setdefault("schema", boxconfig.SCHEMA)
                 save_settings(self.settings_file, doc)
             else:
@@ -673,6 +683,8 @@ class WebApp:
                     doc["location"] = place
                 if mode is not None:
                     doc["night"] = mode
+            if room is not None:
+                self.room.commit(room, body["room"])
             if place is not None or mode is not None:
                 self._lamp_settings = {k: doc[k] for k in ("location", "night") if k in doc}
                 for listener in self.lamp_listeners:

@@ -3,8 +3,10 @@
 # moOde's network tables, reboots), and the mono switch on the key page (adds
 # or removes one ALSA override file), and multiroom (hasler-multiroom: starts
 # and stops the snapcast units and points _audioout at the ALSA Loopback in
-# /run; it checks its own arguments). Nothing else.
+# /run; it checks its own arguments), and restarting go-librespot after the
+# key page renames Spotify Connect (web/room.py; try-restart: only if it runs).
+# Nothing else.
 # -> /etc/sudoers.d/haslerd (0440, checked with visudo -cf first). Shipped in
 # every release as integration/sudoers/haslerd; scripts/install.sh renders it
 # for the legacy layout. Updates and yt-dlp go through polkit, not sudo.
-pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, /usr/local/sbin/hasler-multiroom
+pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, /usr/local/sbin/hasler-multiroom, /usr/bin/systemctl try-restart go-librespot.service, /bin/systemctl try-restart go-librespot.service

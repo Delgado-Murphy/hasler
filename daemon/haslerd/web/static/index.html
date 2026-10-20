@@ -328,6 +328,13 @@ input[type=range]:disabled{opacity:.4;cursor:default}
 .note-warn{margin:2px 0 0;color:#E9B35C;font:12.5px/16px var(--sans)}
 .sw-notes{margin:0;padding:10px 12px;border-left:2px solid var(--line2);color:var(--text2);font:13px/18px var(--sans);white-space:pre-line;overflow-wrap:anywhere}
 .sw-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand-room{display:inline-block;max-width:26vw;margin-left:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:-1px;color:var(--muted);font:500 11px/16px var(--mono);font-style:normal;letter-spacing:.14em;text-transform:uppercase}
+.rn-addr{color:var(--cream);font:500 13px/18px var(--mono);overflow-wrap:anywhere}
+.rn-apply{display:flex;flex-direction:column;gap:8px}
+.rn-steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.rn-step{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text2);font:13px/18px var(--sans)}
+.rn-st{color:var(--muted);text-align:right;overflow-wrap:anywhere;min-width:0}
+.rn-step.working .rn-st{color:#E9B35C}.rn-step.done .rn-st{color:var(--brass)}.rn-step.failed .rn-st{color:#F07A62}
 .sw-why{color:var(--text2)}
 .li-act:disabled{opacity:.5;cursor:default}
 .cf{display:flex;align-items:center;gap:16px;margin-top:6px}
@@ -2362,7 +2369,7 @@ function moreStations(){
 
 /* ================= settings ================= */
 async function loadSettings(){
-  try { const r = await api('GET', '/api/settings'); if (r.ok && r.json) settings = r.json; } catch (_) {}
+  try { const r = await api('GET', '/api/settings'); if (r.ok && r.json){ settings = r.json; paintBrand(); } } catch (_) {}
   if (settings && (!settings.wifi || !settings.wifi.ssid)){
     try { const w = await api('GET', '/api/wifi'); if (w.ok && w.json) settings.wifi = {ssid: w.json.current || '', hotspot: !!w.json.hotspot}; } catch (_) {}
   } else if (!settings){
@@ -2855,7 +2862,7 @@ async function resetDefaults(){
 /* ---- multiroom: Haslers playing the same music in step (/api/group) ---- */
 // grp: null = not asked yet, {missing} = an older radio (no multiroom anywhere on the page), or GET /api/group.
 let grp = null, grpErr = null, grpTimer = null, grpObs = null, grpVisible = false, grpLoading = null, wantMrScroll = false;
-let grpSeen = {}, roomsSig = '', mrSig = '';
+let grpSeen = {}, roomsSig = '', mrSig = '', grpNoticeSeen = null;
 const grpUi = {open:false, busy:{}, mrBusy:false, focus:null};   // focus: the control to give focus back to after a change
 const mrOn = () => !!(grp && !grp.missing && grp.enabled);
 const grpRooms = () => (grp && grp.members) || [];
@@ -2872,6 +2879,9 @@ function adoptGroup(doc){
   if (!Array.isArray(grp.members)) grp.members = [];
   if (!Array.isArray(grp.others)) grp.others = [];
   grpErr = null;
+  // A one-off line from the radio, e.g. "Kitchen is now playing for the group" after a handover.
+  const n = grp.notice;
+  if (n && n.id && n.text && n.id !== grpNoticeSeen){ grpNoticeSeen = n.id; toast(n.text); }
   return true;
 }
 function loadGroup(){
@@ -3245,9 +3255,105 @@ function swChannel(ch){
     else toast((r.json && r.json.error) || 'Couldn’t switch the channel.', true);
   });
 }
+/* ---- this radio's room name (web/room.py) and the casting names that can follow it ---- */
+const roomUi = {edit:false, val:'', err:'', busy:false};
+let roomTimer = null;
+const ROOM_STEP = {waiting:'Waiting', working:'Renaming…', done:'Done', skipped:'Skipped', failed:'Didn’t work'};
+function paintBrand(){
+  const r = settings && settings.room, named = !!(r && r.custom);
+  document.title = named ? 'Hasler · ' + r.name : 'Hasler';
+  const b = document.querySelector('#remote .brand'); if (!b) return;
+  let s = b.querySelector('.brand-room');
+  if (!named){ if (s) s.remove(); return; }
+  if (!s){ s = h('span', {class:'brand-room'}); b.append(s); }
+  s.textContent = r.name;
+}
+function roomSchedule(){
+  clearTimeout(roomTimer);
+  const r = settings && settings.room;
+  if (!r || !r.apply || r.apply.state !== 'applying' || view !== 'settings' || document.hidden) return;
+  roomTimer = setTimeout(async () => {
+    try { const x = await api('GET', '/api/settings'); if (x.ok && x.json && x.json.room){ settings = Object.assign(settings || {}, {room: x.json.room}); paintRoom(); } } catch (_) {}
+    roomSchedule();
+  }, 2500);
+}
+function roomApplyLine(a){
+  if (!a || a.state === 'idle') return null;
+  const steps = a.steps || [];
+  const head = a.state === 'applying' ? 'Renaming to “' + a.name + '”… moOde does one at a time, so this can take a few minutes.'
+    : a.state === 'done' ? 'Casting now shows “' + a.name + '”.'
+    : 'Some couldn’t be renamed to “' + a.name + '”.';
+  return h('div', {class:'rn-apply', 'aria-live':'polite'},
+    h('p', {class: a.state === 'failed' ? 'note-warn' : 'li-sub'}, head),
+    h('ul', {class:'rn-steps'}, steps.map(s => h('li', {class:'rn-step ' + s.state},
+      h('span', null, s.label), h('span', {class:'rn-st'}, s.note && s.state !== 'done' ? ROOM_STEP[s.state] + ' — ' + s.note : ROOM_STEP[s.state] || s.state)))),
+    a.state === 'failed' ? h('div', null, h('button', {type:'button', class:'btn small inline', id:'roomRetry', disabled: roomUi.busy,
+      onclick: () => saveRoom({casting_names: !!(settings.room && settings.room.casting_names)})}, 'Try again')) : null);
+}
+function fillRoom(box){
+  box.textContent = '';
+  const r = settings && settings.room;
+  if (!r){ box.append(h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'))); return; }
+  const cast = r.custom ? r.casting_name : 'Hasler';
+  const name = h('div', {class:'li col', style:'gap:10px'},
+    h('div', {class:'sw-row'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'roomName'}, r.custom ? r.name : 'Room not named yet'),
+        h('span', {class:'li-sub'}, 'Find it at ', h('b', {class:'rn-addr'}, r.address || 'hasler.local'))),
+      roomUi.edit ? null : h('button', {type:'button', class:'li-act', id:'roomEdit', onclick: () => { Object.assign(roomUi, {edit:true, val: r.custom ? r.name : '', err:''}); paintRoom(); const i = $('roomInp'); if (i) i.focus(); }},
+        r.custom ? 'Rename' : 'Name it')),
+    roomUi.edit ? h('div', {class:'field'}, h('label', {for:'roomInp'}, 'Room name'),
+      h('input', {type:'text', id:'roomInp', value: roomUi.val, placeholder:'Kitchen', maxlength:'32', autocomplete:'off', 'aria-describedby':'roomHint',
+        oninput: e => { roomUi.val = e.target.value; roomUi.err = ''; },
+        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); saveRoom({name: roomUi.val.trim()}); } else if (e.key === 'Escape'){ roomUi.edit = false; paintRoom(); } }}),
+      h('p', {class:'hint', id:'roomHint'}, 'Shown in the multiroom list, in Home Assistant and on this page. Leave it empty to go back to “' + r.default + '”. The address doesn’t change.')) : null,
+    roomUi.edit && roomUi.err ? h('p', {class:'err', role:'alert'}, roomUi.err) : null,
+    roomUi.edit ? h('div', {class:'acts'},
+      h('button', {type:'button', class:'btn small', disabled: roomUi.busy, onclick: () => { roomUi.edit = false; paintRoom(); }}, 'Cancel'),
+      h('button', {type:'button', class:'btn small primary', id:'roomSave', disabled: roomUi.busy, onclick: () => saveRoom({name: roomUi.val.trim()})}, 'Save')) : null);
+  const applying = r.apply && r.apply.state === 'applying';
+  const sw = h('div', {class:'li col', style:'gap:10px'},
+    h('label', {class:'switch', for:'roomCast'},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Use the room name for casting'),
+        h('span', {class:'li-sub'}, r.casting_names ? 'Phones see “' + cast + '” for AirPlay, Bluetooth, UPnP and Spotify'
+          : 'Phones see “Hasler”' + (r.custom ? '. On, they see “' + r.casting_name + '”' : '. Name the room first') + ' — handy with more than one Hasler')),
+      h('input', {type:'checkbox', role:'switch', id:'roomCast', checked: !!r.casting_names, disabled: roomUi.busy || (!r.custom && !r.casting_names),
+        onchange: e => saveRoom({casting_names: e.target.checked})})),
+    applying || (r.apply && r.apply.state !== 'idle') ? roomApplyLine(r.apply) : null);
+  box.append(name, sw);
+}
+function paintRoom(){
+  paintBrand();
+  const box = $('roomBox'); if (!box) return;
+  const a = document.activeElement, id = a && box.contains(a) ? a.id : null;
+  if (id === 'roomInp') return;     // don't repaint under someone typing
+  fillRoom(box);
+  const f = id && $(id); if (f) f.focus({preventScroll:true});
+  roomSchedule();
+}
+async function saveRoom(change){
+  roomUi.busy = true; paintRoom();
+  try {
+    const r = await api('PUT', '/api/settings', {room: change});
+    if (r.ok && r.json && r.json.room){
+      settings = Object.assign(settings || {}, r.json);
+      roomUi.edit = false; roomUi.err = '';
+      const n = r.json.room;
+      toast('name' in change ? (n.custom ? 'This radio is now “' + n.name + '”' : 'Room name cleared')
+        : n.casting_names ? 'Casting names change to “' + n.casting_name + '”' : 'Casting names go back to “Hasler”');
+    } else { roomUi.err = capFirst((r.json && r.json.error) || 'Couldn’t save that.'); if (!('name' in change)) toast(roomUi.err, true); }
+  } catch (_) { toast('Couldn’t reach the radio.', true); }
+  roomUi.busy = false;
+  const keep = roomUi.edit; paintRoom();
+  if (keep){ const i = $('roomInp'); if (i){ i.focus(); } }
+}
+function roomList(){
+  const box = h('div', {class:'list', id:'roomBox'});
+  fillRoom(box); setTimeout(roomSchedule, 0);
+  return box;
+}
 function softwareSettings(){
   const wrap = (...kids) => h('section', {class:'grp-sec', 'aria-label':'About this radio'},
-    h('span', {class:'mono grp-lbl'}, 'About this radio'), ...kids);
+    h('span', {class:'mono grp-lbl'}, 'About this radio'), roomList(), ...kids);
   const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
   if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Software'), h('span', {class:'li-sub'}, 'Checking…')))));

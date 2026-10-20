@@ -731,7 +731,7 @@ def build_group(app: WebApp, actions: Actions, api_port: int = 8080) -> object |
             log.exception("multiroom audio unavailable")
     try:
         group = Group(actions, audio,
-                      identity=lambda: (integration.radio_id(app.machine_id_file), integration.radio_name()),
+                      identity=lambda: (integration.radio_id(app.machine_id_file), app.room.name()),
                       api_port=api_port)
         group.actions_lock = app.lock
         group.apply_saved(load_settings(app.settings_file))

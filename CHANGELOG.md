@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 - 2026-10-21
+
+- Room name: call each radio "Kitchen", "Living"... (Settings -> About this
+  radio). It shows in the room list, the page title and Home Assistant; the
+  page address stays the same. Optional: "Use the room name for casting"
+  makes AirPlay, Spotify, UPnP and Bluetooth "Hasler Kitchen".
+- Multiroom: when a following radio's key asks for a source the leading one
+  doesn't have (say Spotify), the pressed radio takes over and the group
+  carries on with its music.
+
 ## 0.4.0 - 2026-10-21
 
 - Music in several rooms: Haslers on the same network can play in step

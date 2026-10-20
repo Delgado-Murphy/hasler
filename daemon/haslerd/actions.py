@@ -378,6 +378,22 @@ class Actions:
             self._cycle_at = None
         self._start(preset)
 
+    def lead_preset(self, preset: Preset) -> None:
+        """This radio takes its group over and plays its own preset for it
+        (multiroom/group.py's handover: the leader lacked the source).
+
+        As a press here: remembered, persisted (no longer a follower), the
+        lamp's loading breath via ``on_start``. Raises if the start fails.
+        """
+        if self.player.active_source() in RENDERERS:
+            self.player.select_source("radio")
+        if self.standby:
+            self._wake()
+        if self.presets.get(preset.n) == preset:
+            self._remember(preset.n)
+        self._persist()
+        self._start(preset)
+
     def join_group_playback(self) -> None:
         """This radio now plays a leader's stream (multiroom/group.py).
 

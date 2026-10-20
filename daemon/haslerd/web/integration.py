@@ -6,7 +6,8 @@
   is the first 12 hex digits of sha256(/etc/machine-id): stable for the life of
   the SD card's OS, never the machine-id itself (systemd asks that it not be
   exposed), and the same value the HA integration uses as its unique_id.
-  ``name`` is the radio's host name (what ``<name>.local`` answers to).
+  ``name`` is the radio's room name (web/room.py; WebApp.info), else its host
+  name (what ``<name>.local`` answers to).
 
 * ``GET /api/art/current`` -> the picture for what is playing: the radio
   station's logo from moOde's library (``cfg_radio`` row whose stream URL is

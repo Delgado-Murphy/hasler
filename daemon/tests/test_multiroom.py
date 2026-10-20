@@ -47,8 +47,11 @@ class FakeAudio:
         self.log = log
         self.mode = "alone"
         self.fail_follow: Exception | None = None
+        self.fail_lead: Exception | None = None
 
     def lead(self) -> None:
+        if self.fail_lead is not None:
+            raise self.fail_lead
         self.log.append(("audio", "lead"))
         self.mode = "lead"
 
@@ -538,14 +541,28 @@ class TestFollowerKeys:
         kitchen.press("k3")
         assert kitchen.replies == ["ack", "fail"]
 
-    def test_a_source_the_leader_lacks_is_refused(self, lan):
+    def test_a_source_the_leader_lacks_says_why(self, lan):
         living, kitchen, _ = grouped(lan)
         living.player.sources = {"radio": object()}
-        kitchen.press("k4")                                   # Spotify
-        assert kitchen.replies == ["ack", "fail"] and living.player.current().n == 2
         status, doc = living.route("POST", "/api/peer/key", {"from": kitchen.id, "preset": {
             "source": "spotify", "uri": "spotify:playlist:x"}})
         assert status == 409 and doc["error"] == "Spotify isn't set up on Living"
+        assert doc["reason"] == "no_source"
+
+    def test_a_source_neither_has_is_refused(self, lan):
+        living, kitchen, _ = grouped(lan)
+        living.player.sources = kitchen.player.sources = {"radio": object()}
+        kitchen.press("k4")                                   # Spotify
+        assert kitchen.replies == ["ack", "fail"] and living.player.current().n == 2
+        assert kitchen.group.role == "follow" and living.group.role == "lead"
+        assert not any(c[2] == "/api/peer/handover" for c in lan.calls)
+
+    def test_a_stream_that_fails_is_no_handover(self, lan):
+        living, kitchen, _ = grouped(lan)
+        living.player.play_preset = lambda p: (_ for _ in ()).throw(RuntimeError("stream down"))
+        kitchen.press("k3")
+        assert living.replies[-1] == "fail" and kitchen.group.role == "follow"
+        assert living.group.role == "lead"
 
     def test_peer_key_from_a_stranger_is_refused(self, lan):
         grouped(lan)
@@ -577,6 +594,258 @@ class TestFollowerKeys:
         living, kitchen, _ = grouped(lan)
         kitchen.group.tick(lan.clock(), "airplay")
         assert kitchen.group.role == "alone" and living.group.role == "lead"
+
+
+# -- handover: the leader lacks the source, the pressing radio leads -----------------
+
+
+def no_spotify(radio):
+    radio.player.sources = {"radio": object(), "ytm": object()}
+
+
+def deferred(*radios):
+    """Their group jobs wait in a queue each, to be run step by step."""
+    queues = {}
+    for r in radios:
+        queues[r.id] = []
+        r.group._spawn = queues[r.id].append
+    return queues
+
+
+def drain(queues):
+    while any(queues.values()):
+        for q in queues.values():
+            if q:
+                q.pop(0)()
+
+
+def leaders(lan):
+    return [r.name for r in lan.radios.values() if r.group.role == "lead"]
+
+
+class TestHandover:
+    def test_the_pressing_radio_takes_the_group_over(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        kitchen.press("k4")                                   # Spotify: Living can't
+        assert kitchen.replies == ["ack"]                     # no red: it worked
+        assert kitchen.group.role == "lead" and set(kitchen.group.members) == {living.id, study.id}
+        assert ("audio", "lead") in kitchen.log
+        assert kitchen.player.current().n == 4 and kitchen.player.current().source == "spotify"
+        assert kitchen.state.load()["last_preset"] == 4 and "follower" not in kitchen.state.load()
+        # the old leader stops its music and follows; nobody dropped out
+        assert living.group.role == "follow" and living.group.leader.id == kitchen.id
+        assert living.player.current() is None
+        assert living.log[-2:] == [("player", "stop"), ("audio", "follow", "10.0.0.2", 1704)]
+        assert living.state.load()["follower"] is True
+        assert study.group.role == "follow" and study.group.leader.id == kitchen.id
+        assert study.log[-1] == ("audio", "follow", "10.0.0.2", 1704)
+        assert leaders(lan) == ["Kitchen"]
+        # the others keep playing amber, in the new leader's tint, without a breath
+        for r in (living, study):
+            assert r.group.lamp() == ("following", "spotify", True)
+        assert kitchen.group.lamp() == ("", "radio", False)  # a radio playing: loading, then playing
+        # the page: the new leader's name, and a toast on the pressing radio
+        _, doc = kitchen.route("GET", "/api/group")
+        assert doc["notice"]["text"] == "Kitchen is now playing for the group" and doc["error"] is None
+        _, doc = study.route("GET", "/api/group")
+        assert doc["leader"]["name"] == "Kitchen" and doc["notice"] is None
+        # keeping in touch agrees with the new shape
+        lan.clock.t += group_mod.LEADER_CHECK_S
+        for r in (living, study, kitchen):
+            r.group.check()
+        assert leaders(lan) == ["Kitchen"] and set(kitchen.group.members) == {living.id, study.id}
+        assert living.group.lamp() == ("following", "spotify", True)
+        lan.clock.t += group_mod.NOTICE_S
+        assert kitchen.group.doc()["notice"] is None
+
+    def test_the_lamp_breathes_while_it_takes_over(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        q = deferred(kitchen)
+        kitchen.press("k4")
+        q[kitchen.id].pop(0)()                                # forwarded: 409 no_source
+        q[kitchen.id].pop(0)()                                # prepare
+        assert kitchen.group.lamp()[0] == "joining" and kitchen.group.role == "follow"
+        assert living.group.doc()["role"] == "lead"
+        # the old leader holds it open: other keys meanwhile are refused
+        status, doc = living.route("POST", "/api/peer/key", {"from": study.id, "preset": {
+            "source": "radio", "uri": "http://x/"}})
+        assert status == 409 and doc["reason"] == "busy"
+        drain(q)
+        assert leaders(lan) == ["Kitchen"] and kitchen.group.lamp()[0] == ""
+
+    def test_the_old_leader_is_an_ordinary_follower_afterwards(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        kitchen.press("k4")
+        living.press("power", "off")                          # standby on a follower: only it leaves
+        assert living.group.role == "alone" and living.actions.standby
+        assert kitchen.group.role == "lead" and list(kitchen.group.members) == [study.id]
+        assert study.group.role == "follow"
+
+    def test_its_keys_then_go_to_the_new_leader(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        kitchen.press("k4")
+        living.press("k3")                                    # radio: the new leader plays it
+        assert kitchen.player.current().n == 3 and kitchen.group.role == "lead"
+
+    def test_an_unreachable_member_is_dropped_the_rest_carry_on(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        lan.down.add(study.host)
+        kitchen.press("k4")
+        assert kitchen.group.role == "lead" and list(kitchen.group.members) == [living.id]
+        assert living.group.leader.id == kitchen.id
+        assert kitchen.group.error == "Study: isn't answering"
+        assert kitchen.replies == ["ack"]
+        # Study notices its leader follows someone now, and is on its own
+        lan.down.discard(study.host)
+        study.group.check()
+        assert study.group.role == "alone" and leaders(lan) == ["Kitchen"]
+
+    def test_a_member_that_left_meanwhile_is_not_pulled_back(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        q = deferred(kitchen)
+        kitchen.press("k4")
+        q[kitchen.id].pop(0)()
+        q[kitchen.id].pop(0)()                                # prepared, Study still listed
+        study.press("power", "off")                           # Study sleeps and leaves
+        drain(q)
+        assert study.group.role == "alone" and study.actions.standby is True
+        assert list(kitchen.group.members) == [living.id]
+
+    @pytest.mark.parametrize("what", ["audio", "play"])
+    def test_a_takeover_that_fails_rolls_back(self, lan, what):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        if what == "audio":
+            kitchen.audio.fail_lead = RuntimeError("snapserver won't start")
+        else:
+            kitchen.player.play_preset = lambda p: (_ for _ in ()).throw(RuntimeError("no Spotify session"))
+        kitchen.press("k4")
+        assert kitchen.group.role == "alone" and kitchen.replies == ["ack", "fail"]
+        assert "couldn't take the group over" in kitchen.group.error
+        assert kitchen.log[-1] == ("audio", "alone") and not kitchen.group.taking_over
+        # the old leader carries on with the rest, still playing, open for keys again
+        assert living.group.role == "lead" and list(living.group.members) == [study.id]
+        assert living.group._handover is None and living.player.current().n == 2
+        assert study.group.role == "follow" and study.group.leader.id == living.id
+        assert leaders(lan) == ["Living"]
+        study.press("k3")
+        assert living.player.current().n == 3
+
+    def test_the_old_leader_gone_before_the_commit(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        q = deferred(kitchen)
+        kitchen.press("k4")
+        q[kitchen.id].pop(0)()
+        q[kitchen.id].pop(0)()                                # prepared
+        lan.down.add(living.host)
+        drain(q)
+        assert kitchen.group.role == "lead" and list(kitchen.group.members) == [study.id]
+        assert study.group.leader.id == kitchen.id
+        # Living comes back: the handover ran out, its members have gone - alone
+        lan.down.discard(living.host)
+        assert living.group.role == "lead"
+        lan.clock.t += group_mod.HANDOVER_S
+        living.group.tick(lan.clock())
+        assert living.group.role == "alone" and leaders(lan) == ["Kitchen"]
+        # and a late commit is refused
+        status, _ = living.route("POST", "/api/peer/follow", {"leader_id": kitchen.id, "host": "10.0.0.2",
+                                                              "handover": "x", "previous": living.id})
+        assert status == 409 and living.group.role == "alone"
+
+    def test_standby_on_the_taker_before_the_commit(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        q = deferred(kitchen)
+        kitchen.press("k4")
+        q[kitchen.id].pop(0)()
+        q[kitchen.id].pop(0)()
+        kitchen.press("power", "off")                         # changed their mind
+        drain(q)
+        assert kitchen.group.role == "alone" and kitchen.player.current() is None
+        assert living.group.role == "lead" and list(living.group.members) == [study.id]
+        assert living.group._handover is None and leaders(lan) == ["Living"]
+
+    @pytest.mark.parametrize("order", ["both_prepare_first", "one_after_the_other"])
+    def test_two_followers_at_once_give_one_leader(self, lan, order):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        q = deferred(kitchen, study)
+        kitchen.press("k4")
+        study.press("k4")
+        if order == "both_prepare_first":
+            q[kitchen.id].pop(0)()                            # both forwarded: 409 no_source
+            q[study.id].pop(0)()
+            q[kitchen.id].pop(0)()                            # Kitchen's prepare wins
+            q[study.id].pop(0)()                              # Study's: busy
+            assert study.replies == ["ack", "fail"]
+        else:
+            q[kitchen.id].pop(0)()
+        drain(q)
+        assert leaders(lan) == ["Kitchen"]
+        assert {r.group.leader.id for r in (living, study)} == {kitchen.id}
+        assert set(kitchen.group.members) == {living.id, study.id}
+        assert study.replies[-1] == "fail" and kitchen.replies == ["ack"]
+        for r in (living, study):
+            r.group.check()
+        assert leaders(lan) == ["Kitchen"] and all(r.group.role == "follow" for r in (living, study))
+
+    def test_leave_mode_is_unaffected(self, lan):
+        living, kitchen, study = grouped(lan)
+        no_spotify(living)
+        kitchen.route("PUT", "/api/group", {"follower_keys": "leave"})
+        kitchen.press("k4")
+        assert kitchen.group.role == "alone" and kitchen.player.current().n == 4
+        assert living.group.role == "lead" and list(living.group.members) == [study.id]
+        assert not any(c[2].startswith("/api/peer/handover") for c in lan.calls)
+
+    def test_peer_handover_rules(self, lan):
+        living, kitchen, study = grouped(lan)
+        status, doc = living.route("POST", "/api/peer/handover", {"id": "zzz", "host": "10.0.0.9", "token": "t"})
+        assert status == 409
+        assert living.route("POST", "/api/peer/handover", {"id": kitchen.id})[0] == 400
+        status, doc = kitchen.route("POST", "/api/peer/handover", {"id": study.id, "host": "x", "token": "t"})
+        assert status == 409                                   # a follower leads nothing
+        status, doc = living.route("POST", "/api/peer/handover", {"id": kitchen.id, "host": "10.0.0.2",
+                                                                  "port": 8080, "token": "t1"})
+        assert status == 200 and doc["members"] == [
+            {"id": study.id, "name": "Study", "host": "10.0.0.3", "port": 8080}]
+        assert living.route("POST", "/api/peer/handover", {"id": kitchen.id, "token": "t1"})[0] == 200
+        status, doc = living.route("POST", "/api/peer/handover", {"id": study.id, "token": "t2"})
+        assert status == 409 and doc["reason"] == "busy"
+        status, doc = living.route("PUT", "/api/group", {"members": [kitchen.id]})
+        assert status == 409 and "handing the group to Kitchen" in doc["error"]
+        # a move only for radios in that group; the old leader only with the open token
+        status, _ = living.route("POST", "/api/peer/follow", {"leader_id": kitchen.id, "host": "10.0.0.2",
+                                                              "handover": "wrong", "previous": living.id})
+        assert status == 409 and living.group.role == "lead"
+        status, _ = study.route("POST", "/api/peer/follow", {"leader_id": kitchen.id, "host": "10.0.0.2",
+                                                             "handover": "t1", "previous": "someone"})
+        assert status == 409 and study.group.leader.id == living.id
+        # called off by someone else: still open; by the taker: closed
+        living.route("POST", "/api/peer/handover/abort", {"id": study.id, "token": "t1"})
+        assert living.group._handover is not None
+        living.route("POST", "/api/peer/handover/abort", {"id": kitchen.id, "token": "t1"})
+        assert living.group._handover is None and set(living.group.members) == {kitchen.id, study.id}
+
+    def test_an_open_handover_runs_out(self, lan):
+        living, kitchen, study = grouped(lan)
+        living.route("POST", "/api/peer/handover", {"id": kitchen.id, "host": "10.0.0.2", "token": "t"})
+        lan.clock.t += group_mod.HANDOVER_S - 1
+        living.group.check()
+        assert living.group._handover is not None
+        lan.clock.t += 1
+        living.group.check()
+        assert living.group._handover is None and living.group.role == "lead"
+        assert set(living.group.members) == {kitchen.id, study.id}     # they still follow it
+        kitchen.press("k3")
+        assert living.player.current().n == 3
 
 
 # -- standby ---------------------------------------------------------------------------

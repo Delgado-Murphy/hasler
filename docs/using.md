@@ -102,6 +102,13 @@ The radio also works as a speaker for your phone. Its name on the network is
 While a phone plays, the lamp is blue. A phone can wake the radio from standby.
 To take the radio back from the phone, tap any numbered key.
 
+**More than one Hasler?** Give each one a room name (Settings → **About this
+radio**) and switch on **Use the room name for casting**: phones then show
+*Hasler Kitchen*, *Hasler Study* and so on, instead of several *Hasler*s.
+Renaming takes a minute or two (the page shows each one as it goes), and
+Spotify on the radio stops for a moment while it takes the new name. Switch it
+off to go back to plain *Hasler*.
+
 ## Music in several rooms
 
 Two or more Haslers on the same Wi-Fi can play the same music at the same
@@ -136,6 +143,17 @@ While a radio follows:
   ready.
 - **PU**, **Test on the radio**, or a phone casting to a follower also take that
   radio out of the group first.
+
+**When the leader can't play a key:** if you press a key on a follower whose
+music the leader has no way to play (for example a Spotify playlist, and
+Spotify is not set up on the leader), the radio you pressed takes over. It
+plays the playlist on *its* Spotify account for the whole group, and the old
+leader and the other radios follow it. Nobody leaves the group. The lamp on
+your radio breathes, then plays; its key page says "Kitchen is now playing for
+the group". If the takeover does not work, your radio shows three red pulses
+and is on its own; the others keep playing as before. A station that is down
+is no takeover, just red pulses. With *Leave and play alone* chosen in
+Settings, the radio leaves and plays the key on its own, as before.
 
 **After a power cut** every radio comes back on its own. A radio that was
 following comes back quiet (dim amber), not playing; it does not join again by
@@ -197,7 +215,7 @@ Tap the gear icon.
 | **Multiroom** | Lets this radio play together with other Haslers (off by default). *Keys on a following radio*: change the whole group (default), or leave the group and play alone. See [Music in several rooms](#music-in-several-rooms). |
 | **Pilot lamp** | When the lamp dims for the night: *by the sun*, *fixed hours* or *never*. For "by the sun", choose the city where the radio stands. |
 | **Knobs** | Shows each knob live. **Calibrate** starts a short guide: you turn the knob to a few positions and the radio learns them. **Reset to factory** undoes it. |
-| **About this radio** | Software version and updates. See [Updates](#updates). |
+| **About this radio** | The radio's **room name** (for example *Kitchen*): shown in the multiroom list, in Home Assistant and at the top of this page. Its address (*hasler.local*) stays the same; the page shows it under the name. A second Hasler on the same Wi-Fi gets *hasler-2.local* by itself. **Use the room name for casting** makes phones see *Hasler Kitchen* (off: just *Hasler*). Also the software version and updates; see [Updates](#updates). |
 
 ### "Press any key on the radio"
 

@@ -73,6 +73,7 @@ G 0.15, B 0 for amber - calibrate by eye at night.
 | **Following a group** | Amber (pale if the leader plays a playlist) | 100% | 1.5 s fade, then solid | while the leader plays; ready amber 35% while it is silent |
 | Group leader can't be reached (follower) | Red | 60% | 3 soft pulses | ~2 s, then ready (the radio is alone again) |
 | Preset key on a follower | current | dip, as key press | 0.3 s | the leader then shows loading/playing; the follower's tint follows within ~5 s |
+| Preset key on a follower, the leader lacks its source (handover) | Amber | 25-70%, then 100% | breath (as loading), then as playing | the pressed radio leads: breath until its music plays; the others stay playing amber, in its tint at once; red pulses on the pressed radio if the takeover fails |
 | Night (sunset -> sunrise) | same colours | cap 35%, ember 2% | fades x1.5; idle red suppressed | the night |
 | Panel board missing | Red | 10-30% | slow breath | until fixed (the keys can't work) |
 

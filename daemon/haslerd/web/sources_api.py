@@ -68,7 +68,9 @@ class SourcesApi:
         self.app = app
         self.aplmeta = aplmeta
         self.spotify_name = spotify_name
-        self._renderer_lock = threading.Lock()
+        # One moOde job at a time, shared with the room's casting names (web/room.py).
+        room = getattr(app, "room", None)
+        self._renderer_lock = getattr(room, "renderer_lock", None) or threading.Lock()
 
     @property
     def actions(self) -> Actions:
