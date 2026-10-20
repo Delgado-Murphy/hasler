@@ -234,6 +234,21 @@ class MoodePlayer:
         self._mixer_gen = 0
         self._hold: int | None = None      # mixer percent a swell will rise to
         self._swelling = False
+        # Starting and stopping, off the caller's thread (start_preset /
+        # stop_soon). MPD blocks *every* client for 0.5-4 s while it stops a
+        # stream (its output closes through moOde's CamillaDSP plugin; measured
+        # on the bench 2026-10-21), so a key press must not wait for it. One
+        # worker, one slot: a newer request replaces a pending one, and a
+        # request already talking to MPD is told it has been superseded
+        # (``_gen``). ``_route_lock`` keeps two arbitrations from interleaving.
+        self._route_lock = threading.RLock()
+        self._want_cv = threading.Condition()
+        # (gen, preset or None for "stop", on_error, previous preset, cached source)
+        self._want: tuple | None = None
+        self._gen = 0
+        self._starting: Preset | None = None      # asked to start, not yet started
+        self._worker: threading.Thread | None = None
+        self._busy = False
         self._warm_up()
 
     def _warm_up(self) -> None:
@@ -254,27 +269,149 @@ class MoodePlayer:
     # -- routing ----------------------------------------------------------
 
     def play_preset(self, preset: Preset) -> None:
-        """Stop every other source, then start this one.
+        """Stop every other source, then start this one - and wait for it.
 
         ALSA arbitration: the DAC has one hardware device and only one process
         may hold it. Stopping the others *first* is what lets go-librespot and
         MPD hand the device back and forth without "device busy". Raises if the
         source is unknown or its ``play`` raises, so the caller can flash the
-        lamp; ``current()`` is only set once play has succeeded.
+        lamp. Supersedes any pending ``start_preset``. Key presses use
+        ``start_preset`` instead; this is for callers that need the outcome
+        (the boot resume, a group handover, the page's Test button).
         """
+        self._source_for(preset)
+        gen, previous, cached = self._supersede(preset)
+        with self._route_lock:
+            self._play_now(preset, gen, previous, cached)
+
+    def start_preset(
+        self, preset: Preset, on_error: Callable[[Exception], None] | None = None
+    ) -> None:
+        """``play_preset`` without waiting: returns at once, the worker plays it.
+
+        ``current()`` is ``preset`` from now on (so the same key again is
+        "again"), and ``active_source()`` answers its source without asking
+        MPD while the start is under way. A newer start or stop replaces this
+        one if it has not begun; if it has, the worker skips whatever of it is
+        left. ``on_error(exc)`` is called from the worker if it fails and is
+        still the latest request. An unknown source raises here, at once.
+        """
+        self._source_for(preset)
+        self._request(preset, on_error)
+
+    def stop_soon(self) -> None:
+        """``stop`` without waiting (standby): supersedes a pending start."""
+        self._request(None, None)
+
+    @property
+    def starting(self) -> Preset | None:
+        """The preset asked to start that has not started (or failed) yet."""
+        return self._starting
+
+    def _source_for(self, preset: Preset) -> Source:
         source = self.sources.get(preset.source)
         if source is None:
             raise LookupError(f"no {preset.source!r} source available for preset {preset.n}")
-        previous = self.current_preset
-        cached = self._source_cache[1] if self._source_cache else None
-        self.current_preset = None
-        self._source_cache = None
+        return source
+
+    def _supersede(self, preset: Preset | None) -> tuple[int, Preset | None, str | None]:
+        """A new routing request: drop any pending one, record the intent."""
+        with self._want_cv:
+            previous = self.current_preset
+            cached = self._source_cache[1] if self._source_cache else None
+            self._gen += 1
+            self._want = None
+            self.current_preset = preset
+            self._starting = preset
+            self._source_cache = None
+            return self._gen, previous, cached
+
+    def _request(self, preset: Preset | None, on_error) -> None:
+        with self._want_cv:                     # an RLock: _supersede nests
+            gen, previous, cached = self._supersede(preset)
+            self._want = (gen, preset, on_error, previous, cached)
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(target=self._work, name="player-route", daemon=True)
+                self._worker.start()
+            self._want_cv.notify()
+
+    def _work(self) -> None:
+        while True:
+            with self._want_cv:
+                while self._want is None:
+                    self._want_cv.wait()
+                gen, preset, on_error, previous, cached = self._want
+                self._want = None
+                self._busy = True
+            try:
+                self._serve(gen, preset, on_error, previous, cached)
+            finally:
+                with self._want_cv:
+                    self._busy = False
+                    self._want_cv.notify_all()
+
+    def _serve(self, gen, preset, on_error, previous, cached) -> None:
+        with self._route_lock:
+            if gen != self._gen:
+                return                          # superseded while waiting for the lock
+            if preset is None:
+                self._stop_now(gen)
+                return
+            try:
+                self._play_now(preset, gen, previous, cached)
+            except Exception as exc:
+                if gen != self._gen:
+                    log.info("preset %s failed after it was superseded: %s", preset.n, exc)
+                    return
+                log.error("could not start preset %s: %s", preset.n, exc,
+                          exc_info=not isinstance(exc, LookupError))
+                if on_error is not None:
+                    try:
+                        on_error(exc)
+                    except Exception:
+                        log.debug("on_error hook failed", exc_info=True)
+
+    def wait_idle(self, timeout: float | None = None) -> bool:
+        """Block until no background start or stop is pending or running."""
+        with self._want_cv:
+            return self._want_cv.wait_for(lambda: self._want is None and not self._busy, timeout)
+
+    def _stoppable(self, keep: Source | None) -> list[tuple[str, Source]]:
+        """One source per backend, leaving out ``keep``'s backend.
+
+        Radio and YTM share one MPD (``backend = "mpd"``): the source about to
+        play replaces MPD's queue itself, and stopping MPD first would only pay
+        MPD's slow stop twice - and block on it, as ytm did on every radio press.
+        """
+        keep_backend = getattr(keep, "backend", None) or (keep.name if keep is not None else None)
+        seen = {keep_backend} if keep is not None else set()
+        out = []
         for name, other in self.sources.items():
-            if other is not source:
-                self._stop_source(name, other)
+            if other is keep:
+                continue
+            backend = getattr(other, "backend", None) or name
+            if backend in seen:
+                continue
+            seen.add(backend)
+            out.append((name, other))
+        return out
+
+    def _play_now(self, preset: Preset, gen: int, previous: Preset | None, cached: str | None) -> None:
+        source = self._source_for(preset)
+        for name, other in self._stoppable(source):
+            if gen != self._gen:
+                return                          # a newer press: it does its own stopping
+            self._stop_source(name, other)
+        if gen != self._gen:
+            return
         try:
             source.play(preset)
         except Exception:
+            if gen == self._gen:
+                with self._want_cv:
+                    if gen == self._gen:
+                        self.current_preset = None
+                        self._starting = None
             spotify_was_on = cached == "spotify" or (previous is not None and previous.source == "spotify")
             if preset.source != "spotify" and spotify_was_on:
                 # go-librespot is paused, not stopped, to keep its session warm.
@@ -285,7 +422,10 @@ class MoodePlayer:
                     preset.source,
                 )
             raise
-        self.current_preset = preset
+        with self._want_cv:
+            if gen == self._gen:
+                self._starting = None
+                self._source_cache = None
 
     def _stop_source(self, name: str, source: Source) -> None:
         try:
@@ -294,9 +434,15 @@ class MoodePlayer:
             log.exception("could not stop %s", name)
 
     def stop(self) -> None:
-        self.current_preset = None
-        self._source_cache = None
-        for name, source in self.sources.items():
+        """Stop everything and wait for it. Supersedes any pending start."""
+        gen, _, _ = self._supersede(None)
+        with self._route_lock:
+            self._stop_now(gen)
+
+    def _stop_now(self, gen: int) -> None:
+        for name, source in self._stoppable(None):
+            if gen != self._gen:
+                return                          # a press after the stop: it wins
             self._stop_source(name, source)
 
     def next_track(self) -> None:
@@ -517,6 +663,11 @@ class MoodePlayer:
         decide, and "radio" is the resting answer. Cached for SOURCE_CACHE_S
         and dropped whenever we change what is playing.
         """
+        starting = self._starting
+        if starting is not None:
+            # A start under way: MPD may be busy stopping the last stream (and
+            # answers nobody meanwhile); we know what we asked for.
+            return starting.source
         now = self._clock()
         if self._source_cache is not None and now - self._source_cache[0] < SOURCE_CACHE_S:
             return self._source_cache[1]
@@ -592,7 +743,7 @@ class MoodePlayer:
         For radio, MPD must be playing this very stream: moOde's worker
         reloading its own queue counts as "not". Never raises.
         """
-        if self.current_preset != preset:
+        if self.current_preset != preset or self._starting is not None:
             return False
         source = self.sources.get(preset.source)
         if source is None:

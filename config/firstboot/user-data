@@ -1,0 +1,12 @@
+#cloud-config
+# Hasler first boot: on purpose this does nothing itself. Raspberry Pi Imager
+# (firstrun.sh) sets the user, hostname, Wi-Fi, SSH and locale; vendor-data
+# starts the Hasler installer. If Imager made its own user-data, keep Imager's
+# and skip this one.
+#
+# No default user (Imager's firstrun.sh makes the login), keep Imager's
+# hostname and locale.
+users: []
+preserve_hostname: true
+locale: false
+ssh_deletekeys: false

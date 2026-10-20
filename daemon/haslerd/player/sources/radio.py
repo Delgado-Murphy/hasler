@@ -44,12 +44,17 @@ class _LockedClient:
     """Wraps an MPDClient so every command runs under the shared lock.
 
     MPD commands are individually atomic on the wire; what breaks is two
-    threads interleaving bytes on one socket. A per-call lock is enough.
+    threads interleaving bytes on one socket. A per-call lock is enough -
+    with one rule: a command that died mid-reply (a socket timeout while MPD
+    was busy) leaves its answer still on the way, and the next caller would
+    read it as its own. So anything but MPD's own refusal drops the
+    connection, and the next command gets a fresh one.
     """
 
-    def __init__(self, client: Any, lock: threading.RLock) -> None:
+    def __init__(self, client: Any, lock: threading.RLock, owner: "MpdConnection | None" = None) -> None:
         self._client = client
         self._lock = lock
+        self._owner = owner
 
     def __getattr__(self, name: str) -> Any:
         attr = getattr(self._client, name)
@@ -58,9 +63,23 @@ class _LockedClient:
 
         def call(*args: Any, **kwargs: Any) -> Any:
             with self._lock:
-                return attr(*args, **kwargs)
+                try:
+                    return attr(*args, **kwargs)
+                except Exception as exc:
+                    if self._owner is not None and not _is_refusal(exc):
+                        self._owner.forget(self._client)
+                    raise
 
         return call
+
+
+def _is_refusal(exc: BaseException) -> bool:
+    """MPD answered ``ACK ...``: the connection is fine, the command was not."""
+    try:
+        from mpd import CommandError
+    except ImportError:          # tests without python-mpd2
+        return False
+    return isinstance(exc, CommandError)
 
 
 class MpdConnection:
@@ -75,7 +94,8 @@ class MpdConnection:
         self,
         host: str = "localhost",
         port: int = 6600,
-        timeout: float = 5,
+        # MPD answers nobody while it stops a stream: 0.5-4 s on the bench.
+        timeout: float = 10,
         client_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.host = host
@@ -97,14 +117,14 @@ class MpdConnection:
             if self._client is not None:
                 try:
                     self._client.ping()
-                    return _LockedClient(self._client, self._lock)
+                    return _LockedClient(self._client, self._lock, self)
                 except Exception:
                     self._drop()
             client = self._new_client()
             client.timeout = self.timeout
             client.connect(self.host, self.port)
             self._client = client
-            return _LockedClient(client, self._lock)
+            return _LockedClient(client, self._lock, self)
 
     def _drop(self) -> None:
         try:
@@ -112,6 +132,13 @@ class MpdConnection:
         except Exception:
             pass
         self._client = None
+
+    def forget(self, client: Any) -> None:
+        """Drop ``client`` if it is still the current one (a command on it failed)."""
+        with self._lock:
+            if self._client is client:
+                log.info("MPD connection dropped after a failed command; reconnecting on next use")
+                self._drop()
 
     def close(self) -> None:
         with self._lock:
@@ -127,6 +154,8 @@ class RadioSource:
     """
 
     name = "radio"
+    # The router stops one source per backend, and none of the one it plays to.
+    backend = "mpd"
 
     def __init__(
         self,

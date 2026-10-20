@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.0.0 - 2026-10-21
+
+The first stable version. Nothing you set up changes: your keys, stations,
+settings and knob calibration stay as they are.
+
+What your Hasler does:
+
+- **Press a key, hear music.** Each of the six keys plays an internet radio
+  station, a Spotify playlist or a YouTube Music playlist. No phone, no app.
+  Music starts about 15 seconds after you switch the radio on.
+- **A speaker for your phone:** Spotify Connect (guests on your Wi-Fi too),
+  AirPlay, Bluetooth and UPnP. It remembers your Bluetooth phones and calls
+  the last one when you switch to Bluetooth. When a phone stops, the radio
+  goes back to its station.
+- **Several rooms:** Haslers on the same network can play the same music in
+  step. Give each radio a room name ("Kitchen") and tap "Also play on...".
+- **Two knobs, like the old radio.** Volume, with a floor and a ceiling that
+  protect the old speaker. Tone makes the sound warmer or brighter (or one
+  of several other effects) and clicks off to put the radio to sleep.
+- **A pilot lamp that tells you how things are:** amber for the radio, blue
+  for a phone, a dim ember in standby, breathing ember while it installs an
+  update, dark when it is safe to unplug.
+- **The key page** in your browser (`http://hasler.local:8080`): choose the
+  music on each key, sound, phones and casting, rooms, the lamp, Wi-Fi and
+  updates. Anything risky asks for a press on the radio itself.
+- **Home Assistant**, if you use it: a held key can set the lights or start
+  a scene, and the Hasler integration shows each radio.
+- **Safe updates.** Small ones install by themselves at night in standby;
+  bigger ones ask first. If an update doesn't work, the radio goes back to
+  the version before by itself, even after a power cut.
+- **Help from the makers**, only if you ask for it: Settings -> This radio,
+  for 24 hours, ended at any time.
+
+New in this version:
+
+- Updates: a version with a higher first number (2.0, 3.0...) always waits
+  for you, even if it is only a small fix on top of one you haven't
+  installed yet.
+- "Help from the makers" moved to the bottom of This radio, and it says
+  plainly when a maker is connected right now.
+- Keys answer at once, even when you switch stations quickly: a new press
+  replaces one still starting, and the radio no longer stops its player
+  twice on the way.
+- Reboots can't hang for minutes any more (a stuck service gets 20 s), and a
+  small log stays on the card so a bad shutdown can be looked into.
+- New radios can be set up without a screen or keyboard: flash moOde, copy
+  six files to the card, switch on (docs/new-install.md).
+- Open source: MIT licence, with the licences of everything bundled in each
+  release (THIRD_PARTY_NOTICES.md).
+
+Version 1.0.0 is a big step in name only, so the radio asks before
+installing it: Settings -> This radio -> Updates -> Install. After that,
+updates carry on as before.
+
 ## 0.4.6 - 2026-10-21
 
 - Remote help: Settings -> This radio -> "Let the makers help (24 h)". After

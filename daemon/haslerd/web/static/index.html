@@ -603,6 +603,13 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .ro-line .li-sub{flex:1 1 200px}
 .help-url{font:13px/18px var(--mono);letter-spacing:0;color:var(--cream);text-overflow:ellipsis}
 .help-v{font:600 13px/18px var(--mono);letter-spacing:0;overflow-wrap:anywhere;text-align:right}
+/* "A maker is connected now (…)" vs "Connected - waiting for a maker": the line the owner looks for */
+.help-now{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;color:var(--cream);font:600 16px/22px var(--sans)}
+.help-now .hn-dot{flex:0 0 10px;width:10px;height:10px;border-radius:50%;background:var(--brass)}
+.help-now.on{border-color:#4E7A57;background:rgba(93,187,99,.10)}
+.help-now.on .hn-dot{background:#5DBB63;box-shadow:0 0 0 3px rgba(93,187,99,.22)}
+@keyframes hn-breathe{50%{box-shadow:0 0 0 6px rgba(93,187,99,.08)}}
+@media (prefers-reduced-motion:no-preference){ .help-now.on .hn-dot{animation:hn-breathe 2.4s ease-in-out infinite} }
 .title-row .pv-pill{margin-left:auto}
 .pv-pill{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 4px 0 12px;border:1px solid rgba(255,178,56,.5);border-radius:18px;background:#2A1C10;color:#F3CF8C;font:600 12.5px/16px var(--sans);font-variant-numeric:tabular-nums;white-space:nowrap}
 .pv-pill .pv-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px rgba(255,178,56,.8)}
@@ -2911,7 +2918,7 @@ function helpLeft(sec){
 function helpSummary(){
   if (!helpOn()) return '';
   const s = help.state;
-  if (s === 'connected') return 'Help on until ' + helpWhen(help.expires_at);
+  if (s === 'connected') return (help.peers_active && help.peers_active.length ? 'A maker is connected now' : 'Help on until ' + helpWhen(help.expires_at));
   if (s === 'waiting') return 'Help waiting for a maker';
   return s === 'ending' ? 'Help ending…' : 'Help starting…';
 }
@@ -2939,7 +2946,7 @@ document.addEventListener('visibilitychange', () => {
 function helpKey(){
   const d = help || {};
   return JSON.stringify([helpUi.busy, helpUi.err, d.missing, d.err, d.available, d.state, d.login_url, d.approve_by, d.expires_at,
-    d.address, d.dns_name, d.tailnet, d.hostname, d.error, d.last && d.last.at]);
+    d.address, d.dns_name, d.tailnet, d.hostname, d.error, d.last && d.last.at, d.status_text, d.peers_active]);
 }
 // Repaint only when something changed (the 3 s poll must not steal focus or a text selection);
 // the "time left" line ticks in place. #helpLive stays put so a screen reader hears each change once.
@@ -2964,7 +2971,7 @@ function helpLiveText(){
   const st = helpUi.busy || (help && help.state);
   if (helpUi.err) return helpUi.err;
   return {starting:'Starting remote help', ending:'Ending remote help', waiting:'The link for the makers is ready',
-    connected:'Connected to ' + ((help && help.network) || 'the makers’ network'), off:'Remote help is off'}[st] || '';
+    connected:(help && help.status_text) || 'Connected to ' + ((help && help.network) || 'the makers’ network'), off:'Remote help is off'}[st] || '';
 }
 function helpGroup(){
   if (help && help.missing) return null;
@@ -3001,7 +3008,10 @@ function helpBody(){
   }
   if (st === 'connected'){
     const kv = (k, v) => v ? h('div', {class:'chk'}, h('span', null, k), h('b', {class:'help-v'}, v)) : null;
+    const makers = Array.isArray(d.peers_active) && d.peers_active.length > 0;
     return h('div', {class:'li col', style:'gap:10px'},
+      h('div', {class:'help-now' + (makers ? ' on' : ''), id:'helpNow'}, h('span', {class:'hn-dot', 'aria-hidden':'true'}),
+        h('span', null, d.status_text || (makers ? 'A maker is connected now.' : 'Connected - waiting for a maker.'))),
       h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Connected to ' + (d.network || 'the makers’ network') + (d.expires_at ? ' until ' + helpWhen(d.expires_at) : '')),
         d.expires_at ? h('span', {class:'li-sub', id:'helpLeft'}, helpLeft(d.expires_at)) : null),
       h('div', null, kv('Address', d.address), kv('Name there', d.hostname), kv('Network', d.tailnet)),

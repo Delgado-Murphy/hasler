@@ -413,6 +413,7 @@ open(cfg + ".hasler-boot-bak", "w", encoding="utf-8").write(text)
 with open(cfg + ".tmp", "w", encoding="utf-8") as f:
     f.write(new); f.flush(); os.fsync(f.fileno())
 os.replace(cfg + ".tmp", cfg)
+os.sync()   # vfat writes back lazily (and its rename is not atomic): on the card now
 print("tidied" if same else "updated (backup config.txt.hasler-boot-bak)")
 EOF
 )" || RES="could not edit $FW/config.txt"
@@ -441,6 +442,7 @@ open(path + ".hasler-boot-bak", "w", encoding="utf-8").write(text)
 with open(path + ".tmp", "w", encoding="utf-8") as f:
     f.write(new); f.flush(); os.fsync(f.fileno())
 os.replace(path + ".tmp", path)
+os.sync()   # vfat: on the card now
 print("updated (backup cmdline.txt.hasler-boot-bak)")
 EOF
 )" || RES="could not edit $FW/cmdline.txt"
@@ -487,8 +489,14 @@ EOF
   say "boot time: fstab /boot/firmware flush: $RES"
   if [[ "$RES" == updated* ]] && (( SYSTEMD )); then
     run systemctl daemon-reload
-    # vfat accepts flush on a remount; if not, it applies from the next boot.
-    run mount -o remount,flush "$FW" 2>/dev/null || warn "remount of $FW with flush failed - applies at the next boot"
+  fi
+  # A remount cannot apply it: vfat takes only ro/rw on a remount
+  # (fat_reconfigure) and silently ignores flush. It applies at the next boot.
+  if [[ "$RES" == updated* || "$RES" == ok ]] && command -v findmnt >/dev/null 2>&1 \
+     && findmnt -no FSTYPE "$FW" 2>/dev/null | grep -qx vfat \
+     && ! findmnt -no OPTIONS "$FW" 2>/dev/null | tr ',' '\n' | grep -qx flush; then
+    say "boot time: $FW is mounted without flush until the next boot"
+    BOOT_REBOOT=1
   fi
 fi
 
@@ -509,6 +517,31 @@ if [[ -d /etc/NetworkManager ]]; then
 [connection]
 wifi.powersave = 2
 EOF
+fi
+
+# Shutdowns: a stuck service may hold a reboot 20 s, not systemd's 90 s each
+# (2026-10-21: a reboot hung ~6 min until the power was cut). And a small
+# persistent journal (moOde keeps it in RAM), so the last shutdown can be read
+# after a restart. Both apply without a reboot.
+if (( SYSTEMD )); then
+  put_text /etc/systemd/system.conf.d/hasler-stop-timeout.conf 0644 <<'EOF' || true
+[Manager]
+# Hasler: a stuck service may hold a shutdown or reboot 20 s at most, not 90 s.
+DefaultTimeoutStopSec=20s
+EOF
+  put_text /etc/systemd/journald.conf.d/zz-hasler-persistent.conf 0644 <<'EOF' || true
+[Journal]
+# Hasler: a small log on the card, so the last shutdown can be read after a restart.
+Storage=persistent
+SystemMaxUse=16M
+SystemKeepFree=200M
+SyncIntervalSec=5m
+EOF
+  if (( ! DRY )); then
+    mkdir -p /var/log/journal && systemd-tmpfiles --create --prefix /var/log/journal 2>/dev/null || true
+    systemctl daemon-reload || true
+    systemctl restart systemd-journald || true
+  fi
 fi
 
 # rc-local: Debian's drop-in makes it wait for network-online (~6 s of

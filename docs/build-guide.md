@@ -45,7 +45,10 @@ only a release installs:
 - **Calibrate** on the key page, which saves to `/etc/hasler/`.
 
 So once the keys, knobs and lamp work, you move the radio once to **signed
-releases** ([Phase 4b](#phase-4b--move-to-signed-releases)). From then on it
+releases** ([Phase 4b](#phase-4b--move-to-signed-releases)). (A radio whose hardware already
+works - a new SD card, a spare, a second Hasler - skips all of this: [A new SD
+card](new-install.md) installs a signed release from a blank card, with no
+screen or keyboard.) From then on it
 updates itself and you never copy code by hand again. (To try your own code
 changes on a release radio, build a release from your copy and serve it from
 your laptop: [release.md, "Bench box"](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).)
@@ -657,7 +660,9 @@ file empty or cut short. The worker then copies its own default over it: no amp,
 no lamp. Three defences:
 
 - `/boot/firmware` is mounted with the vfat `flush` option (bootstrap edits
-  `/etc/fstab`).
+  `/etc/fstab`; it applies at the next boot, since vfat ignores it on a
+  remount). `hasler-boot-report` warns while it is not in effect, and when
+  `config.txt` has lost the boot-time block.
 - `hasler-bootcfg-save.timer` (4 min after boot), the updater and bootstrap run
   `hasler-bootcfg-guard save`: a *sane* `config.txt`/`cmdline.txt` is copied to
   `/etc/hasler/boot/*.good`. Sane means: moOde's main header on line 2 and its

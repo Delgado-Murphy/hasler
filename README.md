@@ -64,6 +64,7 @@ ten minutes.
 **For makers**
 
 - [Build guide](docs/build-guide.md): from an empty cabinet to a working radio, step by step.
+- [A new SD card](docs/new-install.md): the radio's software from a blank card, headless, from a signed release.
 - [Hardware](docs/hardware.md): parts list, wiring, power and protection.
 - [The knobs' sound effects](docs/sound.md): the tone knob's effects and how a cabinet's knobs get them.
 - [Multiroom and casting](docs/multiroom.md): how Haslers play in step (Snapcast), room names, AirPlay, UPnP, Bluetooth, Spotify.
@@ -107,6 +108,16 @@ streams are found by yt-dlp; the tone knob's effects run in CamillaDSP
 panels work differently (for example, keys that lock down). So the panel is
 **data, not code**: one service, a few control types, and one YAML file per
 cabinet in `config/variants/`.
+
+## Licence
+
+Hasler's code is [MIT](LICENSE). Two exceptions: the moOde patch in
+`config/moode/` is GPL-3.0-or-later, because it changes moOde
+([config/moode/LICENSE](config/moode/LICENSE)), and the HAT hardware design in
+`docs/hat/` is [CERN-OHL-P-2.0](docs/hat/LICENSE). Releases also bundle
+go-librespot (GPL-3.0), Deno (MIT), two fonts (SIL OFL 1.1) and Python
+packages under their own licences; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+lists them, and every release carries it with the full texts in `licenses/`.
 
 ---
 

@@ -97,7 +97,8 @@ def test_only_allowlisted_paths_ship(built):
     _, _, top, files = built
     assert top == "hasler-0.2.0"
     allowed_tops = {"app", "integration", "migrations", "wheelhouse", "bin", "manifest.json",
-                    "files.sha256", "requirements.lock", "selftest.py"}
+                    "files.sha256", "requirements.lock", "selftest.py",
+                    "LICENSE", "THIRD_PARTY_NOTICES.md", "licenses"}
     assert {p.split("/")[0] for p in files} <= allowed_tops
     for p in files:
         assert ".venv" not in p and "__pycache__" not in p and not p.endswith(".pyc")
@@ -112,6 +113,29 @@ def test_only_allowlisted_paths_ship(built):
         if p.startswith("app/haslerd/migrations/") and p.split("/")[-1][:3].isdigit():
             assert files["migrations/" + p.split("/")[-1]] == files[p]
     assert not any(b"NOT-TO-SHIP-7f3a9c" in data for data, _ in files.values())
+
+
+def test_licences_ship_with_every_release(built):
+    # go-librespot (GPL), the key page's fonts (OFL), deno and the wheels'
+    # licences must travel with the binaries: at the top of every tarball.
+    _, _, _, files = built
+    assert files["LICENSE"][0].startswith(b"MIT License")
+    notices = files["THIRD_PARTY_NOTICES.md"][0].decode()
+    assert "go-librespot" in notices and "v0.10.3" in notices
+    for name in ("GPL-3.0", "LGPL-3.0", "MPL-2.0", "EPL-2.0", "Apache-2.0", "MIT-deno",
+                 "OFL-1.1-Fraunces", "OFL-1.1-JetBrains-Mono"):
+        assert f"licenses/{name}.txt" in files, name
+        assert f"licenses/{name}.txt" in notices, name
+    assert "app/config/moode/LICENSE" in files
+    assert not any(p.startswith("docs/") or p.endswith("hat/LICENSE") for p in files)
+
+
+def test_notices_match_the_install_pins():
+    # bumping go-librespot or deno in install.sh means updating the notices
+    pins = br.pins_from_install_sh({"scripts/install.sh": (ROOT / "scripts" / "install.sh").read_bytes()})
+    notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text()
+    assert f"go-librespot/tree/{pins['GLR_VERSION']}" in notices
+    assert f"deno/tree/{pins['DENO_VERSION']}" in notices
 
 
 def test_integration_layout(built):
@@ -166,6 +190,14 @@ def test_strict_fails_on_version_mismatch_and_home_pi_units(repo, tmp_path):
                           "--no-wheels", "--strict"])
     with pytest.raises(mm.ReleaseError, match="--strict"):
         br.build(args)
+
+
+def test_haslerd_version_is_checked_too(repo, tmp_path, capsys):
+    # The fixture's haslerd/__init__.py says the repo's version, not 0.3.0.
+    args = br.parse_args(["--version", "0.3.0", "--out", str(tmp_path), "--repo", str(repo),
+                          "--no-wheels", "--zstd-level", "1"])
+    br.build(args)
+    assert "warning: daemon/haslerd/__init__.py __version__" in capsys.readouterr().err
 
 
 # --- reproducible, hashes --------------------------------------------------------------
@@ -249,6 +281,21 @@ def test_seq_follows_semver():
     assert mm.kind_between(None, "1.0.0") == "major"
     with pytest.raises(mm.ReleaseError):
         mm.parse_version("v1.0.0")
+
+
+def test_kind_is_measured_from_the_last_final_release(tmp_path):
+    # Release candidates only go to bench; stable radios on 0.4.6 never ran
+    # 1.0.0-rc.1, so 1.0.0 must be "major" (asks first), not a "patch".
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    git(tmp_path, "commit", "-q", "--allow-empty", "-m", "x")
+    for t in ("v0.4.5", "v0.4.6", "v1.0.0-rc.1", "v1.0.0-rc.2", "not-a-version"):
+        git(tmp_path, "tag", t)
+    assert br.previous_version(tmp_path, "HEAD", "1.0.0") == "0.4.6"
+    assert br.previous_version(tmp_path, "HEAD", "1.0.0-rc.3") == "0.4.6"
+    assert mm.kind_between(br.previous_version(tmp_path, "HEAD", "1.0.0"), "1.0.0") == "major"
+    git(tmp_path, "tag", "v1.0.0")
+    assert br.previous_version(tmp_path, "HEAD", "1.0.1") == "1.0.0"
+    assert br.previous_version(tmp_path, "HEAD", "0.4.6") == "0.4.5"
 
 
 def test_rc_goes_to_bench(repo, tmp_path):

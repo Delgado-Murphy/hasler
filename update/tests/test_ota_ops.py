@@ -63,6 +63,8 @@ def repo(tmp_path_factory):
     pp = dest / "daemon" / "pyproject.toml"
     # whatever version master carries, the fixture builds 0.2.0
     pp.write_text(re.sub(r'(?m)^version = "[^"]+"', 'version = "0.2.0"', pp.read_text(), count=1))
+    init = dest / "daemon" / "haslerd" / "__init__.py"
+    init.write_text(re.sub(r'(?m)^__version__ = "[^"]+"', '__version__ = "0.2.0"', init.read_text(), count=1))
     subprocess.run(["git", "init", "-q", str(dest)], check=True)
     git(dest, "add", "-A")
     git(dest, "commit", "-q", "-m", "fixture")

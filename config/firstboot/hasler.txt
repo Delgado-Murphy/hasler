@@ -1,0 +1,26 @@
+# Hasler: settings for a new radio. Copy this file to the SD card's boot
+# partition (the drive called "bootfs") with the other files from this folder.
+# docs/new-install.md. Lines starting with # are notes; nothing here is secret.
+#
+# Which releases the radio follows: stable (everyone) or bench (the makers'
+# test radio - it gets every release first).
+channel = stable
+
+# Updates: auto (small ones at night, big ones ask first), ask, or off.
+update_mode = auto
+
+# The cabinet: hasler-hm (the Hasler HM) or excelsior.
+variant = hasler-hm
+
+# The login you set in Raspberry Pi Imager. Empty = the first user (uid 1000).
+user = pi
+
+# Give moOde the Hasler audio and casting settings (Amp4 Pro, AirPlay,
+# Bluetooth, UPnP, names "Hasler"). no = leave moOde as it is.
+moode = yes
+
+# yes = may run without the cabinet's key board (a bare Pi on the bench).
+panel_optional = no
+
+# Makers only: a local test channel instead of the public one.
+# update_url = http://laptop.local:8000

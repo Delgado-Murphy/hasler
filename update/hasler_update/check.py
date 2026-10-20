@@ -31,6 +31,19 @@ def installed(layout: Layout) -> dict:
     return {"version": doc.get("version", target.name), "seq": doc.get("seq"), "path": str(target)}
 
 
+def asks_first(release: dict, have_version: str | None) -> bool:
+    """A release that waits for the owner: signed ``kind`` major, a migration,
+    or a higher major version than the one running. ``kind`` is measured at
+    build time from the previous release; a radio that never installed X.0.0
+    (its owner hasn't said yes yet) must not get X.0.1 at night as a "patch"."""
+    if release.get("kind") == "major" or release.get("requires_migration"):
+        return True
+    try:
+        return int(str(release["version"]).split(".")[0]) > int(str(have_version).split(".")[0])
+    except (KeyError, ValueError):
+        return False   # nothing installed yet / unparsable: the signed kind decides
+
+
 class Checker:
     def __init__(self, layout: Layout, now: float | None = None, facts: dict | None = None) -> None:
         self.layout = layout
@@ -107,8 +120,10 @@ class Checker:
         for name, data in (("index.json", idx_bytes), ("index.json.sig", idx_sig),
                            ("release.json", rel_bytes), ("release.json.sig", rel_sig)):
             write_atomic(inc / name, data, 0o644)
-        ask = release.get("kind") == "major" or bool(release.get("requires_migration"))
-        out["available"] = {"version": release["version"], "seq": seq, "kind": release.get("kind"),
+        ask = asks_first(release, have.get("version"))
+        # a major step for this radio shows as one on the key page, whatever the signed kind
+        kind = "major" if ask and not release.get("requires_migration") else release.get("kind")
+        out["available"] = {"version": release["version"], "seq": seq, "kind": kind,
                             "requires_migration": bool(release.get("requires_migration")),
                             "notes": release.get("notes", ""), "ask": ask or self.box["update_mode"] != "auto"}
         return out

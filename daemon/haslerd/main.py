@@ -117,6 +117,8 @@ def preset_sounding(player, preset: Preset) -> bool:
     have moved too. Never raises: unsure reads as "not yet".
     """
     try:
+        if getattr(player, "starting", None) is not None:
+            return False        # still being started: MPD may be busy, don't wait on it
         if player.current() != preset or player.active_source() != preset.source:
             return False
     except Exception:

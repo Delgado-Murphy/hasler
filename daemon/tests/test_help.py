@@ -39,6 +39,7 @@ class FakeHelper:
         self.last = None
         self.calls = []
         self.start_ok = True
+        self.peers = []
 
     def status(self, ok=True, error=None):
         running = self.backend == "Running"
@@ -49,7 +50,8 @@ class FakeHelper:
                "tailnet": self.tailnet if running else None,
                "hostname": self.session.get("hostname"), "started_at": self.session.get("started_at"),
                "expires_at": self.session.get("expires_at"), "approve_by": self.session.get("approve_by"),
-               "stale": bool(self.session) and not self.active, "last": self.last}
+               "stale": bool(self.session) and not self.active, "last": self.last,
+               "peers_active": list(self.peers) if running else []}
         if error:
             doc["error"] = error
         return doc
@@ -147,7 +149,14 @@ def test_start_waiting_connected_stop(rig, caplog):
     now[0] += 5
     doc = api.doc()
     assert doc["state"] == "connected" and doc["login_url"] is None
-    assert doc["status_text"] == "Connected to Delgado & Murphy's help network."
+    assert doc["status_text"] == "Connected - waiting for a maker." and doc["peers_active"] == []
+    # a maker gets on (ssh, or this page over the tailnet)
+    fake.peers = [{"name": "bills-macbook", "user": "wmurphy@github"}]
+    now[0] += 5
+    doc = api.doc()
+    assert doc["status_text"] == "A maker is connected now (wmurphy@github)."
+    assert doc["peers_active"] == [{"name": "bills-macbook", "user": "wmurphy@github"}]
+    assert "A maker is connected now (wmurphy@github)" in caplog.text
     assert doc["address"] == "100.101.102.103" and doc["ssh"] == "pi@100.101.102.103"
     assert doc["page"] == "http://100.101.102.103:8080/" and doc["tailnet"] == "delgado-murphy.org.github"
     assert doc["approve_by"] is None
@@ -233,6 +242,29 @@ def test_over_http(rig):
         server.close()
 
 
+def test_makers_text():
+    assert help_api.makers_text([{"name": "mac", "user": "wmurphy@github"}]) == \
+        "A maker is connected now (wmurphy@github)."
+    assert help_api.makers_text([{"name": "mac", "user": None}]) == "A maker is connected now (mac)."
+    two = [{"name": "a", "user": "wmurphy@github"}, {"name": "b", "user": "jdelgado@github"},
+           {"name": "c", "user": "wmurphy@github"}]
+    assert help_api.makers_text(two) == "2 makers are connected now (wmurphy@github, jdelgado@github)."
+
+
+def test_peers_only_while_connected_and_checked(rig):
+    _, api, fake, now, _ = rig
+    fake.active, fake.backend = True, "NeedsLogin"
+    fake.session = {"hostname": "hasler-kitchen-ab12", "started_at": 1000, "expires_at": 90000}
+    fake.peers = [{"name": "mac", "user": "wmurphy@github"}]
+    doc = api.doc()
+    assert doc["state"] == "waiting" and doc["peers_active"] == []
+    assert doc["status_text"] == help_api.STATUS_TEXT["waiting"]
+    fake.backend = "Running"
+    fake.peers = [{"name": "mac", "user": "wmurphy@github"}, "junk", {"user": "no-name"}]
+    now[0] += 5
+    assert api.doc()["peers_active"] == [{"name": "mac", "user": "wmurphy@github"}]
+
+
 # -- the root helper, scripts/hasler-help -----------------------------------------
 
 
@@ -264,6 +296,8 @@ class FakeSystem:
         self.cmds = []
         self.packaged = "disabled"
         self.filter_ok = True
+        self.peer = {}
+        self.user = {}
 
     def sh(self, cmd, timeout=20):
         self.cmds.append(cmd)
@@ -304,7 +338,8 @@ class FakeSystem:
                 doc = {"BackendState": self.backend, "AuthURL": URL if self.backend == "NeedsLogin" else "",
                        "Self": {"DNSName": "hasler-kitchen-ab12.tail1234.ts.net.",
                                 "TailscaleIPs": ["fd7a:115c:a1e0::1", "100.64.0.7"]},
-                       "CurrentTailnet": {"Name": "delgado-murphy.org.github"} if self.backend == "Running" else None}
+                       "CurrentTailnet": {"Name": "delgado-murphy.org.github"} if self.backend == "Running" else None,
+                       "Peer": self.peer, "User": self.user}
                 return 0, json.dumps(doc)
             if "logout" in cmd:
                 self.backend = "NeedsLogin"
@@ -443,3 +478,42 @@ def test_shipped_as_a_root_helper():
     boot = (ROOT / "scripts/bootstrap.sh").read_text()
     assert "pkgs.tailscale.com/stable/debian trixie main" in boot and "signed-by=" in boot
     assert "disable --quiet --now tailscaled.service" in boot
+
+
+def test_helper_reports_the_makers_on_now(tmp_path, monkeypatch, capsys):
+    mod, sysd = load_helper(tmp_path, monkeypatch)       # now() == 5000.0
+    mod.main(["start", "hasler-kitchen-ab12"])
+    capsys.readouterr()
+    sysd.user = {"111": {"ID": 111, "LoginName": "wmurphy@github", "DisplayName": "Bill"},
+                 "222": {"ID": 222, "LoginName": "jdelgado@github"},
+                 "333": {"ID": 333, "LoginName": "tagged-devices"}}
+    stamp = lambda t: __import__("time").strftime("%Y-%m-%dT%H:%M:%S", __import__("time").gmtime(t)) + ".123456789Z"
+    sysd.peer = {
+        "nodekey:a": {"HostName": "bills-macbook", "UserID": 111, "Active": False,
+                      "LastHandshake": stamp(5000 - 30), "CurAddr": "192.0.2.1:41641"},
+        "nodekey:b": {"HostName": "old-laptop", "UserID": 222, "Active": False,
+                      "LastHandshake": stamp(5000 - 600), "CurAddr": ""},
+        "nodekey:c": {"HostName": "never", "UserID": 222, "Active": False,
+                      "LastHandshake": "0001-01-01T00:00:00Z"},
+        "nodekey:d": {"HostName": "", "DNSName": "ci-box.tail1234.ts.net.", "UserID": 333, "Active": True,
+                      "LastHandshake": "0001-01-01T00:00:00Z"},
+    }
+    # not yet approved: nobody is on, whatever tailscaled says about peers
+    mod.main(["status"])
+    assert last_json(capsys)["peers_active"] == []
+    sysd.backend = "Running"
+    mod.main(["status"])
+    doc = last_json(capsys)
+    assert doc["peers_active"] == [{"name": "ci-box", "user": None},
+                                   {"name": "bills-macbook", "user": "wmurphy@github"}]
+    assert doc["auth_url"] is None
+
+
+def test_helper_tailscale_times():
+    loader = importlib.machinery.SourceFileLoader("hasler_help_t", str(ROOT / "scripts" / "hasler-help"))
+    spec = importlib.util.spec_from_loader("hasler_help_t", loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    assert mod.ts_time("2026-10-21T00:25:00.123456789Z") == mod.ts_time("2026-10-21T02:25:00+02:00")
+    assert mod.ts_time("0001-01-01T00:00:00Z") is None and mod.ts_time(None) is None
+    assert mod.ts_time("garbage") is None

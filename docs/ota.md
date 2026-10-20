@@ -115,7 +115,7 @@ reaches the radio.
 | `schema` | Of this file (1). A release that changes it ships a migration. |
 | `variant` | Which cabinet: `config/variants/<variant>.yaml` in the release. |
 | `channel` | `stable` (everyone; the default) or `bench` (the makers' test radio; may break). Anything else, the retired `beta` included, reads as `stable`. |
-| `update_mode` | `auto` (the default: patch/minor at night in standby; major or migration releases still ask), `ask`, `off`. An unknown word reads as `ask`. |
+| `update_mode` | `auto` (the default: patch/minor at night in standby; major or migration releases still ask, and so does any release whose major number is above the running one - from 1.0.0 on, a 2.0.1 never slips in as a "patch" before 2.0.0 was accepted), `ask`, `off`. An unknown word reads as `ask`. |
 | `box_id` | A random UUID, made once by migration 001. Places the radio in a ring (and names it in a future check-in). |
 | `checkin` | Reserved for the planned opt-in daily check-in. Nothing is sent today. |
 | `metered` | `true`: never download in the background (phone hotspot, capped plans). |

@@ -1,0 +1,4 @@
+# Hasler first boot: cloud-init leaves the network alone (Raspberry Pi Imager
+# and moOde set up Wi-Fi). If Imager made its own network-config, keep Imager's.
+network:
+  config: disabled

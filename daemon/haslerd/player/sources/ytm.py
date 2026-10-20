@@ -275,6 +275,8 @@ class YtmSource:
     """
 
     name = "ytm"
+    # Same MPD as radio: the router does not stop one to play the other.
+    backend = "mpd"
 
     def __init__(
         self,

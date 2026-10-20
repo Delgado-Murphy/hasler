@@ -82,6 +82,16 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("config/captive/*.conf", "app/config/captive/"),
     Rule("config/go-librespot/config.yml", "app/config/go-librespot/"),
     Rule("config/moode/*", "app/config/moode/"),
+    # app/setup/: what a NEW radio needs before it has a release - the box setup
+    # scripts and their files that no other rule ships. scripts/hasler-install
+    # runs them from the verified tarball (docs/new-install.md); it lays these
+    # out with the app/ and integration/ files they use, as a checkout would.
+    Rule("scripts/bootstrap.sh", "app/setup/scripts/", mode=0o755),
+    Rule("scripts/ota-bootstrap.sh", "app/setup/scripts/", mode=0o755),
+    Rule("scripts/hasler-boot-report", "app/setup/scripts/", mode=0o755),
+    Rule("scripts/hasler-install", "app/setup/scripts/", mode=0o755),
+    Rule("config/update/**", "app/setup/config/update/", strip="config/update"),
+    Rule("config/firstboot/*", "app/setup/config/firstboot/"),
     Rule("CHANGELOG.md", "app/"),
     # integration/: a repo-level integration/ tree wins over the legacy places below
     Rule("integration/**", "integration/", strip="integration"),
@@ -107,6 +117,12 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("config/systemd-dropins/bluetooth.service.d/hasler-*.conf", "integration/systemd/bluetooth.service.d/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
     Rule("config/avahi/hasler.service", "integration/avahi/"),
+    # licensing, at the top next to bin/ and wheelhouse/ it describes: our MIT
+    # LICENSE, what the release bundles (THIRD_PARTY_NOTICES.md) and the full
+    # licence texts that must travel with those binaries, fonts and wheels
+    Rule("LICENSE", ""),
+    Rule("THIRD_PARTY_NOTICES.md", ""),
+    Rule("licenses/*", "licenses/", exts=(".txt",)),
     # migrations/: NNN_name.py
     Rule("migrations/*.py", "migrations/"),
     Rule("daemon/migrations/*.py", "migrations/"),
@@ -410,6 +426,13 @@ def changelog_notes(text: str, version: str) -> str:
 
 
 def previous_version(repo: Path, ref: str, version: str) -> str | None:
+    """The newest final release tag below ``version`` - what ``kind`` is measured from.
+
+    Release candidates are skipped: they only ever go to bench, so the radios
+    on stable never ran one. Measured from v1.0.0-rc.1, v1.0.0 would be a
+    "patch" and install by itself on radios still on 0.x; measured from
+    v0.4.6 it is "major" and asks first, as it must.
+    """
     try:
         tags = git(repo, "tag", "--merged", ref, "--list", "v*").decode().split()
     except subprocess.CalledProcessError:
@@ -418,8 +441,10 @@ def previous_version(repo: Path, ref: str, version: str) -> str | None:
     for t in tags:
         try:
             v = t[1:]
-            mm.parse_version(v)
+            rc = mm.parse_version(v)[3]
         except mm.ReleaseError:
+            continue
+        if rc is not None:
             continue
         if v != version and mm.seq_for(v) < mm.seq_for(version):
             vs.append(v)
@@ -441,13 +466,20 @@ def build(args: argparse.Namespace) -> Path:
     files = select(srcs, links, repo)
     by_path = {s.path: (s.data if s.data is not None else (repo / s.path).read_bytes())
                for s in srcs if s.path in ("scripts/install.sh", "daemon/pyproject.toml",
-                                            "daemon/haslerd/boxconfig.py", "CHANGELOG.md")}
+                                            "daemon/haslerd/boxconfig.py", "CHANGELOG.md",
+                                            "daemon/haslerd/__init__.py")}
     problems = lint_integration(files)
 
     pyproject = by_path.get("daemon/pyproject.toml", b"").decode()
     m = re.search(r'^version\s*=\s*"([^"]+)"', pyproject, re.M)
     if not m or m.group(1) != args.version:
         problems.append(f"daemon/pyproject.toml version {m.group(1) if m else '?'} != {args.version}")
+    # haslerd.__version__ is what the key page and /api/info show when a box
+    # has no release.json to read (a bench tree, a test); keep it in step.
+    init = by_path.get("daemon/haslerd/__init__.py", b"").decode()
+    mi = re.search(r'^__version__\s*=\s*"([^"]+)"', init, re.M)
+    if not mi or mi.group(1) != args.version:
+        problems.append(f"daemon/haslerd/__init__.py __version__ {mi.group(1) if mi else '?'} != {args.version}")
 
     # migrations/: the contract's top-level copy of the package's migrations
     # (haslerd/migrations/NNN_name.py, also importable from app/)

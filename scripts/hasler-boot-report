@@ -69,4 +69,20 @@ say "still pulling network-online.target"
 systemctl list-dependencies --reverse --plain --no-legend network-online.target 2>/dev/null \
   | sed -n '2,$p' | sed 's/^ */   /'
 [[ -e /etc/systemd/system/mpd.service.d/hasler-early.conf ]] && echo "   (early MPD: on)" || echo "   (early MPD: off)"
+
+# What scripts/bootstrap.sh puts in place and nothing else restores: a config.txt
+# copied back by hand from an older backup (then saved as known-good by the
+# guard) silently loses the boot-time block.
+say "boot config"
+FWD=/boot/firmware; [[ -d "$FWD" ]] || FWD=/boot
+if grep -qxF '# >>> hasler boot time (scripts/bootstrap.sh; edits here are replaced) >>>' "$FWD/config.txt" 2>/dev/null; then
+  echo "   config.txt: boot-time block present"
+else
+  warn "config.txt has no boot-time block - re-run: sudo scripts/bootstrap.sh (then reboot)"
+fi
+if findmnt -no OPTIONS "$FWD" 2>/dev/null | tr ',' '\n' | grep -qx flush; then
+  echo "   $FWD mounted with flush"
+else
+  warn "$FWD is mounted without flush (bootstrap.sh's fstab edit applies at the next boot)"
+fi
 exit 0

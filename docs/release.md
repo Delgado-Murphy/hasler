@@ -28,9 +28,13 @@ the public `hasler-releases` repository). Published releases:
 ## Release checklist
 
 1. `master` green in CI; the bench radio on the previous release.
-2. Bump `version` in `daemon/pyproject.toml` and add a `## X.Y.Z - date`
-   section to `CHANGELOG.md` (it becomes the release notes). Pick the number
-   by what changed - the number alone decides the release's `kind`:
+2. Bump `version` in `daemon/pyproject.toml` **and** `__version__` in
+   `daemon/haslerd/__init__.py` (`--strict` checks both), and add a
+   `## X.Y.Z - date` section to `CHANGELOG.md` (it becomes the release notes,
+   shown on the key page and the GitHub release). Pick the number by what
+   changed - the number alone decides the release's `kind`, measured from the
+   newest **final** `v*` tag (release candidates don't count: stable radios
+   never ran one):
    - **major** (`X+1.0.0`): a new kind of system file (see below), a config
      schema change with a migration (`daemon/haslerd/migrations/NNN_name.py`),
      or a raised OS/moOde floor. Radios always ask before installing it.
@@ -87,7 +91,15 @@ the public `hasler-releases` repository). Published releases:
    ```
 
 **Release candidates** (`vX.Y.Z-rc.N`) work the same way and are marked as
-pre-releases on GitHub. They are optional; keep them on `bench`.
+pre-releases on GitHub. They are optional; keep them on `bench`. They don't
+change the final's `kind`: `v1.0.0` after `v1.0.0-rc.1` is still `major`
+(measured from `v0.4.6`).
+
+**A higher major version always asks**, whatever its signed `kind`: a radio
+on 1.x treats 2.0.1 as major even though it is a patch on top of 2.0.0
+(updater 1.0.0 and later; `asks_first` in `update/hasler_update/check.py`).
+Radios still on 0.x run the older rule - signed `kind` only - so a 1.0.x
+fix reaches a 0.x radio at night as a patch (see 1.0.0 below).
 
 **seq** is derived from the version, so there is no counter to keep:
 `(X*10000 + Y*100 + Z)*100 + N` for `-rc.N`, `+ 99` for a final (Y and Z
@@ -96,6 +108,58 @@ below 100). Radios only ever move to a higher seq.
 **Expiry.** A signed `release.json` is valid for 120 days: promote within that
 time. Channel indexes expire after 14 days; `sign-publish` re-signs them every
 night (03:17 UTC), so nothing needs doing - unless that job stops running.
+
+## 1.0.0: the first stable release
+
+What is special: `stable.json` doesn't exist until the first promote (radios
+on Stable report "no update info" until then; the promote creates it - the
+`channel` job builds a fresh index when the file is missing, and the nightly
+refresh keeps it signed from then on), and 1.0.0 is `major`, so every radio
+asks first, the bench radio included.
+
+1. Pre-flight: CI green on `master`; both suites green locally; a local
+   `build_release.py --version 1.0.0 --out dist/ --no-wheels` shows
+   `kind: major`, `min_from_seq: 0`, `requires_migration: false`.
+2. Bump both version strings to `1.0.0`, date the CHANGELOG heading, commit,
+   push, wait for `ci`.
+3. Tag `v1.0.0`, push it; `release.yml` builds it. Note the run id and the
+   sha256 in the run summary.
+4. `sign-publish` mode `publish`, channel `bench` (as in step 6 above).
+   Check: <https://delgado-murphy.github.io/hasler-releases/> lists 1.0.0
+   (`major`) with Bench on it; `channels/bench.json` says seq 1000099.
+5. Bench radio (on 0.4.6, `auto`): Check now. The Updates page shows "Update
+   available: 1.0.0" as a bigger update that waits; the nightly apply
+   (`journalctl -u hasler-update-apply`) logs
+   `deferred: major or migration release`. Install now, press a key on the
+   radio, put it in standby: committed within about 3 minutes;
+   `hasler-update status` shows 1.0.0 in probation, previous 0.4.6.
+6. Soak on bench: at least **3 nights** (2:00-05:00 checks run and find
+   nothing), 3 standby/wake cycles, one cold power-on (music in ~15 s), one
+   power cut while playing. Each source once: every key (radio, Spotify,
+   YouTube Music), Spotify Connect, AirPlay, Bluetooth (reconnect to the last
+   phone), UPnP; a multiroom group if a second radio is at hand; knobs,
+   lamp colours, Home Assistant key action. `journalctl -u haslerd -p
+   warning` stays quiet; probation ends with `committed`. Leave the "Go
+   back" drill out of the soak, or do it last: going back marks 1.0.0 bad on
+   that radio and `max_seq` stays at 1000099, so it can't install 1.0.0 again
+   without editing `/var/lib/hasler-apply/state.json` by hand.
+7. Promote: `sign-publish` mode `promote`, version `1.0.0`, channel
+   `stable`. Check that `channels/stable.json` and `.sig` exist on gh-pages,
+   `python3 scripts/release/channel.py check` on a downloaded copy says
+   1.0.0, and the website shows 1.0.0 on Stable.
+8. A Stable radio then shows "Update ready: 1.0.0 - A bigger update - it
+   waits for you" and installs only when its owner presses Install and the
+   radio key. Tell the owners.
+
+**If 1.0.0 is bad:** before promote, halt it on bench and fix forward with
+1.0.1 (the bench radio on 1.0.0 takes it at night). After promote, halt it on
+stable: radios that haven't installed it never will; radios on it keep it,
+and each owner can Go back to 0.4.6 on the key page. Then ship 1.0.1 through
+bench to stable. Radios still on 0.4.6 install that 1.0.1 at night without
+asking (their updater only reads the signed `kind`, `patch`). That is safe for
+1.0.x - 1.0.0 brings no migration and no new kind of system file - but if
+every 0.x radio must be asked, `release.yml` needs a `kind` input passed to
+`build_release.py --kind major` first (not there yet).
 
 ## A new kind of system file: major releases only
 

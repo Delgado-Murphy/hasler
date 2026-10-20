@@ -13,7 +13,12 @@ Each prints one JSON object on stdout (the last line):
      "auth_url": str|null, "address": "100.x.y.z"|null, "dns_name": str|null,
      "tailnet": str|null, "hostname": str|null, "started_at": epoch|null,
      "expires_at": epoch|null, "approve_by": epoch|null, "stale": bool,
+     "peers_active": [{"name": str, "user": str|null}],
      "last": {"at": epoch, "why": str}|null}
+
+``peers_active``: the tailnet devices talking to the radio right now - a
+WireGuard session Tailscale calls Active, or a handshake within PEER_RECENT_S
+(a maker's ssh or key page keeps one fresh). Empty while nobody is on.
     {"ok": false, "error": "...", ...the same fields, as things are now}
 
 No secret ships on the radio (the repo is public): ``start`` runs tailscaled
@@ -44,6 +49,7 @@ radio's own authorized_keys stay the gate. Tailnet DNS and routes are not
 accepted (--accept-dns=false --accept-routes=false): the radio's own network
 is left as it is.
 """
+import calendar
 import json
 import os
 import re
@@ -68,6 +74,8 @@ UP = "hasler-help-up"
 END = "hasler-help-end"
 UNAPPROVED = "hasler-help-unapproved"
 PACKAGED = "tailscaled.service"
+
+PEER_RECENT_S = 120   # a handshake this recent counts as "a maker is here now"
 
 HOSTNAME = re.compile(r"^hasler(-[a-z0-9]+)+$")
 WHYS = ("stopped", "expired", "unapproved", "wrong-tailnet", "failed")
@@ -129,6 +137,46 @@ def ts_status():
     return doc if isinstance(doc, dict) else None
 
 
+def ts_time(value):
+    """Tailscale's RFC 3339 time (nanoseconds, "Z") -> epoch seconds, or None
+    (also for Go's zero time, "0001-01-01T00:00:00Z": never)."""
+    m = re.match(r"^(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)$",
+                 str(value or ""))
+    if not m or m.group(1) == "0001":
+        return None
+    y, mo, d, hh, mm, ss = (int(g) for g in m.groups()[:6])
+    t = calendar.timegm((y, mo, d, hh, mm, ss, 0, 0, 0))
+    tz = m.group(7)
+    if tz != "Z":
+        sign = 1 if tz[0] == "+" else -1
+        t -= sign * (int(tz[1:3]) * 3600 + int(tz[4:6]) * 60)
+    return t
+
+
+def peers_active(ts, at=None):
+    """[{name, user}] for each peer with a live session: Active, or a
+    handshake (on a direct or relayed path) within PEER_RECENT_S."""
+    at = now() if at is None else at
+    users = (ts or {}).get("User") or {}
+    out = []
+    peers = (ts or {}).get("Peer") or {}
+    for peer in (peers.values() if isinstance(peers, dict) else []):
+        if not isinstance(peer, dict):
+            continue
+        shake = ts_time(peer.get("LastHandshake"))
+        recent = shake is not None and at - shake <= PEER_RECENT_S
+        if not (peer.get("Active") or recent):
+            continue
+        name = peer.get("HostName") or (peer.get("DNSName") or "").split(".")[0] or "a device"
+        owner = users.get(str(peer.get("UserID"))) if isinstance(users, dict) else None
+        login = (owner or {}).get("LoginName") or None
+        if login == "tagged-devices":
+            login = None
+        out.append({"name": str(name), "user": login})
+    out.sort(key=lambda p: (p["user"] or "", p["name"]))
+    return out
+
+
 def report(ok=True, error=None):
     session = read_json(os.path.join(RUN, "session.json")) or {}
     up = active(DAEMON)
@@ -155,6 +203,7 @@ def report(ok=True, error=None):
         "approve_by": session.get("approve_by"),
         # a session on record but its tailscaled gone (crashed, or killed)
         "stale": bool(session) and not up,
+        "peers_active": peers_active(ts) if running else [],
         "last": read_json(LAST),
     }
     if error:

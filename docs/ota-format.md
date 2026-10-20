@@ -28,6 +28,9 @@ hasler-<version>/
   integration/       # system files, see below
   migrations/        # NNN_name.py (a copy of app/haslerd/migrations/)
   selftest.py        # python selftest.py --etc DIR --state DIR; exit 0 = ok
+  LICENSE            # Hasler's MIT licence
+  THIRD_PARTY_NOTICES.md  # what bin/, wheelhouse/ and the key page's fonts are, and their licences
+  licenses/          # full licence texts that travel with them (*.txt)
 ```
 
 `files.sha256` lists symlinks without a hash. There is no `python/` yet: the

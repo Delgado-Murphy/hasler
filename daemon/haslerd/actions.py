@@ -471,7 +471,7 @@ class Actions:
         if self.presets.get(preset.n) == preset:
             self._remember(preset.n)
         self._persist()
-        self._start(preset)
+        self._start(preset, wait=True)
 
     def join_group_playback(self) -> None:
         """This radio now plays a leader's stream (multiroom/group.py).
@@ -500,11 +500,16 @@ class Actions:
                 return preset
         return None
 
-    def _start(self, preset: Preset) -> None:
+    def _start(self, preset: Preset, wait: bool = False) -> None:
         """Start a preset; on failure tell the lamp, then let dispatch log it.
 
         ``on_start`` first, so the lamp is already breathing while a slow
-        start (yt-dlp expanding a playlist) holds up the loop.
+        start (yt-dlp expanding a playlist, MPD stopping the last stream)
+        is under way. A player that can start in the background
+        (``start_preset``, the real one) does so, so a key press returns at
+        once and a quicker press supersedes it; failures then reach the lamp
+        from its worker. ``wait`` is for callers that need the outcome (the
+        boot resume, a group handover): it raises on failure.
         """
         self._started_at = self.clock()
         self.started_wall = time.time()
@@ -515,15 +520,31 @@ class Actions:
                 self.on_start(preset)
             except Exception:
                 log.debug("on_start hook failed", exc_info=True)
+        start_soon = None if wait else getattr(self.player, "start_preset", None)
+        if callable(start_soon):
+            try:
+                start_soon(preset, on_error=self._start_failed)
+            except Exception as exc:
+                self._play_failed(exc)
+                raise
+            return
         try:
             self.player.play_preset(preset)
         except Exception as exc:
-            if self.on_play_error is not None:
-                try:
-                    self.on_play_error(exc)
-                except Exception:
-                    log.debug("on_play_error hook failed", exc_info=True)
+            self._play_failed(exc)
             raise
+
+    def _play_failed(self, exc: Exception) -> None:
+        if self.on_play_error is not None:
+            try:
+                self.on_play_error(exc)
+            except Exception:
+                log.debug("on_play_error hook failed", exc_info=True)
+
+    def _start_failed(self, exc: Exception) -> None:
+        """A background start failed (the player's worker already logged it)."""
+        self._play_failed(exc)
+        self._reply("fail")
 
     def _preset(self, event, spec):
         self._play(int(spec["n"]))
@@ -659,7 +680,7 @@ class Actions:
             return False
         log.info("%s cast ended - back to preset %s", renderer, self._last_preset)
         self._cycle_at = None
-        return self.resume_last()
+        return self.resume_last(wait=False)   # on the main loop: don't hold it up
 
     # -- Bluetooth phones -------------------------------------------------
 
@@ -823,8 +844,15 @@ class Actions:
         self._changed()
         if persist:
             self._persist()
-        self.player.stop()
-        self.player.set_mute(True)
+        # Silent at once; MPD's stop (seconds, sometimes) happens off the
+        # press, and a key pressed meanwhile supersedes it.
+        stop_soon = getattr(self.player, "stop_soon", None)
+        if callable(stop_soon):
+            self.player.set_mute(True)
+            stop_soon()
+        else:
+            self.player.stop()
+            self.player.set_mute(True)
         self.prepare_for_boot()
 
     def _group_standby(self) -> None:
@@ -881,7 +909,7 @@ class Actions:
             log.info("waking into Bluetooth: calling the last phone")
             self._select_bluetooth(reconnect=True)
             return
-        self.resume_last()
+        self.resume_last(wait=False)       # a hand on the radio: don't hold it up
 
     def _shutdown(self, event, spec):
         # The ember breath first: poweroff below can take seconds to return.
@@ -941,13 +969,15 @@ class Actions:
             return None
         return self.presets.get(self._last_preset)
 
-    def resume_last(self, quiet: bool = False) -> bool:
+    def resume_last(self, quiet: bool = False, wait: bool = True) -> bool:
         """Play the remembered preset, unless in standby. Never raises.
 
         Returns False only if starting it failed, so the caller can try again
         once the network turns up; True means done, including "nothing to do".
         A failure gets the lamp's red pulses unless ``quiet`` (an attempt that
-        will be retried - the pulses wait for the last one).
+        will be retried - the pulses wait for the last one). ``wait=False``
+        (a key, a cast ending) starts it in the background: True at once, and
+        a failure reaches the lamp from the player's worker.
         """
         if self.standby or self._last_preset is None or self._resume_blocked:
             return True
@@ -955,7 +985,7 @@ class Actions:
         if preset is None:
             return True
         try:
-            self._start(preset)
+            self._start(preset, wait=wait)
         except Exception:
             log.exception("could not resume preset %s", preset.n)
             if not quiet:

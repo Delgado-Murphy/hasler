@@ -12,13 +12,17 @@ stops. Not approved within an hour: it ends too.
 
     GET  /api/help        {available, state, status_text, network, login_url, started_at, expires_at,
                            approve_by, address, dns_name, tailnet, hostname,
-                           ssh, page, last, error}
+                           peers_active, ssh, page, last, error}
     POST /api/help/start  {"confirm": token}   (POST /api/confirm/request
                                                 {"action": "help"} first)
     POST /api/help/stop   {}                   (no press: stopping is always safe)
 
 ``state``: off | starting | waiting (the login URL is ready, no maker has
-approved yet) | connected | ending. ``last`` is how the previous session
+approved yet) | connected | ending. ``connected`` only means the radio is on
+the makers' tailnet; ``peers_active`` ([{name, user}], from the helper:
+tailnet devices with a live session to the radio in the last ~2 min) says
+whether a maker is actually on it now, and ``status_text`` says so: "A maker
+is connected now (wmurphy@github)." or "Connected - waiting for a maker.". ``last`` is how the previous session
 ended ({"at", "why": stopped|expired|unapproved|wrong-tailnet|failed}) until
 the next start or a reboot. Times are epoch seconds.
 
@@ -66,7 +70,7 @@ STATUS_TEXT = {
     "off": "Off.",
     "starting": "Starting…",
     "waiting": "Waiting for a maker to approve the link.",
-    "connected": f"Connected to {NETWORK}.",
+    "connected": "Connected - waiting for a maker.",
     "ending": "Ending…",
 }
 WHY_TEXT = {
@@ -103,6 +107,28 @@ def default_runner(args: list[str], timeout: float) -> tuple[int, str]:
     return p.returncode, p.stdout
 
 
+def peers_from(raw: Any) -> list[dict]:
+    """The helper's ``peers_active``, checked: [{name, user}] (user may be None)."""
+    out = []
+    for p in raw if isinstance(raw, list) else []:
+        if not isinstance(p, dict) or not p.get("name"):
+            continue
+        user = p.get("user")
+        out.append({"name": str(p["name"])[:80], "user": str(user)[:120] if user else None})
+    return out
+
+
+def makers_text(peers: list[dict]) -> str:
+    """"A maker is connected now (wmurphy@github)." - who, by login, else device."""
+    who = []
+    for p in peers:
+        label = p.get("user") or p.get("name")
+        if label and label not in who:
+            who.append(label)
+    lead = "A maker is" if len(who) <= 1 else f"{len(who)} makers are"
+    return f"{lead} connected now ({', '.join(who)})." if who else "A maker is connected now."
+
+
 class HelpApi:
     """The routes above, for ``WebApp.extra_routes``."""
 
@@ -123,6 +149,7 @@ class HelpApi:
         self._busy: str | None = None       # "starting" | "ending" while the helper works
         self._cache: tuple[float, dict] | None = None
         self._error: str | None = None
+        self._makers: tuple = ()             # who was on at the last look (for the journal)
 
     # -- routing ------------------------------------------------------------
 
@@ -185,7 +212,13 @@ class HelpApi:
             return self._shape(None, available=True, error=str(exc))
         if busy is None:
             st = self._enforce(st)
-        return self._shape(st, available=bool(st.get("installed")), busy=busy)
+        doc = self._shape(st, available=bool(st.get("installed")), busy=busy)
+        makers = tuple(p["user"] or p["name"] for p in doc["peers_active"])
+        if makers != self._makers:
+            # "did a maker actually get on?" answered by the journal (no URL here)
+            log.info("remote help: %s", doc["status_text"] if makers else "no maker connected now")
+            self._makers = makers
+        return doc
 
     def _enforce(self, st: dict) -> dict:
         """Belt and braces next to the helper's timers: past the end, a dead
@@ -234,10 +267,12 @@ class HelpApi:
             last = {"at": last.get("at"), "why": last.get("why"),
                     "text": WHY_TEXT.get(str(last.get("why")), "")}
         on = state in ("starting", "waiting", "connected")
+        peers = peers_from(st.get("peers_active")) if state == "connected" else []
         return {
             "available": bool(available),
             "state": state,
-            "status_text": STATUS_TEXT[state],
+            "status_text": makers_text(peers) if peers else STATUS_TEXT[state],
+            "peers_active": peers,
             "network": NETWORK,
             # the one-time join link: only while it is waiting for a maker
             "login_url": st.get("auth_url") if state == "waiting" else None,

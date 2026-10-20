@@ -29,7 +29,7 @@ from typing import Iterator
 
 from . import integrate as integ
 from . import stage as stage_mod
-from .check import installed
+from .check import asks_first, installed
 from .health import BOOT_APPEAR_S, HealthChecker, idle_now
 from .layout import KEEP_RELEASES, Layout, box_settings, read_box_yaml
 from .state import PROBATION_S, ApplyState, fsync_dir, iso, parse_iso, read_json, write_atomic
@@ -473,7 +473,7 @@ class Applier:
         if auto:
             if box["update_mode"] != "auto":
                 raise Deferred(f"update_mode is {box['update_mode']}: waiting to be asked")
-            if release.get("kind") == "major" or release.get("requires_migration"):
+            if asks_first(release, installed(self.layout).get("version")):
                 raise Deferred("major or migration release: waiting to be asked")
         if not now_ and not force:
             h = self.hooks.local_hour()

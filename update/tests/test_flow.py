@@ -244,6 +244,26 @@ def test_major_release_always_asks(installed_v1: World):
         w.applier().apply(auto=True)
 
 
+def test_a_higher_major_version_asks_whatever_its_kind(installed_v1: World):
+    # 2.0.1 is a "patch" (measured from 2.0.0), but this radio never said yes
+    # to 2.0.0: it still runs 1.0.0, so 2.0.1 waits to be asked too.
+    w = installed_v1
+    w.publish("2.0.1", 2, release_patch={"kind": "patch"})
+    st = w.checker().stage()
+    assert st["available"]["ask"] is True and st["available"]["kind"] == "major"
+    with pytest.raises(Deferred, match="major"):
+        w.applier().apply(auto=True)
+    assert w.applier(hour=14).apply(now_=True) == "2.0.1 committed"   # Install now still works
+
+
+def test_same_major_patch_installs_by_itself(installed_v1: World):
+    w = installed_v1
+    w.publish("1.0.1", 2, release_patch={"kind": "patch"})
+    st = w.checker().stage()
+    assert st["available"]["ask"] is False and st["available"]["kind"] == "patch"
+    assert w.applier().apply(auto=True) == "1.0.1 committed"
+
+
 def test_selftest_failure_changes_nothing(installed_v1: World):
     w = installed_v1
     w.publish("1.1.0", 2)
