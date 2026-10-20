@@ -212,7 +212,7 @@ Below the update choice is **Update channel**. There are two:
 
 | Channel | Who it is for |
 |---|---|
-| **Stable (recommended)** | Every radio. Each version is tried on the makers' test radio first. |
+| **Stable · recommended** | Every radio. Each version is tried on the makers' test radio first. |
 | **Bench** | The makers' test radio. It gets test versions before anyone else, and they may break. |
 
 Leave your radio on **Stable**. To switch, tap the other channel, then press a

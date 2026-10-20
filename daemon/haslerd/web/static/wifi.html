@@ -28,7 +28,10 @@ li+li{border-top:1px solid var(--line)}
 label{font:12px/16px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
 input{width:100%;padding:14px;border-radius:6px;border:1px solid var(--line);background:var(--ground);color:var(--cream);font:inherit}
 .row{display:flex;gap:8px;align-items:center}
-.show{background:none;border:0;color:var(--muted);font:14px system-ui;cursor:pointer;padding:8px;white-space:nowrap}
+.show{min-height:44px;min-width:44px;background:none;border:0;color:var(--muted);font:14px system-ui;cursor:pointer;padding:8px 10px;white-space:nowrap}
+.back{display:inline-flex;align-items:center;gap:6px;min-height:44px;margin:-8px 0 12px;color:#C9A15A;font:600 14px/1 system-ui,-apple-system,"Segoe UI",sans-serif;text-decoration:none}
+.back:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.go:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .go{padding:14px 18px;border:0;border-radius:6px;background:var(--amber);color:#1A1208;font-weight:800;font-size:16px;cursor:pointer}
 .go[disabled]{opacity:.5;cursor:default}
 .err{color:var(--red);font-size:14px;margin:0}
@@ -49,6 +52,7 @@ code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--cream)}
 </head>
 <body>
 <main>
+  <a class="back" id="back" href="/#settings" hidden>‹ Back to the key page</a>
   <p class="eyebrow">Wi-Fi setup</p>
   <h1>Hasler</h1>
   <p class="lede" id="lede">Choose the network the radio should use.</p>
@@ -111,6 +115,8 @@ async function pressToConfirm(ssid, go) {
 
 function render(data) {
   const app = $('#app'); app.textContent = '';
+  // On the home Wi-Fi there is a key page to go back to; in setup mode there isn't.
+  $('#back').hidden = !(data.current && !data.hotspot);
   if (data.current && data.hotspot) $('#lede').replaceChildren('It couldn’t find ', h('b', null, data.current), '. Choose the network the radio should use now.');
   else if (data.current) $('#lede').replaceChildren('The radio is on ', h('b', null, data.current), '. Choosing another network restarts it onto that one.');
   const list = h('ul');
@@ -123,11 +129,13 @@ function render(data) {
     list.append(li);
   }
   if (data.networks.length) app.append(list);
-  else app.append(h('p', {class: 'quiet'}, 'No networks in the radio’s last scan — type the name below.'));
+  else app.append(h('p', {class: 'quiet'}, data.unreachable ? 'Couldn’t ask the radio for networks. Check you’re on its Wi-Fi, then reload this page — or type the name below.' : 'No networks in the radio’s last scan — type the name below.'));
   // A hidden network, or one the scan missed.
-  const name = h('input', {id: 'other', autocapitalize: 'none', spellcheck: 'false', placeholder: 'Network name'});
+  const name = h('input', {id: 'other', autocapitalize: 'none', spellcheck: 'false', placeholder: 'Network name', enterkeyhint: 'next',
+    onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); nextBtn.click(); } }});
+  let nextBtn;
   const other = h('div', {class: 'other'}, h('label', {for: 'other'}, 'Other network'), h('div', {class: 'row'}, name,
-    h('button', {class: 'show', type: 'button', onclick: () => { const ssid = name.value.trim(); if (!ssid) return name.focus(); data.networks = [{ssid, signal: 0, security: 'auto'}].concat(data.networks.filter(n => n.ssid !== ssid)); open = ssid; render(data); }}, 'Next')));
+    nextBtn = h('button', {class: 'show', type: 'button', onclick: () => { const ssid = name.value.trim(); if (!ssid) return name.focus(); data.networks = [{ssid, signal: 0, security: 'auto'}].concat(data.networks.filter(n => n.ssid !== ssid)); open = ssid; render(data); }}, 'Next')));
   app.append(other);
 }
 
@@ -142,7 +150,7 @@ function done(ssid) {
       h('li', null, 'If the lamp breathes white again, the password didn’t work — join ', h('b', null, 'Hasler'), ' and try again.'))));
 }
 
-fetch('/api/wifi').then(r => r.json()).then(render).catch(() => render({networks: [], current: ''}));
+fetch('/api/wifi', {cache: 'no-store'}).then(r => r.json()).then(d => render(Object.assign({networks: []}, d))).catch(() => render({networks: [], current: '', unreachable: true}));
 </script>
 </body>
 </html>

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.5 - 2026-10-20
+
+- Key page: easier to read (contrast), bigger buttons, settings grouped
+  (Sound, Connections, Pilot lamp, Knobs, About this radio, Keys); Next is
+  greyed out where it can't skip; the offline view is dimmed; lighter polling.
+- Faster and steadier: the radio no longer runs a heavy moOde tool every
+  second, reads the keys and knobs with fewer transfers, and survives a
+  glitch on the cabinet cable instead of restarting.
+- Settings files are written safely (power cuts), clearer errors, and an
+  "off" update mode written by hand is understood.
+
 ## 0.3.4 - 2026-10-20
 
 - Two update channels: Bench and Stable; new radios update automatically for

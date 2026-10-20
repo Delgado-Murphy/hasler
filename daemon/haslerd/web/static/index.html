@@ -18,7 +18,7 @@
 :root{
   --ground:#17100B; --veneer:#24170F; --veneer2:#2A1B10; --sheet:#1F140D; --well:#150E09;
   --line:#3A2A1C; --line2:#5A4128; --cream:#EDE3CC; --brass:#C9A15A; --amber:#FFB238;
-  --red:#D9442B; --needle:#C23A22; --muted:#8C7656; --text2:#B9A584; --title:#FFE9C2; --ink:#2A1C10;
+  --red:#D9442B; --red-text:#EC5E42; --needle:#C23A22; --muted:#A08A68; --text2:#B9A584; --title:#FFE9C2; --ink:#2A1C10;
   --serif:"Fraunces",Georgia,"Times New Roman",serif;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -66,7 +66,7 @@ button{cursor:pointer}
 .pill{padding:0 14px 0 12px}
 .title-row{display:flex;align-items:center;gap:6px;min-height:44px}
 .title-row h1,.title-row h2.brand{margin:0}
-.btn-done{min-height:36px;padding:9px 16px;border:0;border-radius:18px;background:var(--amber);color:#1A1208;font:800 14px/18px var(--sans)}
+.btn-done{min-height:44px;padding:12px 18px;border:0;border-radius:22px;background:var(--amber);color:#1A1208;font:800 14px/18px var(--sans)}
 .btn-done:hover{filter:brightness(1.06)}
 
 /* ---------- dial (13d) ---------- */
@@ -75,7 +75,7 @@ button{cursor:pointer}
   background:radial-gradient(circle farthest-corner at 50% 35%,#FBF0D4 0%,#EFDAA8 62%,#D6BA7E 100%);transition:filter .6s ease}
 .glass.off{filter:brightness(.72) saturate(.55)}
 .glass.offline{filter:brightness(.6) saturate(.3)}
-.dial-head{display:flex;justify-content:space-between;gap:10px;color:#7A5E38;font:9.5px/13px var(--mono);letter-spacing:.18em;text-transform:uppercase}
+.dial-head{display:flex;justify-content:space-between;gap:10px;color:#6E5330;font:9.5px/13px var(--mono);letter-spacing:.18em;text-transform:uppercase}
 .dial-head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dial-head span:last-child{flex:none}
 .dial-name{margin:0;color:#1E1308;font:600 34px/38px var(--serif);letter-spacing:-.01em;overflow-wrap:break-word;
@@ -88,7 +88,7 @@ button{cursor:pointer}
 .cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .song-txt{display:flex;flex-direction:column;gap:1px;min-width:0}
 .song-title{color:#2E1F10;font:600 14px/18px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.song-sub{color:#7A5E38;font:12px/16px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.song-sub{color:#6E5330;font:12px/16px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scale{position:relative;height:50px;overflow:hidden;
   -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 16%,#000 84%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0,#000 16%,#000 84%,transparent 100%)}
 .strip{position:absolute;top:0;left:0;height:50px;will-change:transform;transition:transform .42s cubic-bezier(.3,.7,.3,1);
@@ -132,6 +132,8 @@ button{cursor:pointer}
   background:radial-gradient(circle farthest-corner at 50% 35%,#2E2117 0%,#1F150E 100%);color:var(--brass);transition:box-shadow .2s,border-color .2s}
 .ctl-btn:hover{border-color:#7A5A36}
 .ctl-btn:active{transform:translateY(1px)}
+.ctl-btn:disabled{opacity:.38;cursor:default;transform:none}
+.ctl-btn:disabled + .ctl-lbl{opacity:.5}
 .ctl-btn[aria-pressed="true"]{border-color:var(--amber);box-shadow:0 0 14px rgba(255,178,56,.35)}
 .ctl-lbl{color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
 .knob{display:block;touch-action:none;cursor:grab;border-radius:50%}
@@ -144,7 +146,8 @@ button{cursor:pointer}
 .tone-mid{position:absolute;left:50%;top:-3px;width:1px;height:10px;background:#5A4128}
 .tone-dot{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#F0D59A,#9A7638);box-shadow:0 0 6px rgba(255,178,56,.35);transition:left .25s}
 .tone-db{min-width:5.5em;text-align:right;color:var(--brass);font-variant-numeric:tabular-nums}
-.tone-off{color:#D9442B}
+.tone-off{color:var(--red-text)}
+.remote.offline .controls,.remote.offline .tone,.remote.offline .bank{opacity:.55;filter:saturate(.5);transition:opacity .3s}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
 .hint-line{margin:0;color:var(--muted);font:12px/16px var(--sans);text-align:center}
 
@@ -172,9 +175,11 @@ button{cursor:pointer}
   .sheet{margin:0;border:1px solid var(--line2);border-radius:22px;min-height:0;padding-bottom:0}
 }
 .seg{display:flex;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--well)}
-.seg button{flex:1 1 0;min-width:0;min-height:38px;padding:8px 4px;border:0;border-radius:7px;background:none;color:var(--muted);font:700 13px/16px var(--sans)}
+.seg button{flex:1 1 0;min-width:0;min-height:44px;padding:8px 4px;border:0;border-radius:7px;background:none;color:var(--muted);font:700 13px/16px var(--sans)}
 .seg button[aria-checked="true"]{background:var(--cream);color:#1E140C;font-weight:800}
 .seg button:hover:not([aria-checked="true"]){color:var(--cream)}
+.seg button small{display:block;font-weight:500;font-size:11px;line-height:14px;opacity:.8}
+.seg button:disabled{cursor:default}
 .choice{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid rgba(255,178,56,.33);border-radius:12px;background:var(--well);min-width:0}
 .choice.unset{border-style:dashed;border-color:var(--line2)}
 .thumb{position:relative;flex:none;width:46px;height:46px;border-radius:6px;overflow:hidden;background:linear-gradient(135deg,#3E4A57,#AEB8C2)}
@@ -189,7 +194,7 @@ button{cursor:pointer}
 .link{background:none;border:0;padding:10px 2px;min-height:44px;color:var(--brass);font:600 13px/16px var(--sans);text-decoration:underline 1px;text-underline-offset:3px;flex:none}
 .link:hover{color:#E0BC78}
 .link.quiet{color:var(--muted);font-weight:500}
-.link.danger{color:var(--red)}
+.link.danger{color:var(--red-text)}
 .searchbox{position:relative}
 .searchbox svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none}
 .searchbox input[type]{padding-left:40px}
@@ -197,11 +202,12 @@ input[type=text],input[type=search],input[type=url],input[type=password],input[t
   background:var(--well);color:var(--cream);font:15px/20px var(--sans);-webkit-appearance:none;appearance:none}
 input::-webkit-search-cancel-button{-webkit-appearance:none}
 input:focus-visible,textarea:focus-visible{outline:2px solid var(--amber);outline-offset:1px;border-color:transparent}
-input::placeholder,textarea::placeholder{color:#6E5C45}
+input::placeholder,textarea::placeholder{color:#857256}
 textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 [aria-invalid="true"]{border-color:var(--red) !important}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{min-height:34px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--muted);font:700 13px/1 var(--sans)}
+.chip{position:relative;min-height:36px;padding:4px 14px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--muted);font:700 13px/1 var(--sans)}
+.chip::after{content:"";position:absolute;inset:-4px 0}
 .chip[aria-checked="true"]{background:var(--cream);border-color:var(--cream);color:#1E140C}
 .chip:hover:not([aria-checked="true"]){border-color:var(--line2);color:var(--cream)}
 .results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
@@ -315,6 +321,10 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .pair{display:flex;gap:10px;min-width:0}
 .pair > .field{flex:1 1 0;min-width:0}
 .acts{display:flex;flex-wrap:wrap;gap:10px}
+.grp-sec{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.grp-sec + .grp-sec{margin-top:20px}
+.grp-lbl{padding:0 4px}
+input[type=range]:disabled{opacity:.4;cursor:default}
 .note-warn{margin:2px 0 0;color:#E9B35C;font:12.5px/16px var(--sans)}
 .sw-notes{margin:0;padding:10px 12px;border-left:2px solid var(--line2);color:var(--text2);font:13px/18px var(--sans);white-space:pre-line;overflow-wrap:anywhere}
 .sw-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
@@ -327,7 +337,7 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .cf-count{color:var(--amber);font:600 22px/1 var(--mono);font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:no-preference){ .cf-ring{animation:cf-breathe 2.4s ease-in-out infinite} }
 @keyframes cf-breathe{50%{box-shadow:0 0 18px rgba(255,178,56,.28)}}
-.li-danger{width:100%;text-align:left;border:0;background:none;padding:0;min-height:44px;color:var(--red);font:600 15px/20px var(--sans)}
+.li-danger{width:100%;text-align:left;border:0;background:none;padding:0;min-height:44px;color:var(--red-text);font:600 15px/20px var(--sans)}
 input[type=range]{width:100%;height:44px;margin:0;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}
 input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--amber) var(--pct,50%),var(--line) var(--pct,50%))}
 input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--amber) var(--pct,50%),var(--line) var(--pct,50%))}
@@ -337,7 +347,7 @@ input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;bor
 .steps li{margin:0 0 6px}
 .steps b{color:var(--cream);font-weight:600}
 .steps li::marker{font-family:var(--mono);color:var(--muted)}
-details.how summary{cursor:pointer;color:var(--brass);font:600 13px/20px var(--sans);min-height:32px;display:flex;align-items:center;list-style:none}
+details.how summary{cursor:pointer;color:var(--brass);font:600 13px/20px var(--sans);min-height:44px;display:flex;align-items:center;list-style:none}
 details.how summary::-webkit-details-marker{display:none}
 details.how summary::before{content:"›";display:inline-block;width:14px;transition:transform .15s}
 details.how[open] summary::before{transform:rotate(90deg)}
@@ -347,7 +357,7 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .ent-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .ent-name{color:var(--cream);font:600 14px/18px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ent-sub{color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.06em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ent .btn.small{min-height:36px;padding:7px 12px;font-size:13px}
+.ent .btn.small{min-height:44px;padding:8px 12px;font-size:13px}
 .area-h{padding:14px 16px 6px;color:var(--brass);font:600 15px/20px var(--serif);border-top:1px solid var(--line)}
 .list .area-h:first-child{border-top:0}
 .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#5FBF7A;box-shadow:0 0 6px rgba(95,191,122,.7);margin-right:8px;vertical-align:1px}
@@ -396,7 +406,7 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .wz-pts .n{flex:1;min-width:0;color:var(--text2)}
 .wz-pts .r{color:var(--brass);font:12px/16px var(--mono);font-variant-numeric:tabular-nums}
 .wz-pts li.redo .n,.wz-pts li.redo .r{color:#F07A62}
-.wz-pts .link{min-height:40px;padding:8px 8px}
+.wz-pts .link{min-height:44px;padding:8px 10px}
 .wz-try{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .wz-try b{color:var(--amber);font:600 34px/38px var(--mono);font-variant-numeric:tabular-nums}
 
@@ -919,7 +929,7 @@ function renderDial(){
     head = (k ? keyLabel(k) : 'Playing') + ' · ' + (SRC_HEAD[pl.source] || pl.source || '');
     name = pl.name || 'Playing';
     const t = status.track;
-    if (pl.source === 'radio') setSong(t && t.title ? t.title : pl.name, t && t.artist ? t.artist : 'Live', t && t.thumb, 'radio');
+    if (pl.source === 'radio') setSong(t && t.title ? t.title : '', t && t.title ? (t.artist || 'Live radio') : 'Live radio', t && t.thumb, 'radio');
     else setSong(t && t.title ? t.title : '', t ? t.artist || t.album || '' : (pl.source === 'spotify' ? 'Spotify' : ''), t && t.thumb, 'note');
     live = 'Now playing ' + name;
   } else if (RENDERERS.includes(status.source) || (status.source === 'spotify')){
@@ -1032,9 +1042,15 @@ function renderRemote(){
   if (!$('bank').children.length || $('bank').children.length !== remoteKeys().length) buildBank();
   paintBank(); renderDial(); syncKnob();
   const sb = !!(status && status.standby);
+  $('remote').classList.toggle('offline', !online);   // last-known knob and keys, dimmed
   $('standbyBtn').setAttribute('aria-pressed', String(sb));
   $('standbyBtn').setAttribute('aria-label', sb ? 'Wake the radio' : 'Standby');
   $('standbyLbl').textContent = sb ? 'Wake' : 'Standby';
+  // A live radio station has no next song: grey Next out rather than let it do nothing.
+  const pl = status && status.playing;
+  const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
+  $('nextBtn').disabled = !canNext;
+  $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
   paintTone();
 }
 function paintTone(){
@@ -1071,7 +1087,7 @@ function onRoute(){
     ed.pick = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null; ed.ent = null; ed.rename = false;
   }
   renderPanel();
-  if (view === 'remote'){ stripSig = ''; renderRemote(); }
+  if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); }
   if (changed && (view === 'ha' || view === 'settings')) refreshHa();
   if (changed && view === 'settings'){ loadSettings().then(() => { if (view === 'settings') rerender(); }); loadKnobs(); loadSoftware(); }
   if (changed && view === 'edit' && cfg && !isDirty()) refreshConfig();
@@ -1082,6 +1098,15 @@ function onRoute(){
   }
 }
 window.addEventListener('hashchange', onRoute);
+// Arrow keys move between the choices of any segmented control (Enter/Space picks).
+document.addEventListener('keydown', e => {
+  const d = {ArrowRight:1, ArrowDown:1, ArrowLeft:-1, ArrowUp:-1}[e.key];
+  const b = e.target.closest && e.target.closest('[role=radiogroup] > button');
+  if (!d || !b || e.defaultPrevented) return;
+  const all = [...b.parentElement.children].filter(x => x.tagName === 'BUTTON' && !x.disabled);
+  const i = all.indexOf(b); if (i < 0) return;
+  e.preventDefault(); all[(i + d + all.length) % all.length].focus();
+});
 wide.addEventListener('change', () => renderPanel());
 $('goBrowse').addEventListener('click', () => go('browse'));
 $('goEdit').addEventListener('click', () => go('edit'));
@@ -1842,7 +1867,6 @@ let limitTimer = null;
 function renderSettings(){
   const panel = $('panel'); panel.textContent = '';
   panel.append(screenTop('Settings'));
-  panel.append(accountCard());
   const haSub = !haState ? 'Checking…' : haState.connected ? 'Connected' + (haState.location ? ' to ' + haState.location : '') + (haState.version ? ' · HA ' + haState.version : '')
     : haState.configured ? 'Can’t reach it right now' : 'Run a scene or toggle a light from a key';
   const miss = ((haState && haState.missing) || []).length;
@@ -1850,20 +1874,16 @@ function renderSettings(){
   const lim = settings && settings.volume_limit != null ? +settings.volume_limit : (status && status.volume_limit != null ? +status.volume_limit : null);
   const mono = settings && settings.mono;
   const moode = (settings && settings.moode_url) || (location.protocol + '//' + location.hostname + '/');
-  const range = h('input', {type:'range', id:'limit', min:'30', max:'100', step:'1', value: String(lim ?? 90), 'aria-describedby':'limitHint',
+  const range = h('input', {type:'range', id:'limit', min:'30', max:'100', step:'1', value: String(lim ?? 90), 'aria-describedby':'limitHint', disabled: lim == null,
     style:'--pct:' + (((lim ?? 90) - 30) / 70 * 100) + '%',
     oninput: e => {
       const v = +e.target.value; e.target.style.setProperty('--pct', ((v - 30) / 70 * 100) + '%');
       $('limitVal').textContent = v; $('limitWarn').hidden = v < 95;
       clearTimeout(limitTimer); limitTimer = setTimeout(() => saveLimit(v), 350);
     }});
-  panel.append(h('div', {class:'list'},
-    h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Home Assistant'),
-        h('span', {class:'li-sub'}, haSub, miss ? h('span', {style:'color:#F07A62'}, ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention') : null)),
-      h('button', {type:'button', class:'li-act', onclick: () => go('ha')}, haState && haState.connected ? 'Open' : 'Set up', IC.chev())),
-    h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Wi-Fi'),
-        h('span', {class:'li-sub'}, ssid == null ? 'Checking…' : settings.wifi.hotspot ? 'Hotspot mode — not on your network' : ssid ? 'On ' + ssid : 'Not connected')),
-      h('a', {class:'li-act', href:'/wifi', target:'_blank', rel:'noopener'}, 'Change')),
+  // Grouped the way a family thinks of it: sound, connections, the lamp, the knobs, the software.
+  const group = (label, ...kids) => h('section', {class:'grp-sec', 'aria-label':label}, h('span', {class:'mono grp-lbl'}, label), ...kids);
+  panel.append(group('Sound', h('div', {class:'list'},
     h('div', {class:'li col'},
       h('div', {style:'display:flex;justify-content:space-between;align-items:center;gap:12px'},
         h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'limit'}, 'Volume ceiling'), h('span', {class:'li-sub', id:'limitHint'}, 'Protects the 1964 speaker — the knob stops here')),
@@ -1874,13 +1894,22 @@ function renderSettings(){
       h('label', {class:'switch', for:'mono', style:'flex:1'},
         h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Mono'),
           h('span', {class:'li-sub'}, 'One speaker: left and right mixed together, so nothing is lost')),
-        h('input', {type:'checkbox', role:'switch', id:'mono', checked: !!mono.on, onchange: e => saveMono(e.target)}))) : null,
-    h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'moOde player'), h('span', {class:'li-sub'}, 'Library, queue, Bluetooth, AirPlay')),
-      h('a', {class:'li-act', href:moode, target:'_blank', rel:'noopener'}, 'Open', IC.ext())),
-    h('div', {class:'li', style:'min-height:56px'}, h('button', {type:'button', class:'li-danger', onclick: resetDefaults}, 'Reset keys to defaults'))));
+        h('input', {type:'checkbox', role:'switch', id:'mono', checked: !!mono.on, onchange: e => saveMono(e.target)}))) : null)));
+  panel.append(group('Connections', h('div', {class:'list'},
+    h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Wi-Fi'),
+        h('span', {class:'li-sub'}, ssid == null ? 'Checking…' : settings.wifi.hotspot ? 'Setup mode — not on your home Wi-Fi' : ssid ? 'On ' + ssid : 'Not connected')),
+      h('a', {class:'li-act', href:'/wifi'}, 'Change', IC.chev())),
+    h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Home Assistant'),
+        h('span', {class:'li-sub'}, haSub, miss ? h('span', {style:'color:#F07A62'}, ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention') : null)),
+      h('button', {type:'button', class:'li-act', onclick: () => go('ha')}, haState && haState.connected ? 'Open' : 'Set up', IC.chev())),
+    h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'moOde player'), h('span', {class:'li-sub'}, 'For advanced use: library, queue, Bluetooth, AirPlay')),
+      h('a', {class:'li-act', href:moode, target:'_blank', rel:'noopener'}, 'Open', IC.ext()))),
+    accountCard()));
   if (settings && settings.location) panel.append(lampSettings());
   const kn = knobSettings(); if (kn) panel.append(kn);
   panel.append(softwareSettings());
+  panel.append(group('Keys', h('div', {class:'list'},
+    h('div', {class:'li', style:'min-height:56px'}, h('button', {type:'button', class:'li-danger', onclick: resetDefaults}, 'Reset keys to defaults')))));
   panel.append(h('div', {class:'about'},
     h('p', null, 'Hasler HM · Bern 1964 · restored 2026' + (settings && settings.version ? ' · ' + settings.version : '')),
     h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
@@ -1893,7 +1922,7 @@ const CITIES = [
   ['Paris', 48.8566, 2.3522], ['London', 51.5072, -0.1276], ['Amsterdam', 52.3676, 4.9041], ['Berlin', 52.52, 13.405],
   ['Rome', 41.9028, 12.4964], ['New York', 40.7128, -74.006],
 ];
-const lampUi = {dirty:false, name:'', lat:'', lon:'', from:'22:00', to:'07:00', err:'', busy:false};
+const lampUi = {coords:false, dirty:false, name:'', lat:'', lon:'', from:'22:00', to:'07:00', err:'', busy:false};
 function tonightText(t){
   if (!t) return '';
   if (t.mode === 'off') return 'Never dims for the night';
@@ -1936,15 +1965,16 @@ function lampSettings(){
     h('div', {class:'field'}, h('label', {for:'lampName'}, 'City'),
       h('input', {type:'text', id:'lampName', list:'lampCities', autocomplete:'off', placeholder:'Madrid', value: lampUi.name, oninput: edit('name')}),
       h('datalist', {id:'lampCities'}, CITIES.map(c => h('option', {value:c[0]})))),
-    h('div', {class:'pair'},
+    h('details', {class:'how', open: lampUi.err || lampUi.coords ? true : null, ontoggle: e => { lampUi.coords = e.target.open; }}, h('summary', null, 'Exact position (latitude, longitude)'),
+    h('div', {class:'pair', style:'margin-top:4px'},
       h('div', {class:'field'}, h('label', {for:'lampLat'}, 'Latitude'), h('input', {type:'number', id:'lampLat', inputmode:'decimal', step:'any', min:'-90', max:'90', value: lampUi.lat, oninput: edit('lat')})),
-      h('div', {class:'field'}, h('label', {for:'lampLon'}, 'Longitude'), h('input', {type:'number', id:'lampLon', inputmode:'decimal', step:'any', min:'-180', max:'180', value: lampUi.lon, oninput: edit('lon')}))),
+      h('div', {class:'field'}, h('label', {for:'lampLon'}, 'Longitude'), h('input', {type:'number', id:'lampLon', inputmode:'decimal', step:'any', min:'-180', max:'180', value: lampUi.lon, oninput: edit('lon')})))),
     lampUi.err ? h('p', {class:'err', role:'alert'}, lampUi.err) : null,
     h('div', {class:'acts'},
       navigator.geolocation ? h('button', {type:'button', class:'btn small', disabled: lampUi.busy, onclick: useHere}, 'Use this phone’s location') : null,
       h('button', {type:'button', class:'btn small primary', id:'lampSave', disabled: lampUi.busy || !lampUi.dirty, onclick: saveLocation}, 'Save place')));
-  return h('section', {style:'display:flex;flex-direction:column;gap:8px;margin-top:20px', 'aria-label':'Pilot lamp'},
-    h('span', {class:'mono', style:'padding:0 4px'}, 'Pilot lamp'),
+  return h('section', {class:'grp-sec', 'aria-label':'Pilot lamp'},
+    h('span', {class:'mono grp-lbl'}, 'Pilot lamp'),
     h('div', {class:'list'}, box, place));
 }
 function useHere(){
@@ -2051,7 +2081,7 @@ function pressToConfirm(action, args, title, sub){
 
 /* ---------- about this radio: version, updates, going back (web/software.py) ---------- */
 // software: null = loading, {missing} = updates not installed, {err}, or GET /api/software.
-let software = null, swBusy = false;
+let software = null, swBusy = false, swTimer = null;
 async function loadSoftware(){
   try {
     const r = await api('GET', '/api/software');
@@ -2059,6 +2089,9 @@ async function loadSoftware(){
       : {err:(r.json && r.json.error) || 'Couldn’t read the update status.'};
   } catch (_) { software = {err:'Couldn’t reach the radio.'}; }
   if (view === 'settings') rerender();
+  // While an update installs, keep the row honest without a reload.
+  clearTimeout(swTimer); swTimer = null;
+  if (software && software.busy && view === 'settings' && !document.hidden) swTimer = setTimeout(loadSoftware, 10000);
 }
 const MODE_TEXT = {auto:'Small updates install by themselves at night, in standby. Bigger ones ask first.',
   ask:'The radio tells you here when there is an update, and waits for you.', off:'No updates. Fixes won’t reach this radio.'};
@@ -2122,7 +2155,7 @@ function swMode(mode){
 // channel that is behind leaves the radio where it is until it catches up.
 // Two channels only: Stable (everyone) and Bench (the makers' test radio).
 // [id, name, picker label]
-const CHANNELS = [['stable','Stable','Stable (recommended)'], ['bench','Bench','Bench (may break)']];
+const CHANNELS = [['stable','Stable','recommended'], ['bench','Bench','may break']];
 const CHANNEL_TEXT = {stable:'Recommended. Each version is tested on the makers’ radio first.',
   bench:'The makers’ test radio. Test versions — they may break.'};
 const chName = c => (CHANNELS.find(x => x[0] === c) || [c, c])[1];
@@ -2144,8 +2177,8 @@ function swChannel(ch){
   });
 }
 function softwareSettings(){
-  const wrap = (...kids) => h('section', {style:'display:flex;flex-direction:column;gap:8px;margin-top:20px', 'aria-label':'About this radio'},
-    h('span', {class:'mono', style:'padding:0 4px'}, 'About this radio'), ...kids);
+  const wrap = (...kids) => h('section', {class:'grp-sec', 'aria-label':'About this radio'},
+    h('span', {class:'mono grp-lbl'}, 'About this radio'), ...kids);
   const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
   if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Software'), h('span', {class:'li-sub'}, 'Checking…')))));
@@ -2191,10 +2224,10 @@ function softwareSettings(){
   rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Updates'),
     h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
   const cseg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Update channel'});
-  CHANNELS.forEach(([k, , l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
+  CHANNELS.forEach(([k, name, l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
     onclick: () => { if (k !== s.channel) swChannel(k); },
     onkeydown: e => { const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
-      if (d){ e.preventDefault(); const b = cseg.children[(i + d + CHANNELS.length) % CHANNELS.length]; b.focus(); } }}, l)));
+      if (d){ e.preventDefault(); const b = cseg.children[(i + d + CHANNELS.length) % CHANNELS.length]; b.focus(); } }}, name, h('small', null, l))));
   const sw = swSwitched && swSwitched.channel === s.channel ? swSwitched : null;
   rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Update channel'),
       h('span', {class:'li-sub'}, CHANNEL_TEXT[s.channel] || '')), cseg,
@@ -2349,8 +2382,8 @@ function dialSvg(k, steps, i){
 /* settings section: one card per knob */
 function knobSettings(){
   if (!knobs) return null;
-  const wrap = (...kids) => h('section', {style:'display:flex;flex-direction:column;gap:8px;margin-top:20px', 'aria-label':'Knobs'},
-    h('span', {class:'mono', style:'padding:0 4px'}, 'Knobs'), ...kids);
+  const wrap = (...kids) => h('section', {class:'grp-sec', 'aria-label':'Knobs'},
+    h('span', {class:'mono grp-lbl'}, 'Knobs'), ...kids);
   if (knobs.missing) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Knob calibration'), h('span', {class:'li-sub'}, KNOB_OLD)))));
   if (knobs.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
@@ -2877,10 +2910,13 @@ async function poll(){
   polling = false;
   renderRemote();
 }
+// Every second while the front is on screen; slower behind Settings/Edit on a
+// phone (the front isn't visible) and while the radio can't be reached.
+const remoteShown = () => view === 'remote' || wide.matches;
 function schedule(){
   clearTimeout(pollTimer); pollTimer = null;
   if (document.hidden) return;
-  pollTimer = setTimeout(async () => { await poll(); schedule(); }, 1000);
+  pollTimer = setTimeout(async () => { await poll(); schedule(); }, !online ? 3000 : remoteShown() ? 1000 : 4000);
 }
 function pollSoon(){ clearTimeout(pollTimer); pollTimer = setTimeout(async () => { await poll(); schedule(); }, 250); }
 document.addEventListener('visibilitychange', () => { if (document.hidden){ clearTimeout(pollTimer); pollTimer = null; } else { poll().then(schedule); } });
