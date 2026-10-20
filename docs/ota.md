@@ -1,74 +1,108 @@
-# Over-the-air releases
+# Over-the-air updates
 
-**What this is, in plain words.** A Hasler in someone's home gets new versions
-of our software by itself, over the internet. Each new version (a **release**)
-is signed by us, so the radio can tell it is genuine. The radio installs it only
-while it sleeps, checks itself afterwards, and goes back to the previous version
-on its own if anything is wrong. The owner's keys, settings and knob calibration
-are never touched.
+**In plain words.** A Hasler gets new versions of its software by itself, over
+the internet. Each new version (a **release**) is signed by us, so the radio can
+tell it is genuine. The radio installs it only while it rests, checks itself
+afterwards, and goes back to the version it had if anything is wrong. Your keys,
+settings and knob calibration are never touched.
 
-Owners do not need this page: the short version is in
-[Using your Hasler](using.md#updates). This page is for contributors and
-maintainers. The exact file formats are in [ota-format.md](ota-format.md); the
-steps to publish a release are in [release.md](release.md).
+The first half of this page is for anyone curious about how that works. The
+second half ("For makers") has the detail. The exact file formats are in
+[ota-format.md](ota-format.md); how we publish a release is in
+[release.md](release.md). The short owner's version is in
+[Using your Hasler](using.md#updates).
 
-**Status (October 2026):** the first version shipped in release **0.3.1**. What
-is built and what is still planned:
+## What you'll notice
+
+- **Nothing, most of the time.** The radio looks for an update once a day, at
+  a random time, and downloads it quietly in the background.
+- **Small updates install at night.** With updates set to *Automatic* (the
+  setting for new radios), a small update (fixes, or a new feature) installs
+  between 02:00 and 05:00, and only if the radio is in standby and nothing has
+  played for 10 minutes. It never interrupts music.
+- **Big updates ask first.** A major release, or one that changes how your
+  settings are stored, always waits for you. The key page shows it under
+  Settings → This radio → Updates; you pick "tonight" or "now" and press any
+  key on the radio to say yes. "Now" still waits until the radio is in standby
+  and has been quiet for 10 minutes.
+- **The lamp breathes ember while it installs.** That means "busy". Leave it
+  plugged in if you can - but if the power does go, the radio still comes back
+  on a working version.
+- **If something is wrong, it goes back by itself.** After the switch the radio
+  checks that everything still works. If not, it returns to the version it had,
+  and the key page says why.
+- **You can go back by hand.** The Updates page lists the versions kept on the
+  radio (up to three) with "Go back to …". You confirm with a key press, and it
+  happens at once.
+- **You choose how updates come:** *Automatic*, *Ask* (it downloads, then waits
+  for you) or *Off* (it only looks).
+- **Your things stay yours.** Keys, settings, calibration, Wi-Fi, accounts and
+  the Home Assistant token live outside the software and are never replaced.
+  moOde and Debian themselves are not updated this way.
+
+## What is built, and what isn't yet
+
+As of 0.4.5 (October 2026):
 
 | Part | Status |
 |---|---|
-| Settings kept outside the release (`/etc/hasler`, calibration overlay, secrets) | built |
-| CI build, signing in GitHub, public `hasler-releases` channel | built |
-| Stage, switch, health check, automatic rollback, boot counter | built |
-| Key page: version, check, install tonight / now, put off, go back | built |
-| Update mode `auto` / `ask` / `off` (default for new radios: `auto`) | built |
-| The two channels `bench` and `stable`, halt a bad release | built |
-| Key page channel picker (Stable / Bench, confirmed on the radio) | built |
-| Rings of boxes inside a channel (staged rollout) | planned |
-| tryboot for `config.txt` changes | planned |
-| Opt-in daily check-in, remote help via Tailscale | planned |
-| Release key on a YubiKey; bundled Python | planned |
+| Signed releases, built and signed in GitHub, published at [delgado-murphy.github.io/hasler-releases](https://delgado-murphy.github.io/hasler-releases/) | built (since 0.3.1) |
+| Signing with no manual step (GitHub environments `sign` and `timestamp`) | built |
+| Download, verify, install next to the running version, health check, automatic rollback, boot counter, power-cut recovery | built |
+| Key page: version, check now, install tonight / now, go back, last result | built |
+| Update modes `auto` / `ask` / `off` (new radios: `auto`) | built |
+| Two channels, `bench` and `stable`; halting a bad release | built - every release so far has gone to `bench`; `stable` gets its index with the first promotion |
+| Channel picker on the key page (with Maker tools on) | built |
+| New kinds of system files in major releases, put in place by the release's own updater | built (radios on 0.4.2 or later) |
+| systemd drop-ins for other services (e.g. `bluetooth.service.d/hasler-speaker.conf`) | built (first shipped in 0.4.3) |
+| Lamp breathes ember while an update installs | built (0.4.3) |
+| Remote help: "Let the makers help (24 h)" | in progress |
+| Staged rollout (rings of radios inside a channel) | the format and the radio support it; our tools still open every ring at once |
+| `config.txt` changes through the Pi's tryboot | planned - today such a release is installed by hand (§4) |
+| Opt-in daily check-in | planned - the `box.yaml` key exists, nothing is sent |
+| A bundled Python in the release | planned - releases use Debian trixie's Python 3.13 |
+| Release key on a hardware key (YubiKey) | later |
 
-**Owner decisions (2026-10-20):** updates install automatically for patch/minor
-releases (at night, in standby) and ask - with a press on the radio - for major
-or migration releases; the daily fleet check-in is opt-in, asked at setup;
-remote help via Tailscale is opt-in and off by default; **the release signing
-key lives in GitHub for now** (see "Signing for v1" below), YubiKeys later.
-There are **only two channels**: `bench` (the makers' test radio) and `stable`
-(everyone); the planned `beta` channel was dropped. New radios default to
-`update_mode: auto`. A `box.yaml` that still says `channel: beta` is read as
-`stable` (the updater and the key page both do this; the key page logs it once).
+## How it works, in one paragraph
 
-## The shape in one paragraph
+When we tag a version, GitHub builds the release (code, Python wheels, pinned
+helper programs) on an arm64 runner in a Debian trixie container. A second
+workflow, in the public `hasler-releases` repository, checks that build,
+**signs** it and points a channel at it. Each radio fetches its channel's
+signed index once a day, verifies every signature and hash before it unpacks
+anything, and prepares the release next to the running one. Then - at night in
+standby, or when you say so - it switches a symlink, restarts and
+health-checks. Pass: it keeps the new version. Fail, hang, boot loop or power
+cut: it **goes back to the previous version, which is still on the radio**.
 
-CI builds a release tarball (code + a wheelhouse; a bundled Python later), a
-maintainer approves a separate workflow that **signs** its manifest (with a key
-held in GitHub for v1, a hardware key later), and it is published to a public
-releases repo. Each box checks daily, verifies the signature before
-touching anything, stages the release next to the running one, and - only
-while the radio is in standby - switches a symlink, restarts, and health-checks.
-Pass: it commits. Fail, hang, boot loop or power cut: it **rolls back to the
-previous release that is already on the box**. Owner settings, calibration,
-state and secrets live outside the release tree and are never overwritten.
-moOde and Debian are not updated by this mechanism.
+---
+
+# For makers
+
+The numbered sections are referred to from the code (`boxconfig.py`,
+`software.py`, `apply.py`, ...); keep the numbers.
 
 ## 1. What lives where (config separate from updates)
 
 | Path | What | Who writes it |
 |---|---|---|
-| `/opt/hasler/releases/<version>/` | code, assets, variants (as shipped), `venv/`, bundled `python/`, `bin/` (go-librespot, deno), `integration/` (units, udev, sudoers, helpers, config.txt block, moOde patchers), `migrations/`, `manifest.json` | the updater; root-owned, read-only |
-| `/opt/hasler/current` -> one release | atomic symlink swap; the previous release is kept | the updater |
-| `/etc/hasler/box.yaml` | `schema`, `variant`, channel, update mode, and **only overrides** of defaults (mixer, card, volume floor/limit, tone commands...) | owner / migration |
-| `/etc/hasler/variant.d/<variant>.yaml` | **calibration overlay** keyed by control id: pot curves, hysteresis, MCP address, lamp palette/balance | owner (today these live in the shipped descriptor - must move) |
-| `/etc/hasler/trust/` | release-signing public key + keyring | install only (root, 0444) |
-| `/var/lib/haslerd/` | web-written config (`keys.yaml`, `settings.json`, both with `schema`), state (`state.json`, caches) | haslerd |
+| `/opt/hasler/releases/<version>/` | code and shipped data (`app/`), `venv/`, `bin/` (go-librespot, deno), `integration/` (system files), `migrations/`, `release.json` | the updater; root-owned, read-only |
+| `/opt/hasler/current`, `/opt/hasler/previous` | symlinks to releases, swapped atomically | the updater |
+| `/opt/hasler/updater/` | the updater package that actually runs - replaced only when a release commits | the updater |
+| `/etc/hasler/box.yaml` | `schema`, `variant`, channel, update mode, and **only overrides** of defaults | owner / key page / migration |
+| `/etc/hasler/variant.d/<variant>.yaml` | **calibration overlay** keyed by control id: pot curves, hysteresis, MCP address, lamp palette/balance | the key page's calibration pages |
+| `/etc/hasler/trust/` | root public key(s) and the signed keyring | install only (root, 0444) |
+| `/var/lib/haslerd/` | web-written config (`keys.yaml`, `settings.json`), state, caches | haslerd |
 | `/var/lib/haslerd/secrets/` (0700) | HA token, YTM cookies, account files | haslerd; never in releases, logs or API responses |
-| moOde DB, Wi-Fi, Bluetooth, go-librespot credentials | untouched by updates; only backed up | moOde / owner |
+| `/var/lib/hasler-update/` | downloads, staged releases, `status.json` | the unprivileged `hasler-update` user |
+| `/var/lib/hasler-apply/` | `state.json`, backups of replaced system files, config snapshots | root |
+| moOde DB, Wi-Fi, Bluetooth pairings, go-librespot credentials | untouched by updates | moOde / owner |
 
 **Precedence** (later wins; dicts deep-merged, lists replaced, controls matched
 by `id`): code defaults < shipped variant < `variant.d` overlay < `box.yaml` <
-web settings < secrets. Every config file carries `schema: N`; a release ships
-idempotent `migrations/NNN_*.py`, run against a snapshot, before the switch.
+web settings < secrets. Config files carry `schema: N`. A release that changes
+a schema ships an idempotent migration (`daemon/haslerd/migrations/NNN_*.py`),
+which the updater runs on a copy of the config before the switch.
 
 ### The keys of box.yaml
 
@@ -80,26 +114,28 @@ reaches the radio.
 |---|---|
 | `schema` | Of this file (1). A release that changes it ships a migration. |
 | `variant` | Which cabinet: `config/variants/<variant>.yaml` in the release. |
-| `channel` | `stable` (everyone) or `bench` (the makers' test radio; may break). |
-| `update_mode` | `auto` (default: patch/minor at night in standby; major or migration still ask), `ask`, `off`. |
-| `box_id` | A random UUID, made once; names the box in rings and check-ins. |
-| `checkin` | `true`: one daily anonymous `{box_id, variant, version, channel, result, health}`. |
+| `channel` | `stable` (everyone; the default) or `bench` (the makers' test radio; may break). Anything else, the retired `beta` included, reads as `stable`. |
+| `update_mode` | `auto` (the default: patch/minor at night in standby; major or migration releases still ask), `ask`, `off`. An unknown word reads as `ask`. |
+| `box_id` | A random UUID, made once by migration 001. Places the radio in a ring (and names it in a future check-in). |
+| `checkin` | Reserved for the planned opt-in daily check-in. Nothing is sent today. |
 | `metered` | `true`: never download in the background (phone hotspot, capped plans). |
-| `update_url` | Bench only: a local channel (`ota-bootstrap.sh --update-url`). |
+| `update_url` | Bench only: a local channel (`ota-bootstrap.sh --update-url`). Without it: the public channel. |
 | `migrations` | Written by `python -m haslerd.migrations --apply`: the ids applied here. Don't edit. |
 
-Optional `haslerd` override blocks, the same as the old `config/haslerd.yaml`
-(the code has the defaults; add only what differs):
+The updater reads only flat `key: value` lines (it has no YAML parser). The
+optional haslerd override blocks are the same as in the old
+`config/haslerd.yaml` (the code has the defaults; add only what differs):
 
 - `moode:` `mpd_host`, `mpd_port`, `mixer` (the hardware mixer, `Digital`),
   `card` (`sndrpihifiberry`), `volume_limit` (mixer ceiling %; the key page's
-  saved one wins), `volume_floor`, `dsp_command` (`/usr/local/bin/hasler-dsp`, the knob effects;
-  `""` = off), `tone_commands` (only without `dsp_command`), `source_flags`,
-  `renderer_units`, the tool paths (`moodeutl`, `amixer`, `bluetoothctl`),
-  `spotify:` (`enabled`, `base_url` `http://127.0.0.1:3678`, `timeout`,
-  `status_timeout`) and `ytm:` (`enabled`, `port` 8099 - keep it fixed,
-  `ytdlp`, `cookies`, `catalog`).
-- `web:` `enabled`, `host`, `port` (8080), `hostnames`.
+  saved one wins), `volume_floor` (28), `dsp_command`
+  (`/usr/local/bin/hasler-dsp`, the knob effects; `""` = off), `tone_commands`
+  (only without `dsp_command`), `source_flags`, `renderer_units`, the tool
+  paths (`moodeutl`, `amixer`, `bluetoothctl`), `spotify:` (`enabled`,
+  `base_url` `http://127.0.0.1:3678`, `timeout`, `status_timeout`) and `ytm:`
+  (`enabled`, `port` 8099 - keep it fixed, `ytdlp`, `cookies`, `catalog`).
+- `web:` `enabled`, `host`, `port` (8080), `hostnames`, `allow_unconfirmed`
+  (bench only: no key press needed to confirm).
 - `connectivity:` `host`, `port`, `timeout_s`, `interval_s` (the probe behind
   the lamp's offline look).
 - `state_file`, `keys_file` (both default to `/var/lib/haslerd`).
@@ -129,184 +165,179 @@ io:
     min_duty: {red: 0.002, green: 0.0005, blue: 0.0005}
 ```
 
-## 2. Releases (pipeline)
+## 2. Releases
 
-- **GitHub org `delgado-murphy`:** `hasler` (code, this repository; now
-  public) + public `hasler-releases` (signed artifacts only; the signed channel index served by
-  GitHub Pages, e.g. `delgado-murphy.github.io/hasler-releases/channels/stable.json`,
-  later behind our own domain) - boxes need no GitHub token. CI fails if the tag
-  and `pyproject.toml` disagree; `CHANGELOG.md` (Keep a Changelog) per release.
-- **Versions:** semver. MAJOR = config schema / descriptor format / system
-  integration (units, sudoers, udev, config.txt, apt deps) / raised OS or moOde
-  floor; MINOR = features with defaults; PATCH = fixes.
-- **CI (GitHub Actions):** every push: pytest + ruff. On a tag: an
-  `ubuntu-24.04-arm` job in a `debian:trixie` container builds the aarch64
-  wheelhouse (lgpio built once and vendored - no compiler on boxes),
-  hash-locked deps (`--require-hashes`), bundles a pinned Python, writes the
-  tarball (reproducible: sorted, fixed owner/mtime), `files.sha256`, an SBOM
-  and an **unsigned** `release.json`.
-- **Signing:** v1 signs in GitHub (see §3 "Signing for v1"). The later,
-  stronger path: a maintainer downloads CI's output, re-checks the
-  hashes, signs `release.json` with an `ed25519-sk` key (OpenSSH signature) held on a
-  **YubiKey**, uploads the signature. A CI-held key would make one GitHub
-  compromise a fleet compromise.
-- **RC path:** `vX.Y.Z-rc.N` goes only to the `bench` channel (the owner's
-  box) for 48 h incl. nights and standby cycles; the *same artifact* is then
-  promoted by re-signing the channel index - never rebuilt.
+- **Two repositories** in the GitHub org `delgado-murphy`: `hasler` (this code,
+  public) and `hasler-releases` (public; signed artifacts only, plus the signed
+  channel indexes on GitHub Pages, e.g.
+  `delgado-murphy.github.io/hasler-releases/channels/stable.json`). Radios
+  need no GitHub token.
+- **Versions** are semver, and the version number decides the release's
+  `kind` (compared with the previous tag). **Major** for a new kind of system
+  file (§4), a config schema change with a migration, or a raised OS/moOde
+  floor; **minor** for features with defaults; **patch** for fixes. New units,
+  udev rules or helpers of a kind radios already know are fine in a minor or a
+  patch. Major and migration releases are never installed without asking.
+- **Build** (`release.yml`, on a tag `vX.Y.Z` or `vX.Y.Z-rc.N`): the tests,
+  then a native `ubuntu-24.04-arm` runner builds in a `debian:trixie`
+  container - the aarch64 wheelhouse (hash-locked, `--require-hashes`), the
+  pinned go-librespot and deno, a reproducible tarball (sorted, fixed owner
+  and mtime), `files.sha256`, an SBOM, a build attestation and an **unsigned**
+  `release.json`. It then installs the venv offline, as a radio would. About
+  3 minutes with warm caches. The build fails if the tag and
+  `daemon/pyproject.toml` disagree; the release notes are the version's
+  section of `CHANGELOG.md`.
+- **Sign and publish** (`sign-publish.yml` in `hasler-releases`): re-checks
+  the build run, the tag, the artifact digest, the attestation and the
+  tarball against `release.json`, signs it with the release key, creates the
+  GitHub release and points a channel at it. Nobody has to approve it: the
+  keys are secrets of the `sign` and `timestamp` environments, which only
+  `main` may use. The steps are in [release.md](release.md).
+- **Bench first.** A release goes to `bench` (the makers' own radio) and is
+  promoted to `stable` later - the *same artifact*, never rebuilt.
+- A signed `release.json` is valid for 120 days. After that radios refuse it
+  and it can't be promoted any more.
 
 ## 3. Security
 
-**Signing for v1 (key in GitHub).** The release key is an ed25519 OpenSSH key
-stored only as a secret of a `sign` environment in the **public**
-`hasler-releases` repo (required reviewer = the owner works on public repos on
-the Free plan). The signing workflow is separate from the build, uses no
-third-party actions (only `ssh-keygen` and `curl`), takes the artifact's
-SHA-256 as input, re-downloads and checks it and its build attestation, and
-signs `release.json`. The **root key never goes to GitHub** - an encrypted file
-plus a paper backup, used only to sign `keyring.json`. A leaked release key is
-revoked and replaced by a new keyring, with no reinstall on the boxes; moving
-the release key to a YubiKey later is the same one keyring change.
+**Three kinds of key.**
+
+| Key | Lives | Signs | If it leaks |
+|---|---|---|---|
+| root | offline, never on GitHub | the keyring: which release and timestamp keys count | new trust on every radio |
+| release | GitHub secret of the `sign` environment | `release.json` | a new keyring drops it; radios follow without a reinstall |
+| timestamp | GitHub secret of the `timestamp` environment | the channel indexes, every day | at worst a freeze - it can't vouch for code |
+
+There is one root key today. A radio accepts a keyring signed by any root key
+it holds, so a second one can be added later. Moving the release key to a
+YubiKey is a later step - the same single keyring change.
 
 | Threat | Defence |
 |---|---|
-| tampered download, MITM, bad mirror | signed manifest; every artifact and file hash-checked; HTTPS is transport only |
-| freeze (updates withheld) | the channel index is re-signed daily by a CI **timestamp key** and expires after 14 days; manifests expire too; box shows "no fresh update info", never installs expired |
-| rollback attack (old vulnerable release) | monotonic `seq` stored root-owned on the box; network downgrades refused unless shipped as a new, higher-`seq` release |
-| stolen release key | two offline **root** YubiKeys (2-of-2) sign a `keyring.json` of release + timestamp keys with validity windows; rotate/revoke by a new keyring |
-| stolen timestamp key (lives in CI) | worst case a freeze, never new code - it can only sign `{seq, manifest sha256, expires}` |
-| compromised laptop / CI workflow | release key on a YubiKey (touch to sign); before signing: verify the build attestation, rebuild locally and compare SHA-256, diff the install destinations against the last release |
-| dependency supply chain | wheels + binaries pinned, hashed, bundled; boxes never hit PyPI during an update |
-| LAN attacker / malicious web page (CSRF, DNS rebinding) | every POST checks `Origin`/`Host` and wants JSON; install/rollback need a **press on the radio** within 30 s (also gate today's unauthenticated `/api/wifi`, `/api/reset`); a LAN PIN later |
-| physical access | out of scope; the box holds only public keys; secrets wiped on factory reset |
+| tampered download, MITM, bad mirror | signed `release.json`; the artifact and every file hash-checked; HTTPS is transport only |
+| freeze (updates withheld) | the channel index is re-signed daily and expires after 14 days; the key page says "no fresh update info" after 3 days without a good check; nothing expired is installed |
+| rollback attack (an old, vulnerable release) | a monotonic `seq`, kept root-owned on the radio; anything not above it is refused. Going back fleet-wide means shipping a new, higher version |
+| stolen release key | revoked by a new keyring, signed with the root key |
+| stolen timestamp key | worst case a freeze: it signs indexes, never releases |
+| tampered build | the signing workflow uses no third-party actions, re-downloads the artifact, checks its digest and build attestation, and that the tag still points at the commit that was built |
+| dependency supply chain | wheels and binaries pinned, hashed and shipped in the release; radios never reach PyPI during an update |
+| LAN attacker, malicious web page (CSRF, DNS rebinding) | every state-changing request checks `Host` and `Origin` and wants JSON; install, go back, channel, Wi-Fi and reset need a **press on the radio** within 30 s |
+| physical access | out of scope; the radio holds only public keys |
 
-**Signing tool:** OpenSSH signatures (`ssh-keygen -Y sign -n hasler-release`)
-with `ed25519-sk` keys on YubiKeys - touch to sign, verified on the box with
-the stock openssh-client, the namespace stops reuse elsewhere. Keys on the box:
-`/etc/hasler/trust/` (root pubkeys + keyring, root 0444). Move to python-tuf
-only if the fleet or team grows.
-
-On the box: an unprivileged `hasler-update` user fetches, verifies (signature,
-keyring, expiry, seq, compatibility), and extracts safely (no absolute paths,
-`..`, escaping links, devices or setuid) into a staging dir. A root oneshot
-`hasler-update-apply@<seq>` re-verifies the staged tree itself and is the only thing
-that writes to `/opt/hasler` and system paths. The daemon can no longer write
-the code it runs (today it can: the code lives in `/home/pi`).
+**On the radio, two users split the work.** The unprivileged `hasler-update`
+user fetches, verifies (signatures, keyring, expiry, seq, compatibility) and
+extracts safely (no absolute paths, no `..`, no links leaving the tree, no
+devices, no setuid) into a staging dir. Root (`hasler-update apply`) trusts
+none of that: it verifies again, re-extracts the hash-checked artifact into a
+root-owned place, and is the only thing that writes to `/opt/hasler` and
+system paths. haslerd can't write the code it runs; the key page can only
+start the updater's own units, and a polkit rule allows exactly those names.
 
 ## 4. Update and failsafe
 
-1. **Check** - `hasler-update-check.timer`, daily, randomised, persistent;
-   downloads with resume; needs 2x free space.
-2. **Verify** - as above; nothing unpacked before it passes.
-3. **Stage** - extract to `releases/<v>.tmp`, build the venv offline at its
-   final path, precompile, fsync, rename. Harmless; any time.
-4. **Pre-flight** - compatibility (moOde range, Pi model, Python ABI),
-   `python -m haslerd.selftest` (imports, parses `/etc/hasler` with the new
-   schema, dry-runs migrations), `visudo -cf`, `udevadm verify`.
-5. **When** - only in **standby with nothing played for 10 min**, in the
-   02:00-05:00 window or on "Update now"; never mid-music. haslerd can veto.
-6. **Baseline** - run the health probe on the current release first, so only
-   regressions count (a box that never had a panel doesn't fail on "no panel").
-7. **Switch** - write `{phase: trial, from, to, boots: 0}` (tmp + fsync +
-   rename), `hasler-integrate apply <to>` (declarative units/udev/sudoers/
-   patches, each replaced atomically, old copy kept), swap `current`, restart.
-8. **Health** - within 90 s and holding for 60 s: haslerd active with
-   READY=1 and no restarts, `/api/health` 200 reporting the new version, MPD
-   answering, the amp card present, panel ok (or allowed-missing per
-   baseline), lamp ok, go-librespot as before, moOde UI 200.
-9. **Commit or roll back** - pass: committed + 24 h probation, keep 3
-   releases. Fail: `integrate apply <from>`, swap back, restart, mark `<to>` bad.
+1. **Check** - `hasler-update-check.timer`: daily, at a random time within
+   6 hours, caught up after the radio was off. Fetches the channel index,
+   decides, fetches `release.json`.
+2. **Verify** - as in §3; nothing is unpacked before it passes. A halted
+   release, one that failed here before, or one whose ring isn't open yet is
+   skipped.
+3. **Stage** - download with resume (needs twice the artifact's size free),
+   hash-check, extract into `staged/<seq>/`. Harmless, any time. Skipped when
+   `metered` or mode `off`.
+4. **When** - mode `auto`: `hasler-update-apply.timer` tries every half hour
+   from 02:00 to 04:30, patch/minor only. Otherwise the key page's approval:
+   "tonight" (inside 02:00-05:00) or "now". Always only when haslerd says
+   **idle**: standby, no phone casting, nothing played for 10 minutes.
+5. **Install** - root copies and re-verifies the tree into `releases/<v>.tmp`,
+   renames it, builds the venv offline from the release's own wheelhouse,
+   precompiles, fsyncs.
+6. **Pre-flight** - compatibility (arch, OS codename, Python ABI, moOde range,
+   variant), the release's `selftest.py`, `visudo -cf` for sudoers,
+   `udevadm verify`, the avahi file must parse. Migrations, if any, run on a
+   snapshot copy of `/etc/hasler` and `/var/lib/haslerd`.
+7. **Baseline** - the health probe on the *current* release, so only
+   regressions count (a radio that never had a panel doesn't fail on "no
+   panel").
+8. **Switch** - write `phase: trial` (atomically), put the release's system
+   files in place (each replaced atomically, the old copy kept), copy the
+   migrated config back, swap `current`, restart haslerd. haslerd is asked
+   again right before: if the radio woke up meanwhile, it waits.
+9. **Health** - pass within 90 s (300 s when judged after a reboot) and keep
+   passing for 60 s: haslerd running with no restarts, `/api/health`
+   reporting the new version with no check worse than the baseline, MPD
+   answering, the sound cards still there, go-librespot and the moOde UI as
+   they were.
+10. **Commit or roll back** - pass: 24 h of probation, then committed; the
+    release's own updater is installed; three releases are kept. Fail: system
+    files and config restored, `current` swapped back, haslerd restarted, and
+    the release marked bad on this radio so it isn't tried again.
 
-**Boot loops and hangs:** an early `hasler-update-boot.service` counts boots
-while in trial and rolls back before haslerd starts at the 2nd; haslerd's
-`OnFailure=` rolls back during trial/probation; the hardware watchdog
-(`RuntimeWatchdogSec=15`) resets a hung box. The updater is small, stdlib-only,
-runs on the bundled Python, and a new updater is only used after its release
-passes.
+The lamp breathes ember during steps 8 to 10 (`phase: trial`). Before that
+nothing has changed, and a power cut is harmless.
 
-**config.txt changes** (e.g. the lamp's PWM overlays) use the Pi's
-**tryboot**: the candidate goes to `tryboot.txt`, the box reboots once into it;
-any hang or power cut falls back to the old `config.txt` by firmware. Promote
-only after the trial boot passes. Such releases apply in the night window only.
+**Boot loops and hangs.** `hasler-update-boot.service` runs early, before
+haslerd: in a trial it counts boots and rolls back at the 2nd, finishes an
+interrupted rollback, and undoes a switch that a power cut cut short.
+`hasler-update-resume.service` finishes judging a trial after a reboot.
+haslerd's `OnFailure=` rolls back during trial and probation once haslerd has
+failed for good (5 crashes in 2 minutes). The hardware watchdog
+(`RuntimeWatchdogSec=15`) resets a hung radio.
 
-**Power cut at any step** lands on a working version: download/stage resume or
-are discarded; before the state write nothing changed; after it the boot
-counter or health check decides; tryboot falls back by itself.
+**The updater guards itself.** It is stdlib-only and runs on the system
+Python. A trial is always run by the updater already on the radio; the
+release's updater (package, launcher and `hasler-update-*` units) is installed
+only once its release commits. A broken release can't break its own rollback.
 
-**Manual rollback:** the key page lists kept releases with a "Go back to X"
-button (confirmed on the radio), run through the same switch + health path.
+**New kinds of system files** (a new top dir under `integration/`) come only
+in a major release. The updater running the trial has no rule for them, so it
+leaves them out and records them as `pending_integration`; right after the
+commit, the release's own updater puts them in place. A failure there never
+undoes the commit - it is retried at the next night apply and at the next
+boot. This needs updater 0.4.2 or later on the radio. Exact rules:
+[ota-format.md](ota-format.md#integration-system-files).
+
+**config.txt changes** (the hasler block, e.g. the lamp's PWM overlay) need a
+reboot. Today the updater installs such a release only when started by hand
+with `hasler-update apply --allow-reboot`; it then reboots into the trial and
+the boot counter decides. The nightly timer and the key page refuse it. Using
+the Pi's **tryboot** (the firmware falls back to the old `config.txt` by
+itself) is planned. Separately, `hasler-bootcfg-guard` puts a known-good
+`config.txt` back if a power cut ever leaves it broken.
+
+**A power cut at any step** lands on a working version. Download and stage are
+resumed or thrown away; before the trial is written nothing has changed;
+after that, the boot service and the health check decide.
+
+**Going back by hand.** The key page's "Go back to X" (confirmed on the radio)
+starts `hasler-update-apply@rollback-X.service`, which goes through the same
+switch and health check - at once, even while music plays. The release it
+leaves is marked bad, so auto mode won't reinstall it.
 
 ## 5. Channels and the fleet
 
-- Two channels: **bench** (the makers' test radio - may break) and
-  **stable** (everyone), each a signed `channels/<channel>.json`: `current`,
-  `min_version`, `halted`. Every release starts on bench and is promoted to
-  stable by hand (the same artifact). Rings by box id inside a channel are
-  supported by the index format for a later staged rollout.
-- The key page's **Update channel** picker offers Stable (recommended) and
-  Bench; switching asks for a press on the radio.
-- **Halt** a bad release by signing a new index; **pull** moves `current`
-  back (installed as a normal, signed update).
-- **Update mode** per box: `auto` (patch/minor at night, in standby - the
-  default for new radios), `ask`, `off`; MAJOR and migration releases always
-  ask.
-- **Key page "About this radio":** version, channel, last check, "update
-  available" + changelog, "install tonight / now", last result (ok / rolled
-  back and why), "go back to X".
-- **Lamp:** nothing during check/download; installs happen in standby, and
-  the box **breathes ember (the shutdown look: busy) - never dark, never a solid
-  "asleep" ember - while the update is installed** (dark
-  means safe to unplug); pressing a key aborts the update until tomorrow; a failed update never shows red on its own (nobody asked) -
-  it goes to the page. Optional later: one slow amber swell at the first wake
-  after an update.
-- **Fleet visibility (opt-in):** a daily check-in `{random box id, variant,
-  version, channel, last result, health}` to a tiny endpoint (e.g. a
-  Cloudflare Worker) - no IPs, SSIDs, history or accounts.
-- **Remote help (opt-in, off by default):** Tailscale installed but only
-  started by "Let the makers help (24 h)" on the key page; ACL-limited, ephemeral.
+- **Two channels:** `bench` (the makers' test radio - may break) and `stable`
+  (everyone). Each is a signed `channels/<channel>.json` naming its `current`
+  release, the `halted` ones and optional rings.
+- The key page's **Update channel** picker (Settings → This radio → Updates)
+  shows when Maker tools are on (tap the version number seven times) or when
+  the radio isn't on Stable. Switching asks for a press on the radio.
+- **Halt** a bad release with `sign-publish` mode `halt`. Radios that haven't
+  installed it never will, and drop a staged copy. Radios already running it
+  stay on it until a new, higher release arrives - so ship the fix.
+- **Rings** inside a channel (a staged rollout) are in the index format and
+  the radio obeys them; `channel.py` still opens every ring at once.
+- **Fleet check-in** (planned, opt-in): one daily
+  `{random box id, variant, version, channel, last result, health}` to a tiny
+  endpoint - no IPs, SSIDs, history or accounts.
+- **Remote help** ("Let the makers help (24 h)" on the key page): in progress.
 
-## 6. Fixed alongside OTA (done in 0.3.1)
+## Drills for each release
 
-These problems were found during the OTA reviews and are now fixed:
-
-- yt-dlp upgraded itself weekly as root, from PyPI, unpinned. Now it runs as its
-  own user `ytdlp` and switches only after a self-check.
-- the key page's `/api/wifi` and `/api/reset` were open to anyone on the LAN.
-  Now every state-changing request checks `Host` and `Origin`, and Wi-Fi, reset,
-  install and go-back need a press on the radio.
-- `Hasler Tone.yml` was installed 0666. Now it is owned by `pi`, 0644.
-- the daemon could write its own code (code in `/home/pi`). Now releases are
-  root-owned and read-only in `/opt/hasler`.
-- calibration lived in the shipped descriptor, and paths were found with
-  `parents[n]`. Now calibration is in `/etc/hasler/variant.d/` and paths are
-  package-relative.
-
-## 7. Phases
-
-The original plan. See the status table at the top for what is done.
-
-- **v1** - config separation (`/etc/hasler`, `variant.d` overlay, secrets dir,
-  schema 1, migration 001 for the bench box); package-relative paths; CI
-  build + wheelhouse + bundled Python; offline YubiKey signing; versioned
-  releases + symlink + health check + automatic rollback + boot counter;
-  `hasler-integrate`; channels bench + stable with halt; key page version /
-  update / last result / go back (radio-confirmed); mode `ask` by default;
-  the "fix now" list.
-- **v2** - rings inside a channel, `auto` mode, migrations framework beyond
-  001, tryboot for config.txt, fleet check-in + dashboard, Tailscale help,
-  yt-dlp in releases.
-- **Later** - python-tuf with 2-of-n signing, coordinated OS campaigns,
-  A/B root filesystem only if SD corruption appears.
-
-## Test matrix (each release)
-
-Bench box, both variants: fresh install; upgrade from N-1 (and N-2 if
-allowed); config carried over untouched; migration on an old sample config;
-**rollback drill** (deliberately failing health check -> automatic revert;
-manual "go back"); **power-cut drill** (pull power during download, stage,
-switch, first boot); halt drill; update deferred while playing; offline and
-metered skip quietly.
-
-## One-time org setup
-
-Moved to [release.md, "One-time org setup"](release.md#one-time-org-setup-owner-once-the-org-exists),
-which has the full, current steps.
+On the bench radio (both variants where it matters): fresh install; upgrade
+from the previous release; config carried over untouched; a migration on an
+old sample config; **rollback drill** (a deliberately failing health check ->
+automatic revert; manual "go back"); **power-cut drill** (pull the power
+during download, stage, switch and first boot); halt drill; an update deferred
+while playing; offline and metered skip quietly. How to run them with dev keys
+and a local channel:
+[release.md](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).

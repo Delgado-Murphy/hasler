@@ -24,7 +24,7 @@ owner's side (what to tap, what the lamp shows) is in
 ## In one paragraph
 
 Multiroom is between Haslers only, and off until the owner switches it on
-(Settings → **Multiroom** → *Play in several rooms*) on each radio. One radio **leads**: it sends what
+(Settings → **Rooms** → *Play in several rooms*) on each radio. One radio **leads**: it sends what
 it plays to the others through [Snapcast](https://github.com/badaix/snapcast),
 and plays the same stream itself, so every speaker is in step. The others
 **follow**: their own players are stopped and a Snapcast client plays the
@@ -42,6 +42,11 @@ multiroom is off or the radio is alone, nothing extra runs.
 | `/usr/local/sbin/hasler-multiroom` | Every release. The one root helper; sudoers allows `haslerd` exactly this file. |
 | `config/snapcast/snapserver.conf` | Every release, as `app/config/snapcast/snapserver.conf`. |
 | The `_hasler._tcp` announcement | `config/avahi/hasler.service` (port 8080, `path=/api/info`). |
+
+Multiroom needs a **release install** (`/opt/hasler/current`): the building
+layout from `scripts/install.sh` has neither the helper nor the units, and says
+so at the end of every run. Move the radio over first
+([build guide, Phase 4b](build-guide.md#phase-4b--move-to-signed-releases)).
 
 A radio set up before 0.4.0 gets the Snapcast packages (and AirPlay's
 `shairport-sync`) by running `sudo scripts/bootstrap.sh` once more. A release
@@ -186,7 +191,7 @@ again, tick them on the leader's page or hold the join key.
 
 ## Room names and casting names
 
-Each radio can have a **room name** (Settings → *About this radio*, up to 32
+Each radio can have a **room name** (Settings → *This radio*, up to 32
 characters), saved in `settings.json` as `"room": {"name": "Kitchen",
 "casting_names": false}`. The room name is shown in the multiroom list, at the
 top of the key page, and in Home Assistant (as `/api/info`'s `name`; HA keys on
@@ -196,24 +201,25 @@ The host name never changes. The first radio is `hasler.local`; avahi gives a
 second one `hasler-2.local` by itself, and the page shows the address really
 in use.
 
-**Use the room name for casting** (off by default) renames the casting targets
+**Use the room name on phones** (Settings → *Phones & casting*, off by default) renames the casting targets
 to *Hasler Kitchen*: AirPlay, UPnP and Bluetooth through moOde's own Renderers
 form, Spotify Connect through go-librespot's `device_name`. moOde's worker takes
 one job at a time and can take a minute, so the radio applies them one by one
 in the background and the page shows each step. go-librespot reads its name
 only at start, so it is restarted at the end (Spotify stops for a moment).
+Renaming Spotify needs a release install, which manages go-librespot's config.
 Switching it off puts *Hasler* back everywhere. The code is
 `daemon/haslerd/web/room.py`.
 
 ## Casting
 
-Settings → **Sources & casting** on the key page, under *Play from a phone*.
+Settings → **Phones & casting** on the key page.
 
 | Target | What plays it | Notes |
 |---|---|---|
 | **AirPlay** (classic, AirPlay 1) | `shairport-sync`, started by moOde | moOde's trixie repository has no shairport-sync, so `bootstrap.sh` installs Debian's, disables its own unit and puts `config/moode/shairport-sync.conf` in place. moOde starts it as before. |
 | **UPnP / DLNA** | `upmpdcli`, started by moOde | Plays through MPD. |
-| **Bluetooth** | BlueZ + bluealsa, moOde | Hold **PU**, or *A new phone* on the page, opens pairing for 2 minutes. |
+| **Bluetooth** | BlueZ + bluealsa, moOde | Hold **PU**, or *A new phone* → **Pair a phone** on the page, opens pairing for 2 minutes. While it is open, `haslerd` answers yes to the phone's code itself (`player/btaccept.py` through the root helper `hasler-bt-accept`; moOde's agent would wait for a yes on its own web page). A systemd drop-in for `bluetooth.service` makes phones show the radio as a loudspeaker. Paired phones, the codec in use and reconnecting to the last phone are `/api/bluetooth` (`web/bluetooth_api.py`). |
 | **Spotify Connect** | go-librespot | Shown read-only: on whenever Spotify is set up, because the same program plays the Spotify keys. **Spotify for guests:** with *Guests on your Wi-Fi can play* on (the default), anyone on the Wi-Fi with Spotify Premium sees *Hasler* in their own app and plays with their own account, no login on the radio. The switch (`spotify_guests` in `settings.json`) keeps go-librespot's `zeroconf_enabled` in step. Off: only the radio's own account sees it. |
 
 moOde owns AirPlay, UPnP and Bluetooth: `haslerd` never starts their units

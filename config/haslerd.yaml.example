@@ -48,6 +48,10 @@ state_file: /var/lib/haslerd/state.json
 web:
   enabled: true
   port: 8080
+  # Remote help (docs/remote-help.md): the makers' Tailscale tailnet. A radio
+  # that joins any other tailnet ends help at once. Default
+  # delgado-murphy.org.github; "" switches the check off.
+  # help_tailnet: delgado-murphy.org.github
 
 # Optional, and normally left empty: connect Home Assistant from the key page
 # instead (Settings -> Home Assistant: it finds HA on the network, checks the

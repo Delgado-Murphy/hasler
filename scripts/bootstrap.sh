@@ -16,6 +16,7 @@
 # patch). What it does:
 #   - apt packages the box needs at runtime (zstd, liblgpio1, ...)
 #   - multiroom: snapserver + snapclient, Debian's own units masked
+#   - remote help: tailscale from pkgs.tailscale.com, tailscaled.service disabled
 #   - I2C on, the daemon user in gpio/i2c/audio
 #   - system users: hasler-update (the unprivileged updater), ytdlp (yt-dlp)
 #   - /var/lib/haslerd
@@ -46,7 +47,7 @@ while (( $# )); do
     --eeprom) EEPROM=1 ;;
     --early-mpd) EARLY_MPD=1 ;;
     --no-early-mpd) EARLY_MPD=0 ;;
-    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "bootstrap: unknown argument $1" >&2; exit 2 ;;
   esac
   shift
@@ -199,6 +200,47 @@ if (( ${#SNAP_MISSING[@]} )); then
   say "multiroom: installing ${SNAP_MISSING[*]} (Debian's units masked; off until grouped)"
   run apt-get install -y -q --no-install-recommends "${SNAP_MISSING[@]}" \
     || warn "snapcast not installed - multiroom stays unavailable"
+fi
+# Remote help (docs/remote-help.md): Tailscale from Tailscale's own apt repo
+# (Debian has none), installed but never running on its own. The package's
+# tailscaled.service is masked across the install (its postinst would start
+# it), then left disabled - not masked: hasler-help runs its own transient
+# tailscaled (in-memory state) only while the owner has asked for help, and
+# nothing ever logs in here otherwise.
+TS_KEYRING=/usr/share/keyrings/tailscale-archive-keyring.gpg
+TS_LIST=/etc/apt/sources.list.d/tailscale.list
+TS_CODENAME="$(. /etc/os-release 2>/dev/null; echo "${VERSION_CODENAME:-}")"
+if ! dpkg -s tailscale >/dev/null 2>&1; then
+  if [[ "$TS_CODENAME" != trixie ]]; then
+    warn "remote help: Tailscale's repo is set up for Debian trixie, this is '${TS_CODENAME:-?}' - skipped"
+  else
+    say "remote help: installing tailscale (pkgs.tailscale.com, trixie; tailscaled stays off)"
+    if [[ ! -s "$TS_KEYRING" ]]; then
+      run curl -fsSL --proto '=https' -o "$TS_KEYRING" https://pkgs.tailscale.com/stable/debian/trixie.noarmor.gpg \
+        || warn "remote help: couldn't fetch Tailscale's signing key"
+      [[ -f "$TS_KEYRING" ]] && run chmod 0644 "$TS_KEYRING"
+    fi
+    TS_TMP="$(mktemp)"
+    printf 'deb [signed-by=%s] https://pkgs.tailscale.com/stable/debian trixie main\n' "$TS_KEYRING" > "$TS_TMP"
+    put "$TS_TMP" "$TS_LIST" 0644 || true
+    rm -f "$TS_TMP"
+    if [[ -s "$TS_KEYRING" ]] || (( DRY )); then
+      (( SYSTEMD )) && run systemctl mask --quiet tailscaled.service
+      # only Tailscale's list: quick, and the rest of apt is left as it was
+      run apt-get update -q -o Dir::Etc::sourcelist="$TS_LIST" -o Dir::Etc::sourceparts=- \
+          -o APT::Get::List-Cleanup=0 \
+        && run apt-get install -y -q --no-install-recommends tailscale \
+        || warn "tailscale not installed - remote help stays unavailable"
+      (( SYSTEMD )) && run systemctl unmask --quiet tailscaled.service
+    fi
+  fi
+fi
+if (( SYSTEMD )) && [[ -n "$(systemctl list-unit-files --no-legend tailscaled.service 2>/dev/null)" ]]; then
+  TS_ST="$(systemctl is-enabled tailscaled.service 2>/dev/null)" || true
+  if [[ "$TS_ST" == enabled* ]] || systemctl is-active --quiet tailscaled.service; then
+    say "remote help: tailscaled.service off (hasler-help starts its own, on request)"
+    run systemctl disable --quiet --now tailscaled.service
+  fi
 fi
 if command -v moodeutl >/dev/null 2>&1 && \
    [[ "$(moodeutl -q "select value from cfg_system where param='spotifysvc'" 2>/dev/null)" == 1 ]]; then

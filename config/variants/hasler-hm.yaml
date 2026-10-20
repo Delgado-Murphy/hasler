@@ -94,7 +94,7 @@ controls:
     # eats the bottom of the sweep, so the usable range starts above it.
     range: [0, 25500]
     # What the knob does to the sound (haslerd/dsp/effects.py); the owner can
-    # pick another on the key page (Settings -> Knobs). Tilt: left warmer,
+    # pick another on the key page (Settings -> Sound -> What the tone knob does). Tilt: left warmer,
     # right brighter, pivoting at 800 Hz - a 2.5 kHz treble shelf alone was
     # too subtle on this speaker, which plays little above ~6 kHz.
     effect: tilt

@@ -1,7 +1,7 @@
 # The knobs' sound effects (for makers)
 
 Every pot except the volume knob can carry a sound effect, done in CamillaDSP.
-The owner picks them on the key page (**Settings → Knobs**); this page is how
+The owner picks them on the key page (**Settings → Sound → What the tone knob does**); this page is how
 it works and how to give a new cabinet's pots their defaults.
 
 ## The pieces

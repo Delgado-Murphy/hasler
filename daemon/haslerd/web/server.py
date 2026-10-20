@@ -119,7 +119,8 @@ OWN_NAMES = ("localhost", "hasler", "hasler.local")
 LOOPBACK = ("127.0.0.1", "::1")
 # Paths served by ``WebApp.extra_routes`` (web/ha_api.py, web/sources_api.py, web/knobs_api.py).
 EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "/api/group", "/api/peer",
-                  "/api/knobs/functions", "/api/knobs/try")   # web/knobs_api.py
+                  "/api/knobs/functions", "/api/knobs/try",   # web/knobs_api.py
+                  "/api/help")                                # web/help_api.py
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {

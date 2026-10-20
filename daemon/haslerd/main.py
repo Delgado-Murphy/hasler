@@ -45,6 +45,7 @@ from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_
 from .web.bluetooth_api import BluetoothApi
 from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
+from .web.help_api import MAKERS_TAILNET, HelpApi
 from .web.sources_api import apply_saved as apply_sources
 from .dsp.knobs import KnobFunctions, helper_runner
 from .web.knobs_api import KnobFunctionsApi
@@ -766,6 +767,8 @@ def build_web(
         app.extra_routes.append(ha_api)
     app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
     app.extra_routes.append(BluetoothApi(app))  # /api/bluetooth
+    # /api/help: "Let the makers help (24 h)" - off until the owner asks
+    app.extra_routes.append(HelpApi(app, tailnet=spec.get("help_tailnet", MAKERS_TAILNET)))
     if actions.dsp is not None:                 # /api/knobs/functions, /api/knobs/try
         app.knob_functions = actions.dsp
         app.extra_routes.append(KnobFunctionsApi(app, actions.dsp))

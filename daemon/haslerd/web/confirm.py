@@ -2,7 +2,8 @@
 
 docs/ota.md section 3, "LAN attacker": anybody on the Wi-Fi can talk to the key
 page, so installing or rolling back a release, changing the Wi-Fi, resetting
-the keys or moving to another release channel needs a hand on the cabinet.
+the keys, moving to another release channel or starting remote help (Tailscale
+for 24 h, web/help_api.py) needs a hand on the cabinet.
 
     POST /api/confirm/request {"action": "update", "args": {"version": "1.2.0"}}
         -> {"token": "...", "state": "pending", "expires_in": 30}
@@ -34,7 +35,7 @@ from typing import Any, Callable, Iterable
 
 log = logging.getLogger(__name__)
 
-ACTIONS = ("update", "rollback", "wifi", "reset", "channel")
+ACTIONS = ("update", "rollback", "wifi", "reset", "channel", "help")   # help: web/help_api.py
 CONFIRM_S = 30.0         # to press a key after asking
 USE_S = 60.0             # to use a confirmed token
 ASK_EVERY_S = 5.0        # the lamp asks again this often while pending

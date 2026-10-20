@@ -25,16 +25,30 @@ Everything else can be undone.
 | [3b](#phase-3b--wake-the-knobs) | Connect the knobs | Volume works for every source |
 | [3c](#phase-3c--streaming-sources-spotify--youtube-music) | Spotify and YouTube Music | Playlists play from keys |
 | [4](#phase-4--sources-tone-lamp) | PU key, tone, pilot lamp | The lamp breathes amber at power-on |
+| [4b](#phase-4b--move-to-signed-releases) | Switch to signed releases | The radio runs a release and updates itself |
 | [5](#phase-5--home-assistant) | Home Assistant (optional) | A held key runs a scene |
 | [5b](#phase-5b--casting-room-names-and-multiroom) | Casting, room names, multiroom | A phone plays to it; two Haslers play in step |
 | [6](#phase-6--install-in-the-cabinet) | Close it up | One hour of playback, no overheating |
-| [After](#moving-to-over-the-air-releases) | Switch to signed releases | The radio updates itself |
 
-**How the software gets onto the radio.** While you build, you install from a
-copy of this repository on the Pi (`scripts/install.sh`). When the radio is
-finished, you move it once to **signed releases**: from then on it updates
-itself and you never copy code by hand again. See
-[Moving to over-the-air releases](#moving-to-over-the-air-releases).
+**How the software gets onto the radio.** While you build (Phases 2–4), you
+install from a copy of this repository on the Pi with `scripts/install.sh`.
+This *building layout* is quick to change, but it leaves out a few things that
+only a release installs:
+
+- Bluetooth pairing that says yes by itself (`hasler-bt-accept`);
+- multiroom (`hasler-multiroom` and the Snapcast units) and the Spotify name
+  following the room name;
+- the `_hasler._tcp` announcement, which Home Assistant and other Haslers use
+  to find the radio;
+- the boot config guard and the clean-shutdown marker
+  ([Notes for makers](#boot-time));
+- **Calibrate** on the key page, which saves to `/etc/hasler/`.
+
+So once the keys, knobs and lamp work, you move the radio once to **signed
+releases** ([Phase 4b](#phase-4b--move-to-signed-releases)). From then on it
+updates itself and you never copy code by hand again. (To try your own code
+changes on a release radio, build a release from your copy and serve it from
+your laptop: [release.md, "Bench box"](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).)
 
 ---
 
@@ -111,14 +125,16 @@ amplifier.
       ```sh
       moodeutl -q "select value from cfg_system where param='amixname'"
       ```
-- [ ] Turn on the renderers: **Bluetooth, AirPlay, UPnP/DLNA**. Turn *Resume MPD* on.
+- [ ] Turn on the renderers **Bluetooth** and **UPnP/DLNA**, and *Resume MPD*.
+      AirPlay has to wait: moOde's trixie repository has no `shairport-sync`,
+      so AirPlay arrives with `scripts/bootstrap.sh` in Phase 3a.
       **Leave moOde's Spotify Connect OFF.** go-librespot replaces it in Phase 3c,
       and two Spotify players on one sound card fight.
 - [ ] Check I²C: `i2cdetect -y 1` shows `UU` at `4d` (the amp's own chip, in use
       by its driver).
 
-**Done when:** `mpc play` makes sound in the original speaker, and every renderer
-you turned on appears on a phone and plays.
+**Done when:** `mpc play` makes sound in the original speaker, and a phone
+finds the radio over Bluetooth and plays to it.
 
 ### Power bring-up
 
@@ -167,11 +183,15 @@ Do these in order, with a meter. The details and the reasons are in
       `config/variants/hasler-hm.yaml` (`controls:`); the shipped file follows our
       prototype board ([hardware.md](hardware.md#keys)).
 - [ ] Fit a **100 nF** capacitor across each key.
+- [ ] Copy the repository to the Pi (for example `git clone` into `~/hasler`,
+      which is where the later steps expect it).
 - [ ] Watch it live:
       ```sh
-      scripts/panel-probe.py
+      cd ~/hasler && scripts/panel-probe.py
       ```
-      The WIRE column shows which board pin each row expects.
+      The WIRE column shows which board pin each row expects. Before Phase 3a
+      it runs on the system Python; if it says `No module named 'yaml'` or
+      `'smbus2'`, run `sudo apt install python3-yaml python3-smbus2`.
 
 > **No MCP23017?** Use the direct-GPIO block in `hasler-hm.yaml` instead. Wire to
 > any eight free GPIOs and let `scripts/panel-probe.py --identify` work out the
@@ -191,25 +211,35 @@ Do these in order, with a meter. The details and the reasons are in
 
 *No new parts needed.*
 
-- [ ] Copy the repository to the Pi (for example `git clone` into `~/hasler`).
-- [ ] Put real stream URLs into `presets:` in `config/variants/hasler-hm.yaml`
-      (later, owners change them on the key page).
-- [ ] Run `scripts/install.sh` (`--dry-run` first shows what it will change).
-      It runs `scripts/bootstrap.sh` (one-time box setup), then installs
-      `haslerd` from your copy as a systemd service with a watchdog. Run it again
-      after every `git pull`; it is safe to repeat.
-      This is the **building** layout. Once the radio runs signed releases (see
-      [Moving to over-the-air releases](#moving-to-over-the-air-releases)), this
-      script refuses to run and the updater takes over.
+- [ ] Run `scripts/install.sh` from `~/hasler` (`--dry-run` first shows what it
+      will change). It runs `sudo scripts/bootstrap.sh` (one-time box setup:
+      packages, I²C, users, yt-dlp, AirPlay, Snapcast, the Wi-Fi setup portal),
+      then installs `haslerd` from your copy as a systemd service with a
+      watchdog, plus go-librespot, deno, the helpers and the lamp's boot files.
+      Run it again after every `git pull`; it is safe to repeat. Once the radio
+      runs signed releases (Phase 4b), this script refuses to run and the
+      updater takes over.
+- [ ] **Check `config/haslerd.yaml`.** The first run makes it from
+      `config/haslerd.yaml.example`. `mixer:` must be the hardware mixer name
+      you noted in Phase 1, and `card:` the Amp4 Pro's id in
+      `cat /proc/asound/cards`. Then `sudo systemctl restart haslerd`.
+- [ ] Now turn on moOde's **AirPlay** renderer (Configure → Renderers).
+- [ ] *(Optional)* The shipped `presets:` in `config/variants/hasler-hm.yaml`
+      are a test set that plays (Swiss and Spanish radio, one Spotify and two
+      YouTube Music playlists). Change them here if you like; later the owner
+      changes them on the key page.
 - [ ] **Set the volume ceiling.** On the key page (`http://hasler.local:8080`),
-      Settings → **Volume ceiling**. Start at 50. Play dense music with the knob
-      at maximum. Raise it in steps of 5 until it is as loud as you will ever
-      want. **At the first sign of distortion from the cone, go back two
-      steps.** The speaker is the one part in this build you cannot replace.
+      Settings → **Sound** → **Volume ceiling**. Start at 50. The knobs are not
+      wired yet, so **hold key 6** (volume up) until the volume stops rising,
+      with dense music playing. Raise the ceiling in steps of 5 until it is as
+      loud as you will ever want. **At the first sign of distortion from the
+      cone, go back two steps.** The speaker is the one part in this build you
+      cannot replace.
 
 **Done when:** each key plays its station; tapping the playing station again
 puts the radio in standby; turning the tone knob past the click goes to standby
-and back on resumes; and the knob at maximum is loud but clean.
+and back on resumes; a phone finds the radio over AirPlay; and key 6 held to the
+top is loud but clean.
 
 ## Phase 3b — Wake the knobs
 
@@ -220,16 +250,22 @@ and back on resumes; and the knob at maximum is loud but clean.
       A1**, and a **100 nF** capacitor from each wiper to GND.
 - [ ] Check that `io.analog` in the descriptor is `{backend: ads1115, addr: 0x48}`.
 - [ ] Run `panel-probe.py` and turn each pot from end to end. The COUNTS column
-      must rise smoothly, with no jumps.
-- [ ] **Calibrate:** key page → Settings → **Knobs** → **Calibrate**. It asks you
-      to turn each knob to a few positions and saves the curve on this radio
-      (in `/etc/hasler/variant.d/`, so updates keep it). You can also write
-      measured `curve:` points into the descriptor by hand
-      ([variants/hasler-hm.md](variants/hasler-hm.md#6-pot-calibration--phase-3b-once-the-ads1115-is-fitted)).
+      must move smoothly, with no jumps (one way or the other: our volume pot
+      reads backwards, and its `curve:` allows for that).
+- [ ] **Calibrate.** The shipped `curve:` fits our cabinet's pots; yours will
+      differ. Two ways:
+      - **By hand, now:** read the COUNTS column at a few positions and write
+        the `curve:` points into `config/variants/hasler-hm.yaml`
+        ([variants/hasler-hm.md, section 6](variants/hasler-hm.md#6-pot-calibration--phase-3b-once-the-ads1115-is-fitted)).
+        The move to releases (Phase 4b) carries them over.
+      - **On the key page, after Phase 4b:** Settings → **Keys & knobs** →
+        **Calibrate**. It asks you to turn each knob to a few positions and
+        saves the curve in `/etc/hasler/variant.d/`, so updates keep it.
+- [ ] Check the volume ceiling again, now with the knob turned fully up.
 
 **Done when:** the volume knob is silent at rest, smooth when turned, and
-controls Bluetooth, AirPlay and Spotify as well as radio. That last part is what
-the hardware mixer gives you.
+controls Bluetooth and AirPlay as well as radio (Spotify too, after Phase 3c).
+That last part is what the hardware mixer gives you.
 
 ## Phase 3c — Streaming sources (Spotify + YouTube Music)
 
@@ -246,15 +282,16 @@ playlist**.
 
 Steps:
 
-- [ ] `scripts/install.sh` adds go-librespot (a fixed, checked version), **deno**
-      (the JavaScript runtime yt-dlp needs), and the permission that lets the tone
-      knob shut the Pi down cleanly. Its `bootstrap.sh` step puts yt-dlp in
+- [ ] Nothing new to install: Phase 3a's `scripts/install.sh` already added
+      go-librespot (a fixed, checked version), **deno** (the JavaScript runtime
+      yt-dlp needs) and `ytmusicapi`. Its `bootstrap.sh` step put yt-dlp in
       `/opt/yt-dlp` under its own user `ytdlp` (not root). It updates weekly,
       builds the new version beside the old one, and switches only if a
       self-check passes (`scripts/hasler-ytdlp-update`; `--rollback` goes back one).
-- [ ] Copy the `spotify:`, `ytm:` and `state_file:` blocks from
-      `config/haslerd.yaml.example` into `config/haslerd.yaml`. The install
-      script warns while any are missing.
+- [ ] `config/haslerd.yaml` needs the `spotify:`, `ytm:` and `state_file:`
+      blocks. A file made from the example has them; for an older file, copy
+      them from `config/haslerd.yaml.example`. The install script warns while
+      any are missing.
 - [ ] **Turn moOde's Spotify renderer off:** moOde → Configure → Renderers →
       Spotify Connect → **OFF**. The Amp4 Pro can only be used by one player at a
       time.
@@ -311,8 +348,8 @@ Steps:
       real titles instead of internal addresses. `ytm: {catalog: false}` turns
       this off.
 - [ ] **Private playlists and Liked songs: sign in.** Public playlists need
-      nothing. For private ones, sign in on the key page: Settings → YouTube
-      Music → **Sign in**, and follow the steps it shows (copy the request
+      nothing. For private ones, sign in on the key page: Settings → This
+      radio → YouTube Music → **Sign in**, and follow the steps it shows (copy the request
       headers of a `browse` request from your browser's developer tools and
       paste them). The page shows the account name when YouTube accepts it.
       - This is the account's login cookie: **treat it like a password**. It is
@@ -335,10 +372,20 @@ last key (`cat /var/lib/haslerd/state.json` shows it).
 
 ## Phase 4 — Sources, tone, lamp
 
-- [ ] The **PU** key: a tap goes to the next source (radio → Bluetooth → AirPlay →
-      Spotify → radio); holding it opens Bluetooth pairing for 120 s.
+*Mostly checks: the software is already in place. The lamp is the one new part.*
+
+- [ ] The **PU** key: a tap goes to the next source (by default radio →
+      Bluetooth → AirPlay → Spotify → radio; the owner can change the list on
+      the key page, Settings → Keys & knobs). Holding it opens Bluetooth
+      pairing for 120 s. On the building layout nothing says yes to the
+      phone's code yet: confirm it on moOde's own page, or leave this check
+      for after Phase 4b, where the radio does it by itself.
 - [ ] Tapping a key while a phone is connected takes the radio back from the phone.
-- [ ] The tone knob drives CamillaDSP treble shelves (over its websocket, `:1234`).
+- [ ] The **tone knob** is a *tilt*: left warmer, right brighter, flat in the
+      middle, pivoting at 800 Hz. `haslerd` hands it to `hasler-dsp`, which
+      sets CamillaDSP live over its websocket (`:1234`) and never lets the
+      sound get louder than flat. The details, and the other effects a knob can
+      have, are in [sound.md](sound.md).
 - [ ] The pilot lamp, on the Pi's GPIO: see below.
 
 ### Lamp
@@ -368,6 +415,48 @@ Checks:
 - [ ] `sudo poweroff`: an ember breath while it shuts down, then **dark**: safe to
       unplug.
 
+**Done when:** PU steps through the sources with a short glow of where it
+landed; a quarter turn of the tone knob is clearly heard; the lamp breathes
+amber at power-on, sits in a dim ember in standby, and goes dark after
+`sudo poweroff`.
+
+## Phase 4b — Move to signed releases
+
+*Software only, once. Do it now, before the house features in Phases 5 and
+5b: several of them come only with a release (see the list at the top).*
+
+A finished radio does not run from a copy of the repository. It runs **signed
+releases** from `/opt/hasler`, keeps its settings and calibration in
+`/etc/hasler`, and updates itself ([ota.md](ota.md)). From `~/hasler`:
+
+1. [ ] `sudo scripts/bootstrap.sh`: the box setup again (safe to repeat), so
+       every package a release needs is there.
+2. [ ] `sudo scripts/ota-bootstrap.sh --trust <dir>`: the updater, its timers,
+       the polkit rule (the key page may start only its own update units), the
+       hardware watchdog, and the release-signing trust (`root.pub`,
+       `keyring.json` and `keyring.json.sig`, from the public
+       `hasler-releases` repository). It also copies go-librespot's login to
+       `/var/lib/go-librespot`, so Spotify stays logged in.
+3. [ ] `sudo daemon/.venv/bin/python -m haslerd.migrations --check`, then
+       `--apply`. This is migration 001: `config/haslerd.yaml` and your edited
+       descriptor become `/etc/hasler/box.yaml` and `/etc/hasler/variant.d/`
+       (your knob curves included). If your copy is not in `/home/pi/hasler`,
+       add `--legacy <path>`. Then run `sudo scripts/ota-bootstrap.sh` once
+       more (it fixes ownership).
+4. [ ] Download and install the first release:
+       ```sh
+       sudo systemctl start hasler-update-check.service
+       cat /var/lib/hasler-update/status.json          # the staged release and its seq
+       sudo hasler-update apply --seq <N> --force
+       ```
+
+**Done when:** `hasler-update status` shows the release as committed;
+`scripts/install.sh` now refuses to run; and the key page's **Settings → This
+radio → Updates** shows the version and checks for the next one.
+
+To practise this with throwaway keys and a channel served from your laptop, see
+[release.md, "Bench box"](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).
+
 ## Phase 5 — Home Assistant
 
 *Optional. The radio works the same with no Home Assistant (HA) at all. Whatever
@@ -382,7 +471,7 @@ HA the house has is connected from the key page, with no file editing.*
 - [ ] **Make a token:** in HA, click your user (bottom left) → **Security** →
       *Long-lived access tokens* → **Create token**. Name it "Hasler radio" and
       copy it (HA shows it only once).
-- [ ] **Connect:** key page → **Settings → Home Assistant**. The radio looks for
+- [ ] **Connect:** key page → **Settings → This radio → Home Assistant**. The radio looks for
       HA on the network and lists what it finds. Choose one, or type the address
       (`http://<ip>:8123`; use the plain `http://` address, because an
       `https://` one with a self-signed certificate is refused). Paste the token
@@ -402,22 +491,21 @@ HA the house has is connected from the key page, with no file editing.*
       `playing` / `standby` / `idle`, with `station`, `title`, `artist`,
       `source`). After an HA restart it comes back with the next change, or
       within 10 minutes.
-
-**Done when:** holding a key bound to a scene runs it, a key set to dim a light
-dims it, **and the radio still works with HA stopped**.
-
 - [ ] *(Optional)* **The Hasler integration for HA:** HACS → **⋮** → **Custom
       repositories** → `https://github.com/Delgado-Murphy/hasler-homeassistant`,
       type **Integration** → find **Hasler Radio** → **Download** → restart HA →
       **Settings → Devices & services**: the radio is **Discovered** → **Add**.
       It gives a `media_player` (the preset keys are its sources), an `update`
-      entity and a health sensor. Done when HA's media player shows what the
-      radio plays and choosing a source presses that key.
+      entity and a health sensor. HA's media player then shows what the radio
+      plays, and choosing a source presses that key.
+
+**Done when:** holding a key bound to a scene runs it, a key set to dim a light
+dims it, **and the radio still works with HA stopped**.
 
 ### Moving to another home
 
 Key actions name things in the HA they were set up with. In a new home:
-Settings → Home Assistant → **Disconnect**, then connect the new home's HA. The
+Settings → This radio → Home Assistant → **Disconnect**, then connect the new home's HA. The
 page lists every key whose target the new HA does not have. Choose new targets,
 or press **Clear missing** to empty them all.
 
@@ -426,22 +514,23 @@ or press **Clear missing** to empty them all.
 *Casting is on from the start; multiroom is optional and off by default. The
 details are in [multiroom.md](multiroom.md).*
 
-- [ ] **The packages.** `sudo scripts/bootstrap.sh` installs `shairport-sync`
-      (classic AirPlay; moOde's trixie repository has none, moOde still starts
-      it), `snapserver` and `snapclient` (Debian's own units masked) and
-      `libasound2-plugins`. On a radio set up before 0.4.0, run it once more:
-      a release can't install Debian packages.
-- [ ] **Casting.** Key page → **Settings → Sources & casting** → *Play from a
-      phone*: AirPlay, Bluetooth and UPnP / DLNA each show *on* and running. A
+- [ ] **The packages.** Already there: `bootstrap.sh` installed
+      `shairport-sync` (classic AirPlay; moOde still starts it), `snapserver`
+      and `snapclient` (Debian's own units masked) and `libasound2-plugins`.
+      The units and the `hasler-multiroom` helper came with the release in
+      Phase 4b. (A radio set up before 0.4.0 needs `sudo scripts/bootstrap.sh`
+      once more: a release can't install Debian packages.)
+- [ ] **Casting.** Key page → **Settings → Phones & casting**: AirPlay,
+      Bluetooth and *Other music apps* (UPnP / DLNA) each show *on* and running. A
       target whose program is missing says so and can't be switched on.
       Spotify Connect is listed read-only; **Guests on your Wi-Fi can play**
       lets other people's Spotify find it.
-- [ ] **Room name.** Settings → **About this radio** → room name (*Kitchen*).
+- [ ] **Room name.** Settings → **This radio** → room name (*Kitchen*).
       The page title changes; `hasler.local` does not. With two radios, the
-      second answers at `hasler-2.local` by itself. **Use the room name for
-      casting** renames AirPlay, UPnP, Bluetooth and Spotify to *Hasler
+      second answers at `hasler-2.local` by itself. **Use the room name on
+      phones** (Settings → Phones & casting) renames AirPlay, UPnP, Bluetooth and Spotify to *Hasler
       Kitchen* one by one (a minute or two; Spotify blinks once).
-- [ ] **Multiroom** (needs two Haslers). On both: Settings → **Multiroom** →
+- [ ] **Multiroom** (needs two Haslers). On both: Settings → **Rooms** →
       *Play in several rooms*. On one, front page → **Also play on…** → tick the
       other. `sudo hasler-multiroom status` says `lead` on one and `follow` on
       the other.
@@ -466,31 +555,6 @@ about 30 s.
 
 ---
 
-## Moving to over-the-air releases
-
-A finished radio does not run from a copy of the repository. It runs **signed
-releases** from `/opt/hasler`, keeps its settings and calibration in
-`/etc/hasler`, and updates itself ([ota.md](ota.md)). You move a radio over once:
-
-1. `sudo scripts/bootstrap.sh`: box setup (packages incl. `zstd` and
-   `liblgpio1`, I²C, groups, the `hasler-update` and `ytdlp` users, the CamillaDSP
-   tone file, the Wi-Fi setup portal, the moOde patch, yt-dlp off root).
-2. `sudo scripts/ota-bootstrap.sh --trust <dir>`: the updater, its timers, the
-   polkit rule (the key page may start only its own update units), the hardware
-   watchdog, and the release-signing trust (`root.pub`, `keyring.json` and
-   `keyring.json.sig`, from the public `hasler-releases` repository). It also
-   copies go-librespot's login to `/var/lib/go-librespot`.
-3. `sudo daemon/.venv/bin/python -m haslerd.migrations --check`, then `--apply`.
-   This is migration 001: `config/haslerd.yaml` and your edited descriptor become
-   `/etc/hasler/box.yaml` and `/etc/hasler/variant.d/`. Then run
-   `sudo scripts/ota-bootstrap.sh` once more (it fixes ownership).
-4. Install the first release once it is downloaded:
-   `sudo hasler-update apply --seq <N> --force`. From then on, the key page's
-   **About this radio** section checks, installs and goes back.
-
-To practise this with throwaway keys and a channel served from your laptop, see
-[release.md, "Bench box"](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).
-
 ## Moving the radio to a new Wi-Fi network
 
 No screen or keyboard needed. If the radio does not find a known network for
@@ -504,12 +568,30 @@ password, press **Connect**; the radio restarts onto it. The owner's steps are i
   this repository and give it to the owner.
 - The hotspot only starts at boot. If the Wi-Fi drops later, the radio keeps
   trying it; unplug and replug to get the hotspot.
-- On the home network, Settings → Wi-Fi → **Change** on the key page does the
+- On the home network, Settings → This radio → Wi-Fi → **Change** on the key page does the
   same, after a press on the radio.
 
 ---
 
 ## Notes for makers
+
+### Maker tools on the key page
+
+The owner's Settings has six rows. A seventh, **Maker tools**
+(`#settings/maker`), appears when you tap the version number at the bottom of
+Settings seven times (each tap within 1.5 s of the last). It holds what an
+owner should not stumble on:
+
+- **Lamp colours**: each colour of the pilot lamp, set by eye at night on the
+  real lamp (see [lamp.md](lamp.md#palette));
+- **Knob curve details**: the calibration points behind each knob (the owner's
+  **Calibrate** is in Settings → Keys & knobs);
+- **Inside the player (moOde)**: a link to moOde's own pages;
+- **Diagnostics**: what answers and what doesn't, with details to copy into a
+  bug report.
+
+With Maker tools on, Settings → This radio → Updates also shows the **update
+channel** (Stable or Bench).
 
 ### After a moOde update
 
@@ -560,6 +642,9 @@ config.txt, cmdline and EEPROM changes need a reboot. Then measure:
 It prints the boot totals, when rc-local, mpd, go-librespot and haslerd started,
 moOde's milestones, haslerd's "first sound at X s" line, and anything that still
 waits for the network.
+
+The last two items below come with a release (Phase 4b); the building layout
+has neither.
 
 **Clean-shutdown marker.** `hasler-clean-shutdown.service` writes
 `/var/lib/haslerd/clean-shutdown` when the system shuts down or reboots. `haslerd`

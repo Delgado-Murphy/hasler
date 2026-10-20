@@ -1,0 +1,281 @@
+#!/usr/bin/python3 -I
+"""hasler-help - "Let the makers help (24 h)": a Tailscale link, on request.
+
+Run as root by haslerd (sudoers allows exactly this file); docs/remote-help.md.
+
+    hasler-help start HOSTNAME     HOSTNAME = hasler-<room>-<id>, [a-z0-9-], <= 63
+    hasler-help status
+    hasler-help stop [stopped|expired|unapproved|wrong-tailnet|failed]
+
+Each prints one JSON object on stdout (the last line):
+
+    {"ok": true, "installed": bool, "active": bool, "backend": "NeedsLogin"|"Running"|...,
+     "auth_url": str|null, "address": "100.x.y.z"|null, "dns_name": str|null,
+     "tailnet": str|null, "hostname": str|null, "started_at": epoch|null,
+     "expires_at": epoch|null, "approve_by": epoch|null, "stale": bool,
+     "last": {"at": epoch, "why": str}|null}
+    {"ok": false, "error": "...", ...the same fields, as things are now}
+
+No secret ships on the radio (the repo is public): ``start`` runs tailscaled
+and ``tailscale up`` without an auth key, so Tailscale hands out a one-time
+login URL. The owner sends it to the makers; one of them opens it while
+signed in to the makers' tailnet and the radio joins. The URL is never
+logged: ``tailscale up`` writes to /dev/null and tailscaled's lines that
+carry it are filtered out of the journal (LogFilterPatterns).
+
+Nothing about the tailnet touches the SD card and nothing survives a reboot:
+
+  - tailscaled runs as a transient unit (hasler-help-tailscaled.service, not
+    the package's tailscaled.service, which stays disabled) with
+    ``--state=mem:`` - an ephemeral node - and its other state in
+    /run/hasler-help, and ``--no-logs-no-support`` (no log upload to
+    Tailscale).
+  - The end is two transient timers started first, so they hold even if
+    haslerd dies: hasler-help-end.timer (24 h, ``stop expired``) and
+    hasler-help-unapproved.timer (1 h, ``stop unapproved``, which does
+    nothing once a maker has approved).
+  - ``stop`` logs out (an ephemeral node is then removed from the tailnet),
+    stops the units and removes /run/hasler-help. A reboot loses the
+    transient units and /run, so it ends help as well.
+
+Tailscale SSH stays off (--ssh=false): makers reach the radio over the
+tailnet with ordinary ssh (pi, key auth) and the key page on :8080 - the
+radio's own authorized_keys stay the gate. Tailnet DNS and routes are not
+accepted (--accept-dns=false --accept-routes=false): the radio's own network
+is left as it is.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+TAILSCALE = "/usr/bin/tailscale"
+TAILSCALED = "/usr/sbin/tailscaled"
+SYSTEMCTL = "/usr/bin/systemctl"
+SYSTEMD_RUN = "/usr/bin/systemd-run"
+RUN = "/run/hasler-help"
+LAST = "/run/hasler-help.last.json"     # outside RUN: survives a stop, not a reboot
+SOCK = "/run/tailscale/tailscaled.sock"
+SELF = "/usr/local/sbin/hasler-help"     # what the timers run
+
+HELP_S = 24 * 3600
+APPROVE_S = 3600
+DAEMON = "hasler-help-tailscaled"
+UP = "hasler-help-up"
+END = "hasler-help-end"
+UNAPPROVED = "hasler-help-unapproved"
+PACKAGED = "tailscaled.service"
+
+HOSTNAME = re.compile(r"^hasler(-[a-z0-9]+)+$")
+WHYS = ("stopped", "expired", "unapproved", "wrong-tailnet", "failed")
+# tailscaled's journal lines that carry the one-time login URL
+NO_URL_IN_LOGS = "LogFilterPatterns=~(AuthURL|login\\.tailscale\\.com|/a/[0-9a-f])"
+
+
+def sh(cmd, timeout=20):
+    """(returncode, stdout) - never raises for a failing command."""
+    try:
+        p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ""
+
+
+def sleep(s):
+    time.sleep(s)
+
+
+def now():
+    return time.time()
+
+
+def installed():
+    return os.access(TAILSCALE, os.X_OK) and os.access(TAILSCALED, os.X_OK)
+
+
+def active(unit):
+    return sh([SYSTEMCTL, "is-active", "--quiet", unit + (".service" if "." not in unit else "")], 5)[0] == 0
+
+
+def read_json(path):
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+        return doc if isinstance(doc, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def write_json(path, doc):
+    tmp = path + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(doc, f)
+    os.replace(tmp, path)
+
+
+def ts_status():
+    """tailscale status --json, or None while tailscaled doesn't answer."""
+    rc, out = sh([TAILSCALE, "--socket=" + SOCK, "status", "--json"], 8)
+    if not out.strip():
+        return None
+    try:
+        doc = json.loads(out)
+    except ValueError:
+        return None
+    return doc if isinstance(doc, dict) else None
+
+
+def report(ok=True, error=None):
+    session = read_json(os.path.join(RUN, "session.json")) or {}
+    up = active(DAEMON)
+    ts = ts_status() if up else None
+    backend = (ts or {}).get("BackendState") or None
+    me = (ts or {}).get("Self") or {}
+    ips = [ip for ip in (me.get("TailscaleIPs") or []) if isinstance(ip, str)]
+    v4 = [ip for ip in ips if ip.count(".") == 3]
+    tailnet = ((ts or {}).get("CurrentTailnet") or {}).get("Name") or None
+    running = backend == "Running"
+    doc = {
+        "ok": ok,
+        "installed": installed(),
+        "active": up,
+        "backend": backend,
+        # only while it is still needed; never once connected
+        "auth_url": None if running else ((ts or {}).get("AuthURL") or None),
+        "address": (v4 or ips or [None])[0] if running else None,
+        "dns_name": (me.get("DNSName") or "").rstrip(".") or None if running else None,
+        "tailnet": tailnet if running else None,
+        "hostname": session.get("hostname"),
+        "started_at": session.get("started_at"),
+        "expires_at": session.get("expires_at"),
+        "approve_by": session.get("approve_by"),
+        # a session on record but its tailscaled gone (crashed, or killed)
+        "stale": bool(session) and not up,
+        "last": read_json(LAST),
+    }
+    if error:
+        doc["error"] = error
+    print(json.dumps(doc))
+    return 0 if ok else 1
+
+
+def fail(error):
+    return report(ok=False, error=error)
+
+
+def units_down(keep_timers=False):
+    """Stop our transient units (and forget failed ones, so the names are free)."""
+    units = [UP + ".service", DAEMON + ".service"]
+    if not keep_timers:
+        units += [END + ".timer", UNAPPROVED + ".timer"]
+    sh([SYSTEMCTL, "stop"] + units, 30)
+    sh([SYSTEMCTL, "reset-failed"] + units + [END + ".service", UNAPPROVED + ".service"], 10)
+
+
+def cleanup(why):
+    if active(DAEMON):
+        # An ephemeral node is removed from the tailnet at logout.
+        sh([TAILSCALE, "--socket=" + SOCK, "logout"], 20)
+    units_down()
+    # The package's own daemon never runs on a Hasler (bootstrap disables it).
+    rc, out = sh([SYSTEMCTL, "is-enabled", PACKAGED], 5)
+    if out.strip() == "enabled" or active(PACKAGED):
+        sh([SYSTEMCTL, "disable", "--now", "--quiet", PACKAGED], 30)
+    shutil.rmtree(RUN, ignore_errors=True)
+    if why:
+        write_json(LAST, {"at": int(now()), "why": why})
+
+
+def start(hostname):
+    if not installed():
+        return fail("Tailscale isn't installed on this radio (scripts/bootstrap.sh installs it)")
+    if active(DAEMON):
+        return report()                   # already on: same session, same end
+    if active(PACKAGED):
+        return fail("tailscaled.service is running - not started by remote help; stop it first")
+    cleanup(None)                         # leftovers of a crashed session
+    try:
+        os.remove(LAST)
+    except OSError:
+        pass
+    t = int(now())
+    os.makedirs(os.path.join(RUN, "tailscale"), mode=0o700, exist_ok=True)
+    os.chmod(RUN, 0o700)
+    write_json(os.path.join(RUN, "session.json"),
+               {"hostname": hostname, "started_at": t, "expires_at": t + HELP_S, "approve_by": t + APPROVE_S})
+    # The end first: whatever happens next, help stops on time.
+    for unit, secs, why in ((END, HELP_S, "expired"), (UNAPPROVED, APPROVE_S, "unapproved")):
+        rc, _ = sh([SYSTEMD_RUN, "--quiet", "--unit=" + unit, "--on-active=%ds" % secs,
+                    "--timer-property=AccuracySec=30s", "--property=Type=oneshot",
+                    "--description=Hasler remote help: end (%s)" % why, SELF, "stop", why], 20)
+        if rc != 0:
+            cleanup("failed")
+            return fail("couldn't set the timer that ends remote help (%s)" % unit)
+    daemon = [TAILSCALED, "--state=mem:", "--statedir=" + os.path.join(RUN, "tailscale"),
+              "--socket=" + SOCK, "--port=0", "--no-logs-no-support"]
+    base = [SYSTEMD_RUN, "--quiet", "--unit=" + DAEMON,
+            "--description=Hasler remote help: Tailscale (24 h, ephemeral)",
+            "--property=RuntimeDirectory=tailscale", "--property=RuntimeDirectoryMode=0755",
+            "--property=Restart=no"]
+    rc, _ = sh(base + ["--property=" + NO_URL_IN_LOGS] + daemon, 20)
+    if rc != 0:
+        # a systemd without LogFilterPatterns: no tailscaled lines in the journal at all
+        sh([SYSTEMCTL, "reset-failed", DAEMON + ".service"], 10)
+        rc, _ = sh(base + ["--property=StandardOutput=null", "--property=StandardError=null"] + daemon, 20)
+    if rc != 0:
+        cleanup("failed")
+        return fail("couldn't start tailscaled")
+    for _ in range(40):                   # its socket, ~10 s
+        if ts_status() is not None:
+            break
+        sleep(0.25)
+    else:
+        cleanup("failed")
+        return fail("tailscaled didn't come up")
+    rc, _ = sh([SYSTEMD_RUN, "--quiet", "--unit=" + UP, "--property=Restart=no",
+                "--property=StandardOutput=null", "--property=StandardError=null",
+                "--description=Hasler remote help: tailscale up (waits for a maker's approval)",
+                TAILSCALE, "--socket=" + SOCK, "up", "--reset", "--hostname=" + hostname,
+                "--accept-dns=false", "--accept-routes=false", "--ssh=false",
+                "--timeout=%ds" % HELP_S], 20)
+    if rc != 0:
+        cleanup("failed")
+        return fail("couldn't ask Tailscale for a login link")
+    for _ in range(60):                   # the login URL, ~15 s
+        ts = ts_status() or {}
+        if ts.get("AuthURL") or ts.get("BackendState") == "Running":
+            break
+        sleep(0.25)
+    return report()
+
+
+def stop(why):
+    if why == "unapproved":
+        ts = ts_status() if active(DAEMON) else None
+        if ts and ts.get("BackendState") == "Running":
+            return report()               # a maker approved in time: carry on
+    cleanup(why)
+    return report()
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        print(json.dumps({"ok": False, "error": "must run as root"}))
+        return 1
+    if len(argv) == 2 and argv[0] == "start" and len(argv[1]) <= 63 and HOSTNAME.match(argv[1]):
+        return start(argv[1])
+    if argv == ["status"]:
+        return report()
+    if argv[:1] == ["stop"] and len(argv) <= 2 and (len(argv) == 1 or argv[1] in WHYS):
+        return stop(argv[1] if len(argv) == 2 else "stopped")
+    print(json.dumps({"ok": False, "error": "usage: hasler-help start hasler-<room>-<id> | status | "
+                      "stop [" + "|".join(WHYS) + "]"}))
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

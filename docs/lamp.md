@@ -40,7 +40,9 @@ unplug.
 
 Levels are perceptual (gamma 2.2 applied after), balance per channel after
 that. Starting balance for this LED (R 220 Ω, G/B 100 Ω on 3.3 V): R 1.0,
-G 0.15, B 0 for amber - calibrate by eye at night.
+G 0.15, B 0 for amber - calibrate by eye at night, on the key page under
+Settings → **Maker tools** → *Lamp colours* (tap the version number at the
+bottom of Settings seven times to show it).
 
 | Name | Linear R, G, B | Target look | Meaning |
 |---|---|---|---|
@@ -57,10 +59,9 @@ of the 800 Hz period: below that the PWM can't draw a pulse reliably). A
 channel only gets its floor if it carries a real share of the colour (at
 least 20 % of the brightest channel); a trace under its floor goes dark.
 
-Ember was 6 % (2 % at night) until 2026-10-21: that is ~0.2 % red duty,
-invisible behind the window - standby looked dark, which must mean "safe to
-unplug". The owner picked ~3.5 % red duty by eye, so ember is now 22 % (15 %
-at night, ~1.5 % duty) and the shutdown breath 15-35 %.
+Standby ember is 22 % (about 3.5 % red duty), and 15 % at night (about
+1.5 %): low enough for a dark bedroom, but never so low that standby looks
+dark, because dark must only mean "safe to unplug" (see History).
 
 ## Behaviour
 
@@ -227,10 +228,15 @@ replaced:
 In 0.3.2 the boot breath became brighter (a 2 s fade up, then 25-60 %), because
 the first 10-35 % breath was almost invisible.
 
-On 2026-10-21, after an interaction design and LED review: blue lost its green
+In 0.4.3 (2026-10-21), after an interaction design and LED review: blue lost its green
 (green was ~70 % of its light, so it read green) and pale amber its blue;
 magenta became the house (another Hasler), as brief signatures only; deep
 ember became pure red (no green floor); three new replies - signature, swell,
 nudge - for the PU key's destination, a group join/leave, a phone pairing and
 a volume key at its end; installing an update became the ember breath (it was
 a solid ember, which reads as "asleep").
+
+In 0.4.4 ember became visible again. It had been 6 % (2 % at night), about
+0.2 % red duty: invisible behind the window, so standby looked dark. The owner
+picked about 3.5 % duty by eye, so ember is now 22 % (15 % at night) and the
+shutdown breath 15-35 %.

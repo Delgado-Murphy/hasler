@@ -34,6 +34,7 @@ it all together are in the [build guide](build-guide.md).
 |---|---|---|
 | **USB-C PD charger, 65 W GaN** | 1 | **Must offer 20 V** (a "20 V PDO"). Many 30–45 W chargers stop at 15 V. 65 W gives 20 V / 3.25 A, plenty. |
 | USB-C cable | 1 | Any good cable rated 3 A. Above that you need an e-marked cable. |
+| **MCP23017 board** (CQRobot, or the green breakout) | 1 | Reads the keys over I²C, so the panel wiring is 4 wires to the Pi. The default in `hasler-hm.yaml`. See [Wiring quick reference](#wiring-quick-reference). |
 | **microSD card, 32 GB A1/A2** | 1 | For moOde. An "endurance" card is worth it in a box that is always on. |
 | **Multimeter** | 1 | Phase 0 is all measuring. It is also the only safe way to check the power. |
 | Silicone hookup wire, 26–28 AWG stranded | ~5 m | Panel wiring: 7 keys, end switch and common ground. Stranded, because solid wire breaks where a lid opens. |
@@ -160,7 +161,6 @@ without it, and you can add it later.
 
 | Item | Why |
 |---|---|
-| MCP23017 board | **We have it, and it is now the default.** It turns the panel wiring into 4 wires. See [Keys](#keys). |
 | Panel-mount USB-C socket | The HW-398 ends in a *male plug*. This gives the cabinet a modern USB-C inlet and keeps the DC wires short. Check its current rating. |
 | **USB Bluetooth dongle** | The Pi's own chip shares one radio between Wi-Fi and Bluetooth, and Bluetooth audio can stutter. Ethernet + built-in Bluetooth is better; the dongle is the fallback. |
 | DPDT relay module | Internal / external speaker switching, for the Excelsior. |
@@ -185,7 +185,7 @@ figure, about **10 W**. A vintage cone like this is good for about **1–3 W**.
 That is five to ten times more amplifier than the speaker can survive, and the
 speaker cannot be replaced with anything original.
 
-The fix is the **volume ceiling** (key page → Settings → Volume ceiling; stored
+The fix is the **volume ceiling** (key page → Settings → Sound → Volume ceiling; stored
 as `volume_limit`). It caps the hardware mixer but keeps the full turn and
 resolution of the knob. Set it by ear: the steps are in the
 [build guide, Phase 3a](build-guide.md#phase-3a--keys-drive-the-music).
@@ -263,14 +263,19 @@ datasheet rev. D). A switch there may never read. The service refuses `d7` and
 
 **Fallback: keys straight to Pi GPIO.** This avoids the Amp4 Pro's pins (2, 3, 4,
 18–21), the HAT EEPROM (0, 1), the UART (14, 15) and the lamp (17, 22, 27). It is
-commented out in `hasler-hm.yaml`:
+commented out in `hasler-hm.yaml`. Its `pins:` list gives each logical pin a
+GPIO (`d7` is a placeholder, so `d8` lands on GPIO 25); the keys keep their
+`controls:` pins, so with the shipped file:
 
-| Logical | Key | GPIO | | Logical | Key | GPIO |
+| Logical | GPIO | Key | | Logical | GPIO | Key |
 |---|---|---|---|---|---|---|
-| d0 | 1 | 5 | | d4 | 5 | 16 |
-| d1 | 2 | 6 | | d5 | 6 | 23 |
-| d2 | 3 | 12 | | d6 | PU | 24 |
-| d3 | 4 | 13 | | d8 | tone end switch | 25 |
+| d0 | 5 | PU | | d4 | 16 | Key 1 |
+| d1 | 6 | Key 6 | | d5 | 23 | Key 3 |
+| d2 | 12 | Key 4 | | d6 | 24 | Key 5 |
+| d3 | 13 | Key 2 | | d8 | 25 | tone end switch |
+
+Easier: wire the keys to any of those GPIOs in whatever order is convenient
+and let `scripts/panel-probe.py --identify` rewrite the `pins:` list for you.
 
 All keys go to a common ground, with pull-ups turned on in software and 100 nF
 across each.
@@ -311,8 +316,10 @@ lamp shows is in [lamp.md](lamp.md).
   HIGH at halt.
 - **Resistors go on the colour legs, never on the common.** They keep each pin at
   about 4–6 mA at 3.3 V, well within what a GPIO pin can sink (red drops about
-  2.0 V, green and blue about 2.9 V). If it is too dim or one colour wins, adjust
-  `balance:` in the descriptor before you change parts.
+  2.0 V, green and blue about 2.9 V). If it is too dim or one colour wins,
+  adjust the colours by eye on the key page (Settings → Maker tools → *Lamp
+  colours*), or `palette:` / `balance:` in the descriptor, before you change
+  parts.
 - The pots' 3.3 V and GND come from the board's rails too, not straight from
   the Pi.
 
@@ -324,7 +331,8 @@ leave it alone).
 
 1. **More than 24 V into the Amp4 Pro**, or the speaker wired **across two
    channels**. Measure the PD trigger with nothing connected before it ever
-   touches the amp (19.5–20.5 V), and put the speaker on L+ / L− only.
+   touches the amp (20 V ±5 %; the steps are in the
+   [build guide's power bring-up](build-guide.md#power-bring-up)), and put the speaker on L+ / L− only.
 2. **The original mains transformer and wiring come out completely**, and the
    old capacitors are discharged before they go in the bin.
 

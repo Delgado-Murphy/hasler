@@ -1,139 +1,201 @@
 # Releasing Hasler
 
-This page is for maintainers: how a new version of the radio's software is
-built, signed and sent to the radios. If you only want to know how updates look
-to an owner, see [Using your Hasler](using.md#updates).
+*For makers:* how a new version of the radio's software is built, signed and
+sent to the radios. How updates look to an owner: [Using your
+Hasler](using.md#updates). Why it works this way: [ota.md](ota.md). The exact
+file formats: [ota-format.md](ota-format.md).
 
-**The short version.** Every release goes through the same steps:
+**The short version.** Tag it, let GitHub build it, start the signing
+workflow. Nobody has to approve or sign anything by hand.
 
-1. Bump the version and write the changelog.
-2. Tag a **release candidate** (`vX.Y.Z-rc.N`). CI builds it.
-3. Check the build, then approve the signing workflow. The release goes to the
-   `bench` channel (the makers' own radio).
-4. Let the bench radio live with it for 48 hours, including nights and standby.
-5. Tag the final version and publish it to `stable`. Every radio on `stable`
-   then sees it.
+1. Bump the version and write the changelog, on `master`.
+2. Tag `vX.Y.Z` and push the tag. `release.yml` tests and builds it (about
+   3 minutes).
+3. Run `sign-publish.yml` in `hasler-releases` with mode `publish` and
+   channel `bench`. It checks the build, signs it, creates the GitHub release
+   and points the bench channel at it on GitHub Pages (under a minute).
+4. The bench radio picks it up at its next daily check, or at once with
+   "Check now".
+5. When the bench radio has lived with it happily, **promote** the same
+   release to `stable`.
 
-Background: [ota.md](ota.md), sections 2-3 (why it works this way). File
-formats: [ota-format.md](ota-format.md). Tools: `scripts/release/`. Workflows:
-`.github/workflows/ci.yml` and `release.yml` (in `hasler`, this repository) and
+Tools: `scripts/release/`. Workflows: `.github/workflows/ci.yml` and
+`release.yml` in `hasler` (this repository), and
 `release-tools/hasler-releases/.github/workflows/sign-publish.yml` (copied to
 the public `hasler-releases` repository). Published releases:
 <https://delgado-murphy.github.io/hasler-releases/>.
 
 ## Release checklist
 
-1. `master` green in CI. Bench box on the previous release.
-2. Bump `version` in `daemon/pyproject.toml`; add the `## X.Y.Z - date`
-   section to `CHANGELOG.md` (it becomes the release notes). MAJOR if config
-   schema, descriptor format, units/udev/sudoers/config.txt, apt deps or the
-   OS/moOde floor changed (docs/ota.md §2). New migration? It ships from
-   `daemon/haslerd/migrations/NNN_name.py`.
-3. Try it locally: `python scripts/release/build_release.py --version X.Y.Z --out dist/ --no-wheels`
-   (any machine; warnings list what `--strict` will refuse in CI).
-4. Release candidate first: `git tag -a vX.Y.Z-rc.1 -m ... && git push origin vX.Y.Z-rc.1`.
-   `release.yml` tests, builds in debian:trixie on arm64, installs the venv
-   offline, uploads the artifact
-   `hasler-release-X.Y.Z-rc.1`. The run summary shows the run id and the
-   tarball's sha256.
-5. Before signing (laptop): download the artifact, `make_manifest.py check`,
-   skim `files.sha256` and diff `integration/` against the last release
-   (`zstd -dc ... | tar -t`). Anything surprising: stop.
-6. In `hasler-releases` -> Actions -> sign-publish -> Run: mode `publish`,
-   version, artifact sha256, run id, channel `bench`. Approve the `sign`
-   environment when asked. It re-checks the run (release.yml on that tag,
-   green, tag still at that commit), the artifact digest, the sha256, the
-   attestation (if enabled), the tarball against release.json, the keyring;
-   signs, creates GitHub release `vX.Y.Z-rc.1`, points `bench` at it.
-7. Bench box: 48 h incl. nights and standby cycles; run the test matrix in
-   docs/ota.md (rollback drill, power-cut drill, halt drill).
-8. Promote: tag `vX.Y.Z` on the same commit -> steps 4-6 with channel
-   `stable`, or mode `promote` to point `stable` at the release already on
-   `bench` without rebuilding. There are only two channels, `bench` and
-   `stable`.
-9. Bad release: `channel.py halt --index channels/<ch>.json --seq N`, sign
-   with the timestamp key (`sign.sh -n hasler-channel`), push gh-pages; then
-   ship the fix as a new, higher version.
+1. `master` green in CI; the bench radio on the previous release.
+2. Bump `version` in `daemon/pyproject.toml` and add a `## X.Y.Z - date`
+   section to `CHANGELOG.md` (it becomes the release notes). Pick the number
+   by what changed - the number alone decides the release's `kind`:
+   - **major** (`X+1.0.0`): a new kind of system file (see below), a config
+     schema change with a migration (`daemon/haslerd/migrations/NNN_name.py`),
+     or a raised OS/moOde floor. Radios always ask before installing it.
+   - **minor**: features with defaults. **patch**: fixes. Both install by
+     themselves at night on radios set to Automatic. New units, udev rules,
+     helpers or drop-ins of a kind radios already know are fine here.
+3. Try it locally (any machine):
+   `python scripts/release/build_release.py --version X.Y.Z --out dist/ --no-wheels`.
+   Its warnings list what `--strict` will refuse in CI.
+4. Tag and push:
 
-`seq` is derived from the version - `(M*10000 + m*100 + p)*100 + (N for rc.N, 99 for final)` -
-so it follows semver with no counter to keep (minor/patch < 100). `--seq` overrides.
+   ```sh
+   git tag -a vX.Y.Z -m X.Y.Z && git push origin vX.Y.Z
+   ```
+
+   `release.yml` runs the tests, builds in `debian:trixie` on a native arm64
+   runner, installs the venv offline as a radio would, attests the build and
+   uploads the artifact `hasler-release-X.Y.Z`. The run summary shows the
+   tarball's sha256.
+5. Optional, for anything unusual: download the artifact
+   (`gh run download <run id> -R Delgado-Murphy/hasler -n hasler-release-X.Y.Z`),
+   run `scripts/release/make_manifest.py check`, and diff `integration/`
+   against the last release (`zstd -dc ... | tar -t`).
+6. Publish to bench:
+
+   ```sh
+   gh workflow run sign-publish.yml -R Delgado-Murphy/hasler-releases \
+     -f mode=publish -f version=X.Y.Z -f artifact_sha256=<sha256> \
+     -f run_id=<release.yml run id> -f channel=bench
+   ```
+
+   It checks that the run is `release.yml` on that tag, green, and that the
+   tag still points at the commit built; then the artifact digest, the
+   sha256, the build attestation, the tarball against `release.json`, and the
+   keyring. Then it signs, creates the GitHub release `vX.Y.Z`, lists it in
+   `releases.json` (the website) and points `bench` at it.
+7. On the bench radio: Check now, install, live with it - nights and standby
+   cycles included. For bigger changes run the drills in
+   [ota.md](ota.md#drills-for-each-release).
+8. Promote to stable - the same artifact, never rebuilt:
+
+   ```sh
+   gh workflow run sign-publish.yml -R Delgado-Murphy/hasler-releases \
+     -f mode=promote -f version=X.Y.Z -f channel=stable
+   ```
+
+9. A bad release: halt it on its channel, then ship the fix as a new, higher
+   version. Radios that haven't installed it never will; radios already
+   running it stay there until the fix arrives.
+
+   ```sh
+   gh workflow run sign-publish.yml -R Delgado-Murphy/hasler-releases \
+     -f mode=halt -f version=X.Y.Z -f channel=stable
+   ```
+
+**Release candidates** (`vX.Y.Z-rc.N`) work the same way and are marked as
+pre-releases on GitHub. They are optional; keep them on `bench`.
+
+**seq** is derived from the version, so there is no counter to keep:
+`(X*10000 + Y*100 + Z)*100 + N` for `-rc.N`, `+ 99` for a final (Y and Z
+below 100). Radios only ever move to a higher seq.
+
+**Expiry.** A signed `release.json` is valid for 120 days: promote within that
+time. Channel indexes expire after 14 days; `sign-publish` re-signs them every
+night (03:17 UTC), so nothing needs doing - unless that job stops running.
+
+## A new kind of system file: major releases only
+
+A new top dir under `integration/` (a new *kind*, say `tmpfiles/`) needs a
+rule in `update/hasler_update/integrate.py`, a pattern in `build_release.py`'s
+`INTEGRATION_OK`, and a **major** version: the radios' current updater has no
+rule for it, so in a patch or minor release they would refuse the whole update
+(as 0.3.5 did with 0.3.6's `avahi/`). The build refuses that for you (the kinds
+radios know are `KNOWN_KINDS_SINCE` in `make_manifest.py`). In a major release
+the old updater leaves those files out of the trial, and the release's own
+updater puts them in place right after the commit. `hasler-update status`
+shows `pending_integration` with the error if that didn't work; the radio
+retries at the next night apply and at boot. This needs updater 0.4.2 or later
+on the radios. Once the major release is out, add the kind to
+`KNOWN_KINDS_SINCE` (the test against the newest tag tells you).
+
+A file for another service's unit goes in as a systemd drop-in,
+`integration/systemd/<unit>.service.d/hasler-<name>.conf` (from
+`config/systemd-dropins/`), e.g. `bluetooth.service.d/hasler-speaker.conf`.
+That is the known `systemd` kind, fine in any release.
+
+A release that changes the `config.txt` block needs a reboot and isn't
+installed by the nightly timer or the key page yet: on the radio,
+`sudo hasler-update apply --allow-reboot` (see [ota.md](ota.md), §4).
 
 ## CI speed
 
 - `ci.yml` runs `lint` (ruff), `pytest (daemon)`, `pytest (updater)` and
   `release-smoke` as parallel jobs; `test` only gathers their results, so
-  branch protection still requires the single check `ci / test`. Both suites
-  run under pytest-xdist (`-n auto`; ~9 s / ~7 s on a laptop vs 73 s / 24 s
-  serial) - new tests must not share fixed ports or paths (use `tmp_path`
-  and port 0). Tool pins: `.github/ci-requirements.txt` (also the pip cache
-  key). A newer push to a branch/PR cancels the older run; tag runs never.
+  branch protection can require the single check `ci / test`. Both suites
+  run under pytest-xdist (`-n auto`) - new tests must not share fixed ports or
+  paths (use `tmp_path` and port 0). Tool pins: `.github/ci-requirements.txt`
+  (also the pip cache key). A newer push to a branch or PR cancels the older
+  run; tag runs never.
 - `release.yml` keeps four caches (actions/cache), mounted at `/cache` in the
   container (`CACHE_DIR`): apt `.deb`s, pip/uv downloads, the finished
   wheelhouse (`build_wheels.sh` reuses it when the lock, the script and the
   toolchain versions match - lgpio is not rebuilt) and the go-librespot/deno
   downloads (keyed on their pins, sha256-checked on use). Saved only when
-  their content changed. Same caches on the native arm64 runner and on QEMU.
+  their content changed.
 - Caches from a tag run are invisible to the next tag; only default-branch
-  caches are shared. The weekly scheduled run (and any manual dispatch from
-  `master`) rebuilds the latest tag and so warms them for the next release.
-- The byte-for-byte second build runs only on that weekly schedule or a
-  dispatch with `reproducibility: true`, not on every release. Before
-  signing an important release you can dispatch it on the tag yourself.
-- Expect: CI ~1-1.5 min wall clock; a release on `ubuntu-24.04-arm` with warm
-  caches ~4-6 min, cold ~10 min; on QEMU roughly 3-5x that.
+  caches are shared. The weekly scheduled run (Mondays) rebuilds the latest
+  tag and so warms them for the next release.
+- The byte-for-byte second build runs only on that weekly schedule or on a
+  dispatch with `reproducibility: true`, not on every release. Before an
+  important release you can dispatch it on the tag yourself.
+- Expect: CI about 1-1.5 min; a release build on `ubuntu-24.04-arm` (repo
+  variable `ARM_RUNNER`) with warm caches about 3-4 min, cold about 10 min.
+  Without `ARM_RUNNER` it falls back to x86 + QEMU, roughly 3-5 times slower.
 
-## One-time org setup (owner, once the org exists)
+## How the org is set up
 
-1. Org `delgado-murphy`; repos `hasler` (this code; private at first, now
-   public) and `hasler-releases` (public). Settings -> Actions -> General, both repos:
-   "Allow actions created by GitHub" only (all used actions are `actions/*`,
-   pinned by SHA); workflow permissions **read-only**; no PR approval by Actions.
-2. `hasler`: branch protection on `master` (require `ci / test`, no force
-   push, no deletion). Tag ruleset for `v*`: only you can create, nobody can
-   update or delete. Repo variable `ATTESTATIONS=true`: attestations in a
-   *private* repo need GitHub Enterprise Cloud; while `hasler` was private on
-   the Free plan it stayed unset, and sign-publish relied on run metadata +
-   artifact digest. Now that `hasler` is public, attestations should work on
-   the Free plan too; turning `ATTESTATIONS=true` on is still to be decided.
-   `ubuntu-24.04-arm` runners must be available to the repo on the plan;
-   if not, make the build job `runs-on` a self-hosted arm64 runner (never the bench Pi).
+Done once, in October 2026. Kept here so it can be checked or redone.
+
+1. Org `delgado-murphy`; repos `hasler` (this code, public) and
+   `hasler-releases` (public). Settings -> Actions -> General, both repos:
+   GitHub-owned actions only (all used actions are `actions/*`, pinned by
+   SHA); workflow permissions **read-only**; no PR approval by Actions.
+2. `hasler`: `master` protected against force push and deletion. Repo
+   variables: `ARM_RUNNER=ubuntu-24.04-arm` (native arm64 runners, free for
+   public repos) and `ATTESTATIONS=true` (build provenance, checked by
+   sign-publish). Not set up yet, worth doing: require the check `ci / test`
+   on `master`, and a tag ruleset for `v*` (only the owner creates them,
+   nobody updates or deletes them).
 3. `hasler-releases`:
-   - copy `release-tools/hasler-releases/.github/` to the repo root, and
+   - `release-tools/hasler-releases/.github/` copied to the repo root, and
      `scripts/release/{make_manifest.py,keyring.py,channel.py,sign.sh,verify.sh}`
-     to `tools/` (re-copy when they change); `trust/root.pub` (and
-     `trust/root2.pub`) from the key ceremony.
-   - branch `gh-pages` with `keyring.json`, `keyring.json.sig`,
-     `channels/` (empty) and an `index.html`; Settings -> Pages -> deploy from
-     branch `gh-pages` /. Indexes appear at
-     `https://delgado-murphy.github.io/hasler-releases/channels/<channel>.json`.
-   - environment `sign`: required reviewer = you, "prevent self-review" off,
-     deployment branches = `main` only; secrets `RELEASE_SIGNING_KEY`
-     (the release private key, unencrypted OpenSSH format) and
-     `BUILD_READ_TOKEN` (fine-grained PAT, resource owner the org, repo
-     `hasler` only, permissions Actions: read, Contents: read, Metadata: read;
-     expiry 1 year - calendar it).
-   - environment `timestamp`: no reviewer (the daily job must run alone),
+     to `tools/` - **re-copy them when they change**. `trust/root.pub` from
+     the key ceremony.
+   - branch `gh-pages` with `keyring.json`, `keyring.json.sig`, `channels/`,
+     `releases.json` and `index.html` (the website); Settings -> Pages ->
+     deploy from branch `gh-pages` /.
+   - environment `sign`: no reviewer, deployment branches = `main` only;
+     secrets `RELEASE_SIGNING_KEY` (the release private key, OpenSSH format)
+     and `BUILD_READ_TOKEN` (fine-grained PAT, owner the org, repo `hasler`
+     only, Actions: read, Contents: read, Metadata: read; expires after a
+     year - renew it in time).
+   - environment `timestamp`: no reviewer (the nightly job runs alone),
      deployment branches = `main` only; secret `TIMESTAMP_SIGNING_KEY`.
-   - branch protection on `main` and `gh-pages`: no force push, no deletion.
-     (Actions' token must still push gh-pages: allow `github-actions` or leave
-     gh-pages unprotected beyond no-force-push.)
-   - ruleset: nobody but you may create releases/tags `v*`.
+   - `main` and `gh-pages` protected against force push and deletion (the
+     workflows push `gh-pages` with the Actions token).
+   - not set up yet: a ruleset so that only the owner may create releases and
+     `v*` tags.
 
 ## Key ceremony
 
-Offline machine (no network), a fresh USB stick, paper. Three key kinds:
+On an offline machine (no network), with a fresh USB stick and paper. Three
+kinds of key:
 
-| key | where | signs | namespace |
+| Key | Where | Signs | Namespace |
 |---|---|---|---|
-| root (1, ideally 2) | encrypted file on 2 USB sticks + paper, never online | `keyring.json` | `hasler-keyring` |
-| release | GitHub secret in `sign` (v1); YubiKey later | `release.json` | `hasler-release` |
+| root (one today; a second can be added) | offline only, with a paper backup | `keyring.json` | `hasler-keyring` |
+| release | GitHub secret in `sign` | `release.json` | `hasler-release` |
 | timestamp | GitHub secret in `timestamp` | channel indexes | `hasler-channel` |
 
 ```sh
-# root: passphrase from a dice/diceware list, written on the paper backup
+# root: a passphrase from a diceware list, written on the paper backup
 ssh-keygen -t ed25519 -a 100 -C hasler-root-2026 -f hasler-root-2026.key
-# paper: the private key file is short text - print it (or `qrencode`) and
-# store the paper apart from the sticks; test restoring from paper once.
+# paper: the private key file is short text - print it (or `qrencode`), keep
+# the paper apart from the sticks, and test restoring from it once.
 
 # release + timestamp: no passphrase (they live in GitHub secrets)
 ssh-keygen -t ed25519 -N '' -C release-2026a   -f release-2026a
@@ -147,59 +209,43 @@ python3 scripts/release/keyring.py sign --root-key hasler-root-2026.key keyring.
 python3 scripts/release/keyring.py verify --root hasler-root-2026.key.pub keyring.json
 ```
 
-Then: `hasler-root-2026.key.pub` -> `trust/root.pub` (public repo) and into
-every box's `/etc/hasler/trust/` at install; `keyring.json(.sig)` -> gh-pages;
-paste `release-2026a` and `timestamp-2026a` (private halves) into the two
-secrets, then **delete them from the offline machine** (`shred -u`). Keep the
-`.pub` files.
+Then: `hasler-root-2026.key.pub` -> `trust/root.pub` in `hasler-releases` and
+into every radio's `/etc/hasler/trust/` at install; `keyring.json(.sig)` ->
+gh-pages; paste the private halves of `release-2026a` and `timestamp-2026a`
+into the two secrets, then **delete them from the offline machine**
+(`shred -u`). Keep the `.pub` files.
 
-**Rotation / revocation** (leaked release key, or yearly): new key pair, then
+**Rotation or revocation** (a leaked release key, or yearly): a new key pair,
+then
 `keyring.py new --from keyring.json --drop release-2026a --key release-2026b:release:release-2026b.pub -o keyring.json`
-(seq goes up), sign with root offline, publish to gh-pages, replace the secret.
-Boxes accept it because a root key signed it and its `keyring_seq` is higher.
-After a timestamp-key rotation, re-sign each channel once with mode
-`promote` or by hand - the daily job refuses indexes the current keyring
-cannot verify. Renew the keyring well before `expires`.
+(the seq goes up), sign it with root offline, publish it to gh-pages, replace
+the secret. Radios accept it because a root key signed it and its
+`keyring_seq` is higher. After rotating the timestamp key, re-sign each
+channel once (mode `promote`, or by hand) - the nightly job refuses indexes
+the current keyring can't verify. Renew the keyring (it expires 2027-10-20)
+well before then.
 
-## A new kind of system file: major releases only
+## Where release files come from
 
-A new top dir under `integration/` (a new *kind*, say `tmpfiles/`) needs a
-rule in `update/hasler_update/integrate.py`, a pattern in `build_release.py`'s
-`INTEGRATION_OK`, and a **major** release (`--kind major`): the radios'
-current updater has no rule for it, so in a patch or minor release they would
-refuse the whole update (as 0.3.5 did with 0.3.6's `avahi/`). The build
-refuses that for you (the kinds radios know are `KNOWN_KINDS_SINCE` in
-`make_manifest.py`). In a major release the old updater leaves those files
-out of the trial and the release's own updater puts them in place right
-after the commit; `hasler-update status` shows `pending_integration` with the
-error if that didn't work, and the radio retries at the next night apply and
-boot. Majors are never installed by themselves - the owner is asked - and
-radios need an updater with this rule (the first release after 0.4.1) for
-this. Once the major release is out, add the kind to `KNOWN_KINDS_SINCE` (the
-test against the newest tag tells you).
+`build_release.py` builds the tarball from an allowlist (its `ALLOWLIST`):
 
-## Gaps against docs/ota-format.md (to settle with the box side)
-
-- Channel index signatures use namespace `hasler-channel` (the contract does
-  not name one).
-- `manifest.json` in the tarball is release.json **without** `artifacts`
-  (a file cannot hold its own archive's hash).
-- `files.sha256` lists every file except itself, including `manifest.json`.
-- `requires.apt` (list of Debian packages) appears only if a native wheel
-  could not be repaired with auditwheel.
-- `app/` holds `haslerd/` + `hasler_update/` + `config/` (variants, catalog,
-  stations, camilladsp, captive, go-librespot, moode, examples) - data that
-  scripts/bootstrap.sh puts in NetworkManager/nginx/camilladsp/moOde places, which the
-  integration allowlist has no destination for yet.
-- Integration sources: `config/*.service|*.timer` (OTA units, `/opt/hasler/current`),
-  `config/sudoers/haslerd`, `config/configtxt/hasler.block`, `config/udev/`, `config/avahi/hasler.service`,
-  `scripts/hasler-*`,
-  `update/systemd/`, `update/bin/`. The legacy rsync layout's units live in `config/legacy/`
-  (used only by `scripts/install.sh`, never shipped). Not in releases: the polkit rules and
-  the watchdog (`config/update/`, put in place by `scripts/ota-bootstrap.sh` /
-  `scripts/bootstrap.sh`), and the captive portal / CamillaDSP / moOde files (`bootstrap.sh`).
-- `python/` (bundled CPython) is not built in v1: wheels target trixie's
-  python3 (cp313).
+- `app/`: `daemon/haslerd/`, `daemon/pyproject.toml`, `update/hasler_update/`,
+  `config/{variants,catalog,stations,camilladsp,snapcast,captive,go-librespot,moode}`,
+  the examples, `CHANGELOG.md`.
+- `integration/`: `config/*.service|*.timer`, `config/systemd/`,
+  `update/systemd/` (the updater's units), `update/bin/hasler-update` and the
+  `scripts/hasler-*` helpers (`sbin/`, `bin/`, `shutdown/`),
+  `config/sudoers/haslerd`, `config/udev/`, `config/systemd-dropins/`,
+  `config/configtxt/hasler.block`, `config/avahi/hasler.service`, or a
+  repo-level `integration/` tree. The legacy rsync layout's units in
+  `config/legacy/` are never shipped.
+- **Not in releases** (put in place by `scripts/ota-bootstrap.sh` /
+  `scripts/bootstrap.sh`): the polkit rules and the watchdog
+  (`config/update/`), and the captive portal, CamillaDSP, Snapcast and moOde
+  files - `app/config/` carries their data, but the integration allowlist has
+  no destination for them yet. apt packages are installed by `bootstrap.sh`
+  too (`requires.apt` in `release.json` names the ones the wheels need).
+- No bundled Python yet: wheels target trixie's `python3` (cp313).
 
 ## Bench box: from the rsync tree to releases (dev keys, local channel)
 
@@ -233,25 +279,26 @@ sudo hasler-update apply --seq <seq> --force                         # first ins
 hasler-update status
 ```
 
-`--force` skips the night window and the idle veto (bench only). The first
+`--force` skips the night window and the idle check (bench only). The first
 release is `major` (no previous tag), so it would wait to be asked anyway. The
 legacy lamp block was re-marked by ota-bootstrap, so no reboot is needed; if it
 says the block differs, add `--allow-reboot`. After the first commit
-`scripts/install.sh` refuses to run - the box is updated by releases now.
+`scripts/install.sh` refuses to run - the radio is updated by releases now.
 
 Drills (each a new, higher rc; publish, check, apply as above):
 
-| drill | how | expect |
+| Drill | How | Expect |
 |---|---|---|
 | upgrade | `dev-build.sh 0.2.0-rc.2`, publish | committed, probation, `previous` -> rc.1 |
 | rollback (health) | `dev-build.sh 0.2.0-rc.3 --broken` | haslerd exits at start -> rolled back to rc.2, rc.3 marked bad |
 | manual go back | `sudo systemctl start hasler-update-apply@rollback.service` (what the key page does) | back to the previous release |
-| power cut | pull power during download, stage, right after "switched", and at first boot | always lands on a working release; boot counter rolls a trial back at the 2nd boot |
+| power cut | pull power during download, stage, right after "switched", and at first boot | always lands on a working release; the boot counter rolls a trial back at the 2nd boot |
 | halt | `dev-channel.py halt --seq <seq>` before applying | status says halted, staged copy dropped |
 | expiry | skip `dev-channel.py refresh` for 14 days (or set the Pi clock ahead in a scratch test) | "no fresh update info", nothing installed |
 
 Index expiry is 14 days: `dev-channel.py refresh` re-signs. To move the bench
-box to production keys after the ceremony:
+radio to production keys:
 `sudo scripts/ota-bootstrap.sh --trust <ceremony trust dir> --replace-trust` and
 `--update-url ""` (back to the public channel); releases signed with the dev
-keys stop verifying at that moment.
+keys stop verifying at that moment. (The bench radio has been on the
+production keys and the public channel since 0.3.1.)

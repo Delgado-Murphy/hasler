@@ -13,6 +13,8 @@ or describe a new cabinet. If you only want to use a Hasler, see
 | `daemon/haslerd/player/` | Playing radio, Spotify (go-librespot) and YouTube Music; moOde's casting targets (`renderers.py`). |
 | `daemon/haslerd/multiroom/` | Several Haslers in step: finding peers, the group, the Snapcast audio path ([multiroom.md](multiroom.md)). |
 | `daemon/haslerd/lamp/` | The pilot lamp: what to show ([lamp.md](lamp.md)) and how to fade. |
+| `daemon/haslerd/dsp/` | The knobs' sound effects ([sound.md](sound.md)); `scripts/hasler-dsp` applies them. |
+| `daemon/haslerd/ha/` | Home Assistant: finding it, its REST API, what a key can ask it to do. |
 | `daemon/haslerd/web/` | The key page (`static/index.html`) and the Wi-Fi setup page, and their API. |
 | `daemon/tests/` | Tests for the service. |
 | `update/` | The over-the-air updater that runs on the radio ([ota.md](ota.md)). |
@@ -48,7 +50,7 @@ hold costs nothing to test, and a cabinet can be developed before it is wired.
 ## Try the panel without hardware
 
 ```sh
-scripts/panel-probe.py --fake        # keys 0-9 toggle inputs on a laptop
+daemon/.venv/bin/python scripts/panel-probe.py --fake   # keys 0-9 toggle inputs on a laptop
 ```
 
 On a real radio, the same tool shows every key and knob live. Use it while
@@ -60,7 +62,8 @@ Each cabinet has one YAML file in `config/variants/`. It says:
 
 - **io:** which chips read the keys and knobs, and which pins drive the lamp;
 - **controls:** each key or knob, its type (`momentary`, `latching_toggle`,
-  `pot`, ...) and its pin;
+  `pot`, ...) and its pin; a pot can also name its default sound effect
+  (`effect: tilt`, see [sound.md](sound.md#a-new-cabinets-pots));
 - **actions:** what each control does (`k1.tap: {do: preset, n: 1}`);
 - **presets:** the music on each key, one source per key:
 
@@ -94,6 +97,9 @@ candidate, test it on the bench radio, then promote it.
 - A key press must never wait for a slow network call.
 - Write user-facing text (key page, docs) in plain, short English. Some of our
   readers speak Spanish first.
+- Change the code and its doc together. [lamp.md](lamp.md), [sound.md](sound.md)
+  and [multiroom.md](multiroom.md) are the designs the code follows; the owner's
+  side is in [using.md](using.md).
 
 ## Why not a Volumio plugin?
 

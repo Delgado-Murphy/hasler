@@ -92,11 +92,12 @@ def test_strict_release_integration(built):
               "systemd/hasler-update-check.service", "systemd/hasler-update-rollback.service",
               "sudoers/haslerd", "configtxt/hasler.block", "udev/99-hasler-pwm.rules",
               "sbin/hasler-audio-mono", "sbin/hasler-wifi-join", "sbin/hasler-lamp-boot",
-              "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-bootcfg-guard",
+              "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-bootcfg-guard", "sbin/hasler-help",
               "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "bin/hasler-dsp", "shutdown/hasler-lamp-halt",
               "avahi/hasler.service", "systemd/bluetooth.service.d/hasler-speaker.conf"):
         assert f"integration/{p}" in integ_files, p
     assert files["integration/sbin/hasler-ytdlp-update"][1] == 0o755
+    assert files["integration/sbin/hasler-help"][1] == 0o755
     unit = files["integration/systemd/haslerd.service"][0].decode()
     for line in ("ExecStart=/opt/hasler/current/venv/bin/python -m haslerd.main --etc /etc/hasler",
                  "WorkingDirectory=/var/lib/haslerd", "User=pi", "OnFailure=hasler-update-rollback.service",
@@ -179,7 +180,8 @@ def test_sudoers_source_is_todays_rules():
     rules = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
     assert rules == ["pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, "
                      "/usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, "
-                     "/usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/bin/systemctl try-restart go-librespot.service, "
+                     "/usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/local/sbin/hasler-help, "
+                     "/usr/bin/systemctl try-restart go-librespot.service, "
                      "/bin/systemctl try-restart go-librespot.service"]
     if shutil.which("visudo"):
         assert subprocess.run(["visudo", "-cf", str(ROOT / "config/sudoers/haslerd")]).returncode == 0

@@ -601,6 +601,8 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .ver:focus-visible{outline-offset:0}
 .ro-line{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ro-line .li-sub{flex:1 1 200px}
+.help-url{font:13px/18px var(--mono);letter-spacing:0;color:var(--cream);text-overflow:ellipsis}
+.help-v{font:600 13px/18px var(--mono);letter-spacing:0;overflow-wrap:anywhere;text-align:right}
 .title-row .pv-pill{margin-left:auto}
 .pv-pill{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 4px 0 12px;border:1px solid rgba(255,178,56,.5);border-radius:18px;background:#2A1C10;color:#F3CF8C;font:600 12.5px/16px var(--sans);font-variant-numeric:tabular-nums;white-space:nowrap}
 .pv-pill .pv-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px rgba(255,178,56,.8)}
@@ -2624,6 +2626,7 @@ function keysSummary(){
 function radioSummary(){
   if (!settings) return 'Checking…';
   const r = settings.room, w = settings.wifi, bits = [];
+  const hs = helpSummary(); if (hs) bits.push(hs);
   bits.push(r && r.custom ? r.name : 'Not named yet');
   if (w) bits.push(w.hotspot ? 'Wi-Fi setup mode' : w.ssid ? 'On ' + w.ssid : 'No Wi-Fi');
   const v = swVer(); if (v) bits.push('version ' + v);
@@ -2636,6 +2639,8 @@ function setAttention(){
     out.push({id:'attn-update', title:'Update ready: ' + a.version, sub: a.kind === 'major' || a.requires_migration ? 'A bigger update — it waits for you' : 'Install it tonight, or now', href:'#settings/radio/updates'});
   const miss = ((haState && haState.missing) || []).length;
   if (miss) out.push({id:'attn-ha', title: miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention', sub:'They point to things Home Assistant doesn’t have', href:'#settings/radio/ha'});
+  if (help && help.available && help.state === 'waiting')
+    out.push({id:'attn-help', title:'Remote help is waiting', sub:'Send the link to the makers' + (help.approve_by ? ' · it works until ' + helpWhen(help.approve_by) : ''), href:'#settings/radio/help'});
   if (settings && settings.wifi && settings.wifi.hotspot) out.push({id:'attn-wifi', title:'Wi-Fi not set up yet', sub:'The radio is in setup mode — put it on your home Wi-Fi', href:'/wifi'});
   return out;
 }
@@ -2657,7 +2662,7 @@ function renderSetHome(panel){
 function loadSetHome(){
   const again = () => { if (onPage('home')) rerender(); };
   loadSettings().then(again); loadSources().then(again); loadGroup().then(again);
-  loadSoftware(); refreshHa(); loadFx();
+  loadSoftware(); refreshHa(); loadFx(); loadHelp();
 }
 
 function renderSettings(){
@@ -2853,6 +2858,7 @@ function renderRadio(panel){
     setRow('wifi', 'Wi-Fi', !w ? 'Checking…' : w.hotspot ? 'Setup mode — not on your home Wi-Fi' : w.ssid ? 'On ' + w.ssid : 'Not connected', '/wifi'))));
   panel.append(setGroup('software', 'Software', h('div', {class:'set-list'},
     setRow('updates', 'Updates', updatesSummary(), '#settings/radio/updates'))));
+  const hg = helpGroup(); if (hg) panel.append(hg);
   const miss = ((haState && haState.missing) || []).length;
   panel.append(setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
     setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha'))));
@@ -2875,10 +2881,188 @@ function haSummary(){
 }
 function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
-  loadSettings().then(again); loadSoftware(); refreshHa(); loadAccount();
+  loadSettings().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp();
 }
 function loadUpdates(){ loadSoftware(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
+
+/* ---- This radio → Help from the makers: remote help for 24 h (web/help_api.py, docs/remote-help.md) ---- */
+// help: null = loading, {missing} = no /api/help (older software), {err}, or GET /api/help.
+// The login URL is a one-time key to this radio: it stays in this variable and the field, never in a log or the hash.
+let help = null, helpTimer = null, helpSig = '';
+const helpUi = {busy:null, err:''};
+const HELP_DOC = 'https://github.com/Delgado-Murphy/hasler/blob/master/docs/remote-help.md';
+const helpOn = () => !!(help && help.available && help.state && help.state !== 'off');
+function helpWhen(sec){
+  if (!sec) return '';
+  const d = new Date(sec * 1000), now = new Date();
+  const t = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  if (d.toDateString() === now.toDateString()) return t;
+  const tom = new Date(now); tom.setDate(now.getDate() + 1);
+  return (d.toDateString() === tom.toDateString() ? 'tomorrow ' : d.toLocaleDateString([], {weekday:'short'}) + ' ') + t;
+}
+function helpLeft(sec){
+  const m = Math.max(0, Math.round((sec * 1000 - Date.now()) / 60000));
+  if (m < 1) return 'Less than a minute left';
+  if (m < 60) return m + (m === 1 ? ' minute left' : ' minutes left');
+  const hr = Math.floor(m / 60), r = m % 60;
+  return hr + ' h' + (r ? ' ' + r + ' min' : '') + ' left';
+}
+function helpSummary(){
+  if (!helpOn()) return '';
+  const s = help.state;
+  if (s === 'connected') return 'Help on until ' + helpWhen(help.expires_at);
+  if (s === 'waiting') return 'Help waiting for a maker';
+  return s === 'ending' ? 'Help ending…' : 'Help starting…';
+}
+async function loadHelp(){
+  let next;
+  try {
+    const r = await api('GET', '/api/help');
+    next = r.status === 404 ? {missing:true} : r.ok && r.json ? r.json : {err:(r.json && r.json.error) || 'Couldn’t ask about remote help.'};
+  } catch (_) { next = {err:NET_ERR}; }
+  // A poll that lands while Start/Stop is still working must not undo what the page shows.
+  if (!helpUi.busy) help = next;
+  paintHelp();
+  helpSchedule();
+}
+function helpSchedule(){
+  clearTimeout(helpTimer); helpTimer = null;
+  if (document.hidden || (help && (help.missing || help.available === false))) return;
+  const ms = onPage('radio') ? 3000 : onPage('home') ? 30000 : 0;
+  if (ms) helpTimer = setTimeout(loadHelp, ms);
+}
+function leaveHelp(){ clearTimeout(helpTimer); helpTimer = null; }
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) leaveHelp(); else if (onPage('radio', 'home')) loadHelp();
+});
+function helpKey(){
+  const d = help || {};
+  return JSON.stringify([helpUi.busy, helpUi.err, d.missing, d.err, d.available, d.state, d.login_url, d.approve_by, d.expires_at,
+    d.address, d.dns_name, d.tailnet, d.hostname, d.error, d.last && d.last.at]);
+}
+// Repaint only when something changed (the 3 s poll must not steal focus or a text selection);
+// the "time left" line ticks in place. #helpLive stays put so a screen reader hears each change once.
+function paintHelp(){
+  if (onPage('home')){
+    const k = JSON.stringify([helpSummary(), help && help.state === 'waiting' && help.approve_by]);
+    if (k !== helpSig){ helpSig = k; rerender(); }
+    return;
+  }
+  if (!onPage('radio')) return;
+  const box = $('sec-help'), list = $('helpList');
+  if (!box || !list){ if (help && !help.missing) rerender(); return; }
+  const k = helpKey();
+  if (k === box.dataset.sig){ const l = $('helpLeft'); if (l && help && help.expires_at) l.textContent = helpLeft(help.expires_at); return; }
+  box.dataset.sig = k;
+  const a = document.activeElement, id = a && a.id && list.contains(a) ? a.id : null;
+  list.replaceChildren(helpBody());
+  const f = id && $(id); if (f) f.focus({preventScroll:true});
+  $('helpLive').textContent = helpLiveText();
+}
+function helpLiveText(){
+  const st = helpUi.busy || (help && help.state);
+  if (helpUi.err) return helpUi.err;
+  return {starting:'Starting remote help', ending:'Ending remote help', waiting:'The link for the makers is ready',
+    connected:'Connected to ' + ((help && help.network) || 'the makers’ network'), off:'Remote help is off'}[st] || '';
+}
+function helpGroup(){
+  if (help && help.missing) return null;
+  const sec = setGroup('help', 'Help from the makers', h('div', {class:'list', id:'helpList'}, helpBody()),
+    h('p', {class:'sr', id:'helpLive', role:'status'}));
+  sec.dataset.sig = helpKey();
+  return sec;
+}
+function helpBody(){
+  const d = help, busy = helpUi.busy, st = busy || (d && d.state);
+    const err = (helpUi.err || (d && d.error)) ? h('p', {class:'note-bad', role:'alert'}, helpUi.err || d.error) : null;
+  if (!d) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'));
+  if (d.err) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Couldn’t check remote help'), h('span', {class:'li-sub'}, d.err)),
+    h('button', {type:'button', class:'li-act', id:'helpRetry', onclick: () => { help = null; paintHelp(); loadHelp(); }}, 'Try again'));
+  if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t installed on this radio yet.'));
+  const stopBtn = (label) => h('button', {type:'button', class:'btn small', id:'helpStop', disabled: !!busy, onclick: helpStop}, label || 'Stop');
+  if (st === 'starting' || st === 'ending')
+    return h('div', {class:'li col'}, h('span', {class:'li-title'}, h('span', {class:'spin', 'aria-hidden':'true', style:'margin-right:10px'}), st === 'ending' ? 'Ending help…' : 'Starting help…'),
+      h('span', {class:'li-sub'}, st === 'ending' ? 'The radio is leaving the makers’ network.' : 'This takes a few seconds.'), err);
+  if (st === 'waiting'){
+    const url = d.login_url || '';
+    const field = h('input', {type:'text', id:'helpUrl', readonly:true, value:url, class:'help-url', 'aria-label':'Link for the makers',
+      'aria-describedby':'helpWaitNote', autocomplete:'off', autocapitalize:'off', spellcheck:'false', onfocus: e => e.target.select()});
+    return h('div', {class:'li col', style:'gap:10px'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Send this link to the makers'),
+        h('span', {class:'li-sub'}, 'Only to them: whoever opens it can connect this radio.')),
+      field,
+      h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn small primary', id:'helpCopy', disabled: !url, onclick: helpCopy}, 'Copy link'),
+        navigator.share ? h('button', {type:'button', class:'btn small', id:'helpShare', disabled: !url, onclick: helpShare}, 'Share…') : null,
+        stopBtn()),
+      h('p', {class:'hint', id:'helpWaitNote'}, 'Waiting for approval' + (d.approve_by ? ' — the link works until ' + helpWhen(d.approve_by) : '') + '. Stop makes the link useless.'),
+      err);
+  }
+  if (st === 'connected'){
+    const kv = (k, v) => v ? h('div', {class:'chk'}, h('span', null, k), h('b', {class:'help-v'}, v)) : null;
+    return h('div', {class:'li col', style:'gap:10px'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Connected to ' + (d.network || 'the makers’ network') + (d.expires_at ? ' until ' + helpWhen(d.expires_at) : '')),
+        d.expires_at ? h('span', {class:'li-sub', id:'helpLeft'}, helpLeft(d.expires_at)) : null),
+      h('div', null, kv('Address', d.address), kv('Name there', d.hostname), kv('Network', d.tailnet)),
+      d.expected_tailnet && d.tailnet && d.tailnet.toLowerCase() !== String(d.expected_tailnet).toLowerCase()
+        ? h('p', {class:'note-bad'}, 'That isn’t the makers’ network. Press Stop help.') : null,
+      h('p', {class:'hint'}, 'The makers can see this page and log in to the radio. Stop whenever you like.'),
+      h('div', {class:'acts'}, stopBtn('Stop help')), err);
+  }
+  // off
+  const last = d.last && d.last.text ? 'Last time: ' + d.last.text.replace(/\.$/, '') + (d.last.at ? ' · ' + ago(new Date(d.last.at * 1000).toISOString()) : '') : '';
+  return h('div', {class:'li col', style:'gap:10px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Remote help is off'),
+      h('span', {class:'li-sub', id:'helpWhat'}, 'The makers can see this page and log in to the radio to fix things, for 24 hours. You can stop any time.'),
+      h('span', {class:'li-sub'}, 'Nothing is sent until you press a key on the radio.')),
+    h('div', {class:'acts', style:'align-items:center'},
+      h('button', {type:'button', class:'btn small primary', id:'helpStart', 'aria-describedby':'helpWhat', onclick: helpStart}, 'Let the makers help (24 h)'),
+      h('a', {class:'li-act', href:HELP_DOC, target:'_blank', rel:'noopener'}, 'How it works', IC.ext())),
+    last ? h('p', {class:'hint'}, last) : null, err);
+}
+async function helpStart(){
+  if (helpUi.busy) return;
+  helpUi.err = '';
+  const token = await radioConfirm({action:'help', title:'Let the makers help?',
+    sub:'For 24 hours, or until you press Stop. Press a key on the radio to say yes.'});
+  if (!token){ const b = $('helpStart'); if (b) b.focus({preventScroll:true}); return; }
+  helpUi.busy = 'starting'; paintHelp();
+  let r = null;
+  try { r = await api('POST', '/api/help/start', {confirm: token}); } catch (_) {}
+  helpUi.busy = null;
+  if (r && r.ok && r.json){ help = r.json; }
+  else helpUi.err = !r ? NET_ERR : r.status === 403 ? 'The radio didn’t get a key press, so help didn’t start.'
+    : (r.json && r.json.error) || 'Remote help couldn’t start.';
+  paintHelp(); helpSchedule();
+  const f = $('helpCopy') || $('helpStop') || $('helpStart'); if (f) f.focus({preventScroll:true});
+}
+async function helpStop(){
+  if (helpUi.busy) return;
+  const was = help && help.state;
+  helpUi.err = ''; helpUi.busy = 'ending'; paintHelp();
+  let r = null;
+  try { r = await api('POST', '/api/help/stop', {}); } catch (_) {}
+  helpUi.busy = null;
+  if (r && r.ok && r.json){ help = r.json; toast(was === 'waiting' ? 'Stopped — the link no longer works' : 'Remote help stopped'); }
+  else helpUi.err = !r ? NET_ERR : (r.json && r.json.error) || 'Remote help couldn’t stop. Unplugging the radio ends it too.';
+  paintHelp(); helpSchedule();
+  const f = $('helpStart') || $('helpStop'); if (f) f.focus({preventScroll:true});
+}
+async function helpCopy(){
+  const url = help && help.login_url; if (!url) return;
+  try { await navigator.clipboard.writeText(url); toast('Link copied'); }
+  catch (_) {
+    const f = $('helpUrl'); if (f){ f.focus(); f.select(); }
+    let ok = false; try { ok = document.execCommand('copy'); } catch (_) {}
+    toast(ok ? 'Link copied' : 'Selected — copy it from there');
+  }
+}
+async function helpShare(){
+  const url = help && help.login_url; if (!url || !navigator.share) return;
+  try { await navigator.share({title:'Hasler remote help', text:'Here is the link to help with my Hasler radio:', url}); }
+  catch (e) { if (!e || e.name !== 'AbortError') helpCopy(); }
+}
 
 /* ---- 7 · Maker tools (hidden until the version is tapped seven times) ---- */
 function renderMaker(panel){
@@ -2946,7 +3130,7 @@ const SET_PAGES = [
   {id:'lamp', title:'Pilot lamp', summary: lampSummary, render: renderLamp, load: loadLamp,
     dirty: () => lampUi.dirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
   {id:'keys', title:'Keys & knobs', summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
-  {id:'radio', title:'This radio', summary: radioSummary, render: renderRadio, load: loadRadio,
+  {id:'radio', title:'This radio', summary: radioSummary, render: renderRadio, load: loadRadio, leave: leaveHelp,
     dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
   {id:'maker', title:'Maker tools', summary: () => 'Lamp colours, knob curves, the player, diagnostics', shown: makerOn,
     render: renderMaker, load: loadMaker, leave: leaveMaker,

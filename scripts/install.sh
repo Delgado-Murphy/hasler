@@ -107,7 +107,7 @@ put_file() {   # put_file SRC DEST MODE - install if different, say whether it c
 if [[ -e /dev/i2c-1 ]]; then
   say "I2C present. Devices seen:"
   command -v i2cdetect >/dev/null && i2cdetect -y 1 2>/dev/null | tail -n +2 || true
-  say "expect 0x77 (power controller), the Amp4 Pro DAC; 0x27 / 0x48 once the expander and ADC are fitted"
+  say "expect the Amp4 Pro DAC (shown as UU: its driver holds it); 0x20-0x27 / 0x48 once the expander and ADC are fitted"
 fi
 
 # --- python ------------------------------------------------------------------
