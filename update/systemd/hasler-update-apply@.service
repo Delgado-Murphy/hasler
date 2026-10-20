@@ -1,0 +1,10 @@
+[Unit]
+Description=Hasler: %i requested from the key page (install <seq> / rollback / rollback-<version>)
+After=haslerd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-update instance %i
+SuccessExitStatus=75
+TimeoutStartSec=30min
+KillMode=process

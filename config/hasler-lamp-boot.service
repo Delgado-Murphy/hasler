@@ -1,6 +1,6 @@
 [Unit]
 Description=Hasler pilot lamp - early amber breath until haslerd takes over
-Documentation=file:/home/pi/hasler/docs/lamp.md
+# docs/lamp.md "Boot and shutdown". Shipped in every release (integration/systemd/).
 # Early boot (docs/lamp.md "Boot and shutdown", ~3-5 s after power): no
 # default dependencies, so it does not wait for basic.target or local-fs.
 # It needs /sys (always mounted by PID 1), the pwm-gpio module, which udev

@@ -36,9 +36,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from ..boxconfig import shipped_data
+
 log = logging.getLogger(__name__)
 
-STATIC_FILE = Path(__file__).resolve().parents[3] / "config" / "catalog" / "catalog.json"
+# Shipped with the release (config/catalog in the release root).
+STATIC_FILE = shipped_data("catalog/catalog.json")
 CACHE_FILE = "catalog-live.json"
 MAX_AGE_S = 24 * 3600          # re-read YouTube Music's lists once a day
 RETRY_S = 3600                 # after a failed refresh, wait this long

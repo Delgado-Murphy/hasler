@@ -315,6 +315,18 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .pair{display:flex;gap:10px;min-width:0}
 .pair > .field{flex:1 1 0;min-width:0}
 .acts{display:flex;flex-wrap:wrap;gap:10px}
+.note-warn{margin:2px 0 0;color:#E9B35C;font:12.5px/16px var(--sans)}
+.sw-notes{margin:0;padding:10px 12px;border-left:2px solid var(--line2);color:var(--text2);font:13px/18px var(--sans);white-space:pre-line;overflow-wrap:anywhere}
+.sw-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sw-why{color:var(--text2)}
+.li-act:disabled{opacity:.5;cursor:default}
+.cf{display:flex;align-items:center;gap:16px;margin-top:6px}
+.cf-txt{display:flex;flex-direction:column;gap:4px;min-width:0}
+.cf-ring{flex:none;width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(closest-side,#241810 79%,transparent 80% 100%),conic-gradient(var(--amber) var(--p),var(--line) 0)}
+.cf-count{color:var(--amber);font:600 22px/1 var(--mono);font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:no-preference){ .cf-ring{animation:cf-breathe 2.4s ease-in-out infinite} }
+@keyframes cf-breathe{50%{box-shadow:0 0 18px rgba(255,178,56,.28)}}
 .li-danger{width:100%;text-align:left;border:0;background:none;padding:0;min-height:44px;color:var(--red);font:600 15px/20px var(--sans)}
 input[type=range]{width:100%;height:44px;margin:0;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}
 input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--amber) var(--pct,50%),var(--line) var(--pct,50%))}
@@ -343,6 +355,50 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .miss-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid rgba(217,68,43,.2);min-width:0}
 .miss-row span{min-width:0;color:var(--text2);font:12px/16px var(--mono);overflow-wrap:anywhere}
 .hstack{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+/* ---------- knobs: live reading + calibration ---------- */
+.kn{display:block;padding:0;min-height:0}
+.kn-head{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:12px 16px;border:0;background:none;text-align:left;color:inherit}
+.kn-head:hover{background:rgba(201,161,90,.04)}
+.kn-head .chev{transition:transform .15s}
+.kn-head[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.kn-txt{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.kn-name{color:var(--cream);font:600 16px/20px var(--serif)}
+.kn-tag{padding:2px 6px;border-radius:4px;border:1px solid var(--line2);color:var(--muted);font:9px/12px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.kn-tag.box{border-color:rgba(255,178,56,.45);color:var(--amber)}
+.kn-num{margin-left:auto;color:var(--brass);font:600 20px/24px var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.kn-body{display:flex;flex-direction:column;gap:12px;padding:0 16px 16px}
+.kn-bar{position:relative;height:8px;border-radius:4px;background:var(--well);box-shadow:inset 0 0 0 1px var(--line);overflow:hidden}
+.kn-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:4px;background:linear-gradient(90deg,#8C6A3A,var(--amber));transition:width .2s}
+.kn-raw{margin:0;color:var(--muted);font:11px/15px var(--mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kn-raw.bad{color:#F07A62}
+.kn-curve{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:var(--well)}
+.kn-pos{display:flex;flex-wrap:wrap;gap:6px}
+.kn-pos span{min-height:30px;padding:6px 12px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font:700 13px/16px var(--sans)}
+.kn-pos span[aria-current="true"]{background:var(--cream);border-color:var(--cream);color:#1E140C}
+.wz{display:flex;flex-direction:column;gap:14px}
+.wz-say{margin:0;color:var(--title);font:600 26px/31px var(--serif)}
+.wz-note{margin:0;color:var(--text2);font-size:14px;line-height:20px}
+.wz-note b{color:var(--amber)}
+.wz-live{display:flex;align-items:center;gap:18px;padding:8px 0}
+.wz-dial{flex:none}
+.wz-read{display:flex;flex-direction:column;gap:6px;min-width:0}
+.wz-raw{color:var(--cream);font:600 32px/36px var(--mono);font-variant-numeric:tabular-nums}
+.wz-stab{display:inline-flex;align-items:center;gap:7px;color:var(--amber);font:700 14px/18px var(--sans)}
+.wz-stab::before{content:"";width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+.wz-stab.ok{color:#7FD093}
+.wz-stab.bad{color:#F07A62}
+.btn.big{min-height:60px;font-size:18px;border-radius:14px}
+.wz-pts{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--well)}
+.wz-pts li{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 4px 0 12px;border-top:1px solid var(--line);font-size:14px}
+.wz-pts li:first-child{border-top:0}
+.wz-pts li[aria-current="true"]{box-shadow:inset 3px 0 0 var(--amber)}
+.wz-pts .n{flex:1;min-width:0;color:var(--text2)}
+.wz-pts .r{color:var(--brass);font:12px/16px var(--mono);font-variant-numeric:tabular-nums}
+.wz-pts li.redo .n,.wz-pts li.redo .r{color:#F07A62}
+.wz-pts .link{min-height:40px;padding:8px 8px}
+.wz-try{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.wz-try b{color:var(--amber);font:600 34px/38px var(--mono);font-variant-numeric:tabular-nums}
 
 /* ---------- dialog / toast ---------- */
 dialog{width:min(440px,100vw);max-width:100vw;margin:auto auto 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));border:0;border-top:1px solid var(--line2);border-radius:22px 22px 0 0;
@@ -491,10 +547,12 @@ const IC = {
   dots: () => icon('<circle cx="5" cy="11" r="1.6" fill="currentColor"/><circle cx="11" cy="11" r="1.6" fill="currentColor"/><circle cx="17" cy="11" r="1.6" fill="currentColor"/>', 22, 22),
 };
 async function api(method, url, body, opts = {}){
+  // Every change goes as JSON: the radio refuses anything else (its CSRF guard).
+  const send = method !== 'GET' && method !== 'HEAD';
   const r = await fetch(url, {
     method, cache:'no-store', signal: opts.signal,
-    headers: body !== undefined ? {'Content-Type':'application/json'} : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    headers: send ? {'Content-Type':'application/json'} : undefined,
+    body: send ? JSON.stringify(body === undefined ? {} : body) : undefined,
   });
   let j = null;
   try { j = await r.json(); } catch (_) {}
@@ -1015,7 +1073,7 @@ function onRoute(){
   renderPanel();
   if (view === 'remote'){ stripSig = ''; renderRemote(); }
   if (changed && (view === 'ha' || view === 'settings')) refreshHa();
-  if (changed && view === 'settings') loadSettings().then(() => { if (view === 'settings') rerender(); });
+  if (changed && view === 'settings'){ loadSettings().then(() => { if (view === 'settings') rerender(); }); loadKnobs(); loadSoftware(); }
   if (changed && view === 'edit' && cfg && !isDirty()) refreshConfig();
   if (changed){
     window.scrollTo(0, 0);
@@ -1821,6 +1879,8 @@ function renderSettings(){
       h('a', {class:'li-act', href:moode, target:'_blank', rel:'noopener'}, 'Open', IC.ext())),
     h('div', {class:'li', style:'min-height:56px'}, h('button', {type:'button', class:'li-danger', onclick: resetDefaults}, 'Reset keys to defaults'))));
   if (settings && settings.location) panel.append(lampSettings());
+  const kn = knobSettings(); if (kn) panel.append(kn);
+  panel.append(softwareSettings());
   panel.append(h('div', {class:'about'},
     h('p', null, 'Hasler HM · Bern 1964 · restored 2026' + (settings && settings.version ? ' · ' + settings.version : '')),
     h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
@@ -1938,10 +1998,558 @@ async function saveMono(box){
 async function resetDefaults(){
   if (!confirm('Restore the radio’s built-in keys and presets?\n\nThis replaces all your keys.')) return;
   try {
-    const r = await api('POST', '/api/reset', {});
+    const token = await pressToConfirm('reset', {}, 'Reset the keys', 'Every key goes back to the radio’s built-in presets.');
+    if (!token) return;
+    const r = await api('POST', '/api/reset', {confirm: token});
     if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); toast('Built-in keys restored'); refreshHa(); }
     else toast((r.json && r.json.error) || 'Reset failed (error ' + r.status + ').', true);
   } catch (_) { toast('Couldn’t reach the radio.', true); }
+}
+
+/* ---------- a press on the radio (web/confirm.py) ---------- */
+// Resolves with a confirmed token, or null (cancelled, timed out, can't confirm).
+function pressToConfirm(action, args, title, sub){
+  return new Promise(async resolve => {
+    let ask;
+    try { ask = await api('POST', '/api/confirm/request', {action, args}); }
+    catch (_) { toast('Couldn’t reach the radio.', true); resolve(null); return; }
+    const j = ask.json || {};
+    if (!ask.ok || !j.token){ toast(j.error || 'The radio can’t confirm this right now.', true); resolve(null); return; }
+    if (j.state === 'confirmed'){ resolve(j.token); return; }
+    const dlg = $('dlg'); dlg.textContent = '';
+    const total = j.expires_in || 30, end = Date.now() + total * 1000;
+    let result = null, timer = null, done = false;
+    const count = h('b', {class:'cf-count', 'aria-hidden':'true'}, String(total));
+    const ring = h('div', {class:'cf-ring', style:'--p:100%'}, count);
+    const finish = r => { if (done) return; done = true; result = r; clearTimeout(timer); dlg.close(); };
+    const tick = async () => {
+      const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
+      count.textContent = String(left); ring.style.setProperty('--p', (left / total * 100) + '%');
+      try {
+        const p = await api('GET', '/api/confirm/' + encodeURIComponent(j.token));
+        const st = p.json && p.json.state;
+        if (st === 'confirmed'){ finish(j.token); return; }
+        if (st && st !== 'pending'){ toast('No key was pressed, so nothing changed.'); finish(null); return; }
+      } catch (_) {}
+      if (!done) timer = setTimeout(tick, 600);
+    };
+    dlg.append(h('h2', {id:'dlgTitle'}, title || 'Confirm on the radio'), sub ? h('p', {class:'sub'}, sub) : '',
+      h('div', {class:'cf'}, ring, h('div', {class:'cf-txt'},
+        h('span', {class:'li-title'}, 'Press any key on the radio'),
+        h('span', {class:'li-sub'}, 'The pilot lamp dips twice while it waits. That press only confirms — it won’t change the station.'))),
+      h('div', {style:'display:flex;justify-content:flex-end;margin-top:14px'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
+    dlg.onclose = () => {
+      done = true; clearTimeout(timer);
+      if (!result) api('DELETE', '/api/confirm/' + encodeURIComponent(j.token)).catch(() => {});
+      resolve(result);
+    };
+    dlg.onclick = null;
+    dlg.showModal();
+    timer = setTimeout(tick, 400);
+  });
+}
+
+/* ---------- about this radio: version, updates, going back (web/software.py) ---------- */
+// software: null = loading, {missing} = updates not installed, {err}, or GET /api/software.
+let software = null, swBusy = false;
+async function loadSoftware(){
+  try {
+    const r = await api('GET', '/api/software');
+    software = r.ok && r.json ? r.json : (r.status === 404 || r.status === 503) ? {missing:true}
+      : {err:(r.json && r.json.error) || 'Couldn’t read the update status.'};
+  } catch (_) { software = {err:'Couldn’t reach the radio.'}; }
+  if (view === 'settings') rerender();
+}
+const MODE_TEXT = {auto:'Small updates install by themselves at night, in standby. Bigger ones ask first.',
+  ask:'The radio tells you here when there is an update, and waits for you.', off:'No updates. Fixes won’t reach this radio.'};
+function ago(iso){
+  const t = Date.parse(iso || ''); if (!t) return '';
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 2) return 'just now'; if (m < 60) return m + ' minutes ago';
+  const hr = Math.round(m / 60); if (hr < 36) return hr + (hr === 1 ? ' hour ago' : ' hours ago');
+  return Math.round(hr / 24) + ' days ago';
+}
+function day(iso){
+  const t = Date.parse(iso || ''); if (!t) return '';
+  const d = new Date(t);
+  return d.toLocaleDateString(undefined, {day:'numeric', month:'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric'});
+}
+async function swAction(fn){
+  if (swBusy) return; swBusy = true; rerender();
+  try { await fn(); } catch (_) { toast('Couldn’t reach the radio.', true); }
+  swBusy = false; await loadSoftware();
+}
+function swCheck(){
+  swAction(async () => {
+    const r = await api('POST', '/api/software/check');
+    if (r.ok){ toast('Looking for updates…'); setTimeout(loadSoftware, 8000); }
+    else toast((r.json && r.json.error) || 'Couldn’t start the check.', true);
+  });
+}
+function swInstall(v, when){
+  swAction(async () => {
+    const token = await pressToConfirm('update', {version:v}, 'Install ' + v,
+      when === 'now' ? 'It installs once the radio has rested in standby for 10 minutes, then restarts by itself.'
+        : 'It installs tonight between 2 and 5, while the radio is in standby.');
+    if (!token) return;
+    const r = await api('POST', '/api/software/install', {version:v, when, confirm:token});
+    if (r.ok) toast(when === 'now' ? v + ' installs when the radio rests' : v + ' installs tonight');
+    else toast((r.json && r.json.error) || 'Couldn’t start the update.', true);
+  });
+}
+function swPutOff(){
+  swAction(async () => { const r = await api('DELETE', '/api/software/install'); if (r.ok) toast('Update put off'); });
+}
+function swBack(v){
+  swAction(async () => {
+    const token = await pressToConfirm('rollback', {to:v}, 'Go back to ' + v,
+      'The radio restarts on ' + v + ' and checks itself. Your keys and settings stay as they are.');
+    if (!token) return;
+    const r = await api('POST', '/api/software/rollback', {to:v, confirm:token});
+    if (r.ok) toast('Going back to ' + v + ' — the radio restarts in a moment');
+    else toast((r.json && r.json.error) || 'Couldn’t go back.', true);
+  });
+}
+function swMode(mode){
+  swAction(async () => {
+    const r = await api('PUT', '/api/software/settings', {update_mode:mode});
+    if (r.ok) toast(mode === 'auto' ? 'Small updates install by themselves' : mode === 'ask' ? 'The radio asks before updating' : 'Updates are off');
+    else toast((r.json && r.json.error) || 'Couldn’t save that.', true);
+  });
+}
+function softwareSettings(){
+  const wrap = (...kids) => h('section', {style:'display:flex;flex-direction:column;gap:8px;margin-top:20px', 'aria-label':'About this radio'},
+    h('span', {class:'mono', style:'padding:0 4px'}, 'About this radio'), ...kids);
+  const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
+  if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'Software'), h('span', {class:'li-sub'}, 'Checking…')))));
+  if (software.missing || software.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
+    h('span', {class:'li-sub'}, software.missing ? 'Updates not installed on this radio yet' : software.err)),
+    software.err ? h('button', {type:'button', class:'li-act', onclick: () => { software = null; loadSoftware(); }}, 'Retry') : null)));
+  const s = software, a = s.available, res = s.last_result, ap = s.approved;
+  const rows = [];
+  rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'},
+      h('span', {class:'li-title'}, 'Version ' + s.version),
+      h('span', {class:'li-sub'}, (s.channel !== 'stable' ? s.channel[0].toUpperCase() + s.channel.slice(1) + ' channel · ' : '')
+        + (s.last_check ? 'Checked ' + ago(s.last_check) : 'Not checked yet')),
+      s.stale ? h('span', {class:'note-warn'}, s.check_error ? 'No fresh update information — the last check failed.' : 'No fresh update information for a while.') : null),
+    h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: swCheck}, 'Check now')));
+  if (s.busy) rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Installing ' + ((res && res.version) || '')),
+    h('span', {class:'li-sub'}, 'The lamp holds its ember until it’s done. Leave the radio plugged in.'))));
+  if (a && !s.busy){
+    const big = a.kind === 'major' || a.requires_migration;
+    const mine = ap && ap.version === a.version;
+    rows.push(h('div', {class:'li col', style:'gap:10px'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Update available: ' + a.version),
+        h('span', {class:'li-sub'}, (big ? 'A bigger update — it waits for you. ' : '') + (a.staged ? 'Downloaded and checked.' : 'Not downloaded yet.'))),
+      a.notes ? h('p', {class:'sw-notes'}, a.notes) : null,
+      mine
+        ? h('div', {class:'sw-row'}, h('span', {class:'li-sub'}, ap.when === 'now' ? 'Installs as soon as the radio rests in standby.' : 'Installs tonight, between 2 and 5.'),
+            h('button', {type:'button', class:'link quiet', disabled: swBusy, onclick: swPutOff}, 'Put off'))
+        : h('div', {class:'acts'},
+            h('button', {type:'button', class:'btn small', disabled: swBusy || !a.staged, onclick: () => swInstall(a.version, 'tonight')}, 'Install tonight'),
+            h('button', {type:'button', class:'btn small primary', disabled: swBusy || !a.staged, onclick: () => swInstall(a.version, 'now')}, 'Install now'))));
+  }
+  if (res && res.ok !== null){
+    rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Last update'),
+      h('span', {class:'li-sub'}, res.ok
+        ? res.version + (res.manual ? ' — went back by hand' : ' installed') + (res.at ? ', ' + day(res.at) : '') + (res.probation ? ' · settling in' : '')
+        : res.version + ' didn’t work here, so the radio went back to ' + (res.back_to || 'the version before') + (res.at ? ' (' + day(res.at) + ')' : '') + '.'),
+      !res.ok && res.reason ? h('span', {class:'li-sub sw-why'}, 'Why: ' + res.reason) : null)));
+  }
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Updates'});
+  for (const [k, l] of [['auto','Automatic'], ['ask','Ask'], ['off','Off']])
+    seg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.update_mode === k), tabindex: s.update_mode === k ? '0' : '-1', disabled: swBusy,
+      onclick: () => { if (k !== s.update_mode) swMode(k); }}, l));
+  rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Updates'),
+    h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
+  for (const r of (s.releases || []).filter(r => r.status !== 'running'))
+    rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version ' + r.version),
+        h('span', {class:'li-sub'}, (r.status === 'bad' ? 'Didn’t work here' : r.status === 'previous' ? 'The one before' : 'Kept')
+          + (r.installed_at ? ' · installed ' + day(r.installed_at) : ''))),
+      h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: () => swBack(r.version)}, 'Go back')));
+  return wrap(h('div', {class:'list'}, rows),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Installing or going back asks for a press on the radio, so nobody else on the Wi-Fi can do it.'));
+}
+
+/* ---------- knobs: live reading + guided calibration (/api/knobs) ---------- */
+// knobs: null = loading, {missing} = haslerd too old, {err}, or the GET /api/knobs body.
+let knobs = null, knobTimer = null, knobBusy = false, wiz = null;
+const knobUi = {open: new Set(), live: {}};
+const curveGeo = new Map();
+const KNOB_OLD = 'Knob calibration needs a newer haslerd.';
+const kid = id => String(id).replace(/[^\w-]/g, '_');
+const knobUrl = (id, tail) => '/api/knobs/' + encodeURIComponent(id) + (tail || '');
+const isSel = k => k && k.kind === 'selector';
+const normCurve = c => (Array.isArray(c) ? c : []).filter(p => Array.isArray(p) && isFinite(p[0]) && isFinite(p[1])).map(p => [+p[0], +p[1]]).sort((a, b) => a[0] - b[0]);
+function mapCurve(curve, raw, sel){
+  const c = normCurve(curve);
+  if (!c.length || raw == null || !isFinite(raw)) return null;
+  if (sel){ let b = c[0]; for (const p of c) if (Math.abs(p[0] - raw) < Math.abs(b[0] - raw)) b = p; return b[1]; }
+  if (raw <= c[0][0]) return c[0][1];
+  for (let i = 1; i < c.length; i++) if (raw <= c[i][0]){
+    const [ax, ay] = c[i - 1], [bx, by] = c[i];
+    return bx === ax ? by : ay + (by - ay) * (raw - ax) / (bx - ax);
+  }
+  return c[c.length - 1][1];
+}
+const posName = p => p == null ? '' : typeof p === 'object' ? String(p.label ?? p.name ?? p.id ?? '') : String(p);
+function selIndex(k, v){
+  const ps = k.positions || [];
+  if (typeof v === 'number' && isFinite(v)) return Math.round(v);
+  const i = ps.findIndex(p => posName(p) === String(v) || (p && p.id === v));
+  return i < 0 ? null : i;
+}
+function knobText(k, v){
+  if (v == null || (typeof v === 'number' && !isFinite(v))) return '—';
+  if (isSel(k)){ const i = selIndex(k, v), ps = k.positions || []; return i != null && ps[i] != null ? posName(ps[i]) : String(v); }
+  return String(Math.round(+v));
+}
+function liveOf(k){ const s = knobUi.live[k.id]; return s && !s.err ? s : null; }
+
+async function loadKnobs(){
+  try {
+    const r = await api('GET', '/api/knobs');
+    if (r.status === 404) knobs = {missing:true};
+    else if (r.ok && r.json && Array.isArray(r.json.knobs)) knobs = r.json;
+    else knobs = {err: (r.json && r.json.error) || 'Couldn’t read the knobs (error ' + r.status + ').'};
+  } catch (_) { knobs = {err:'Couldn’t reach the radio.'}; }
+  if (view === 'settings'){ rerender(); knobPoll(true); }
+}
+function adoptKnob(k){
+  if (!k || !k.id || !knobs || !knobs.knobs) return;
+  const i = knobs.knobs.findIndex(x => x.id === k.id);
+  if (i >= 0) knobs.knobs[i] = Object.assign({}, knobs.knobs[i], k);
+}
+
+/* polling: ~4x/s, only for open cards and the wizard's knob, only on Settings */
+function knobPollIds(){
+  if (view !== 'settings' || document.hidden || !knobs || !knobs.knobs) return [];
+  const want = new Set(knobUi.open);
+  if (wiz && $('dlg').open) want.add(wiz.k.id);
+  return knobs.knobs.filter(k => want.has(k.id)).map(k => k.id);
+}
+function knobPoll(now){
+  clearTimeout(knobTimer); knobTimer = null;
+  if (knobBusy || !knobPollIds().length) return;   // an in-flight tick reschedules itself
+  knobTimer = setTimeout(knobTick, now ? 0 : 250);
+}
+async function knobTick(){
+  knobTimer = null;
+  const ids = knobPollIds();
+  if (!ids.length) return;
+  knobBusy = true;
+  await Promise.all(ids.map(async id => {
+    try {
+      const r = await api('GET', knobUrl(id, '/sample?n=5'));
+      knobUi.live[id] = r.ok && r.json && isFinite(r.json.raw) ? Object.assign({at: Date.now()}, r.json) : {err: r.status};
+    } catch (_) { knobUi.live[id] = {err: 0}; }
+    paintKnobLive(id);
+    if (wiz && wiz.k.id === id) paintWiz();
+  }));
+  knobBusy = false;
+  knobPoll();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) knobPoll(true); });
+
+/* drawings (numbers-only markup into icon()) */
+function rawSpan(k, curve, extra){
+  const xs = curve.map(p => p[0]).concat(extra || [], [k.raw]).filter(x => x != null && isFinite(x)).map(Number);
+  const hi = Math.max(1, ...xs), lo = Math.min(0, ...xs);
+  return [lo, [255, 1023, 4095, 32767, 65535].find(v => v >= hi) || hi];
+}
+function curveSvg(k, curve, o = {}){
+  const W = o.w || 280, H = o.h || 110, P = 8, sel = isSel(k);
+  const c = normCurve(curve), pts = o.pts || [];
+  const [x0, x1] = rawSpan(k, c, pts.filter(Boolean).map(p => p.raw));
+  const ymax = sel ? Math.max(1, (k.positions || []).length - 1, ...c.map(p => p[1])) : 100;
+  const X = r => +(P + (r - x0) / ((x1 - x0) || 1) * (W - 2 * P)).toFixed(1);
+  const Y = v => +(H - P - Math.max(0, Math.min(ymax, v)) / ymax * (H - 2 * P)).toFixed(1);
+  let m = '<path d="M' + P + ' ' + Y(ymax / 2) + 'H' + (W - P) + 'M' + X((x0 + x1) / 2) + ' ' + P + 'V' + (H - P) + '" stroke="#2E2117" stroke-width="1" fill="none"/>'
+    + '<path d="M' + P + ' ' + P + 'V' + (H - P) + 'H' + (W - P) + '" stroke="#3A2A1C" stroke-width="1" fill="none"/>';
+  if (c.length > 1) m += '<polyline points="' + c.map(p => X(p[0]) + ',' + Y(p[1])).join(' ') + '" fill="none" stroke="#C9A15A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"'
+    + (sel ? ' stroke-dasharray="3 4" opacity=".7"' : '') + '/>';
+  if (sel) for (const p of c) m += '<circle cx="' + X(p[0]) + '" cy="' + Y(p[1]) + '" r="3" fill="#C9A15A"/>';
+  pts.forEach((p, i) => {
+    if (!p) return;
+    const bad = (o.redo || []).includes(i), y = sel ? i : p.pos * 100;
+    m += '<circle cx="' + X(p.raw) + '" cy="' + Y(y) + '" r="' + (bad ? 6 : 3.5) + '" fill="' + (bad ? 'none' : '#EDE3CC') + '" stroke="' + (bad ? '#F07A62' : 'none') + '" stroke-width="2"/>';
+  });
+  if (o.dot) m += '<circle id="' + o.dot + '" cx="-20" cy="-20" r="5.5" fill="#FFB238" stroke="#17100B" stroke-width="1.5"/>';
+  const svg = icon(m, W, H);
+  svg.setAttribute('class', 'kn-curve');
+  if (o.dot) curveGeo.set(o.dot, {X, Y});
+  return svg;
+}
+function moveDot(dotId, raw, v){
+  const el = $(dotId), g = curveGeo.get(dotId);
+  if (!el || !g) return;
+  const ok = raw != null && isFinite(raw) && v != null && isFinite(v);
+  el.setAttribute('cx', ok ? g.X(raw) : -20); el.setAttribute('cy', ok ? g.Y(v) : -20);
+}
+function dialSvg(k, steps, i){
+  const sel = isSel(k), at = steps[i].pos;
+  const ang = p => sel ? -70 + p * 140 : -135 + p * 270;
+  let m = '<defs><radialGradient id="wzKnobG" cx="40%" cy="32%" r="75%"><stop offset="0" stop-color="#4B3827"/><stop offset="1" stop-color="#1C130C"/></radialGradient></defs>';
+  if (!sel){
+    m += '<path d="' + arcPath(50, -135, 135) + '" fill="none" stroke="#3A2A1C" stroke-width="5" stroke-linecap="round"/>';
+    if (at > 0) m += '<path d="' + arcPath(50, -135, ang(at)) + '" fill="none" stroke="#FFB238" stroke-width="5" stroke-linecap="round"/>';
+  }
+  const ticks = sel ? steps.map(s => s.pos) : [0, .125, .25, .375, .5, .625, .75, .875, 1];
+  for (const t of ticks){
+    const on = Math.abs(t - at) < 1e-6, [ax, ay] = pt(57, ang(t)), [bx, by] = pt(on ? 65 : 62, ang(t));
+    m += '<path d="M' + ax + ' ' + ay + 'L' + bx + ' ' + by + '" stroke="' + (on ? '#FFB238' : '#7A5A36') + '" stroke-width="' + (on ? 3 : 1.6) + '" stroke-linecap="round"/>';
+  }
+  if (sel) steps.forEach((s, j) => { const [x, y] = pt(46, ang(s.pos)); m += '<text x="' + x + '" y="' + (+y + 4) + '" text-anchor="middle" font-family="ui-monospace,Menlo,monospace" font-size="11" fill="' + (j === i ? '#FFB238' : '#8C7656') + '">' + (j + 1) + '</text>'; });
+  const [px, py] = pt(sel ? 26 : 34, ang(at));
+  m += '<circle cx="66" cy="66" r="' + (sel ? 32 : 40) + '" fill="url(#wzKnobG)" stroke="#5A4128" stroke-width="1.5"/>'
+    + '<path d="M66 66L' + px + ' ' + py + '" stroke="#EDE3CC" stroke-width="4" stroke-linecap="round"/><circle cx="66" cy="66" r="4" fill="#C9A15A"/>';
+  const svg = icon(m, 120, 120, '0 0 132 132'); svg.setAttribute('class', 'wz-dial');
+  return svg;
+}
+
+/* settings section: one card per knob */
+function knobSettings(){
+  if (!knobs) return null;
+  const wrap = (...kids) => h('section', {style:'display:flex;flex-direction:column;gap:8px;margin-top:20px', 'aria-label':'Knobs'},
+    h('span', {class:'mono', style:'padding:0 4px'}, 'Knobs'), ...kids);
+  if (knobs.missing) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'Knob calibration'), h('span', {class:'li-sub'}, KNOB_OLD)))));
+  if (knobs.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'Knobs'), h('span', {class:'li-sub'}, knobs.err)),
+    h('button', {type:'button', class:'li-act', onclick: () => { knobs = null; loadKnobs(); }}, 'Retry'))));
+  if (!knobs.knobs.length) return null;
+  return wrap(h('div', {class:'list'}, knobs.knobs.map(knobCard)),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Each knob’s raw reading is mapped to 0–100 by a curve. Calibrate one if the radio and its knob disagree.'));
+}
+function knobCard(k){
+  const id = kid(k.id), open = knobUi.open.has(k.id), s = liveOf(k), sel = isSel(k);
+  const box = k.source === 'box';
+  const head = h('button', {type:'button', class:'kn-head', 'aria-expanded': String(open), 'aria-controls':'knb-' + id,
+      onclick: () => { if (open) knobUi.open.delete(k.id); else knobUi.open.add(k.id); rerender(); knobPoll(true); }},
+    h('span', {class:'kn-txt'}, h('span', {class:'kn-name'}, k.label || k.id),
+      h('span', {class:'kn-tag' + (box ? ' box' : '')}, box ? 'Calibrated on this radio' : 'Factory curve')),
+    h('span', {class:'kn-num', id:'knv-' + id}, knobText(k, s ? s.value : k.value)),
+    h('span', {class:'chev'}, IC.chev()));
+  const kids = [head];
+  if (open){
+    const gauge = sel
+      ? h('div', {class:'kn-pos', id:'knp-' + id, role:'group', 'aria-label': (k.label || k.id) + ' position'},
+          (k.positions || []).map((p, i) => h('span', {'data-i': String(i)}, posName(p) || String(i + 1))))
+      : h('div', {class:'kn-bar', role:'meter', 'aria-label': k.label || k.id, 'aria-valuemin':'0', 'aria-valuemax':'100', id:'knm-' + id}, h('span', {class:'kn-fill', id:'knf-' + id}));
+    kids.push(h('div', {class:'kn-body', id:'knb-' + id},
+      gauge,
+      h('p', {class:'kn-raw', id:'knr-' + id}, rawLine(k)),
+      curveSvg(k, k.curve, {dot:'knd-' + id}),
+      h('div', {class:'acts', style:'align-items:center'},
+        h('button', {type:'button', class:'btn small primary', onclick: () => openWizard(k)}, 'Calibrate'),
+        box ? h('button', {type:'button', class:'link danger', onclick: () => resetKnob(k)}, 'Reset to factory') : null)));
+  }
+  const li = h('div', {class:'li kn'}, kids);
+  if (open) queueMicrotask(() => paintKnobLive(k.id));
+  return li;
+}
+function rawLine(k){
+  const s = knobUi.live[k.id];
+  if (s && s.err === 404) return KNOB_OLD;
+  if (s && s.err != null) return 'No reading from the radio';
+  const raw = s ? s.raw : k.raw, bits = ['raw ' + (raw == null ? '—' : Math.round(raw))];
+  if (s && s.min != null && s.max != null) bits.push(Math.round(s.min) + '…' + Math.round(s.max));
+  if (s && s.noise != null) bits.push('noise ' + (+s.noise).toFixed(1));
+  if (k.end_switch) bits.push('switch ' + (k.end_switch.state ? 'on' : 'off'));
+  if (k.direction && k.direction !== 'normal' && k.direction !== 'forward') bits.push(String(k.direction));
+  return bits.join(' · ');
+}
+function paintKnobLive(knobId){
+  const k = knobs && knobs.knobs && knobs.knobs.find(x => x.id === knobId);
+  if (!k) return;
+  const id = kid(k.id), s = liveOf(k), raw = s ? s.raw : k.raw, v = s ? s.value : k.value;
+  const num = $('knv-' + id); if (num) num.textContent = knobText(k, v);
+  const line = $('knr-' + id); if (line){ line.textContent = rawLine(k); line.classList.toggle('bad', !!(knobUi.live[k.id] && knobUi.live[k.id].err != null)); }
+  const fill = $('knf-' + id); if (fill) fill.style.width = (v == null ? 0 : Math.max(0, Math.min(100, +v))) + '%';
+  const meter = $('knm-' + id); if (meter && v != null) meter.setAttribute('aria-valuenow', String(Math.round(+v)));
+  const pos = $('knp-' + id);
+  if (pos){ const i = selIndex(k, v); pos.querySelectorAll('span').forEach(el => el.setAttribute('aria-current', String(+el.dataset.i === i))); }
+  moveDot('knd-' + id, raw, isSel(k) ? selIndex(k, v) : v);
+}
+async function resetKnob(k){
+  if (!confirm('Go back to the factory curve for ' + (k.label || k.id) + '?\n\nThis forgets the calibration made on this radio.')) return;
+  try {
+    const r = await api('DELETE', knobUrl(k.id, '/calibration'));
+    if (r.ok){ adoptKnob(r.json && r.json.id ? r.json : Object.assign({}, k, {source:'shipped'})); toast((k.label || k.id) + ' is back on the factory curve'); }
+    else toast(r.status === 404 ? KNOB_OLD : (r.json && r.json.error) || 'Couldn’t reset (error ' + r.status + ').', true);
+  } catch (_) { toast('Couldn’t reach the radio.', true); }
+  if (view === 'settings') rerender();
+}
+
+/* the wizard: one capture per step, then fit, try, save */
+const POT_STEPS = [
+  [0,    'Fully down'],
+  [1/8,  'One-eighth up',    'Turn it one-eighth of the way up'],
+  [1/4,  'A quarter up',     'Turn it a quarter of the way up'],
+  [3/8,  'Three-eighths up', 'Turn it three-eighths of the way up'],
+  [1/2,  'Halfway',          'Turn it halfway up'],
+  [3/4,  'Three-quarters up','Turn it three-quarters of the way up'],
+  [1,    'Fully up'],
+];
+function wizSteps(k){
+  if (isSel(k)){
+    const ps = k.positions && k.positions.length ? k.positions : [1, 2, 3], n = ps.length;
+    return ps.map((p, i) => {
+      const nm = posName(p), num = String(i + 1);
+      return {pos: n > 1 ? i / (n - 1) : 0, short: 'Position ' + num + (nm && nm !== num ? ' · ' + nm : ''),
+        say: 'Turn the selector to position ' + num + (nm && nm !== num ? ' (' + nm + ')' : '')};
+    });
+  }
+  const loud = /vol/i.test(k.id + ' ' + (k.label || ''));
+  const lo = loud ? 'quietest' : 'minimum', hi = loud ? 'loudest' : 'maximum';
+  return POT_STEPS.map(([pos, short, say]) => ({pos, short,
+    say: pos === 0 ? 'Turn the knob fully down, to its ' + lo + ' end' : pos === 1 ? 'Turn it all the way up, to its ' + hi + ' end' : say}));
+}
+function openWizard(k){
+  const steps = wizSteps(k);
+  wiz = {k, steps, i: 0, pts: steps.map(() => null), phase:'step', fit:null, err:'', busy:false, saving:false};
+  const dlg = $('dlg');
+  dlg.onclick = null;   // no backdrop dismiss: the owner is turning a knob with the other hand
+  dlg.oncancel = e => { if (!wizLeave()) e.preventDefault(); };
+  dlg.onclose = () => { wiz = null; dlg.oncancel = null; dlg.onclose = null; if (view === 'settings') rerender(); };
+  renderWiz();
+  if (!dlg.open) dlg.showModal();
+  knobPoll(true);
+}
+function wizLeave(){
+  return !wiz || wiz.saving || !wiz.pts.some(Boolean) || confirm('Stop calibrating? The readings so far are thrown away and the knob keeps its current curve.');
+}
+function wizClose(){ if (wizLeave()) $('dlg').close(); }
+function wizDirNote(k){
+  return isSel(k)
+    ? h('p', {class:'wz-note'}, 'Go through the positions in order. If the selector is wired the other way round, the radio works that out.')
+    : h('p', {class:'wz-note'}, 'Each step turns further towards ', h('b', null, /vol/i.test(k.id + ' ' + (k.label || '')) ? 'louder' : 'more'),
+        '. If the knob is wired backwards, the radio works that out — just follow the steps.');
+}
+function wizPoints(){
+  const redo = (wiz.fit && wiz.fit.redo) || [];
+  return h('ul', {class:'wz-pts', 'aria-label':'Captured points'}, wiz.steps.map((s, i) => {
+    const p = wiz.pts[i], bad = redo.includes(i), cur = wiz.phase === 'step' && i === wiz.i;
+    return h('li', {class: bad ? 'redo' : null, 'aria-current': cur ? 'true' : null},
+      h('span', {class:'n'}, (i + 1) + '. ' + s.short + (bad ? ' — please redo' : '')),
+      h('span', {class:'r'}, p ? 'raw ' + p.raw : cur ? 'now' : '—'),
+      p ? h('button', {type:'button', class:'link' + (bad ? ' danger' : ' quiet'), 'aria-label':'Redo ' + s.short, onclick: () => { wiz.i = i; wiz.phase = 'step'; wiz.err = ''; renderWiz(); }}, 'redo')
+        : h('span', {style:'width:52px'}));
+  }));
+}
+function renderWiz(){
+  const dlg = $('dlg'); if (!wiz) return;
+  dlg.textContent = '';
+  const k = wiz.k, name = k.label || k.id, n = wiz.steps.length;
+  const body = h('div', {class:'wz'}), add = (...kids) => body.append(...kids.filter(Boolean));
+  if (wiz.phase === 'step'){
+    const s = wiz.steps[wiz.i];
+    add(
+      h('span', {class:'mono'}, 'Calibrate ' + name + ' · step ' + (wiz.i + 1) + ' of ' + n),
+      h('h2', {id:'dlgTitle', class:'wz-say'}, s.say),
+      wiz.i === 0 || wiz.err ? wizDirNote(k) : null,
+      h('div', {class:'wz-live'}, dialSvg(k, wiz.steps, wiz.i),
+        h('div', {class:'wz-read'}, h('span', {class:'mono'}, 'Reading'), h('span', {class:'wz-raw', id:'wzRaw'}, '—'),
+          h('span', {class:'wz-stab', id:'wzStab', 'aria-live':'polite'}, 'Listening…'))),
+      wiz.err ? h('p', {class:'err', role:'alert'}, wiz.err) : null,
+      h('button', {type:'button', class:'btn primary big', id:'wzCap', disabled:true, onclick: wizCapture}, 'Capture'),
+      wizPoints(),
+      h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', onclick: wizClose}, 'Cancel')));
+  } else if (wiz.phase === 'fit'){
+    add(h('span', {class:'mono'}, 'Calibrate ' + name), h('h2', {id:'dlgTitle', class:'wz-say'}, 'Working out the curve…'),
+      wiz.err ? h('p', {class:'err', role:'alert'}, wiz.err) : h('p', {class:'loading'}, h('span', {class:'spin'})),
+      wiz.err ? h('div', {class:'acts'}, h('button', {type:'button', class:'btn small primary', onclick: wizFit}, 'Try again'),
+        h('button', {type:'button', class:'btn small', onclick: wizClose}, 'Cancel')) : null,
+      wiz.err ? wizPoints() : null);
+  } else {
+    const f = wiz.fit, warn = (f.warnings || []).filter(Boolean), redo = f.redo || [];
+    add(
+      h('span', {class:'mono'}, 'Calibrate ' + name + ' · try it'),
+      h('h2', {id:'dlgTitle', class:'wz-say'}, 'Turn the knob and watch'),
+      h('p', {class:'wz-note'}, 'The dot follows the new curve. Happy with it? Save. Nothing changes on the radio until you do.'),
+      h('div', {class:'wz-try'}, h('span', {class:'mono'}, 'New curve'), h('b', {id:'wzVal'}, '—')),
+      isSel(k) ? null : h('div', {class:'kn-bar'}, h('span', {class:'kn-fill', id:'wzFill'})),
+      curveSvg(k, f.curve, {w:300, h:150, dot:'wzDot', pts: wiz.pts.map((p, i) => p && {raw:p.raw, pos:wiz.steps[i].pos}), redo}),
+      h('p', {class:'kn-raw', id:'wzRawLine'}, '—'),
+      warn.length || redo.length ? h('div', {class:'alert', role:'alert'},
+        redo.length ? h('p', {style:'margin:0'}, redo.length === 1 ? 'One point looks off — redo the one marked in red.' : 'Some points look off — redo the ones marked in red.') : null,
+        warn.length ? h('ul', null, warn.map(w => h('li', null, w))) : null) : null,
+      wizPoints(),
+      wiz.err ? h('p', {class:'err', role:'alert'}, wiz.err) : null,
+      h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn primary', disabled: wiz.saving, onclick: wizSave}, wiz.saving ? 'Saving…' : 'Save'),
+        h('button', {type:'button', class:'btn', disabled: wiz.saving, onclick: wizClose}, 'Cancel')));
+  }
+  dlg.append(body);
+  paintWiz();
+}
+function paintWiz(){
+  if (!wiz) return;
+  const k = wiz.k, raw0 = knobUi.live[k.id], s = raw0 && !raw0.err ? raw0 : null;
+  if (wiz.phase === 'step'){
+    const raw = $('wzRaw'), st = $('wzStab'), cap = $('wzCap');
+    if (raw) raw.textContent = s ? String(Math.round(s.raw)) : '—';
+    if (st){
+      const txt = raw0 && raw0.err === 404 ? KNOB_OLD : !s ? (raw0 ? 'No reading' : 'Listening…') : s.stable ? 'Steady — capture it' : 'Settling… hold still';
+      if (st.textContent !== txt) st.textContent = txt;
+      st.className = 'wz-stab' + (s && s.stable ? ' ok' : raw0 && raw0.err != null ? ' bad' : '');
+    }
+    if (cap){ cap.disabled = !(s && s.stable) || wiz.busy; cap.textContent = wiz.busy ? 'Capturing…' : 'Capture'; }
+  } else if (wiz.phase === 'review'){
+    const v = s ? mapCurve(wiz.fit.curve, s.raw, isSel(k)) : null;
+    const val = $('wzVal'); if (val) val.textContent = knobText(k, v);
+    const fill = $('wzFill'); if (fill) fill.style.width = (v == null ? 0 : Math.max(0, Math.min(100, v))) + '%';
+    const line = $('wzRawLine'); if (line) line.textContent = s ? 'raw ' + Math.round(s.raw) + ' · today’s curve says ' + knobText(k, s.value) : 'Waiting for a reading…';
+    moveDot('wzDot', s && s.raw, isSel(k) ? (v == null ? null : selIndex(k, v)) : v);
+  }
+}
+async function wizCapture(){
+  if (!wiz || wiz.busy) return;
+  const w = wiz; w.busy = true; w.err = ''; paintWiz();
+  let s = null, status = 0;
+  try { const r = await api('GET', knobUrl(w.k.id, '/sample?n=15')); status = r.status; if (r.ok && r.json && isFinite(r.json.raw)) s = r.json; } catch (_) {}
+  if (wiz !== w) return;
+  w.busy = false;
+  if (!s){ w.err = status === 404 ? KNOB_OLD : 'Couldn’t read the knob. Try again.'; renderWiz(); return; }
+  if (!s.stable){ w.err = 'The reading moved while capturing — let go of the knob and try again.'; renderWiz(); return; }
+  w.pts[w.i] = {raw: Math.round(s.raw)};
+  if (w.fit && w.fit.redo) w.fit.redo = w.fit.redo.filter(j => j !== w.i);
+  const next = w.pts.findIndex(p => !p);
+  if (next >= 0){ w.i = next; renderWiz(); }
+  else wizFit();
+}
+async function wizFit(){
+  const w = wiz; if (!w) return;
+  w.phase = 'fit'; w.err = ''; renderWiz();
+  try {
+    const r = await api('POST', knobUrl(w.k.id, '/fit'), {points: w.steps.map((s, i) => ({position: s.pos, raw: w.pts[i].raw})), direction:'auto'});
+    if (wiz !== w) return;
+    if (r.ok && r.json && Array.isArray(r.json.curve)){ w.fit = r.json; w.phase = 'review'; }
+    else w.err = r.status === 404 ? KNOB_OLD : (r.json && (r.json.error || (r.json.warnings || []).join(' '))) || 'Couldn’t fit a curve (error ' + r.status + ').';
+    if (r.ok && r.json && !Array.isArray(r.json.curve) && Array.isArray(r.json.redo) && r.json.redo.length){
+      // No usable curve: send the owner straight back to the first point to redo.
+      w.fit = {curve:[], warnings:r.json.warnings || [], redo:r.json.redo}; w.i = r.json.redo[0]; w.phase = 'step';
+      w.err = (r.json.warnings || []).join(' ') || 'Some points need redoing.';
+    }
+  } catch (_) { if (wiz !== w) return; w.err = 'Couldn’t reach the radio.'; }
+  renderWiz();
+}
+async function wizSave(){
+  const w = wiz; if (!w || !w.fit || w.saving) return;
+  w.saving = true; w.err = ''; renderWiz();
+  try {
+    const r = await api('PUT', knobUrl(w.k.id, '/calibration'), {curve: w.fit.curve, direction: w.fit.direction, hysteresis_counts: w.fit.hysteresis_counts});
+    if (wiz !== w) return;
+    if (r.ok){
+      adoptKnob(r.json && r.json.id ? r.json : Object.assign({}, w.k, {curve: w.fit.curve, direction: w.fit.direction, hysteresis_counts: w.fit.hysteresis_counts, source:'box'}));
+      toast((w.k.label || w.k.id) + ' calibrated on this radio');
+      $('dlg').close(); return;
+    }
+    w.err = r.status === 404 ? KNOB_OLD : (r.json && r.json.error) || 'Couldn’t save (error ' + r.status + ').';
+  } catch (_) { if (wiz !== w) return; w.err = 'Couldn’t reach the radio.'; }
+  w.saving = false; renderWiz();
 }
 
 /* ---------- YouTube Music account (carried over) ---------- */
@@ -2265,6 +2873,7 @@ onRoute();
 poll().then(schedule);
 loadConfig();
 loadAccount();
+loadSoftware();
 loadSettings().then(() => { if (view === 'settings') rerender(); if (settings && settings.volume_limit != null){ K.limit = +settings.volume_limit; paintKnob(); } });
 refreshHa();
 })();

@@ -25,12 +25,15 @@ import logging
 import re
 import shlex
 import shutil
+import sqlite3
 import subprocess
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from ..bootresume import http_answers, mpd_answers
 from .base import Preset, Source
 from .sources.radio import RadioSource
 
@@ -54,6 +57,13 @@ DEFAULT_RENDERER_UNITS = {
     "bluetooth": "bluealsa-aplay",
     "airplay": "shairport-sync",
 }
+
+MOODE_DB = Path("/var/local/www/db/moode-sqlite3.db")
+
+# The boot resume's swell (bootresume.py): silent -> the knob's level in
+# steps, in step with the lamp's 1.5 s fade to playing.
+SWELL_S = 3.0
+SWELL_STEPS = 20
 
 # active_source() is asked by the main loop and by every key press. The answer
 # costs an HTTP status call and up to three moodeutl shell-outs, and a human
@@ -131,7 +141,8 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
     Imported lazily and inside a try so the daemon still plays radio when a
     source module is missing, half-written, or its dependencies are absent -
     the box must never lose its radio because Spotify broke. ``state_dir``
-    (/var/lib/haslerd) is where the YouTube Music sign-in is kept.
+    (/var/lib/haslerd) is where the YouTube Music sign-in, its state across
+    reboots and the boot cache of opening tracks are kept.
     """
     radio = RadioSource(config.mpd_host, config.mpd_port, ytm_port=config.ytm.port)
     sources: dict[str, Source] = {"radio": radio}
@@ -165,6 +176,7 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
                 cookies=config.ytm.cookies or None,
                 catalog=catalog,
                 probe=stream_ok,
+                state_dir=state_dir,
             )
             if catalog is not None:
                 from .sources.ytm_playlists import PlaylistSync
@@ -199,6 +211,12 @@ class MoodePlayer:
         self._volume: float | None = None   # mixer percent, post-ceiling
         self._knob: float | None = None     # knob scale 0-100, as last set
         self._renderer_cache: tuple[float, dict] | None = None
+        # The swell's bookkeeping. Every write the knob (or standby) makes
+        # bumps _mixer_gen, which stops a swell in its tracks: the knob wins.
+        self._mixer_lock = threading.RLock()
+        self._mixer_gen = 0
+        self._hold: int | None = None      # mixer percent a swell will rise to
+        self._swelling = False
         self._warm_up()
 
     def _warm_up(self) -> None:
@@ -286,8 +304,7 @@ class MoodePlayer:
             timeout=5,
         )
 
-    def set_volume(self, value: float) -> None:
-        percent = scale_volume(value, self.config.volume_limit, self.config.volume_floor)
+    def _mixer_level(self, percent: int) -> None:
         if percent > 0:
             # Turning the knob up always un-mutes: the switch may have been
             # left off by moOde, a standby or a restart, and a level on a
@@ -298,18 +315,106 @@ class MoodePlayer:
                 self._amixer(f"{percent}%")   # a mixer without a mute switch
         else:
             self._amixer(f"{percent}%")
+
+    def set_volume(self, value: float) -> None:
+        percent = scale_volume(value, self.config.volume_limit, self.config.volume_floor)
+        with self._mixer_lock:
+            self._mixer_gen += 1
+            self._hold = None
+            self._mixer_level(percent)
         self._volume = float(percent)
         self._knob = max(0.0, min(100.0, float(value)))
         if self._muted and percent > 0:
             self._muted = False
 
-    def get_volume(self) -> float | None:
-        """Current volume on the knob scale, read back from the mixer.
+    # -- the boot resume's swell ------------------------------------------
 
-        Read rather than remembered, because the moOde UI, HA and a phone over
-        AirPlay all move the same hardware mixer behind our back. Falls back to
-        the last value we set if amixer cannot be read.
+    def hold_silent(self) -> None:
+        """Mixer to 0% for a swell to come, remembering the level to rise to.
+
+        That level is the knob's (post-ceiling); with no knob reading yet,
+        the mixer's own, capped at ``volume_limit``. Unknown: left alone.
         """
+        with self._mixer_lock:
+            target = self._volume
+            if target is None:
+                percent = self._read_mixer()
+                if percent is None:
+                    return
+                target = min(percent, max(1, min(100, int(self.config.volume_limit))))
+            self._mixer_gen += 1
+            self._hold = int(target)
+            self._amixer("0%")
+
+    def release_hold(self) -> None:
+        """No swell after all (the start failed): back to the level at once."""
+        with self._mixer_lock:
+            if self._hold is None or self._swelling:
+                return
+            target, self._hold = self._hold, None
+            self._mixer_gen += 1
+            self._mixer_level(target)
+
+    def swell(
+        self,
+        seconds: float = SWELL_S,
+        steps: int = SWELL_STEPS,
+        sleep: Callable[[float], None] = time.sleep,
+        spawn: Callable[[Callable[[], None]], None] | None = None,
+    ) -> None:
+        """Raise the held mixer to its level over ``seconds``, on a thread.
+
+        From the volume floor (the knob's first audible step) up, linear in
+        mixer percent - linear in dB on the Amp4 Pro, so it reads as a fade.
+        Never above the level held (the knob's, under ``volume_limit``); a
+        knob turned, a mute or a release meanwhile ends it where it is.
+        """
+        with self._mixer_lock:
+            target = self._hold
+            if target is None:
+                return
+            gen = self._mixer_gen
+            self._swelling = True
+        start = min(max(0, int(self.config.volume_floor)), target)
+        steps = max(1, int(steps))
+
+        def run() -> None:
+            try:
+                for i in range(1, steps + 1):
+                    with self._mixer_lock:
+                        if self._mixer_gen != gen:
+                            return
+                        self._mixer_level(start + (target - start) * i // steps)
+                    if i < steps:
+                        sleep(seconds / steps)
+            except Exception:
+                log.exception("volume swell failed; setting the level at once")
+                with self._mixer_lock:
+                    if self._mixer_gen == gen:
+                        try:
+                            self._mixer_level(target)
+                        except Exception:
+                            log.debug("could not set the level either", exc_info=True)
+            finally:
+                with self._mixer_lock:
+                    self._swelling = False
+                    if self._mixer_gen == gen:
+                        self._hold = None
+
+        if spawn is None:
+            threading.Thread(target=run, name="swell", daemon=True).start()
+        else:
+            spawn(run)
+
+    def reassert_volume(self) -> None:
+        """moOde's startup may have set its own level (vol.sh): the knob's again."""
+        with self._mixer_lock:
+            if self._swelling or self._hold is not None:
+                return      # the swell ends on the knob's level anyway
+        if self._knob is not None:
+            self.set_volume(self._knob)
+
+    def _read_mixer(self) -> int | None:
         try:
             result = subprocess.run(
                 [self.config.amixer, "-c", str(self.config.card), "sget", self.config.mixer],
@@ -318,10 +423,19 @@ class MoodePlayer:
                 text=True,
                 timeout=5,
             )
-            percent = parse_amixer_percent(result.stdout)
         except Exception:
             log.debug("could not read mixer volume", exc_info=True)
-            percent = None
+            return None
+        return parse_amixer_percent(result.stdout)
+
+    def get_volume(self) -> float | None:
+        """Current volume on the knob scale, read back from the mixer.
+
+        Read rather than remembered, because the moOde UI, HA and a phone over
+        AirPlay all move the same hardware mixer behind our back. Falls back to
+        the last value we set if amixer cannot be read.
+        """
+        percent = self._read_mixer()
         if percent is None:
             return self._knob
         return unscale_volume(percent, self.config.volume_limit, self.config.volume_floor)
@@ -329,10 +443,13 @@ class MoodePlayer:
     def set_mute(self, muted: bool) -> None:
         # Prefer the mixer's own mute switch; fall back to volume 0 on mixers
         # that have no switch (some DACs expose only a volume control).
-        try:
-            self._amixer("mute" if muted else "unmute")
-        except subprocess.CalledProcessError:
-            self._amixer("0%" if muted else f"{int(self._volume or 40)}%")
+        with self._mixer_lock:
+            self._mixer_gen += 1
+            self._hold = None
+            try:
+                self._amixer("mute" if muted else "unmute")
+            except subprocess.CalledProcessError:
+                self._amixer("0%" if muted else f"{int(self._volume or 40)}%")
         self._muted = muted
 
     # -- tone -------------------------------------------------------------
@@ -411,6 +528,62 @@ class MoodePlayer:
             if value not in ("", "0", "off", "None"):
                 return source
         return "radio"
+
+    # -- for the boot resume (bootresume.py), asked off the main loop ------
+
+    def answering(self, source: str) -> bool:
+        """Is the process behind ``source`` up and talking yet?"""
+        if source in ("radio", "ytm"):
+            return mpd_answers(self.config.mpd_host, self.config.mpd_port)
+        if source == "spotify":
+            return http_answers(self.config.spotify.base_url.rstrip("/") + "/status")
+        return True
+
+    def still_playing(self, preset: Preset) -> bool:
+        """``preset`` is what we started and its player still plays it.
+
+        For radio, MPD must be playing this very stream: moOde's worker
+        reloading its own queue counts as "not". Never raises.
+        """
+        if self.current_preset != preset:
+            return False
+        source = self.sources.get(preset.source)
+        if source is None:
+            return False
+        try:
+            if preset.source == "radio":
+                client = source.mpd()
+                if client.status().get("state") != "play":
+                    return False
+                return str(client.currentsong().get("file", "")) == preset.uri
+            return bool(source.is_active())
+        except Exception:
+            log.debug("still_playing check failed", exc_info=True)
+            return False
+
+    def wrkready(self, db: Path = MOODE_DB) -> int | None:
+        """moOde's worker sets cfg_system ``wrkready`` to 1 when its startup is done.
+
+        Read-only sqlite first, moodeutl if that is refused; None if neither
+        answers (no moOde, or it is mid-write).
+        """
+        value: str | None = None
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=0.5)
+            try:
+                row = con.execute("select value from cfg_system where param='wrkready'").fetchone()
+            finally:
+                con.close()
+            value = None if row is None else str(row[0])
+        except sqlite3.Error:
+            try:
+                value = self._moodeutl("select value from cfg_system where param='wrkready'")
+            except Exception:
+                return None
+        try:
+            return int(value) if value not in (None, "") else None
+        except ValueError:
+            return None
 
     def select_source(self, source: str) -> None:
         """Hand the audio path to a renderer, or take it back for MPD."""

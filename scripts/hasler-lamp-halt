@@ -7,6 +7,12 @@
 # breath during shutdown is haslerd's job (lamp engine, docs/lamp.md); this
 # only guarantees the end state, even if haslerd crashed or was killed.
 #
+# Not the clean-shutdown marker (/var/lib/haslerd/clean-shutdown): by now the
+# filesystems are read-only, so a write here would fail. It is written earlier
+# in the shutdown, while /var/lib is still read-write, by
+# config/hasler-clean-shutdown.service (ExecStop=, only when systemd is
+# shutting down); haslerd reads and deletes it at boot.
+#
 # Hardware: common-anode LED on 3.3 V, red GPIO17 / green GPIO22 / blue GPIO27,
 # GPIO HIGH = dark. Each pin is a pwm-gpio chip (channel pwm0):
 #   - polarity "inversed" (how hasler-lamp-boot and haslerd set it): duty 0,

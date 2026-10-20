@@ -1,0 +1,16 @@
+#!/usr/bin/python3 -I
+"""Launcher, installed as /usr/local/sbin/hasler-update (at commit only).
+
+Runs the updater package from /opt/hasler/updater (replaced only when a
+release commits), or from next to this script in a source checkout.
+``-I`` keeps the environment and the current directory out of sys.path.
+"""
+import os
+import sys
+
+here = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, here if os.path.isdir(os.path.join(here, "hasler_update")) else "/opt/hasler/updater")
+
+from hasler_update.cli import main  # noqa: E402
+
+raise SystemExit(main())

@@ -44,13 +44,15 @@ import urllib.request
 from pathlib import Path
 from typing import Callable
 
+from ..boxconfig import shipped_data
+
 log = logging.getLogger(__name__)
 
 MOODE_DB = "/var/local/www/db/moode-sqlite3.db"
 LIMIT = 50
-# daemon/haslerd/web/stations.py -> repo root. The daemon runs from an editable
-# install of the checkout (scripts/install.sh), so config/ is right there.
-CURATED_FILE = Path(__file__).resolve().parents[3] / "config" / "stations" / "es.json"
+# Shipped with the release (config/stations in the release root, which is the
+# checkout root when running from the repo - boxconfig.find_release).
+CURATED_FILE = shipped_data("stations/es.json")
 
 # Radio Browser publishes a DNS round-robin of mirrors; a fixed short list is
 # simpler than a DNS SRV lookup in the stdlib and has been stable for years.

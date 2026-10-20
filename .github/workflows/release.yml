@@ -1,0 +1,74 @@
+# On a tag vX.Y.Z[-rc.N]: build the arm64 release in debian:trixie and upload it
+# as a workflow artifact. Nothing is signed or published here - that is
+# sign-publish.yml in the public hasler-releases repo (docs/release.md).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: test
+    # Free plan + private repo: no arm64 runners -> x86 + QEMU (slow, fine).
+    # Set vars.ARM_RUNNER (e.g. ubuntu-24.04-arm) if the plan allows it.
+    runs-on: ${{ vars.ARM_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write       # build provenance attestation
+      attestations: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0          # tags: previous version -> kind
+          persist-credentials: false
+
+      - name: arm64 emulation (QEMU from Ubuntu's archive)
+        if: ${{ !vars.ARM_RUNNER }}
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q qemu-user-static binfmt-support
+          docker run --rm --platform linux/arm64 debian:trixie uname -m
+
+      - name: Build in arm64 debian:trixie
+        id: v
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE:/w" -w /w \
+            -v "$GITHUB_STEP_SUMMARY:/summary" \
+            -e TAG -e RUNNER_TEMP=/tmp/rt -e GITHUB_STEP_SUMMARY=/summary \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            debian:trixie bash scripts/release/ci_build.sh
+          cat dist/.version >> "$GITHUB_OUTPUT" && rm dist/.version
+
+      # Attestations in a PRIVATE repo need GitHub Enterprise Cloud; on the Free
+      # plan leave vars.ATTESTATIONS unset (sign-publish then checks the run
+      # metadata and the artifact digest instead). See docs/release.md.
+      - name: Build provenance
+        if: vars.ATTESTATIONS == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/hasler-*-arm64.tar.zst
+            dist/release.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: hasler-release-${{ steps.v.outputs.version }}
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30

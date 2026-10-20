@@ -150,8 +150,12 @@ Order matters. Do these in sequence, with a meter.
 
 - [ ] `cd daemon && uv venv --python 3.11 && uv pip install -e ".[pi]"`
 - [ ] Fill in real stream URLs in `presets:`.
-- [ ] `scripts/install.sh` — installs `haslerd` as a systemd service with a watchdog. Re-run it after
-      every `git pull`; it is idempotent, and `--dry-run` shows what it would change.
+- [ ] `scripts/install.sh` — runs `scripts/bootstrap.sh` (the one-time box setup), then installs
+      `haslerd` from the checkout as a systemd service with a watchdog. Re-run it after every
+      `git pull`; it is idempotent, and `--dry-run` shows what it would change. This is the
+      **legacy rsync layout**: once the box runs signed releases from `/opt/hasler` (see
+      [Over-the-air releases](#over-the-air-releases-instead-of-installsh) below) it refuses to
+      run and the updater takes over.
 - [ ] Map the hold actions to the automations already in the house.
 
 - [ ] **Calibrate `volume_limit`.** Start at 50, play dense music with the knob at maximum, raise in
@@ -184,9 +188,11 @@ local API (`127.0.0.1:3678`). YouTube Music goes through MPD: `haslerd` queues
 `http://127.0.0.1:8099/ytm/<id>`, and each request is redirected to a stream **yt-dlp** resolves on
 the spot — so expired stream URLs are never a problem.
 
-- [ ] `scripts/install.sh` — adds go-librespot (pinned binary, config, unit), yt-dlp in
-      `/opt/yt-dlp` with a weekly upgrade timer, **deno** as its JavaScript runtime,
-      `/var/lib/haslerd`, and the sudoers drop-in that lets the tone knob power off cleanly.
+- [ ] `scripts/install.sh` — adds go-librespot (pinned binary, config, unit), **deno** as yt-dlp's
+      JavaScript runtime, and the sudoers drop-in that lets the tone knob power off cleanly;
+      its `bootstrap.sh` step puts yt-dlp in `/opt/yt-dlp` under its own user `ytdlp` (not root)
+      with a weekly upgrade that builds the new version in a second venv and switches only if it
+      passes a self-check (`scripts/hasler-ytdlp-update`; `--rollback` goes back one).
 - [ ] Copy the new `spotify:`, `ytm:` and `state_file:` blocks from `config/haslerd.yaml.example`
       into `config/haslerd.yaml`. The install script warns while any are missing.
 - [ ] **Turn moOde's Spotify renderer off**: moOde → Configure → Renderers → Spotify Connect →
@@ -215,6 +221,7 @@ the spot — so expired stream URLs are never a problem.
       yt-dlp --flat-playlist --print id 'https://music.youtube.com/playlist?list=<id>' | head -3
       yt-dlp -f bestaudio -g -- <one of those ids>   # one googlevideo URL, no JS-runtime warning
       systemctl list-timers yt-dlp-update.timer      # weekly upgrade is armed
+      sudo systemctl start yt-dlp-update.service; journalctl -u yt-dlp-update -n 5   # "already yt-dlp ..." 
       ```
 - [ ] **MPD can play what it is redirected to** — AAC in m4a, Opus in webm, over HTTPS. moOde's
       MPD has both pieces; check once anyway (the install script warns if not):
@@ -291,7 +298,8 @@ box comes back playing the last preset (`cat /var/lib/haslerd/state.json` shows 
 
 The common-anode RGB LED on GPIO 17 (red, pin 11), 22 (green, pin 15), 27 (blue, pin 13), common
 to 3V3 — wiring in [`hardware.md`](hardware.md#pilot-lamp--rgb-led-resistors-on-the-prototype-board),
-what it shows in [`lamp.md`](lamp.md). `scripts/install.sh` sets up all of it:
+what it shows in [`lamp.md`](lamp.md). `scripts/install.sh` sets up all of it (on a release box
+the same files come from the release's `integration/`):
 
 - a marked block at the end of `/boot/firmware/config.txt`: `gpio=17,22,27=op,dh` (dark from
   the firmware on) and one `dtoverlay=pwm-gpio,gpio=N` per pin (kernel PWM, ~800 Hz);
@@ -368,11 +376,77 @@ Both are cheap, and both check that the abstraction actually earned its keep:
 
 ## After a moOde update
 
-`scripts/install.sh` adds two lines to moOde for YouTube Music tracks: one in `/var/www/inc/mpd.php`
+`scripts/bootstrap.sh` (also run by `scripts/install.sh`) adds two lines to moOde for YouTube Music tracks: one in `/var/www/inc/mpd.php`
 so moOde's player shows the album cover, one in `/var/www/inc/music-library.php` so a new track's
 title appears at once instead of after a ~4 s `mediainfo` probe. A moOde update replaces those files:
-covers and the quick titles go back to moOde's defaults until you re-run `scripts/install.sh` (safe to
-repeat). Originals are kept as `*.hasler-orig`.
+covers and the quick titles go back to moOde's defaults until you re-run `sudo scripts/bootstrap.sh`
+(safe to repeat). Originals are kept as `*.hasler-orig`.
+
+## Over-the-air releases instead of install.sh
+
+The finished radio does not run from a checkout: it runs signed releases from `/opt/hasler`,
+its settings and calibration live in `/etc/hasler`, and it updates itself (docs/ota.md). Moving a
+box over, once:
+
+1. `sudo scripts/bootstrap.sh` — box setup (apt packages incl. `zstd` and `liblgpio1`, I²C,
+   groups, the `hasler-update` and `ytdlp` users, CamillaDSP tone config owned by `pi` 0644,
+   captive portal, moOde patch, yt-dlp off root).
+2. `sudo scripts/ota-bootstrap.sh --trust <dir>` — the updater, its units and timers, the polkit
+   rule (haslerd may start only the key page's update units), the hardware watchdog, and the
+   release-signing trust (`root.pub`, `keyring.json(.sig)`); copies go-librespot's login to
+   `/var/lib/go-librespot`.
+3. `sudo daemon/.venv/bin/python -m haslerd.migrations --check`, then `--apply` (migration 001:
+   `config/haslerd.yaml` and the edited descriptor become `/etc/hasler/box.yaml` and
+   `variant.d/`), then `sudo scripts/ota-bootstrap.sh` once more (ownership; `--update-url` for a
+   local channel).
+4. The first release: `sudo hasler-update apply --seq <N> --force` once it is staged. From then on
+   the key page's "About this radio" card checks, installs and goes back.
+
+The bench box does this with throwaway dev keys and a channel served from a laptop:
+[release.md, "Bench box"](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).
+
+## Boot time
+
+A radio should play soon after the switch, not two minutes later. moOde's worker waits for the
+*whole* boot (`systemctl is-system-running` = running) before it starts MPD, so anything that holds
+the boot open — waiting for the network, first-boot tools, a slow oneshot — delays the first sound.
+`sudo scripts/bootstrap.sh` trims the OS (idempotent; `--dry-run` shows each change first):
+
+- **Off:** cloud-init (only once every Wi-Fi profile is NetworkManager's own file in
+  `/etc/NetworkManager/system-connections`; otherwise it says so and leaves it), winbind,
+  `e2scrub_reap` + `e2scrub_all.timer`, triggerhappy (unless moOde's USB volume knob is on),
+  ModemManager. **Masked:** `rpi-eeprom-update` — EEPROM updates come deliberately with a release.
+  **Kept:** avahi (`hasler.local`), Bluetooth/hciuart, log2ram, smbd.
+- **config.txt:** a marked block `# >>> hasler boot time ... >>>` after moOde's sections and before
+  the updater's lamp block: `boot_delay=0`, `disable_splash=1`, `initial_turbo=30`,
+  `camera_auto_detect=0`, `display_auto_detect=0`. moOde only checks its header lines, which stay
+  untouched. Backup: `config.txt.hasler-boot-bak`.
+- **cmdline.txt:** `quiet loglevel=3`, and no `console=serial0,115200` (nothing uses the serial
+  console). Backup: `cmdline.txt.hasler-boot-bak`.
+- **Wi-Fi power save off** (`/etc/NetworkManager/conf.d/hasler-wifi-powersave.conf`).
+- **No waiting for the network:** haslerd and go-librespot no longer pull `network-online.target`
+  (haslerd copes offline; go-librespot retries every 5 s until Spotify answers), and an empty
+  `/etc/systemd/system/rc-local.service.d/debian.conf` stops rc-local (which launches moOde's worker)
+  from waiting for it — the worker waits for an IP address itself, then falls back to the hotspot.
+- **Opt-in `--eeprom`:** bootloader `BOOT_ORDER=0xf41` (SD, USB, retry) and `DISABLE_HDMI=1`, only if
+  different; staged with `rpi-eeprom-config --apply`, written at the next reboot.
+- **Opt-in `--early-mpd`** (`--no-early-mpd` undoes it): MPD starts in the boot transaction, as soon
+  as the amp's ALSA card exists, instead of from the worker. The worker's later `systemctl start mpd`
+  is a no-op. Caveat: if the worker ever logs "ALSA card: has been reassigned", MPD is running with
+  the old card number until `sudo systemctl restart mpd` (`hasler-boot-report` warns).
+
+config.txt, cmdline and EEPROM changes need a reboot (bootstrap says so). Then measure:
+
+    sudo hasler-boot-report
+
+It prints the kernel/userspace totals and critical chain, when rc-local, mpd, go-librespot and
+haslerd started (seconds since the kernel started), the worker's milestones and `wrkready`,
+haslerd's "first sound at X s" line, and whatever still pulls `network-online.target`.
+
+**Clean-shutdown marker.** `hasler-clean-shutdown.service` (a release unit, pulled in by haslerd)
+writes `/var/lib/haslerd/clean-shutdown` when systemd shuts down or reboots; haslerd reads and
+deletes it at start, so a missing marker means the power was cut. It is not the halt hook's job:
+`hasler-lamp-halt` runs after the filesystems are read-only.
 
 ## Moving the radio to a new Wi-Fi network
 

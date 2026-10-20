@@ -76,15 +76,37 @@ function form(net) {
     ev.preventDefault(); err.textContent = '';
     if (needsPwd && pwd.value.length < 8) { err.textContent = 'Wi-Fi passwords are at least 8 characters.'; pwd.focus(); return; }
     go.disabled = true; go.textContent = 'Saving…';
+    const body = {ssid: net.ssid, password: needsPwd ? pwd.value : '', security: net.security};
     try {
-      const r = await fetch('/api/wifi', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ssid: net.ssid, password: needsPwd ? pwd.value : '', security: net.security})});
-      const j = await r.json().catch(() => ({}));
+      let r = await post('/api/wifi', body), j = await r.json().catch(() => ({}));
+      if (r.status === 403 && j.confirm_required) {
+        // On the home network a Wi-Fi change needs a hand on the radio.
+        body.confirm = await pressToConfirm(net.ssid, go);
+        r = await post('/api/wifi', body); j = await r.json().catch(() => ({}));
+      }
       if (!r.ok || !j.ok) throw new Error(j.error || 'Could not save.');
       done(net.ssid);
     } catch (e) { err.textContent = e.message; go.disabled = false; go.textContent = 'Connect'; }
   }}, needsPwd ? [h('label', {for: 'pwd'}, 'Password'), h('div', {class: 'row'}, pwd, show)] : h('p', {class: 'quiet'}, 'Open network — no password.'), err, go);
   setTimeout(() => needsPwd && pwd.focus(), 50);
   return f;
+}
+
+const post = (url, body) => fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+// Ask the radio for a key press (web/confirm.py); resolves with the confirmed token.
+async function pressToConfirm(ssid, go) {
+  const r = await post('/api/confirm/request', {action: 'wifi', args: {ssid}});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.token) throw new Error(j.error || 'The radio can’t confirm this right now.');
+  if (j.state === 'confirmed') return j.token;
+  const end = Date.now() + (j.expires_in || 30) * 1000;
+  for (;;) {
+    go.textContent = 'Press any key on the radio · ' + Math.max(0, Math.ceil((end - Date.now()) / 1000));
+    await new Promise(res => setTimeout(res, 700));
+    const p = await fetch('/api/confirm/' + encodeURIComponent(j.token), {cache: 'no-store'}).then(x => x.json()).catch(() => ({}));
+    if (p.state === 'confirmed') { go.textContent = 'Saving…'; return j.token; }
+    if (p.state && p.state !== 'pending') throw new Error('No key was pressed on the radio, so nothing changed.');
+  }
 }
 
 function render(data) {

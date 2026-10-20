@@ -1,0 +1,48 @@
+# Every push and PR: ruff + pytest. Also called by release.yml before a build.
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"   # trixie's python3, what the boxes run
+      - name: Tools
+        run: |
+          sudo apt-get install -y -q zstd openssh-client
+          python -m pip install -q 'ruff==0.17.1' 'pytest==9.1.1' 'pyyaml==6.0.3'
+      - name: Ruff
+        # Syntax errors and undefined names only for now; widen the rule set
+        # once the existing code is clean under it.
+        run: ruff check --isolated --select E9,F63,F7,F82 daemon scripts update
+      - name: Pytest
+        working-directory: daemon
+        run: python -m pytest -q
+      - name: Updater tests
+        if: hashFiles('update/tests/**') != ''
+        working-directory: update
+        run: python -m pytest -q tests
+      - name: Release builder smoke test (no wheels)
+        run: |
+          v="$(sed -n 's/^version *= *"\(.*\)"/\1/p' daemon/pyproject.toml)"
+          python scripts/release/build_release.py --version "$v" --out "$RUNNER_TEMP/dist" --no-wheels
+          python scripts/release/make_manifest.py check --release "$RUNNER_TEMP/dist/release.json" \
+            --tarball "$RUNNER_TEMP/dist/hasler-$v-arm64.tar.zst"

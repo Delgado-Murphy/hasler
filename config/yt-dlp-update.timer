@@ -1,5 +1,5 @@
 [Unit]
-Description=Weekly yt-dlp upgrade
+Description=Weekly yt-dlp upgrade (as user ytdlp, switched only if the new one works)
 
 [Timer]
 OnCalendar=weekly

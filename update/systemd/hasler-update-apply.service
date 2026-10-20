@@ -1,0 +1,13 @@
+[Unit]
+Description=Hasler: install a staged update (nightly, auto mode, only when idle)
+After=network-online.target haslerd.service
+ConditionPathExists=/var/lib/hasler-update/staged
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-update apply --auto
+# 75 = deferred (radio in use, outside the window, mode ask/off): not a failure.
+SuccessExitStatus=75
+TimeoutStartSec=30min
+# Never killed by a haslerd restart it triggered itself.
+KillMode=process

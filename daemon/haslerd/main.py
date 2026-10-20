@@ -4,16 +4,26 @@ Runs under systemd with a watchdog. The loop is deliberately dull: everything
 interesting lives in the control primitives and the action table, both of which
 are tested without hardware.
 
-    haslerd --variant config/variants/hasler-hm.yaml
+    haslerd                       # /etc/hasler/box.yaml names the variant
+    haslerd --variant hasler-hm   # before box.yaml exists (the bench box)
+
+Configuration (docs/ota.md section 1): with /etc/hasler/box.yaml present the
+variant comes from its ``variant:`` and haslerd's settings are the code
+defaults with box.yaml's override blocks on top; the descriptor gets this
+box's calibration overlay (/etc/hasler/variant.d). Without box.yaml the old
+``--variant`` / ``--config`` files are read exactly as before (overlay still
+applied if one exists), so an unmigrated box is unaffected.
 """
 
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import logging
 import os
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -23,7 +33,9 @@ from typing import Callable
 
 import yaml
 
-from .actions import Actions
+from . import boxconfig
+from .actions import RENDERERS, SHUTDOWN_PREPARE_S, Actions
+from .bootresume import AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, shutdown_kind
 from .ha.rest import HomeAssistant
 from .lamp.contract import BoxState, LampDriver, Look
 from .lamp.policy import look_for
@@ -55,7 +67,7 @@ from .net import Connectivity, tcp_probe
 from .player.base import FakePlayer, Preset
 from .player.moode import MoodeConfig, MoodePlayer
 from .state import StateStore
-from .variant import Panel, load_variant
+from .variant import Panel, Variant, load_variant
 
 log = logging.getLogger("haslerd")
 
@@ -66,15 +78,14 @@ HA_PUBLISH_S = 5.0      # status to Home Assistant at most this often (HaApi thr
 # Long enough for the power switch's debounce to report a knob that is off at
 # boot (EndSwitch assumes "on"), so we never blip a station before going quiet.
 BOOT_SETTLE_S = 0.15
-RESUME_RETRY_S = 10.0
-RESUME_ATTEMPTS = 6
 
 # The lamp's clocks (docs/lamp.md).
 LOADING_POLL_S = 0.5    # "has the preset made a sound yet?", while loading
 LOADING_FAIL_S = 20.0   # no sound this long after a start: red pulses
 CAST_GRACE_S = 3.0      # blue stays this long after a phone lets go
 NIGHT_CHECK_S = 60.0    # sunset is not a thing to poll at 20 Hz
-BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest
+BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest...
+BOOT_RESUME_MAX_S = RESUME_WINDOW_S + 5.0   # ...unless a boot resume is still on its way
 
 
 def preset_sounding(player, preset: Preset) -> bool:
@@ -150,7 +161,9 @@ class LampKeeper:
         self.look: Look | None = None
         self._started = clock()
         self._net_seen = False
+        self._resume_pending = False
         self._resume_done = False
+        self._resume_outcome: str | None = None
         self._offline_since: float | None = None
         self._loading: Preset | None = None
         self._loading_since = 0.0
@@ -208,9 +221,29 @@ class LampKeeper:
         self._settings = dict(doc)
         self._next_night = 0.0
 
-    def boot_done(self) -> None:
-        """The resume finished (or a human took over): warm-up is over."""
+    def resume_started(self) -> None:
+        """A boot resume is on its way (bootresume.py): the warm-up breath
+        holds until it ends, and its retries never pulse red on their own."""
+        self._resume_pending = True
+
+    def boot_done(self, outcome: str | None = None) -> None:
+        """The resume finished (or a human took over): warm-up is over.
+
+        ``outcome`` is BootResume's. "playing" has been heard already, so the
+        lamp goes straight to playing (the fade lands with the swell);
+        "failed" leaves a started-but-silent preset not looking like music.
+        """
         self._resume_done = True
+        self._resume_outcome = outcome
+        player = self.actions.player
+        if outcome == "playing":
+            current = player.current()
+            if current is not None and current == self._loading:
+                self.source, self._loading = current.source, None
+        elif outcome == "failed":
+            self._silent, self._loading = self._loading or player.current(), None
+        if self._loading is not None:
+            self._loading_since = self.clock()  # a fresh LOADING_FAIL_S from here
 
     # -- the tick ---------------------------------------------------------
 
@@ -236,7 +269,7 @@ class LampKeeper:
             if self.sounding(player, self._loading):
                 self.source = self._loading.source
                 self._loading = None
-            elif now - self._loading_since >= LOADING_FAIL_S:
+            elif now - self._loading_since >= LOADING_FAIL_S and not self._resuming():
                 log.warning("preset %s made no sound in %.0f s", self._loading.n, LOADING_FAIL_S)
                 self._silent, self._loading = self._loading, None
                 self.reply("fail")
@@ -284,11 +317,18 @@ class LampKeeper:
         except Exception:
             log.debug("lamp countdown failed", exc_info=True)
 
+    def _resuming(self) -> bool:
+        return self._resume_pending and not self._resume_done
+
     def boot_stage(self, now: float) -> str:
         conn = self.connectivity
         if not self._net_seen and conn is not None and conn.online:
             self._net_seen = bool(getattr(conn, "seen_up", True))
-        if self._resume_done and self._net_seen or now - self._started >= BOOT_MAX_S:
+        # Music (or a verdict) ends the warm-up; nothing to resume, the
+        # network (the next key press will work) or the clock does.
+        settled = self._resume_outcome not in (None, "nothing") or self._net_seen
+        limit = BOOT_RESUME_MAX_S if self._resuming() else BOOT_MAX_S
+        if self._resume_done and settled or now - self._started >= limit:
             return "done"
         return "network" if self._net_seen else "daemon"
 
@@ -396,11 +436,83 @@ def moode_config(config: dict, settings: dict) -> MoodeConfig:
     return MoodeConfig(**spec)
 
 
-def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | None, WebApp]:
-    variant = load_variant(args.variant)
+DEFAULT_VARIANT = "hasler-hm"
+
+
+def box_paths(args) -> boxconfig.Paths:
+    """Paths from the environment (HASLER_ETC/STATE/RELEASE), then --etc/--state."""
+    paths = boxconfig.Paths.from_env()
+    if getattr(args, "etc", None):
+        paths = dataclasses.replace(paths, etc=Path(args.etc))
+    if getattr(args, "state", None):
+        paths = dataclasses.replace(paths, state=Path(args.state))
+    return paths
+
+
+def variant_file(arg: str | None, paths: boxconfig.Paths) -> Path:
+    """``--variant``: a descriptor path, or a bare name the release ships."""
+    if not arg:
+        return paths.shipped_variant(DEFAULT_VARIANT)
+    if "/" not in arg and not arg.endswith((".yaml", ".yml")):
+        return paths.shipped_variant(arg)
+    return Path(arg)
+
+
+def load_config(args, paths: boxconfig.Paths) -> tuple[Variant, dict]:
+    """The effective variant and haslerd's settings (see the module docstring)."""
+    box = boxconfig.load_box_config(paths)
+    if box:
+        name = box.get("variant") or variant_file(args.variant, paths).stem
+        variant = boxconfig.load_effective_variant(paths, name)
+        config = boxconfig.haslerd_settings(box)
+        if not args.fake:
+            config.setdefault("state_file", str(paths.state / "state.json"))
+            try:     # secrets go here from now on (boxconfig.secret_file)
+                paths.secrets.mkdir(mode=0o700, parents=True, exist_ok=True)
+            except OSError:
+                log.warning("cannot create %s; secrets stay beside the state", paths.secrets)
+        log.info("config: %s, variant %s%s", paths.box_file, name,
+                 f" + {variant.overlay_path}" if variant.overlay_path else "")
+        return variant, config
+    variant = boxconfig.overlay_variant(paths, load_variant(variant_file(args.variant, paths)))
     config = {}
-    if args.config and Path(args.config).exists():
-        config = yaml.safe_load(Path(args.config).read_text()) or {}
+    legacy = Path(args.config) if args.config else paths.release / "config" / "haslerd.yaml"
+    if legacy.exists():
+        config = yaml.safe_load(legacy.read_text()) or {}
+    if getattr(args, "state", None) and not args.fake:
+        config.setdefault("state_file", str(paths.state / "state.json"))
+    log.info("config: %s (no %s yet), variant %s", legacy, paths.box_file, variant.path)
+    return variant, config
+
+
+def apply_overlay(
+    panel: Panel | None, paths: boxconfig.Paths, variant_name: str, actions: Actions | None = None
+) -> Variant:
+    """Re-read this box's calibration overlay and apply it to the running panel.
+
+    The knob page calls this (as ``app.reload_variant()``) after
+    ``boxconfig.write_overlay``: pots pick up their new curve / range /
+    hysteresis at the next poll, without a restart (``Panel.apply_specs``).
+    With ``actions`` its variant's controls and io follow too; its key table
+    and presets (the key page's) are left alone. Raises ValueError for an
+    overlay that doesn't fit the descriptor - nothing is changed then. io
+    changes (MCP address, lamp palette) still need a restart.
+    """
+    variant = boxconfig.load_effective_variant(paths, variant_name)
+    if panel is not None:
+        changed = panel.apply_specs(variant.controls)
+        if changed:
+            log.info("calibration applied live: %s", ", ".join(changed))
+    if actions is not None:
+        actions.variant.controls = variant.controls
+        actions.variant.io = variant.io
+        actions.variant.overlay_path = variant.overlay_path
+    return variant
+
+
+def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | None, WebApp]:
+    paths = box_paths(args)
+    variant, config = load_config(args, paths)
 
     panel = Panel.from_variant(variant, fake=args.fake)
 
@@ -427,7 +539,7 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     ha = None if HaApi is not None else yaml_ha(config)
 
     actions = Actions(variant, player, ha=ha, state=state)
-    web, app = build_web(config, actions, panel, state, ha is not None)
+    web, app = build_web(config, actions, panel, state, ha is not None, paths=paths)
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))
@@ -496,7 +608,8 @@ def build_mono(state_dir: Path | None) -> MonoSwitch | None:
 
 
 def build_web(
-    config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool
+    config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool,
+    paths: boxconfig.Paths | None = None,
 ) -> tuple[WebServer | None, WebApp]:
     """The key page, with the owner's saved layout laid over the descriptor.
 
@@ -528,6 +641,17 @@ def build_web(
         mono=build_mono(state_dir),
     )
     app.ha_api = ha_api
+    # Physical confirmation and the "About this radio" card (web/confirm.py,
+    # web/software.py). web.allow_unconfirmed: true = the bench, no key press.
+    app.confirm.allow_unconfirmed = bool(spec.get("allow_unconfirmed", False))
+    app.allowed_hosts.update(str(h).lower() for h in (spec.get("hostnames") or []))
+    app.software.box_paths = paths
+    # For the knob page: where the overlay lives, and how to apply a new one.
+    app.box_paths = paths
+    app.reload_variant = (
+        (lambda: apply_overlay(panel, paths, actions.variant.name, actions=actions))
+        if paths is not None else None
+    )
     if ha_api is not None:
         # clear-missing rewrites keys.yaml: same file, same lock as the page
         ha_api.keys_file, ha_api.panel, ha_api.layout_lock = keys_file, panel, app.lock
@@ -599,25 +723,84 @@ def build_connectivity(config: dict) -> Connectivity:
     return conn
 
 
-def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet: bool = False) -> bool:
-    """Restore what the box was doing; True if the remembered preset is playing.
+def settle(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S) -> None:
+    """Restore what the box was doing and let the panel settle. Plays nothing.
 
-    Order matters: load state, let the panel settle so a knob that is off at
-    power-up gets to say ``off`` (-> standby), and only then resume.
+    Order matters: load state, then let a knob that is off at power-up say
+    ``off`` (-> standby) before anything resumes.
     """
     actions.restore()
     end = time.monotonic() + settle_s
     while time.monotonic() < end:
         actions.dispatch_all(panel.poll(time.monotonic()))
         time.sleep(0.01)
+
+
+def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet: bool = False) -> bool:
+    """``settle``, then resume at once; True if the remembered preset is playing.
+
+    The daemon itself resumes through BootResume instead (it waits for the
+    player); this is the one-shot form.
+    """
+    settle(panel, actions, settle_s)
     return actions.resume_last(quiet=quiet)
+
+
+def system_stopping() -> bool:
+    """Is the whole system shutting down (not just haslerd restarting)?"""
+    try:
+        result = subprocess.run(["systemctl", "is-system-running"],
+                                capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.stdout.strip() == "stopping"
+
+
+def network_up(actions: Actions) -> None:
+    """The internet answered for the first time this boot: tell YouTube Music."""
+    ytm = (getattr(actions.player, "sources", None) or {}).get("ytm")
+    hook = getattr(ytm, "network_up", None)
+    if callable(hook):
+        try:
+            hook()
+        except Exception:
+            log.exception("YouTube Music network_up failed")
+
+
+def amp_card(player) -> int | str:
+    """The amp's ALSA card (MoodeConfig.card), for the first-sound line."""
+    card = getattr(getattr(player, "config", None), "card", None)
+    return card if card not in (None, "") else AMP_CARD
+
+
+def boot_resume(
+    actions: Actions, power_cut: bool, settings_file: Path | None,
+    keeper: LampKeeper | None = None,
+) -> BootResume:
+    """The boot resume, wired to the lamp and to the page's night settings."""
+    night = None
+    if night_mode_active is not None:
+        def night() -> bool:
+            return bool(night_mode_active(datetime.now(), load_settings(settings_file)))
+
+    resume = BootResume(
+        actions,
+        sounding=preset_sounding,
+        night_hold=night_hold(power_cut, night),
+        on_done=keeper.boot_done if keeper is not None else None,
+    )
+    if keeper is not None:
+        keeper.resume_started()
+    return resume
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="haslerd", description=__doc__.splitlines()[0])
-    here = Path(__file__).resolve().parents[2]
-    ap.add_argument("--variant", default=str(here / "config/variants/hasler-hm.yaml"))
-    ap.add_argument("--config", default=str(here / "config/haslerd.yaml"))
+    ap.add_argument("--variant", help="descriptor path or shipped name (ignored once box.yaml names one)")
+    ap.add_argument("--config", help="legacy haslerd.yaml, read only while there is no box.yaml "
+                    "(default: config/haslerd.yaml in the release)")
+    ap.add_argument("--etc", help="box config directory (default /etc/hasler, or $HASLER_ETC)")
+    ap.add_argument("--state", help="state directory (default /var/lib/haslerd, or $HASLER_STATE)")
     ap.add_argument("--fake", action="store_true", help="in-memory panel and player")
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
@@ -628,7 +811,14 @@ def main(argv=None) -> int:
     )
 
     panel, actions, driver, config, web, app = build(args)
+    # Before anything else touches the state directory: did the last run end
+    # in a clean shutdown, a power cut, or is this a haslerd restart?
+    kind = "unknown" if args.fake else shutdown_kind(box_paths(args).state)
+    log.info("last shutdown: %s", kind)
+    first_sound = FirstSound(amp_card(actions.player)) if kind in ("clean", "power-cut") else None
     publisher = HaPublisher(app)
+    confirm = getattr(app, "confirm", None)
+    software = getattr(app, "software", None)
     connectivity = build_connectivity(config)
     keeper = None
     if driver is not None:
@@ -654,6 +844,7 @@ def main(argv=None) -> int:
     watchdog.ready()
 
     period = 1.0 / POLL_HZ
+    net_announced = False
     next_source_poll = 0.0
     next_lamp_tick = 0.0
     source = "radio"
@@ -661,32 +852,34 @@ def main(argv=None) -> int:
     try:
         if keeper is not None:
             keeper.tick(time.monotonic())     # warm-up breath before anything blocks
-        # Quiet: a failed first resume is retried below; the red pulses wait
-        # for the last attempt.
-        resumed = boot(panel, actions, quiet=True)
+        settle(panel, actions)
         if keeper is not None:
             keeper.arm()
-        # A box that boots before its Wi-Fi fails to resume; retry for a
-        # minute or so, until it works or someone presses a key.
-        resume_attempts = 0 if resumed else 1
-        next_resume = time.monotonic() + RESUME_RETRY_S
+        # The remembered preset comes back as soon as its player answers
+        # (moOde starts MPD late), swelling up; not after a power cut at night.
+        resume = boot_resume(actions, kind == "power-cut", getattr(app, "settings_file", None), keeper)
 
         while running:
             now = time.monotonic()
 
             events = panel.poll(now)
-            if events:
-                resume_attempts = RESUME_ATTEMPTS   # the human is in charge now
+            if any(event.kind != "change" for event in events):
+                resume.cancel("a hand on the radio")    # wheels don't count
+            if confirm is not None:
+                # A key press that confirms a page request (web/confirm.py)
+                # is taken out here: it must not also play a preset.
+                events = confirm.intercept(events)
             actions.dispatch_all(events)
+            if not actions.standby:
+                actions.last_active_at = now        # awake = in use (health.py's idle)
 
-            online = connectivity.poll(now)
-
-            if 0 < resume_attempts < RESUME_ATTEMPTS and online and now >= next_resume:
-                next_resume = now + RESUME_RETRY_S
-                last = resume_attempts == RESUME_ATTEMPTS - 1
-                resume_attempts = 0 if actions.resume_last(quiet=not last) else resume_attempts + 1
-            if keeper is not None and not 0 < resume_attempts < RESUME_ATTEMPTS:
-                keeper.boot_done()
+            connectivity.poll(now)
+            if not net_announced and getattr(connectivity, "seen_up", False):
+                net_announced = True
+                network_up(actions)
+            resume.tick(now)
+            if first_sound is not None:
+                first_sound.tick(now)
 
             if keeper is not None:
                 source = keeper.source      # the lamp polls it, on its own clock
@@ -696,6 +889,13 @@ def main(argv=None) -> int:
                     source = actions.player.active_source()
                 except Exception:
                     log.debug("could not read active source", exc_info=True)
+            if resume.pending and actions.phone_has_it(source) and (
+                source in RENDERERS or not resume.attempts
+            ):
+                # A phone cast before we got going: it has the radio now.
+                # (Spotify only before our own first attempt - a failed
+                # Spotify resume would otherwise read as a phone.)
+                resume.cancel(f"a phone ({source})")
             if (actions.standby or actions.pairing) and actions.phone_has_it(source):
                 # The phone wakes the radio: standby ends, nothing of ours
                 # resumes. A phone that connected also ends the pairing breath.
@@ -706,10 +906,22 @@ def main(argv=None) -> int:
                 next_lamp_tick = now + LAMP_TICK_S
                 keeper.tick(now)
 
+            if confirm is not None:
+                confirm.tick(now)                   # the lamp asks again while waiting
+            if software is not None:
+                software.tick(now)                  # an approved update, once the radio rests
             publisher.tick(now)
             watchdog.ping(now)
             time.sleep(max(0.0, period - (time.monotonic() - now)))
     finally:
+        if not args.fake and not actions.shutting_down and system_stopping():
+            # SIGTERM because the system is going down (moOde's menu, a
+            # reboot): the ember breath while YouTube Music caches the
+            # next boot's opener, as the knob's own shutdown does.
+            actions.shutting_down = True
+            if keeper is not None:
+                keeper.refresh()
+            actions.prepare_for_boot(wait_s=SHUTDOWN_PREPARE_S)
         panel.close()
         if web is not None:
             web.close()

@@ -1,0 +1,12 @@
+// polkit: haslerd (runs as user pi) may start the yt-dlp upgrade ("update
+// yt-dlp now" when YouTube has just broken it) - that one unit, start only.
+// The unit itself runs as the unprivileged ytdlp user.
+// -> /etc/polkit-1/rules.d/51-hasler-ytdlp.rules (scripts/bootstrap.sh)
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        subject.user == "pi" &&
+        action.lookup("verb") == "start" &&
+        action.lookup("unit") == "yt-dlp-update.service") {
+        return polkit.Result.YES;
+    }
+});

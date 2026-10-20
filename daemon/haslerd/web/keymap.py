@@ -24,6 +24,7 @@ from typing import Any
 import yaml
 
 from ..actions import Actions, build_presets
+from ..boxconfig import SCHEMA as KEYS_SCHEMA
 from ..panel.controls import Momentary
 from ..player.base import Preset
 
@@ -361,7 +362,8 @@ def tune_repeat(actions: Actions, panel: Any) -> None:
 def save(path: Path, specs: list[dict], table: dict[str, dict | None]) -> None:
     """Write the overlay atomically - a power cut mid-save leaves the old file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    doc = {"presets": specs, "actions": table}
+    # schema as boxconfig writes it, so a migration knows what it is reading.
+    doc = {"schema": KEYS_SCHEMA, "presets": specs, "actions": table}
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".keys-", suffix=".yaml")
     try:
         with os.fdopen(fd, "w") as fh:

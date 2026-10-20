@@ -59,6 +59,7 @@ ACK_KINDS = ("tap", "select")
 SELF_REPLYING = ("preset", "preset_by_index")
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation")
 DEFAULT_PAIR_S = 120
+SHUTDOWN_PREPARE_S = 20.0   # YouTube Music's next-boot opener, before poweroff
 
 
 def build_presets(specs: list[dict], variant_name: str = "") -> dict[int, Preset]:
@@ -110,6 +111,10 @@ class Actions:
         self.presets = build_presets(variant.presets, variant.name)
         self.standby = False
         self.shutting_down = False
+        # time.monotonic() of the last hand on the radio or preset started;
+        # health.py's "nothing played for 10 min" (the updater's idle) reads
+        # it, and the main loop keeps it fresh while the radio is awake.
+        self.last_active_at: float | None = None
         # Bluetooth discoverable until this clock time (the lamp's blue breath).
         self.pairing_until = 0.0
         self._last_preset: int | None = None
@@ -176,6 +181,8 @@ class Actions:
         # Keys at INFO so "did it see my press?" is answered by the journal;
         # wheel changes stream while turning, so they stay at DEBUG.
         log.log(logging.DEBUG if event.kind == "change" else logging.INFO, "%s -> %s", event, verb)
+        if event.kind != "change":
+            self.touch()
         if event.kind in ACK_KINDS and verb not in SELF_REPLYING and verb not in HA_VERBS:
             self._reply("ack")
         try:
@@ -185,6 +192,14 @@ class Actions:
             log.exception("action %r failed for %s", verb, event)
             if event.kind != "change":
                 self._reply("fail")
+
+    def touch(self) -> None:
+        """Someone is using the radio now (health.py's idle clock)."""
+        self.last_active_at = time.monotonic()
+
+    def reply(self, name: str) -> None:
+        """One of the lamp's replies, from outside a key press (the boot resume)."""
+        self._reply(name)
 
     def _reply(self, name: str) -> None:
         if self.on_reply is None:
@@ -261,6 +276,7 @@ class Actions:
         ``on_start`` first, so the lamp is already breathing while a slow
         start (yt-dlp expanding a playlist) holds up the loop.
         """
+        self.touch()
         if self.on_start is not None:
             try:
                 self.on_start(preset)
@@ -368,12 +384,40 @@ class Actions:
         Deliberately not a power cut: the box remains an AirPlay/Bluetooth
         target and an HA entity while the knob is off.
         """
+        self.enter_standby()
+
+    def enter_standby(self, persist: bool = True) -> None:
+        """Standby; ``persist=False`` keeps it out of state.json.
+
+        The boot resume's "power cut at night" sleeps without remembering it,
+        so the next daytime power cut still comes back playing.
+        """
         self.standby = True
         self._cycle_at = None
         self._changed()
-        self._persist()
+        if persist:
+            self._persist()
         self.player.stop()
         self.player.set_mute(True)
+        self.prepare_for_boot()
+
+    def prepare_for_boot(self, wait_s: float = 0.0) -> bool:
+        """Have YouTube Music put the next boot's opening track on disk.
+
+        The preset is the one the box would resume (a radio preset is a no-op
+        there; None = its last-played ytm preset). ``wait_s`` 0 returns at
+        once (standby); shutdown waits. True if cached. Never raises.
+        """
+        ytm = (getattr(self.player, "sources", None) or {}).get("ytm")
+        prepare = getattr(ytm, "prepare_for_boot", None)
+        if not callable(prepare):
+            return False
+        preset = self.presets.get(self._last_preset) if self._last_preset is not None else None
+        try:
+            return bool(prepare(preset, wait_s=wait_s) if wait_s else prepare(preset))
+        except Exception:
+            log.exception("could not prepare YouTube Music for the next boot")
+            return False
 
     def _standby_toggle(self, event, spec):
         """One key for both: asleep -> wake and play the last preset; else sleep."""
@@ -398,6 +442,8 @@ class Actions:
         self.shutting_down = True
         self._changed()
         self.player.stop()
+        # The lamp breathes on its own thread meanwhile.
+        self.prepare_for_boot(wait_s=SHUTDOWN_PREPARE_S)
         self.player.shutdown()
 
     # -- persistence ------------------------------------------------------
@@ -426,6 +472,12 @@ class Actions:
                 self._standby(None, {})
             except Exception:
                 log.exception("could not re-apply standby at boot")
+
+    def resume_preset(self) -> Preset | None:
+        """What ``resume_last`` would play now (None: standby, or nothing kept)."""
+        if self.standby or self._last_preset is None:
+            return None
+        return self.presets.get(self._last_preset)
 
     def resume_last(self, quiet: bool = False) -> bool:
         """Play the remembered preset, unless in standby. Never raises.
