@@ -23,6 +23,7 @@ import logging
 import os
 import signal
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -33,7 +34,8 @@ from typing import Callable
 import yaml
 
 from . import boxconfig
-from .actions import Actions
+from .actions import RENDERERS, SHUTDOWN_PREPARE_S, Actions
+from .bootresume import AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, shutdown_kind
 from .ha.rest import HomeAssistant
 from .lamp.contract import BoxState, LampDriver, Look
 from .lamp.policy import look_for
@@ -76,15 +78,14 @@ HA_PUBLISH_S = 5.0      # status to Home Assistant at most this often (HaApi thr
 # Long enough for the power switch's debounce to report a knob that is off at
 # boot (EndSwitch assumes "on"), so we never blip a station before going quiet.
 BOOT_SETTLE_S = 0.15
-RESUME_RETRY_S = 10.0
-RESUME_ATTEMPTS = 6
 
 # The lamp's clocks (docs/lamp.md).
 LOADING_POLL_S = 0.5    # "has the preset made a sound yet?", while loading
 LOADING_FAIL_S = 20.0   # no sound this long after a start: red pulses
 CAST_GRACE_S = 3.0      # blue stays this long after a phone lets go
 NIGHT_CHECK_S = 60.0    # sunset is not a thing to poll at 20 Hz
-BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest
+BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest...
+BOOT_RESUME_MAX_S = RESUME_WINDOW_S + 5.0   # ...unless a boot resume is still on its way
 
 
 def preset_sounding(player, preset: Preset) -> bool:
@@ -160,7 +161,9 @@ class LampKeeper:
         self.look: Look | None = None
         self._started = clock()
         self._net_seen = False
+        self._resume_pending = False
         self._resume_done = False
+        self._resume_outcome: str | None = None
         self._offline_since: float | None = None
         self._loading: Preset | None = None
         self._loading_since = 0.0
@@ -218,9 +221,29 @@ class LampKeeper:
         self._settings = dict(doc)
         self._next_night = 0.0
 
-    def boot_done(self) -> None:
-        """The resume finished (or a human took over): warm-up is over."""
+    def resume_started(self) -> None:
+        """A boot resume is on its way (bootresume.py): the warm-up breath
+        holds until it ends, and its retries never pulse red on their own."""
+        self._resume_pending = True
+
+    def boot_done(self, outcome: str | None = None) -> None:
+        """The resume finished (or a human took over): warm-up is over.
+
+        ``outcome`` is BootResume's. "playing" has been heard already, so the
+        lamp goes straight to playing (the fade lands with the swell);
+        "failed" leaves a started-but-silent preset not looking like music.
+        """
         self._resume_done = True
+        self._resume_outcome = outcome
+        player = self.actions.player
+        if outcome == "playing":
+            current = player.current()
+            if current is not None and current == self._loading:
+                self.source, self._loading = current.source, None
+        elif outcome == "failed":
+            self._silent, self._loading = self._loading or player.current(), None
+        if self._loading is not None:
+            self._loading_since = self.clock()  # a fresh LOADING_FAIL_S from here
 
     # -- the tick ---------------------------------------------------------
 
@@ -246,7 +269,7 @@ class LampKeeper:
             if self.sounding(player, self._loading):
                 self.source = self._loading.source
                 self._loading = None
-            elif now - self._loading_since >= LOADING_FAIL_S:
+            elif now - self._loading_since >= LOADING_FAIL_S and not self._resuming():
                 log.warning("preset %s made no sound in %.0f s", self._loading.n, LOADING_FAIL_S)
                 self._silent, self._loading = self._loading, None
                 self.reply("fail")
@@ -294,11 +317,18 @@ class LampKeeper:
         except Exception:
             log.debug("lamp countdown failed", exc_info=True)
 
+    def _resuming(self) -> bool:
+        return self._resume_pending and not self._resume_done
+
     def boot_stage(self, now: float) -> str:
         conn = self.connectivity
         if not self._net_seen and conn is not None and conn.online:
             self._net_seen = bool(getattr(conn, "seen_up", True))
-        if self._resume_done and self._net_seen or now - self._started >= BOOT_MAX_S:
+        # Music (or a verdict) ends the warm-up; nothing to resume, the
+        # network (the next key press will work) or the clock does.
+        settled = self._resume_outcome not in (None, "nothing") or self._net_seen
+        limit = BOOT_RESUME_MAX_S if self._resuming() else BOOT_MAX_S
+        if self._resume_done and settled or now - self._started >= limit:
             return "done"
         return "network" if self._net_seen else "daemon"
 
@@ -693,18 +723,75 @@ def build_connectivity(config: dict) -> Connectivity:
     return conn
 
 
-def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet: bool = False) -> bool:
-    """Restore what the box was doing; True if the remembered preset is playing.
+def settle(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S) -> None:
+    """Restore what the box was doing and let the panel settle. Plays nothing.
 
-    Order matters: load state, let the panel settle so a knob that is off at
-    power-up gets to say ``off`` (-> standby), and only then resume.
+    Order matters: load state, then let a knob that is off at power-up say
+    ``off`` (-> standby) before anything resumes.
     """
     actions.restore()
     end = time.monotonic() + settle_s
     while time.monotonic() < end:
         actions.dispatch_all(panel.poll(time.monotonic()))
         time.sleep(0.01)
+
+
+def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet: bool = False) -> bool:
+    """``settle``, then resume at once; True if the remembered preset is playing.
+
+    The daemon itself resumes through BootResume instead (it waits for the
+    player); this is the one-shot form.
+    """
+    settle(panel, actions, settle_s)
     return actions.resume_last(quiet=quiet)
+
+
+def system_stopping() -> bool:
+    """Is the whole system shutting down (not just haslerd restarting)?"""
+    try:
+        result = subprocess.run(["systemctl", "is-system-running"],
+                                capture_output=True, text=True, timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.stdout.strip() == "stopping"
+
+
+def network_up(actions: Actions) -> None:
+    """The internet answered for the first time this boot: tell YouTube Music."""
+    ytm = (getattr(actions.player, "sources", None) or {}).get("ytm")
+    hook = getattr(ytm, "network_up", None)
+    if callable(hook):
+        try:
+            hook()
+        except Exception:
+            log.exception("YouTube Music network_up failed")
+
+
+def amp_card(player) -> int | str:
+    """The amp's ALSA card (MoodeConfig.card), for the first-sound line."""
+    card = getattr(getattr(player, "config", None), "card", None)
+    return card if card not in (None, "") else AMP_CARD
+
+
+def boot_resume(
+    actions: Actions, power_cut: bool, settings_file: Path | None,
+    keeper: LampKeeper | None = None,
+) -> BootResume:
+    """The boot resume, wired to the lamp and to the page's night settings."""
+    night = None
+    if night_mode_active is not None:
+        def night() -> bool:
+            return bool(night_mode_active(datetime.now(), load_settings(settings_file)))
+
+    resume = BootResume(
+        actions,
+        sounding=preset_sounding,
+        night_hold=night_hold(power_cut, night),
+        on_done=keeper.boot_done if keeper is not None else None,
+    )
+    if keeper is not None:
+        keeper.resume_started()
+    return resume
 
 
 def main(argv=None) -> int:
@@ -724,6 +811,11 @@ def main(argv=None) -> int:
     )
 
     panel, actions, driver, config, web, app = build(args)
+    # Before anything else touches the state directory: did the last run end
+    # in a clean shutdown, a power cut, or is this a haslerd restart?
+    kind = "unknown" if args.fake else shutdown_kind(box_paths(args).state)
+    log.info("last shutdown: %s", kind)
+    first_sound = FirstSound(amp_card(actions.player)) if kind in ("clean", "power-cut") else None
     publisher = HaPublisher(app)
     confirm = getattr(app, "confirm", None)
     software = getattr(app, "software", None)
@@ -752,6 +844,7 @@ def main(argv=None) -> int:
     watchdog.ready()
 
     period = 1.0 / POLL_HZ
+    net_announced = False
     next_source_poll = 0.0
     next_lamp_tick = 0.0
     source = "radio"
@@ -759,22 +852,19 @@ def main(argv=None) -> int:
     try:
         if keeper is not None:
             keeper.tick(time.monotonic())     # warm-up breath before anything blocks
-        # Quiet: a failed first resume is retried below; the red pulses wait
-        # for the last attempt.
-        resumed = boot(panel, actions, quiet=True)
+        settle(panel, actions)
         if keeper is not None:
             keeper.arm()
-        # A box that boots before its Wi-Fi fails to resume; retry for a
-        # minute or so, until it works or someone presses a key.
-        resume_attempts = 0 if resumed else 1
-        next_resume = time.monotonic() + RESUME_RETRY_S
+        # The remembered preset comes back as soon as its player answers
+        # (moOde starts MPD late), swelling up; not after a power cut at night.
+        resume = boot_resume(actions, kind == "power-cut", getattr(app, "settings_file", None), keeper)
 
         while running:
             now = time.monotonic()
 
             events = panel.poll(now)
-            if events:
-                resume_attempts = RESUME_ATTEMPTS   # the human is in charge now
+            if any(event.kind != "change" for event in events):
+                resume.cancel("a hand on the radio")    # wheels don't count
             if confirm is not None:
                 # A key press that confirms a page request (web/confirm.py)
                 # is taken out here: it must not also play a preset.
@@ -783,14 +873,13 @@ def main(argv=None) -> int:
             if not actions.standby:
                 actions.last_active_at = now        # awake = in use (health.py's idle)
 
-            online = connectivity.poll(now)
-
-            if 0 < resume_attempts < RESUME_ATTEMPTS and online and now >= next_resume:
-                next_resume = now + RESUME_RETRY_S
-                last = resume_attempts == RESUME_ATTEMPTS - 1
-                resume_attempts = 0 if actions.resume_last(quiet=not last) else resume_attempts + 1
-            if keeper is not None and not 0 < resume_attempts < RESUME_ATTEMPTS:
-                keeper.boot_done()
+            connectivity.poll(now)
+            if not net_announced and getattr(connectivity, "seen_up", False):
+                net_announced = True
+                network_up(actions)
+            resume.tick(now)
+            if first_sound is not None:
+                first_sound.tick(now)
 
             if keeper is not None:
                 source = keeper.source      # the lamp polls it, on its own clock
@@ -800,6 +889,13 @@ def main(argv=None) -> int:
                     source = actions.player.active_source()
                 except Exception:
                     log.debug("could not read active source", exc_info=True)
+            if resume.pending and actions.phone_has_it(source) and (
+                source in RENDERERS or not resume.attempts
+            ):
+                # A phone cast before we got going: it has the radio now.
+                # (Spotify only before our own first attempt - a failed
+                # Spotify resume would otherwise read as a phone.)
+                resume.cancel(f"a phone ({source})")
             if (actions.standby or actions.pairing) and actions.phone_has_it(source):
                 # The phone wakes the radio: standby ends, nothing of ours
                 # resumes. A phone that connected also ends the pairing breath.
@@ -818,6 +914,14 @@ def main(argv=None) -> int:
             watchdog.ping(now)
             time.sleep(max(0.0, period - (time.monotonic() - now)))
     finally:
+        if not args.fake and not actions.shutting_down and system_stopping():
+            # SIGTERM because the system is going down (moOde's menu, a
+            # reboot): the ember breath while YouTube Music caches the
+            # next boot's opener, as the knob's own shutdown does.
+            actions.shutting_down = True
+            if keeper is not None:
+                keeper.refresh()
+            actions.prepare_for_boot(wait_s=SHUTDOWN_PREPARE_S)
         panel.close()
         if web is not None:
             web.close()

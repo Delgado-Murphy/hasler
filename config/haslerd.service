@@ -3,9 +3,17 @@ Description=Hasler panel daemon
 # Shipped in every release as integration/systemd/haslerd.service and put in
 # place by the updater (docs/ota.md). The legacy rsync install uses
 # config/legacy/haslerd.service instead.
-# go-librespot is optional at runtime - haslerd logs and carries on without it.
-After=network-online.target mpd.service go-librespot.service
-Wants=network-online.target
+# Not network-online: haslerd plays local and cached sources offline and
+# copes with the network arriving later, and waiting for it held the boot
+# (docs/build-guide.md "Boot time"). Not After=go-librespot either: it is
+# optional at runtime - haslerd logs and carries on without it. After=mpd only
+# orders: with --early-mpd MPD is in the boot transaction, otherwise moOde's
+# worker starts it later and haslerd retries.
+After=network.target mpd.service
+# Clean-shutdown marker (/var/lib/haslerd/clean-shutdown): written at a clean
+# shutdown or reboot by hasler-clean-shutdown.service, read and deleted by
+# haslerd at start; missing = the power was cut. Wants=, so no `enable` needed.
+Wants=hasler-clean-shutdown.service
 # The early boot lamp (hasler-lamp-boot) breathes until haslerd starts.
 # After= so haslerd never starts before it; ExecStartPre= below stops it so
 # only one of them ever writes the LED. Not Conflicts=: both are in the same

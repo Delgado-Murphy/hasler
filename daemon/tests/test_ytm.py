@@ -726,3 +726,292 @@ def test_cover_prefers_the_catalogue_art(source):
         source._meta[IDS[0]] = {"title": "t", "artist": "a", "album": "", "thumb": "https://lh3.example/x"}
     assert source.cover(IDS[0]) == "https://lh3.example/x"
     assert source.cover(IDS[1]) == f"https://i.ytimg.com/vi/{IDS[1]}/hqdefault.jpg"
+
+
+# -- boot: warm order, retry, state across reboots, the opening track on disk --
+
+
+OTHER = "https://music.youtube.com/playlist?list=PLother"
+AUDIO = b"\x00\x00\x00\x18ftypM4A " + bytes(range(256)) * 40
+
+
+class DownloadRunner(FakeRunner):
+    """FakeRunner that also 'downloads': writes AUDIO where ``-o`` points."""
+
+    def __init__(self, payload=AUDIO, fail_expand=False, **kwargs):
+        super().__init__(**kwargs)
+        self.payload = payload
+        self.fail_expand = fail_expand
+
+    def __call__(self, cmd, **kwargs):
+        if "-J" in cmd and self.fail_expand:
+            self.calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 1, "", "ERROR: Unable to download: no network")
+        if "-o" not in cmd:
+            return super().__call__(cmd, **kwargs)
+        self.calls.append(cmd)
+        target = cmd[cmd.index("-o") + 1].replace("%(ext)s", "m4a")
+        with open(target, "wb") as fh:
+            fh.write(self.payload)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def downloads(self):
+        return [c[-1].rsplit("=", 1)[1] for c in self.calls if "-o" in c]
+
+
+def fetch_body(url, headers=None):
+    req = urllib.request.Request(url, headers=headers or {})
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        resp = opener.open(req, timeout=5)
+        return resp.status, resp.headers, resp.read()
+    except urllib.error.HTTPError as err:
+        return err.code, err.headers, b""
+
+
+def test_warm_goes_last_played_first(mpd, runner):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    try:
+        src.play(Preset(n=2, name="Other", uri=OTHER, source="ytm"))
+        runner.calls.clear()
+        src.warm([Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"),
+                  Preset(n=2, name="Other", uri=OTHER, source="ytm")], interval_s=3600)
+        assert wait_for(lambda: sum("-J" in c for c in runner.calls) >= 2)
+        expands = [c[-1] for c in runner.calls if "-J" in c]
+        assert expands[:2] == [OTHER, PLAYLIST]
+    finally:
+        src.close()
+
+
+def test_boot_retries_just_the_failed_presets_every_few_seconds(mpd, monkeypatch):
+    monkeypatch.setattr("haslerd.player.sources.ytm.BOOT_RETRY_S", 0.05)
+    runner = DownloadRunner(fail_expand=True)          # booted before the Wi-Fi
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    try:
+        src.warm([Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")], interval_s=3600)
+        assert wait_for(lambda: sum("-J" in c for c in runner.calls) >= 3)   # not once a minute
+        assert runner.resolves() == []                 # no resolving blind
+        runner.fail_expand = False                     # the Wi-Fi is up
+        assert wait_for(lambda: runner.resolves() == [IDS[0]])
+        n = len(runner.calls)
+        time.sleep(0.3)
+        assert len(runner.calls) == n                  # settled: back to the long interval
+    finally:
+        src.close()
+
+
+def test_network_up_starts_a_round_at_once(mpd, runner):
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner)
+    try:
+        src.network_up()                               # no warm-up yet: harmless
+        src.warm([Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")], interval_s=3600)
+        assert wait_for(lambda: sum("-J" in c for c in runner.calls) == 1)
+        src.network_up()
+        assert wait_for(lambda: sum("-J" in c for c in runner.calls) == 2)
+    finally:
+        src.close()
+
+
+def test_state_survives_a_reboot_and_plays_without_the_network(mpd, runner, tmp_path):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    first = YtmSource(mpd=lambda: mpd, port=0, runner=FakeRunner(fail_ids={IDS[0]}), state_dir=tmp_path)
+    first.warm_once(preset)                            # opens on track 1: track 0 is dead
+    first.play(preset)
+    first.close()
+    assert (tmp_path / "ytm-state.json").stat().st_mode & 0o777 == 0o600
+
+    offline = DownloadRunner(fail_expand=True, fail_ids=set(IDS))
+    mpd2 = FakeMPD()
+    again = YtmSource(mpd=lambda: mpd2, port=0, runner=offline, state_dir=tmp_path)
+    try:
+        again.play(preset)
+        assert mpd2.queue == [again.prefix + i for i in IDS]
+        assert mpd2.calls[-1] == ("play", 1)           # the chosen opener, remembered
+        assert not any("-J" in c for c in offline.calls)   # stale list used at once
+        assert again.resolve(IDS[1]).endswith(f"/{IDS[1]}?x=1")   # URL cache, no yt-dlp
+        assert offline.resolves() == []
+    finally:
+        again.close()
+
+
+def test_a_stale_list_is_refreshed_by_warm_and_never_warms_blind(mpd, tmp_path):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    first = YtmSource(mpd=lambda: mpd, port=0, runner=FakeRunner(), state_dir=tmp_path)
+    first.warm_once(preset)
+    first.close()
+    offline = DownloadRunner(fail_expand=True, entries=["ddddddddddd"])
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=offline, state_dir=tmp_path)
+    try:
+        assert src.warm_once(preset) is False          # stale list not used to resolve offline
+        assert src._expand(PLAYLIST) == IDS            # but a press still gets it
+        offline.fail_expand = False
+        assert src.warm_once(preset) is True
+        assert src._expand(PLAYLIST) == ["ddddddddddd"]
+    finally:
+        src.close()
+
+
+def test_a_failed_expansion_falls_back_to_the_last_list(mpd):
+    runner = DownloadRunner()
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, playlist_ttl_s=0)
+    try:
+        assert src._expand(PLAYLIST) == IDS
+        runner.fail_expand = True
+        assert src._expand(PLAYLIST) == IDS
+    finally:
+        src.close()
+
+
+def test_a_broken_state_file_is_a_cold_start(mpd, runner, tmp_path):
+    (tmp_path / "ytm-state.json").write_text("{not json")
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, state_dir=tmp_path)
+    try:
+        src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
+        assert mpd.queue == [src.prefix + i for i in IDS]
+    finally:
+        src.close()
+    assert json.loads((tmp_path / "ytm-state.json").read_text())["last"] == PLAYLIST
+
+
+def test_prepare_for_boot_caches_the_opener_and_the_proxy_serves_it(mpd, tmp_path):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    runner = DownloadRunner()
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, state_dir=tmp_path)
+    src.warm_once(preset)
+    assert src.prepare_for_boot(preset, wait_s=5) is True
+    cached = tmp_path / "ytm-cache" / f"{IDS[0]}.m4a"
+    assert cached.read_bytes() == AUDIO
+    assert cached.stat().st_mode & 0o777 == 0o644
+    assert [p.name for p in cached.parent.iterdir()] == [cached.name]   # no temp files left
+    assert src.prepare_for_boot(preset, wait_s=5) is True
+    assert runner.downloads() == [IDS[0]]              # already there: not again
+    src.close()
+
+    offline = DownloadRunner(fail_expand=True, fail_ids=set(IDS))
+    mpd2 = FakeMPD()
+    booted = YtmSource(mpd=lambda: mpd2, port=0, runner=offline, state_dir=tmp_path)
+    try:
+        booted.play(preset)
+        status, headers, body = fetch_body(mpd2.queue[0])
+        assert (status, body) == (200, AUDIO)
+        assert headers["Content-Type"] == "audio/mp4"
+        status, headers, body = fetch_body(mpd2.queue[0], {"Range": "bytes=10-19"})
+        assert (status, body) == (206, AUDIO[10:20])
+        assert headers["Content-Range"] == f"bytes 10-19/{len(AUDIO)}"
+        assert fetch_body(mpd2.queue[0], {"Range": f"bytes={len(AUDIO)}-"})[0] == 416
+        assert IDS[0] not in offline.resolves()        # never asked yt-dlp for the opener
+        assert fetch(mpd2.queue[1])[0] == 502          # the rest wait for the network
+    finally:
+        booted.close()
+
+
+def test_shuffle_keeps_the_cached_opener_through_warm_rounds(mpd, tmp_path, monkeypatch):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm", shuffle=True)
+    picks = iter([[2, 0, 1], [0, 1, 2], [1, 0, 2]])
+    monkeypatch.setattr("haslerd.player.sources.ytm.random.sample", lambda pop, k: next(picks)[:k])
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=DownloadRunner(), state_dir=tmp_path)
+    try:
+        src.warm_once(preset)
+        assert src.prepare_for_boot(preset, wait_s=5) is True
+        src.warm_once(preset)                          # a later round: same opener
+        src.play(preset)
+        assert ("play", 2) in mpd.calls
+        src.warm_once(preset)                          # spent: a fresh pick
+        assert src._starts[PLAYLIST] == IDS[1]
+    finally:
+        src.close()
+
+
+def test_one_cached_track_per_preset_and_gone_presets_are_pruned(mpd, tmp_path):
+    a = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    b = Preset(n=2, name="Other", uri=OTHER, source="ytm")
+    runner = DownloadRunner()
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, state_dir=tmp_path)
+    cache = tmp_path / "ytm-cache"
+    try:
+        src.warm([a, b], interval_s=3600)
+        assert wait_for(lambda: len(src._starts) == 2)
+        assert src.prepare_for_boot(a, wait_s=5) and src.prepare_for_boot(b, wait_s=5)
+        assert sorted(p.name for p in cache.iterdir()) == [f"{IDS[0]}.m4a"]   # both open on it
+        runner.entries = ["ddddddddddd"] + IDS         # a's playlist gained a new opener
+        src.warm_once(a)
+        assert src.prepare_for_boot(a, wait_s=5)
+        assert sorted(p.name for p in cache.iterdir()) == [f"{IDS[0]}.m4a", "ddddddddddd.m4a"]
+        src.warm([a], interval_s=3600)                 # b removed from the keys
+        assert sorted(p.name for p in cache.iterdir()) == ["ddddddddddd.m4a"]
+    finally:
+        src.close()
+
+
+def test_never_caches_for_radio_and_none_means_the_last_played(mpd, tmp_path):
+    runner = DownloadRunner()
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, state_dir=tmp_path)
+    try:
+        radio = Preset(n=3, name="FIP", uri="http://radio.example/s", source="radio")
+        assert src.prepare_for_boot(radio, wait_s=5) is False
+        assert src.prepare_for_boot(None, wait_s=5) is False     # nothing played yet
+        assert runner.downloads() == [] and not (tmp_path / "ytm-cache").exists()
+        jazz = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+        src.warm([jazz], interval_s=3600)
+        src.play(jazz)
+        assert src.prepare_for_boot(wait_s=5) is True
+        assert runner.downloads() == [IDS[0]]
+    finally:
+        src.close()
+
+
+def test_without_a_state_dir_nothing_is_cached(source):
+    assert source.prepare_for_boot(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"), wait_s=1) is False
+
+
+def test_too_big_failed_or_full_disk_downloads_leave_nothing(mpd, tmp_path, monkeypatch):
+    from collections import namedtuple
+
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    cache = tmp_path / "ytm-cache"
+
+    monkeypatch.setattr("haslerd.player.sources.ytm.CACHE_MAX_BYTES", 100)
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=DownloadRunner(), state_dir=tmp_path)
+    assert src.prepare_for_boot(preset, wait_s=5) is False          # AUDIO is > 100 bytes
+    assert list(cache.iterdir()) == []
+    src.close()
+    monkeypatch.undo()
+
+    class Failing(DownloadRunner):
+        def __call__(self, cmd, **kwargs):
+            result = super().__call__(cmd, **kwargs)
+            if "-o" in cmd:
+                open(cmd[cmd.index("-o") + 1].replace("%(ext)s", "m4a.part"), "wb").close()
+                return subprocess.CompletedProcess(cmd, 1, "", "ERROR: HTTP Error 403")
+            return result
+
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=Failing(), state_dir=tmp_path)
+    assert src.prepare_for_boot(preset, wait_s=5) is False
+    assert list(cache.iterdir()) == []
+    src.close()
+
+    class DiskFull(DownloadRunner):
+        def __call__(self, cmd, **kwargs):
+            if "-o" in cmd:
+                raise OSError(28, "No space left on device")
+            return super().__call__(cmd, **kwargs)
+
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=DiskFull(), state_dir=tmp_path)
+    assert src.prepare_for_boot(preset, wait_s=5) is False
+    src.close()
+
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr("haslerd.player.sources.ytm.shutil.disk_usage", lambda p: usage(1, 1, 1024))
+    runner = DownloadRunner()
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=runner, state_dir=tmp_path)
+    assert src.prepare_for_boot(preset, wait_s=5) is False
+    assert runner.downloads() == []                                # did not even try
+    src.close()
+    assert list(cache.iterdir()) == []
+
+
+def test_build_sources_gives_ytm_its_state_dir(tmp_path):
+    from haslerd.player.moode import MoodeConfig, build_sources
+
+    sources = build_sources(MoodeConfig(spotify={"enabled": False}, ytm={"catalog": False}), tmp_path)
+    assert sources["ytm"]._state_file == tmp_path / "ytm-state.json"

@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# Where this boot's time went: power on -> first sound (docs/build-guide.md
+# "Boot time"). Read-only; run on the box after a boot (sudo for the full
+# journal):
+#
+#   sudo hasler-boot-report            (scripts/bootstrap.sh installs it)
+#
+# Prints: kernel/userspace totals and the critical chain; when rc-local (moOde's
+# worker), NetworkManager-wait-online, mpd, go-librespot and haslerd started,
+# in seconds since the kernel started (systemd's monotonic clock); the moOde
+# worker's milestones and wrkready; haslerd's "first sound at X s" line; what
+# still pulls network-online.target; the clean-shutdown marker unit.
+set -uo pipefail
+
+say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[33m!!\033[0m %s\n' "$*"; }
+secs() { awk -v us="$1" 'BEGIN { if (us > 0) printf "%7.2f s", us / 1e6; else printf "      -  " }'; }
+
+say "totals"
+systemd-analyze time 2>/dev/null | sed 's/^/   /' || warn "systemd-analyze time: boot not finished yet?"
+systemd-analyze critical-chain multi-user.target 2>/dev/null | sed -n '3,14p' | sed 's/^/   /'
+
+say "units (since kernel start: inactive -> activating, then active)"
+printf '   %-36s %10s %10s  %s\n' unit starting active state
+for u in cloud-init-main.service NetworkManager.service NetworkManager-wait-online.service \
+         network-online.target rc-local.service sound.target mpd.service go-librespot.service \
+         hasler-lamp-boot.service haslerd.service hasler-update-resume.service multi-user.target; do
+  props="$(systemctl show -p LoadState,ActiveState,InactiveExitTimestampMonotonic,ActiveEnterTimestampMonotonic "$u" 2>/dev/null)" || continue
+  grep -q '^LoadState=loaded' <<<"$props" || continue
+  get() { sed -n "s/^$1=//p" <<<"$props"; }
+  printf '   %-36s %10s %10s  %s\n' "$u" "$(secs "$(get InactiveExitTimestampMonotonic)")" \
+    "$(secs "$(get ActiveEnterTimestampMonotonic)")" "$(get ActiveState)"
+done
+
+say "journal (monotonic)"
+journalctl -b -o short-monotonic --no-pager 2>/dev/null \
+  | grep -E 'Start(ed|ing) .*(rc-local|mpd\.service|Music Player|go-librespot|haslerd|Hasler panel)|first sound|Initial clock sync|Time has been changed' \
+  | head -30 | sed 's/^/   /'
+
+say "moOde worker (this boot; times are wall clock - wrong if NTP stepped the clock later)"
+LOG=/var/log/moode.log
+if [[ -r "$LOG" ]]; then
+  BOOT_EPOCH=$(( $(date +%s) - $(cut -d. -f1 /proc/uptime) ))
+  awk '/-- Start moOde/ { n = NR } { line[NR] = $0 } END { for (i = (n ? n : 1); i <= NR; i++) print line[i] }' "$LOG" \
+    | grep -E 'Start moOde|Linux startup|Boot config|Wireless: address|ALSA card|MPD service|MPD port|MPD volume|Auto-play|Ready-script|Polling loop|CRITICAL|WARNING' \
+    | while IFS= read -r l; do
+        t="$(grep -oE '(^| )[0-9]{6} ' <<<"$l" | head -1 | tr -d ' ')"
+        off=""
+        if [[ -n "$t" ]]; then
+          e="$(date -d "$(date +%F) ${t:0:2}:${t:2:2}:${t:4:2}" +%s 2>/dev/null)" && off="$(( e - BOOT_EPOCH )) s"
+        fi
+        printf '   %8s  %s\n' "$off" "$l"
+      done
+  grep -q 'has been reassigned' "$LOG" && [[ -e /etc/systemd/system/mpd.service.d/hasler-early.conf ]] && \
+    warn "the ALSA card number changed and MPD started early with the old mpd.conf: sudo systemctl restart mpd"
+else
+  warn "no $LOG"
+fi
+if command -v moodeutl >/dev/null 2>&1; then
+  echo "   wrkready=$(moodeutl -q "select value from cfg_system where param='wrkready'" 2>/dev/null)  (1 = the worker finished startup)"
+fi
+
+say "haslerd"
+FS="$(journalctl -b -u haslerd --no-pager -o cat 2>/dev/null | grep -i 'first sound' | tail -1)"
+echo "   ${FS:-no \"first sound\" line this boot}"
+systemctl show -p ActiveState hasler-clean-shutdown.service 2>/dev/null | sed 's/^/   hasler-clean-shutdown: /'
+
+say "still pulling network-online.target"
+systemctl list-dependencies --reverse --plain --no-legend network-online.target 2>/dev/null \
+  | sed -n '2,$p' | sed 's/^ */   /'
+[[ -e /etc/systemd/system/mpd.service.d/hasler-early.conf ]] && echo "   (early MPD: on)" || echo "   (early MPD: off)"
+exit 0

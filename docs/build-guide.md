@@ -405,6 +405,49 @@ box over, once:
 The bench box does this with throwaway dev keys and a channel served from a laptop:
 [release.md, "Bench box"](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).
 
+## Boot time
+
+A radio should play soon after the switch, not two minutes later. moOde's worker waits for the
+*whole* boot (`systemctl is-system-running` = running) before it starts MPD, so anything that holds
+the boot open — waiting for the network, first-boot tools, a slow oneshot — delays the first sound.
+`sudo scripts/bootstrap.sh` trims the OS (idempotent; `--dry-run` shows each change first):
+
+- **Off:** cloud-init (only once every Wi-Fi profile is NetworkManager's own file in
+  `/etc/NetworkManager/system-connections`; otherwise it says so and leaves it), winbind,
+  `e2scrub_reap` + `e2scrub_all.timer`, triggerhappy (unless moOde's USB volume knob is on),
+  ModemManager. **Masked:** `rpi-eeprom-update` — EEPROM updates come deliberately with a release.
+  **Kept:** avahi (`hasler.local`), Bluetooth/hciuart, log2ram, smbd.
+- **config.txt:** a marked block `# >>> hasler boot time ... >>>` after moOde's sections and before
+  the updater's lamp block: `boot_delay=0`, `disable_splash=1`, `initial_turbo=30`,
+  `camera_auto_detect=0`, `display_auto_detect=0`. moOde only checks its header lines, which stay
+  untouched. Backup: `config.txt.hasler-boot-bak`.
+- **cmdline.txt:** `quiet loglevel=3`, and no `console=serial0,115200` (nothing uses the serial
+  console). Backup: `cmdline.txt.hasler-boot-bak`.
+- **Wi-Fi power save off** (`/etc/NetworkManager/conf.d/hasler-wifi-powersave.conf`).
+- **No waiting for the network:** haslerd and go-librespot no longer pull `network-online.target`
+  (haslerd copes offline; go-librespot retries every 5 s until Spotify answers), and an empty
+  `/etc/systemd/system/rc-local.service.d/debian.conf` stops rc-local (which launches moOde's worker)
+  from waiting for it — the worker waits for an IP address itself, then falls back to the hotspot.
+- **Opt-in `--eeprom`:** bootloader `BOOT_ORDER=0xf41` (SD, USB, retry) and `DISABLE_HDMI=1`, only if
+  different; staged with `rpi-eeprom-config --apply`, written at the next reboot.
+- **Opt-in `--early-mpd`** (`--no-early-mpd` undoes it): MPD starts in the boot transaction, as soon
+  as the amp's ALSA card exists, instead of from the worker. The worker's later `systemctl start mpd`
+  is a no-op. Caveat: if the worker ever logs "ALSA card: has been reassigned", MPD is running with
+  the old card number until `sudo systemctl restart mpd` (`hasler-boot-report` warns).
+
+config.txt, cmdline and EEPROM changes need a reboot (bootstrap says so). Then measure:
+
+    sudo hasler-boot-report
+
+It prints the kernel/userspace totals and critical chain, when rc-local, mpd, go-librespot and
+haslerd started (seconds since the kernel started), the worker's milestones and `wrkready`,
+haslerd's "first sound at X s" line, and whatever still pulls `network-online.target`.
+
+**Clean-shutdown marker.** `hasler-clean-shutdown.service` (a release unit, pulled in by haslerd)
+writes `/var/lib/haslerd/clean-shutdown` when systemd shuts down or reboots; haslerd reads and
+deletes it at start, so a missing marker means the power was cut. It is not the halt hook's job:
+`hasler-lamp-halt` runs after the filesystems are read-only.
+
 ## Moving the radio to a new Wi-Fi network
 
 No screen, no keyboard — moOde's fallback hotspot does it.

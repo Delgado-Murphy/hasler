@@ -1,0 +1,33 @@
+[Unit]
+Description=Hasler clean-shutdown marker (written at shutdown, read by haslerd at boot)
+# Shipped in every release (integration/systemd/); pulled in by haslerd.service
+# (Wants=), so it needs no `systemctl enable` from the updater.
+#
+# /var/lib/haslerd/clean-shutdown exists at boot = the last shutdown was clean
+# (poweroff, reboot, halt, the updater's reboots); haslerd reads and deletes
+# it at start, so missing = the power was cut.
+#
+# Why a unit and not the system-shutdown hook (hasler-lamp-halt): that hook
+# runs after every filesystem is remounted read-only, so it cannot write.
+# This unit is active all the time and does its work in ExecStop=, which runs
+# early in shutdown, while /var/lib is mounted read-write:
+#   - default dependencies: Conflicts= and Before=shutdown.target, After=
+#     basic.target - stopped at shutdown before local-fs is unmounted;
+#   - Before=haslerd.service: at shutdown units stop in reverse order, so this
+#     runs after haslerd has stopped and saved its state;
+#   - only when systemd is shutting down ("stopping"): a `systemctl stop` or an
+#     updater restart of haslerd, or stopping this unit by hand, writes nothing.
+# Runs as root: systemctl reaches PID 1 over its private socket even after
+# D-Bus has stopped; the file is then handed to haslerd's user.
+Before=haslerd.service
+RequiresMountsFor=/var/lib/haslerd
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/bin/sh -c 'if [ "$$(systemctl is-system-running 2>/dev/null)" = stopping ] && [ -d /var/lib/haslerd ]; then touch /var/lib/haslerd/clean-shutdown && chown pi: /var/lib/haslerd/clean-shutdown; fi; exit 0'
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target
