@@ -257,8 +257,14 @@ matches spaces). The updater checks the instance name again.
 {"version": "0.4.4", "ok": true, "uptime_s": 42,
  "checks": {"mpd": true, "audio_card": true, "panel": "ok|absent|allowed_absent",
             "lamp": true, "web": true},
- "idle": true, "standby": true, "playing": false, "last_play_s": 1234}
+ "idle": true, "standby": true, "playing": false, "last_play_s": 1234,
+ "recovering": false, "stalled_s": null, "stream_events_recent": []}
 ```
+
+`recovering` / `stalled_s`: MPD stopped a preset by itself and haslerd's
+stream watchdog (`haslerd/player/watchdog.py`) is bringing it back - `playing`
+is false meanwhile. `stream_events_recent`: the last few MPD stops/errors and
+recovery attempts from `/var/lib/haslerd/stream-events.jsonl`.
 
 `idle` = safe to update now: standby, no phone casting, nothing played for at
 least 10 minutes; `playing` includes casting. haslerd builds it in

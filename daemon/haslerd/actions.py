@@ -202,6 +202,10 @@ class Actions:
         # Standby, pairing or shutdown changed: the lamp should look again now,
         # before whatever blocking call comes next.
         self.on_change: Callable[[], None] | None = None
+        # player/watchdog.StreamWatchdog.stalled_on when wired (main.py): a
+        # preset MPD stopped playing by itself. Its key then means "play it",
+        # not "again" (which would put a silent radio into standby).
+        self.stalled: Callable[[Preset], bool] | None = None
         self.clock = clock
         self._started_at = float("-inf")   # clock() when a preset last started
         # Wall clock (time.time) of the last start: which Hasler started most
@@ -400,6 +404,7 @@ class Actions:
             and current.n == preset.n
             and current.source == preset.source
             and active == current.source
+            and not self._stalled(current)
         ):
             # An old key's contacts bounce: on the bench one press arrived as
             # two taps ~0.2 s apart, and the second stopped the station it had
@@ -424,6 +429,15 @@ class Actions:
         self._remember(n)
         self._persist()
         self._start(preset)
+
+    def _stalled(self, preset: Preset) -> bool:
+        """MPD stopped this preset by itself (the stream watchdog is on it)."""
+        if self.stalled is None:
+            return False
+        try:
+            return bool(self.stalled(preset))
+        except Exception:
+            return False
 
     def play_forwarded(self, preset: Preset) -> None:
         """A follower's preset key, played here for the whole group (the leader).

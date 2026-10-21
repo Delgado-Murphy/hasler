@@ -1192,6 +1192,12 @@ function renderDial(){
     const k = cfg.keys.find(x => x.id === cur), p = presetIn(cfg, k.tap.n);
     head = keyLabel(k) + ' · ' + (SRC_HEAD[p && p.source] || ''); name = p ? p.name : keyLabel(k);
     setSong('Tuning in…', '', '', p && p.source === 'radio' ? 'radio' : 'note');
+  } else if (status.recovering){
+    // MPD stopped by itself; the radio's watchdog is bringing it back.
+    const k = cur && cfg && cfg.keys.find(x => x.id === cur), p = k && k.tap && k.tap.n != null ? presetIn(cfg, k.tap.n) : null;
+    head = (k ? keyLabel(k) + ' · ' : '') + (SRC_HEAD[p && p.source] || ''); name = p ? p.name : 'Reconnecting';
+    setSong('Reconnecting…', 'The stream stopped; the radio is bringing it back', '', p && p.source === 'radio' ? 'radio' : 'note');
+    live = 'Reconnecting';
   } else if (status.playing){
     const pl = status.playing, k = cur && remoteKeys().find(x => x.id === cur);
     head = (k ? keyLabel(k) : 'Playing') + ' · ' + (SRC_HEAD[pl.source] || pl.source || '');

@@ -279,6 +279,8 @@ class WebApp:
         # The lamp engine (lamp/engine.LampEngine: set_palette, preview), or
         # None for a radio without one; main() sets it once the lamp is up.
         self.lamp: Any = None
+        # player/watchdog.StreamWatchdog (main.py): MPD stopping a preset by itself.
+        self.stream_watch: Any = None
         self.station_db = station_db
         # /api/info and /api/art/current, for the Home Assistant integration (web/integration.py).
         self.art = integration.ArtProxy(station_db)
@@ -500,10 +502,20 @@ class WebApp:
             volume = None
         source, waiting, renderer = self._source(current)
         playing = keymap.preset_to_page(current) if current else None
+        # MPD stopped it by itself (player/watchdog.py): not playing, whatever
+        # current() says, until the watchdog has it back.
+        watch = self.stream_watch
+        stream = watch.status_doc() if watch is not None else {"recovering": False, "stalled_s": None}
+        if watch is not None and watch.silent:
+            playing = None
         track = self._track() if source == "ytm" else None
         return {
             "pressed": pressed,
             "playing": playing,
+            # True while MPD should be playing and isn't, and the radio is
+            # bringing it back; stalled_s = for how long (None = not stalled).
+            "recovering": stream["recovering"],
+            "stalled_s": stream["stalled_s"],
             "standby": self.actions.standby,
             "volume": None if volume is None else round(volume),
             # What owns the speaker: radio | spotify | ytm | bluetooth | airplay.

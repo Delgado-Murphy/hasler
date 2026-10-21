@@ -88,6 +88,7 @@ from .net import Connectivity, tcp_probe
 from .wifiwatch import HotspotWatchdog
 from .player.base import FakePlayer, Preset
 from .player.moode import MoodeConfig, MoodePlayer
+from .player.watchdog import EVENTS_FILE, StreamEvents, StreamWatchdog
 from .state import StateStore
 from .variant import Panel, Variant, load_variant
 
@@ -206,6 +207,9 @@ class LampKeeper:
         self._next_update_poll = 0.0
         self._counting = False
         self._settings: dict | None = None    # the page's last saved doc, if any
+        # player/watchdog.StreamWatchdog (set by main): MPD stopped a preset by
+        # itself - not "playing" then, and the loading breath while it recovers.
+        self.watchdog = None
         # A knob that reads off at power-up never counts down: only an off
         # after boot() (see arm) is a hand asking for shutdown.
         self._armed_at = float("inf")
@@ -421,10 +425,12 @@ class LampKeeper:
         state.casting = casting
         state.cast_paused = paused
         state.offline_s = 0.0 if self._offline_since is None else now - self._offline_since
-        state.loading = self._loading is not None
+        watchdog = self.watchdog
+        stalled = watchdog is not None and watchdog.silent
+        state.loading = self._loading is not None or (watchdog is not None and watchdog.breathing)
         state.playing = (
             not state.loading and current is not None and self.source == current.source
-            and current != self._silent
+            and current != self._silent and not stalled
         )
         state.source = current.source if current is not None else self.source
         state.panel_missing = bool(self.panel is not None and getattr(self.panel, "absent", False))
@@ -980,6 +986,26 @@ def boot_resume(
     return resume
 
 
+def build_stream_watchdog(actions: Actions, app: Any, keeper: LampKeeper | None) -> StreamWatchdog | None:
+    """The stream watchdog (player/watchdog.py), on a real player: MPD stopping
+    a preset by itself is noticed, said, and undone. None with --fake."""
+    player = actions.player
+    if not all(hasattr(player, a) for a in ("route_gen", "routing", "resume_mpd", "restart")):
+        return None
+    night = (lambda: bool(keeper.state.night)) if keeper is not None else None
+    # On the card (/var/lib/haslerd), not /var/log: that is log2ram, lost at a power cut.
+    settings_file = getattr(app, "settings_file", None)
+    events = StreamEvents(Path(settings_file).parent / EVENTS_FILE if settings_file else None)
+    watchdog = StreamWatchdog(actions, night=night, events=events)
+    actions.stalled = watchdog.stalled_on      # its key plays it again, not "again"
+    if keeper is not None:
+        keeper.watchdog = watchdog
+    if app is not None:
+        app.stream_watch = watchdog            # /api/status, /api/health
+    watchdog.start()
+    return watchdog
+
+
 def build_phone_volume(actions: Actions) -> PhoneVolume | None:
     """The phone's Bluetooth volume as the radio's (player/btvolume.py), on a
     player with real BlueZ/BlueALSA behind it."""
@@ -1027,6 +1053,7 @@ def main(argv=None) -> int:
             listeners.append(keeper.settings_changed)
         keeper.apply_palette(load_settings(getattr(app, "settings_file", None)))
         app.lamp = driver       # the Lamp colours page's preview (web/server.py)
+    stream_watch = None if args.fake else build_stream_watchdog(actions, app, keeper)
     log.info("haslerd up: %s, %d controls", actions.variant.name, len(panel.controls))
 
     running = True
@@ -1132,6 +1159,8 @@ def main(argv=None) -> int:
             if keeper is not None:
                 keeper.refresh()
             actions.prepare_for_boot(wait_s=SHUTDOWN_PREPARE_S)
+        if stream_watch is not None:
+            stream_watch.close()
         panel.close()
         if web is not None:
             web.close()

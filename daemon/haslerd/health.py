@@ -112,13 +112,23 @@ def _casting(actions: Any) -> bool:
         return False
 
 
+def _recent_events(watch: Any) -> list:
+    fn = getattr(watch, "recent_events", None)
+    try:
+        return list(fn()) if callable(fn) else []
+    except Exception:
+        return []
+
+
 def health_report(app: Any, now: float | None = None) -> dict:
     """The /api/health document for ``app`` (a WebApp, or anything shaped like one)."""
     now = time.monotonic() if now is None else now
     actions = getattr(app, "actions", None)
     player = getattr(actions, "player", None)
     standby = bool(getattr(actions, "standby", False))
-    playing = _playing(actions)
+    watch = getattr(app, "stream_watch", None)     # player/watchdog.py
+    stalled = bool(watch is not None and getattr(watch, "silent", False))
+    playing = _playing(actions) and not stalled
     casting = _casting(actions)
     active = playing or casting or not standby
 
@@ -156,5 +166,10 @@ def health_report(app: Any, now: float | None = None) -> dict:
         "idle": standby and not playing and not casting and last_play_s >= IDLE_AFTER_S,
         "standby": standby,
         "playing": playing or casting,
+        # MPD stopped a preset by itself and the radio is bringing it back.
+        "recovering": bool(watch is not None and getattr(watch, "recovering", False)),
+        "stalled_s": watch.status_doc()["stalled_s"] if watch is not None else None,
+        # The last few MPD stops/errors and recovery attempts (stream-events.jsonl).
+        "stream_events_recent": _recent_events(watch),
         "last_play_s": int(last_play_s),
     }

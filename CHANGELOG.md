@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.3 - 2026-10-22
+
+- A station that stops by itself comes back by itself: the radio notices
+  within seconds, plays it again (and, if needed, starts the preset again),
+  waiting a little longer each time; after three tries the lamp pulses red
+  once (not at night). It never undoes a stop you made. The key page says
+  "Reconnecting..." meanwhile instead of claiming it plays.
+- Each stop and recovery is written to a small file on the memory card, so
+  a silent radio can be explained afterwards (Maker tools -> Diagnostics).
+
 ## 1.0.2 - 2026-10-21
 
 - The memory-card Wi-Fi rescue (hasler-wifi.txt) now arrives with updates

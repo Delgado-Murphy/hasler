@@ -308,6 +308,49 @@ class MoodePlayer:
         """The preset asked to start that has not started (or failed) yet."""
         return self._starting
 
+    # -- for the stream watchdog (player/watchdog.py) ------------------------
+
+    @property
+    def route_gen(self) -> int:
+        """Bumped by every start and stop: a hand has routed since ``gen`` if it differs."""
+        return self._gen
+
+    @property
+    def routing(self) -> bool:
+        """A start or stop is pending or under way."""
+        with self._want_cv:
+            return self._want is not None or self._busy or self._starting is not None
+
+    def resume_mpd(self, expect_gen: int) -> bool:
+        """``play`` on MPD's queue as it stands (``mpc play``), unless anyone
+        routed since ``expect_gen`` or is routing now. True if MPD was told."""
+        if not self._route_lock.acquire(timeout=1.0):
+            return False
+        try:
+            with self._want_cv:
+                if self._gen != expect_gen or self._want is not None or self._busy:
+                    return False
+            radio = self.sources.get("radio")
+            if radio is None:
+                return False
+            radio.mpd().play()
+            return True
+        finally:
+            self._route_lock.release()
+
+    def restart(
+        self, preset: Preset, expect_gen: int, on_error: Callable[[Exception], None] | None = None
+    ) -> int | None:
+        """``start_preset(preset)`` again, unless anyone routed since ``expect_gen``,
+        is routing now, or something else is current. The new generation, or None."""
+        self._source_for(preset)
+        with self._want_cv:
+            if (self._gen != expect_gen or self._want is not None or self._busy
+                    or self._starting is not None or self.current_preset not in (None, preset)):
+                return None
+            self._request(preset, on_error)
+            return self._gen
+
     def _source_for(self, preset: Preset) -> Source:
         source = self.sources.get(preset.source)
         if source is None:
