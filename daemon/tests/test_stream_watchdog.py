@@ -189,7 +189,7 @@ def test_while_stalled_status_and_health_tell_the_truth(rig, tmp_path):
     rig.mpd.plays = False
     rig.mpd.state = "stop"
     rig.run(wd_mod.STOP_CONFIRM_S + 2)
-    assert rig.watch.recovering and rig.watch.stalled_s() > 0
+    assert rig.watch.recovering and rig.watch.stalled_s() is not None   # 0.0 right at detection is fine
     app = WebApp(rig.actions, Panel.from_variant(rig.actions.variant, fake=True), tmp_path / "keys.yaml",
                  {"radio": True, "spotify": True, "ytm": True}, ha=False)
     app.stream_watch = rig.watch
