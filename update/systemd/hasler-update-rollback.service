@@ -1,0 +1,10 @@
+[Unit]
+Description=Hasler: haslerd failed - roll back if in update trial/probation
+# Started by haslerd.service: OnFailure=hasler-update-rollback.service (with
+# StartLimitIntervalSec=120, StartLimitBurst=5 so a crash loop ends in "failed").
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-update on-failure
+TimeoutStartSec=10min
+KillMode=process

@@ -1,0 +1,14 @@
+[Unit]
+Description=Hasler boot config guard - refresh the known-good config.txt / cmdline.txt
+# docs/build-guide.md "Boot config guard". Started by hasler-bootcfg-save.timer
+# a few minutes after boot, once moOde's worker has made its boot-time edits;
+# also run directly after every intended edit (the updater's commit and
+# rollback, scripts/bootstrap.sh). Copies config.txt and cmdline.txt to
+# /etc/hasler/boot/*.good only when they are sane and the boot has finished.
+After=haslerd.service rc-local.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-bootcfg-guard save
+SuccessExitStatus=1
+Nice=10

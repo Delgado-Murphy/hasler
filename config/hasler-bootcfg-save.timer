@@ -1,0 +1,14 @@
+[Unit]
+Description=Hasler boot config guard - save the known-good copies once the box has booted
+# Pulled in by haslerd.service (Wants=): no `systemctl enable` needed. A timer
+# job finishes at once, so it never holds `systemctl is-system-running`
+# (which moOde's worker waits for). Started later than 4 min after boot (a
+# fresh install), it fires right away.
+
+[Timer]
+OnBootSec=4min
+AccuracySec=30s
+Unit=hasler-bootcfg-save.service
+
+[Install]
+WantedBy=timers.target

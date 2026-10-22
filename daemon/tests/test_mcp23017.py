@@ -33,7 +33,7 @@ class TestCheckPins:
             check_pins([name])
 
 
-@pytest.mark.parametrize("variant", ["hasler-hm", "hasler-hm-hat", "excelsior"])
+@pytest.mark.parametrize("variant", ["hasler-hm", "excelsior"])
 def test_shipped_descriptors_avoid_the_output_only_pins(variant):
     # Both cabinets are meant to run on the expander; a descriptor that drifts
     # back onto d7/d15 would boot fine on a laptop and die on the box.
@@ -60,6 +60,10 @@ class Bus:
 
     def write_byte_data(self, addr, reg, value):
         self.writes.append((addr, reg, value))
+
+    def read_i2c_block_data(self, addr, reg, length):
+        # The MCP23017 steps its register pointer (IOCON.SEQOP=0).
+        return [self.read_byte_data(addr, reg + i) for i in range(length)]
 
     def close(self):
         pass
@@ -166,3 +170,18 @@ class TestResetRecovery:
 
         bus.write_byte_data = refuse
         mcp.read()                      # check runs, re-init fails, read still answers
+
+
+class TestTransfers:
+    def test_two_transfers_per_poll_ipol_then_both_ports(self):
+        bus = RegBus()
+        mcp = Mcp23017Digital(["d0", "d8"], bus_factory=lambda n: bus)
+        reads = []
+        bus.regs[GPIOA], bus.regs[GPIOB] = 0x00, 0x01
+        regs = dict(bus.regs)
+        bus.read_byte_data = lambda addr, reg: reads.append(("byte", reg)) or 0
+        bus.read_i2c_block_data = lambda addr, reg, n: (
+            reads.append(("block", reg, n)) or [regs.get(reg + i, 0) for i in range(n)]
+        )
+        assert mcp.read() == {"d0": False, "d8": True}
+        assert reads == [("block", IPOLA, 2), ("block", GPIOA, 2)]

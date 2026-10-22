@@ -1,126 +1,399 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{=lang}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>Hasler Wi-Fi</title>
+<title>{{title}}</title>
 <link rel="icon" href="data:,">
+<!--
+  The Wi-Fi setup page. Phones joining the radio's "Hasler" setup network get
+  it in their captive-portal sheet (config/captive/), so: no external
+  requests, no storage, works with JavaScript off. web/wifi_page.py renders
+  it: {{ key }} is a string from the table below in the phone's language,
+  {{= name }} a value the server fills in. Without JavaScript the form posts to
+  /wifi; with it, the same form goes to /api/wifi (and asks for a key press
+  when the phone is on the home network, not the setup one).
+  Fraunces 700 is a subset of the key page's (pyftsubset: Basic Latin plus
+  the Spanish letters and a few marks, kern only, no hinting).
+-->
 <style>
-:root{--ground:#14110F;--panel:#1C1A17;--line:#3A352E;--cream:#EFE6D2;--muted:#B9B0A0;--dim:#8A8378;--amber:#FFB238;--red:#E5484D;--green:#46D17A}
+@font-face{font-family:'Fraunces';font-style:normal;font-weight:700;font-display:swap;src:url(data:font/woff2;base64,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) format('woff2')}
+:root{--ground:#17100B;--sheet:#1F140D;--well:#150E09;--line:#3A2A1C;--line2:#5A4128;--cream:#EDE3CC;--title:#FFE9C2;
+  --text2:#B9A584;--muted:#A08A68;--brass:#C9A15A;--amber:#FFB238;--red-text:#EC5E42;--white-lamp:#FFE4BD}
 *{box-sizing:border-box}
-html,body{margin:0;background:var(--ground);color:var(--cream);font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-text-size-adjust:100%}
-main{max-width:520px;margin:0 auto;padding:28px 16px 48px}
-h1{font-size:44px;line-height:44px;font-weight:900;letter-spacing:-.03em;margin:0}
-.eyebrow{font:12px/16px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin:0 0 10px}
-.lede{color:var(--muted);margin:12px 0 24px}
-.lede b{color:var(--cream)}
-ul{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel)}
-li+li{border-top:1px solid var(--line)}
-.net{display:flex;align-items:center;gap:12px;width:100%;padding:16px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
-.net:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
-.net .name{flex:1;font-weight:600;overflow-wrap:anywhere}
-.bars{display:flex;align-items:flex-end;gap:2px;height:14px;flex-shrink:0}
-.bars i{width:4px;background:var(--line);border-radius:1px}
-.bars i.on{background:var(--cream)}
-.lock{width:14px;flex-shrink:0;color:var(--dim)}
-.form{padding:0 16px 16px;display:flex;flex-direction:column;gap:10px}
-label{font:12px/16px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
-input{width:100%;padding:14px;border-radius:6px;border:1px solid var(--line);background:var(--ground);color:var(--cream);font:inherit}
+html,body{margin:0;background:var(--ground);color:var(--cream);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+main{max-width:520px;margin:0 auto;padding:max(24px,env(safe-area-inset-top)) 16px 40px}
+a{color:var(--brass)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.back{display:inline-flex;align-items:center;min-height:44px;margin:-10px 0 8px;font:600 14px/1 system-ui,-apple-system,sans-serif;text-decoration:none}
+.eyebrow{font:12px/16px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin:0 0 6px}
+h1,h2,legend{font-family:Fraunces,Georgia,"Iowan Old Style",serif;font-weight:700;color:var(--title)}
+h1{font-size:46px;line-height:1;letter-spacing:-.02em;margin:0}
+.lede{color:var(--text2);margin:12px 0 22px}
+.lede b,.next b{color:var(--cream)}
+fieldset,.step{border:0;margin:0 0 22px;padding:0;min-width:0}
+legend,h2{display:flex;align-items:center;gap:10px;font-size:21px;line-height:1.2;margin:0 0 10px;padding:0}
+.n{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--brass);color:var(--brass);font-size:14px;flex:none}
+/* network list */
+.nets{list-style:none;margin:0;padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--sheet)}
+.nets li+li{border-top:1px solid var(--line)}
+.net{display:flex;align-items:center;gap:12px;min-height:56px;padding:12px 14px;cursor:pointer}
+.net input{width:22px;height:22px;margin:0;flex:none;accent-color:var(--amber)}
+.net:has(input:checked){background:#2A1B10}
+.name{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
+.lock{width:12px;height:14px;flex:none;color:var(--muted)}
+.bars{display:inline-flex;align-items:flex-end;gap:2px;height:14px;flex:none}
+.bars i{width:4px;border-radius:1px;background:var(--line2)}
+.bars i:nth-child(1){height:5px}.bars i:nth-child(2){height:8px}.bars i:nth-child(3){height:11px}.bars i:nth-child(4){height:14px}
+.s1 i:nth-child(-n+1),.s2 i:nth-child(-n+2),.s3 i:nth-child(-n+3),.s4 i{background:var(--cream)}
+.otherpick{position:absolute;opacity:0;pointer-events:none}
+.other{display:none;padding:2px 14px 16px;gap:10px;flex-direction:column}
+.otherpick:checked~.other{display:flex}
+.otherpick:checked+.net{background:#2A1B10}
+.otherpick:focus-visible+.net{outline:2px solid var(--amber);outline-offset:-2px}
+.ring{width:22px;height:22px;flex:none;border-radius:50%;border:2px solid var(--muted);display:grid;place-items:center}
+.otherpick:checked+.net .ring{border-color:var(--amber)}
+.otherpick:checked+.net .ring::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--amber)}
+.note{color:var(--muted);font-size:14px;margin:8px 0 0}
+/* fields */
+label.f{display:block;font:12px/16px ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+input[type=text],input[type=password],select{width:100%;min-height:48px;padding:12px;border-radius:6px;border:1px solid var(--line2);background:var(--well);color:var(--cream);font:inherit;font-size:17px}
+select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 20px) 50%,calc(100% - 14px) 50%;background-size:6px 6px;background-repeat:no-repeat;padding-right:36px}
 .row{display:flex;gap:8px;align-items:center}
-.show{background:none;border:0;color:var(--muted);font:14px system-ui;cursor:pointer;padding:8px;white-space:nowrap}
-.go{padding:14px 18px;border:0;border-radius:6px;background:var(--amber);color:#1A1208;font-weight:800;font-size:16px;cursor:pointer}
-.go[disabled]{opacity:.5;cursor:default}
-.err{color:var(--red);font-size:14px;margin:0}
-.other{margin-top:16px}
-.quiet{color:var(--dim);font-size:14px}
-.done{padding:20px;border:2px solid var(--amber);border-radius:8px;background:#FFB2380F}
-.done h2{margin:0 0 8px;font-size:24px}
-.done ol{margin:8px 0 0;padding-left:20px;color:var(--muted)}
-.done li{margin:6px 0}
-/* ---------- maker's mark ---------- */
-.mark{display:flex;align-items:center;justify-content:center;gap:10px;margin:34px 0 6px;color:#7D766B;
+.show{min-height:48px;min-width:72px;padding:0 12px;border:1px solid var(--line2);border-radius:6px;background:none;color:var(--text2);font:600 15px system-ui,-apple-system,sans-serif;cursor:pointer}
+.hint{color:var(--muted);font-size:14px;margin:8px 0 0}
+.opennet{display:none;color:var(--text2);margin:0}
+body.open #pwrow,body.open #pwhint{display:none}
+body.open .opennet{display:block}
+form:has(.net input[data-sec=none]:checked) #pwrow,form:has(.net input[data-sec=none]:checked) #pwhint{display:none}
+form:has(.net input[data-sec=none]:checked) .opennet{display:block}
+/* what happens next */
+.next{margin:0;padding:0;list-style:none}
+.next>li{position:relative;padding:0 0 12px 30px;color:var(--text2)}
+.next>li::before{content:"";position:absolute;left:8px;top:9px;width:7px;height:7px;border-radius:50%;background:var(--brass)}
+.next a{display:inline-block;min-height:24px;font-weight:600;overflow-wrap:anywhere}
+.lamp{list-style:none;margin:8px 0 0;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--sheet)}
+.lamp li{display:flex;gap:12px;align-items:baseline;padding:4px 0}
+.sw{width:14px;height:14px;border-radius:50%;flex:none;transform:translateY(2px)}
+.sw.white{background:var(--white-lamp);box-shadow:0 0 10px #FFD49A}
+.sw.amber{background:var(--amber);box-shadow:0 0 10px #FFB23899}
+.breathe{animation:breathe 3s ease-in-out infinite}
+@keyframes breathe{50%{opacity:.25;box-shadow:none}}
+@media (prefers-reduced-motion:reduce){.breathe{animation:none}}
+.err{color:var(--red-text);font-weight:600;margin:0 0 12px}
+.err:empty{display:none}
+.go{width:100%;min-height:54px;padding:14px 18px;border:0;border-radius:8px;background:var(--amber);color:#1A1208;font:800 17px system-ui,-apple-system,sans-serif;cursor:pointer}
+.go[disabled]{opacity:.6;cursor:default}
+/* after saving: only the steps stay */
+.doneonly{display:none}
+body[data-state=done] .formonly{display:none}
+body[data-state=done] .doneonly{display:flex}
+body[data-state=done] .step.next-step{padding:16px;border:2px solid var(--amber);border-radius:10px;background:#FFB2380D}
+/* footer */
+.langs{display:flex;justify-content:center;gap:4px;margin:26px 0 0}
+.langs a{display:inline-flex;align-items:center;min-height:44px;padding:0 12px;color:var(--muted);font-size:14px;text-decoration:none}
+.langs a[aria-current]{color:var(--cream);text-decoration:underline;text-underline-offset:4px}
+.mark{display:flex;align-items:center;justify-content:center;gap:10px;margin:14px 0 6px;color:#7D766B;
   font:600 11px/1 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.28em;text-transform:uppercase}
 .mark::before,.mark::after{content:"";flex:0 0 20px;height:1px;background:#2A2622}
-.mark .amp{font:italic 400 11px/1 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;letter-spacing:0;
-  text-transform:none;color:#5A544B;margin:0 .3em 0 .02em}
-code{font:14px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--cream)}
+.mark .amp{font:italic 400 11px/1 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;letter-spacing:0;text-transform:none;color:#5A544B;margin:0 .3em 0 .02em}
+@media (max-width:359px){h1{font-size:40px}.net{gap:10px;padding:12px}}
 </style>
 </head>
-<body>
+<body data-state="{{=state}}">
 <main>
-  <p class="eyebrow">Wi-Fi setup</p>
+  {{=back}}
+  <p class="eyebrow" data-t="eyebrow">{{eyebrow}}</p>
   <h1>Hasler</h1>
-  <p class="lede" id="lede">Choose the network the radio should use.</p>
-  <div id="app"><p class="quiet">Looking for networks…</p></div>
+  <p class="lede" id="lede" data-t="{{=lede_key}}" data-v="{{=lede_ssid}}">{{=lede}}</p>
+
+  <form id="f" method="post" action="/wifi">
+    <input type="hidden" name="lang" id="lang" value="{{=lang}}">
+
+    <fieldset class="formonly">
+      <legend><span class="n">1</span><span data-t="s_network">{{s_network}}</span></legend>
+      <ul class="nets">
+        {{=networks}}
+        <li>
+          <input class="otherpick" type="radio" name="net" value="other" id="netother"{{=other_checked}}>
+          <label class="net" for="netother"><span class="ring" aria-hidden="true"></span><span class="name" data-t="other">{{other}}</span></label>
+          <div class="other">
+            <label class="f" for="other_ssid" data-t="other_name">{{other_name}}</label>
+            <input type="text" name="other_ssid" id="other_ssid" maxlength="32" value="{{=other_ssid}}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="next">
+            <label class="f" for="security" data-t="security">{{security}}</label>
+            <select name="security" id="security">
+              <option value="auto" data-t="sec_auto"{{=sec_auto}}>{{sec_auto}}</option>
+              <option value="wpa-psk" data-t="sec_wpa"{{=sec_wpa}}>{{sec_wpa}}</option>
+              <option value="sae" data-t="sec_sae"{{=sec_sae}}>{{sec_sae}}</option>
+              <option value="none" data-t="sec_none"{{=sec_none}}>{{sec_none}}</option>
+            </select>
+            <p class="hint" data-t="other_hint">{{other_hint}}</p>
+          </div>
+        </li>
+      </ul>
+      <p class="note" data-t="{{=note_key}}">{{=note}}</p>
+    </fieldset>
+
+    <fieldset class="formonly">
+      <legend><span class="n">2</span><label for="pwd" data-t="s_password">{{s_password}}</label></legend>
+      <div class="row" id="pwrow">
+        <input type="password" name="password" id="pwd" maxlength="64" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" enterkeyhint="done">
+        <button class="show" id="show" type="button" aria-controls="pwd" aria-pressed="false" data-t="show" hidden>{{show}}</button>
+      </div>
+      <p class="hint" id="pwhint" data-t="pw_hint">{{pw_hint}}</p>
+      <p class="opennet" data-t="open_net">{{open_net}}</p>
+    </fieldset>
+
+    <section class="step next-step" aria-labelledby="nexth">
+      <h2 id="nexth"><span class="n formonly">3</span><span class="formonly" data-t="s_next">{{s_next}}</span><span class="doneonly" data-t="s_done">{{s_done}}</span></h2>
+      <ol class="next">
+        <li data-t="next_1">{{next_1}}</li>
+        <li data-t="next_2">{{next_2}}</li>
+        <li><span data-t="next_3">{{next_3}}</span>
+          <ul class="lamp">
+            <li><span class="sw white breathe" aria-hidden="true"></span><span data-t="lamp_white">{{lamp_white}}</span></li>
+            <li><span class="sw amber" aria-hidden="true"></span><span data-t="lamp_amber">{{lamp_amber}}</span></li>
+            <li><span class="sw white breathe" aria-hidden="true"></span><span data-t="lamp_again">{{lamp_again}}</span></li>
+          </ul>
+        </li>
+      </ol>
+    </section>
+
+    <p class="err" id="err" role="alert">{{=error}}</p>
+    <button class="go formonly" id="go" type="submit" data-t="save">{{save}}</button>
+  </form>
+
+  <nav class="langs" aria-label="Language / Idioma">{{=langs}}</nav>
   <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
 </main>
+
+<script type="application/json" id="strings">
+{
+"en": {
+  "title": "Hasler Wi-Fi",
+  "eyebrow": "Wi-Fi setup",
+  "back": "‹ Back to the key page",
+  "lede_first": "Tell the radio which Wi-Fi to use. Three steps, about two minutes.",
+  "lede_retry": "The radio couldn’t join <b>{v}</b>. Most often the password was mistyped, or the network is out of reach. Try again below.",
+  "lede_change": "The radio is on <b>{v}</b>. Choosing another network restarts it onto that one.",
+  "lede_done": "Saved. In about a minute the radio is on <b>{v}</b>.",
+  "s_network": "Network",
+  "s_password": "Password",
+  "s_next": "What happens next",
+  "s_done": "The radio is restarting",
+  "other": "Other network…",
+  "other_name": "Network name",
+  "other_hint": "For a hidden network, type the name exactly: capitals matter.",
+  "security": "Security",
+  "sec_auto": "Automatic",
+  "sec_wpa": "WPA2 / WPA3 Personal",
+  "sec_sae": "WPA3 only",
+  "sec_none": "Open (no password)",
+  "note_hotspot": "This list is from just before the radio made its setup network; it can’t look again until it restarts. Yours isn’t there? Choose Other network.",
+  "note_lan": "Yours isn’t there? <a href=\"/wifi\">Look again</a>, or choose Other network.",
+  "empty": "The radio’s last look found no networks. Choose Other network and type the name.",
+  "open_net": "Open network: no password needed.",
+  "pw_hint": "Wi-Fi passwords are 8 to 63 characters, and capitals matter.",
+  "show": "Show",
+  "hide": "Hide",
+  "next_1": "The radio restarts and joins <b class=\"ssid\">{ssid}</b>, so this page stops answering. That’s expected.",
+  "next_2": "Put your phone back on <b class=\"ssid\">{ssid}</b> and open <a href=\"http://hasler.local:8080/\">hasler.local:8080</a>. If that doesn’t open, find “hasler” in your router’s list of devices and open its address with :8080.",
+  "next_3": "Watch the radio’s lamp:",
+  "lamp_white": "<b>Warm white, breathing</b>: setup, waiting for you. That’s now.",
+  "lamp_amber": "<b>Amber</b> after the restart, then music or a steady glow: it joined. Done.",
+  "lamp_again": "<b>Warm white again</b>, about two minutes after the restart: it couldn’t join, usually a mistyped password. Join <b>Hasler</b> on your phone again and this page comes back.",
+  "ssid_none": "your network",
+  "save": "Save and restart",
+  "saving": "Saving…",
+  "press": "Press any key on the radio · {n}",
+  "signal": "signal {n}%",
+  "locked": "needs a password",
+  "err_choose": "Choose a network first.",
+  "err_name": "Type the network’s name.",
+  "err_short": "Wi-Fi passwords are at least 8 characters.",
+  "err_long": "That’s longer than a Wi-Fi password can be (63 characters).",
+  "err_save": "Couldn’t save: {error}",
+  "err_nokey": "No key was pressed on the radio, so nothing changed.",
+  "err_confirm_js": "On your home network, changing the Wi-Fi needs a key press on the radio, and that needs JavaScript. Turn it on, or use the radio’s setup network.",
+  "err_silent": "The radio didn’t answer. If its lamp turns amber, it is restarting onto {ssid}: follow the steps above. If not, reload this page and try again."
+},
+"es": {
+  "title": "Wi-Fi de Hasler",
+  "eyebrow": "Configurar la Wi-Fi",
+  "back": "‹ Volver a la página de teclas",
+  "lede_first": "Dile a la radio qué Wi-Fi usar. Tres pasos, unos dos minutos.",
+  "lede_retry": "La radio no pudo conectarse a <b>{v}</b>. Casi siempre es una contraseña mal escrita o una red fuera de alcance. Vuelve a intentarlo abajo.",
+  "lede_change": "La radio está en <b>{v}</b>. Si eliges otra red, se reinicia y se conecta a esa.",
+  "lede_done": "Guardado. En un minuto la radio estará en <b>{v}</b>.",
+  "s_network": "Red",
+  "s_password": "Contraseña",
+  "s_next": "Qué pasa después",
+  "s_done": "La radio se está reiniciando",
+  "other": "Otra red…",
+  "other_name": "Nombre de la red",
+  "other_hint": "Para una red oculta, escribe el nombre exacto: las mayúsculas cuentan.",
+  "security": "Seguridad",
+  "sec_auto": "Automática",
+  "sec_wpa": "WPA2 / WPA3 Personal",
+  "sec_sae": "Solo WPA3",
+  "sec_none": "Abierta (sin contraseña)",
+  "note_hotspot": "Esta lista es de justo antes de que la radio creara su red de configuración; no puede buscar otra vez hasta reiniciarse. ¿No está la tuya? Elige Otra red.",
+  "note_lan": "¿No está la tuya? <a href=\"/wifi\">Busca otra vez</a> o elige Otra red.",
+  "empty": "La radio no encontró redes en su última búsqueda. Elige Otra red y escribe el nombre.",
+  "open_net": "Red abierta: no hace falta contraseña.",
+  "pw_hint": "Las contraseñas de Wi-Fi tienen de 8 a 63 caracteres, y las mayúsculas cuentan.",
+  "show": "Mostrar",
+  "hide": "Ocultar",
+  "next_1": "La radio se reinicia y se conecta a <b class=\"ssid\">{ssid}</b>, así que esta página deja de responder. Es normal.",
+  "next_2": "Vuelve a conectar el móvil a <b class=\"ssid\">{ssid}</b> y abre <a href=\"http://hasler.local:8080/\">hasler.local:8080</a>. Si no abre, busca «hasler» en la lista de dispositivos del router y abre su dirección con :8080.",
+  "next_3": "Mira la luz de la radio:",
+  "lamp_white": "<b>Blanco cálido, respirando</b>: configuración, te está esperando. Es ahora.",
+  "lamp_amber": "<b>Ámbar</b> tras reiniciarse, y luego música o una luz fija: se ha conectado. Listo.",
+  "lamp_again": "<b>Blanco cálido otra vez</b>, unos dos minutos después: no pudo conectarse, casi siempre por la contraseña. Vuelve a unir el móvil a <b>Hasler</b> y esta página volverá.",
+  "ssid_none": "tu red",
+  "save": "Guardar y reiniciar",
+  "saving": "Guardando…",
+  "press": "Pulsa cualquier tecla de la radio · {n}",
+  "signal": "señal {n} %",
+  "locked": "con contraseña",
+  "err_choose": "Elige primero una red.",
+  "err_name": "Escribe el nombre de la red.",
+  "err_short": "Las contraseñas de Wi-Fi tienen al menos 8 caracteres.",
+  "err_long": "Es más larga de lo que puede ser una contraseña de Wi-Fi (63 caracteres).",
+  "err_save": "No se pudo guardar: {error}",
+  "err_nokey": "No se pulsó ninguna tecla de la radio, así que no ha cambiado nada.",
+  "err_confirm_js": "En la red de casa, cambiar la Wi-Fi requiere pulsar una tecla de la radio, y eso necesita JavaScript. Actívalo o usa la red de configuración de la radio.",
+  "err_silent": "La radio no ha respondido. Si su luz se pone ámbar, se está reiniciando hacia {ssid}: sigue los pasos de arriba. Si no, recarga esta página y vuelve a intentarlo."
+}
+}
+</script>
 <script>
-const $ = s => document.querySelector(s);
-const h = (tag, attrs, ...kids) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) { if (k.startsWith('on')) e.addEventListener(k.slice(2), v); else if (v === true) e.setAttribute(k, ''); else if (v !== false && v != null) e.setAttribute(k, v); } for (const c of kids.flat()) if (c != null) e.append(c); return e; };
-let open = null;
+(function () {
+  'use strict';
+  var T = JSON.parse(document.getElementById('strings').textContent);
+  var $ = function (s) { return document.querySelector(s); };
+  var root = document.documentElement, body = document.body;
+  var lang = T[root.lang] ? root.lang : 'en';
+  var f = $('#f'), pwd = $('#pwd'), show = $('#show'), other = $('#other_ssid'), sec = $('#security'), err = $('#err'), go = $('#go');
+  var esc = function (s) { return String(s).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); };
+  var t = function (key, vars) {
+    return (T[lang][key] || T.en[key] || key).replace(/\{(\w+)\}/g, function (m, k) { return vars && k in vars ? vars[k] : m; });
+  };
 
-function bars(signal) {
-  const n = signal >= 75 ? 4 : signal >= 50 ? 3 : signal >= 25 ? 2 : 1;
-  return h('span', {class: 'bars', 'aria-label': 'signal ' + signal + '%'}, [5, 8, 11, 14].map((px, i) => { const b = h('i', {class: i < n ? 'on' : ''}); b.style.height = px + 'px'; return b; }));
-}
-const lock = () => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 14 16'); s.setAttribute('class', 'lock'); s.setAttribute('aria-label', 'needs a password'); s.innerHTML = '<rect x="1" y="7" width="12" height="8" rx="2" fill="currentColor"/><path d="M4 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="2" fill="none"/>'; return s; };
-
-function form(net) {
-  const needsPwd = net.security !== 'none';
-  const pwd = h('input', {type: 'password', id: 'pwd', autocomplete: 'current-password', autocapitalize: 'none', spellcheck: 'false', placeholder: 'Wi-Fi password'});
-  const err = h('p', {class: 'err', role: 'alert'});
-  const go = h('button', {class: 'go', type: 'submit'}, 'Connect');
-  const show = h('button', {class: 'show', type: 'button', onclick: () => { pwd.type = pwd.type === 'password' ? 'text' : 'password'; show.textContent = pwd.type === 'password' ? 'Show' : 'Hide'; }}, 'Show');
-  const f = h('form', {class: 'form', onsubmit: async ev => {
-    ev.preventDefault(); err.textContent = '';
-    if (needsPwd && pwd.value.length < 8) { err.textContent = 'Wi-Fi passwords are at least 8 characters.'; pwd.focus(); return; }
-    go.disabled = true; go.textContent = 'Saving…';
-    try {
-      const r = await fetch('/api/wifi', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ssid: net.ssid, password: needsPwd ? pwd.value : '', security: net.security})});
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error || 'Could not save.');
-      done(net.ssid);
-    } catch (e) { err.textContent = e.message; go.disabled = false; go.textContent = 'Connect'; }
-  }}, needsPwd ? [h('label', {for: 'pwd'}, 'Password'), h('div', {class: 'row'}, pwd, show)] : h('p', {class: 'quiet'}, 'Open network — no password.'), err, go);
-  setTimeout(() => needsPwd && pwd.focus(), 50);
-  return f;
-}
-
-function render(data) {
-  const app = $('#app'); app.textContent = '';
-  if (data.current && data.hotspot) $('#lede').replaceChildren('It couldn’t find ', h('b', null, data.current), '. Choose the network the radio should use now.');
-  else if (data.current) $('#lede').replaceChildren('The radio is on ', h('b', null, data.current), '. Choosing another network restarts it onto that one.');
-  const list = h('ul');
-  for (const net of data.networks) {
-    const li = h('li');
-    const btn = h('button', {class: 'net', type: 'button', 'aria-expanded': String(open === net.ssid), onclick: () => { open = open === net.ssid ? null : net.ssid; render(data); }},
-      h('span', {class: 'name'}, net.ssid), net.security !== 'none' ? lock() : null, bars(net.signal));
-    li.append(btn);
-    if (open === net.ssid) li.append(form(net));
-    list.append(li);
+  function selected() {
+    var r = f.querySelector('input[name=net]:checked');
+    if (!r) return null;
+    if (r.value === 'other') return {ssid: other.value.trim(), security: sec.value};
+    var i = r.value.indexOf(':');
+    return {ssid: r.value.slice(i + 1), security: r.value.slice(0, i)};
   }
-  if (data.networks.length) app.append(list);
-  else app.append(h('p', {class: 'quiet'}, 'No networks in the radio’s last scan — type the name below.'));
-  // A hidden network, or one the scan missed.
-  const name = h('input', {id: 'other', autocapitalize: 'none', spellcheck: 'false', placeholder: 'Network name'});
-  const other = h('div', {class: 'other'}, h('label', {for: 'other'}, 'Other network'), h('div', {class: 'row'}, name,
-    h('button', {class: 'show', type: 'button', onclick: () => { const ssid = name.value.trim(); if (!ssid) return name.focus(); data.networks = [{ssid, signal: 0, security: 'auto'}].concat(data.networks.filter(n => n.ssid !== ssid)); open = ssid; render(data); }}, 'Next')));
-  app.append(other);
-}
+  // The chosen network's name in the "what happens next" steps.
+  function sync() {
+    var n = selected();
+    body.classList.toggle('open', !!n && n.security === 'none');
+    var name = n && n.ssid ? n.ssid : t('ssid_none');
+    [].forEach.call(document.querySelectorAll('.ssid'), function (b) { b.textContent = name; });
+  }
+  // The server picked the language from Accept-Language; the phone's own
+  // setting wins unless someone chose with the English / Español links.
+  function translate() {
+    root.lang = lang; $('#lang').value = lang; document.title = t('title');
+    [].forEach.call(document.querySelectorAll('[data-t]'), function (el) {
+      el.innerHTML = t(el.getAttribute('data-t'), {v: esc(el.getAttribute('data-v') || ''), ssid: ''});
+    });
+    [].forEach.call(document.querySelectorAll('.bars'), function (b) { b.setAttribute('aria-label', t('signal', {n: b.getAttribute('data-n')})); });
+    [].forEach.call(document.querySelectorAll('.lock'), function (l) { l.setAttribute('aria-label', t('locked')); });
+    [].forEach.call(document.querySelectorAll('.langs a'), function (a) {
+      if (a.lang === lang) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+    });
+    show.textContent = t(pwd.type === 'password' ? 'show' : 'hide');
+    sync();
+  }
+  if (!/[?&]lang=/.test(location.search)) {
+    var prefs = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ''];
+    for (var i = 0; i < prefs.length; i++) {
+      var p = String(prefs[i]).slice(0, 2).toLowerCase();
+      if (T[p]) { if (p !== lang) { lang = p; translate(); } break; }
+    }
+  }
 
-function done(ssid) {
-  $('#lede').textContent = '';
-  $('#app').replaceChildren(h('div', {class: 'done', role: 'status'},
-    h('h2', null, 'Restarting onto ', ssid),
-    h('p', {class: 'quiet'}, 'The radio is rebooting. In about a minute:'),
-    h('ol', null,
-      h('li', null, 'Put your phone back on ', h('b', null, ssid), '.'),
-      h('li', null, 'The music comes back on its own; the key page is at ', h('code', null, 'hasler.local:8080'), '.'),
-      h('li', null, 'If the lamp breathes white again, the password didn’t work — join ', h('b', null, 'Hasler'), ' and try again.'))));
-}
+  show.hidden = false;
+  show.addEventListener('click', function () {
+    var hidden = pwd.type === 'password';
+    pwd.type = hidden ? 'text' : 'password';
+    show.textContent = t(hidden ? 'hide' : 'show');
+    show.setAttribute('aria-pressed', String(hidden));
+  });
+  f.addEventListener('change', sync);
+  other.addEventListener('input', sync);
+  other.addEventListener('focus', function () { $('#netother').checked = true; sync(); });
+  sync();
 
-fetch('/api/wifi').then(r => r.json()).then(render).catch(() => render({networks: [], current: ''}));
+  function fail(key, vars, focus) {
+    err.textContent = t(key, vars);
+    if (focus) focus.focus();
+    go.disabled = false; go.textContent = t('save');
+  }
+  function post(url, data) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var timer = ctl && setTimeout(function () { ctl.abort(); }, 40000);
+    return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data), signal: ctl ? ctl.signal : undefined})
+      .then(function (r) { clearTimeout(timer); return r.json().catch(function () { return {}; }).then(function (j) { j.status = r.status; return j; }); });
+  }
+  // On the home network a Wi-Fi change needs a hand on the radio (web/confirm.py):
+  // resolves with the confirmed token. In setup mode the server doesn't ask.
+  async function pressToConfirm(ssid) {
+    var j = await post('/api/confirm/request', {action: 'wifi', args: {ssid: ssid}});
+    if (!j.token) throw plain(j.error || j.status);
+    if (j.state === 'confirmed') return j.token;
+    var end = Date.now() + (j.expires_in || 30) * 1000;
+    for (;;) {
+      go.textContent = t('press', {n: Math.max(0, Math.ceil((end - Date.now()) / 1000))});
+      await new Promise(function (res) { setTimeout(res, 700); });
+      var s = await fetch('/api/confirm/' + encodeURIComponent(j.token), {cache: 'no-store'}).then(function (x) { return x.json(); }).catch(function () { return {}; });
+      if (s.state === 'confirmed') { go.textContent = t('saving'); return j.token; }
+      if (s.state && s.state !== 'pending') throw plain(t('err_nokey'));
+    }
+  }
+  function plain(msg) { var e = new Error(msg); e.plain = true; return e; }
+  function done(ssid) {
+    body.setAttribute('data-state', 'done');
+    var lede = $('#lede');
+    lede.setAttribute('data-t', 'lede_done'); lede.setAttribute('data-v', ssid);
+    lede.innerHTML = t('lede_done', {v: esc(ssid)});
+    var back = $('.back'); if (back) back.hidden = true;
+    window.scrollTo(0, 0);
+  }
+
+  f.addEventListener('submit', async function (ev) {
+    ev.preventDefault();
+    err.textContent = '';
+    var n = selected();
+    if (!n) return fail('err_choose');
+    if (!n.ssid) return fail('err_name', null, other);
+    var pw = n.security === 'none' ? '' : pwd.value;
+    if (n.security !== 'none' && (pw || n.security !== 'auto') && !/^[0-9a-fA-F]{64}$/.test(pw)) {
+      if (pw.length < 8) return fail('err_short', null, pwd);
+      if (pw.length > 63) return fail('err_long', null, pwd);
+    }
+    go.disabled = true; go.textContent = t('saving');
+    var data = {ssid: n.ssid, password: pw, security: n.security};
+    try {
+      var j = await post('/api/wifi', data);
+      if (j.status === 403 && j.confirm_required) {
+        data.confirm = await pressToConfirm(n.ssid);
+        j = await post('/api/wifi', data);
+      }
+      if (!j.ok) return fail('err_save', {error: j.error || j.status});
+      done(n.ssid);
+    } catch (e) {
+      if (e.plain) { fail('err_save', {error: ''}); err.textContent = e.message; return; }
+      // No answer at all: the radio may already be restarting.
+      fail('err_silent', {ssid: n.ssid});
+    }
+  });
+})();
 </script>
 </body>
 </html>

@@ -1,0 +1,881 @@
+#!/usr/bin/python3 -I
+"""hasler-install - put Hasler on a fresh moOde card, from a SIGNED release.
+
+docs/new-install.md. Nothing it downloads is run before it has been checked:
+
+    pinned root key (below) -> keyring.json(.sig)          namespace hasler-keyring
+    keyring timestamp key   -> channels/<channel>.json(.sig) namespace hasler-channel
+    index release_sha256    -> release.json, keyring release key -> .sig  hasler-release
+    release.json sha256/size -> the tarball -> files.sha256 -> every file
+
+Then it runs the release's own box setup (scripts/bootstrap.sh and
+scripts/ota-bootstrap.sh, carried in the release under app/setup/), writes
+/etc/hasler/box.yaml, hands moOde its settings (moodecfg.ini, applied by
+moOde's worker at the next boot), and lets the release's updater stage and
+install the release exactly as it installs every later update.
+
+Commands (root unless noted):
+
+    hasler-install fetch --out DIR [--channel C]   download, verify, unpack, assemble
+                                                   the setup tree; changes nothing else
+                                                   (any user, any machine)
+    hasler-install install [--channel C] [--user U] [--variant V] [--panel-optional]
+                   [--no-moode] [--yes]            the SSH path: setup now, then it reboots
+                                                   and finishes by itself (hasler-install.service)
+    hasler-install resume                          what hasler-install.service runs: the
+                                                   next step of an install, after each boot
+    hasler-install hook                            cloud-init vendor-data's call on the first
+                                                   boot: copy this file and start the service
+    hasler-install status                          where an install is (any user)
+
+Common: --base URL (default the public channel), --root-pub FILE (another root
+key - bench drills with dev keys), --settings FILE (default
+/boot/firmware/hasler.txt, the owner's settings on the SD card).
+
+Exit codes: 0 ok, 1 error, 2 usage, 75 not yet (waiting; the service retries).
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import uuid
+from pathlib import Path
+
+# --- the trust anchor ------------------------------------------------------------
+# The Hasler root key (key ceremony, October 2026). It signs only keyring.json;
+# check its fingerprint against docs/new-install.md and the hasler-releases
+# repository's trust/root.pub:
+#     SHA256:8bc/MCrWk9aekyhNhdtmPtL9jhgB7xcdStuu4G82Ack
+ROOT_PUB = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF9gmAm746rpYzKa24jKiAZyiAiMw0bEuj30vRw38Cv7 hasler-root-2026"
+ROOT_FPR = "SHA256:8bc/MCrWk9aekyhNhdtmPtL9jhgB7xcdStuu4G82Ack"
+
+BASE = "https://delgado-murphy.github.io/hasler-releases"
+CHANNELS = ("stable", "bench")
+NS_KEYRING, NS_INDEX, NS_RELEASE = "hasler-keyring", "hasler-channel", "hasler-release"
+SMALL_MAX = 1 << 20
+TIMEOUT_S = 60
+CLOCK_SKEW_S = 3600
+USER_AGENT = "hasler-install/1"
+
+STATE = Path(os.environ.get("HASLER_INSTALL_STATE", "/var/lib/hasler-install"))
+BOOT_FW = Path("/boot/firmware")
+SETTINGS = BOOT_FW / "hasler.txt"
+LOG_ON_CARD = BOOT_FW / "hasler-install.log"     # readable from any computer if it goes wrong
+SELF = Path("/usr/local/sbin/hasler-install")
+UNIT = Path("/etc/systemd/system/hasler-install.service")
+MOODE_LOG = Path("/var/log/moode.log")
+MOODE_CFG = Path("/boot/moodecfg.ini")             # moOde 10's worker reads it from /boot, not the FAT
+EX_LATER = 75
+
+UNIT_TEXT = """\
+# Written by hasler-install (docs/new-install.md). Runs the next step of a
+# first install after each boot; disabled and removed when the radio plays.
+[Unit]
+Description=Hasler: install from a signed release (first boots only)
+ConditionPathExists=!/var/lib/hasler-install/done
+StartLimitIntervalSec=0
+
+[Service]
+# exec, not oneshot: moOde's worker waits for the boot to finish before it
+# starts, and this waits for the worker - a oneshot would hold both.
+Type=exec
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-install resume
+# Waiting (exit 75) or an error: try again, 90 s at first, backing off to an hour.
+Restart=on-failure
+RestartSec=90
+RestartSteps=6
+RestartMaxDelaySec=3600
+RestartPreventExitStatus=2
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+class InstallError(Exception):
+    """Something is wrong and needs a person. The message says what."""
+
+
+class NotYet(Exception):
+    """Waiting for something (network, moOde, a reboot); try again later."""
+
+
+# --- output ---------------------------------------------------------------------
+
+def say(msg: str) -> None:
+    line = f"hasler-install: {msg}"
+    print(line, flush=True)
+    if os.geteuid() == 0 and LOG_ON_CARD.parent.is_dir() and not os.environ.get("HASLER_INSTALL_NO_CARD_LOG"):
+        try:
+            with open(LOG_ON_CARD, "a", encoding="utf-8") as f:
+                f.write(time.strftime("%Y-%m-%d %H:%M:%S ") + msg + "\n")
+        except OSError:
+            pass
+
+
+# --- fetching -----------------------------------------------------------------------
+
+def _open(url: str, allowed: set[str]):
+    scheme = urllib.parse.urlparse(url).scheme
+    if scheme not in allowed:
+        raise InstallError(f"refusing {url}: scheme {scheme!r} (allowed: {', '.join(sorted(allowed))})")
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        return urllib.request.urlopen(req, timeout=TIMEOUT_S)  # noqa: S310 - checked below by signature/hash
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            raise InstallError(f"{url}: not found (404)") from e
+        raise NotYet(f"{url}: {e}") from e
+    except urllib.error.URLError as e:
+        if isinstance(e.reason, FileNotFoundError):
+            raise InstallError(f"{url}: not found (404)") from e
+        raise NotYet(f"{url}: {e}") from e
+    except (OSError, ValueError) as e:
+        raise NotYet(f"{url}: {e}") from e
+
+
+def get_small(url: str, allowed: set[str]) -> bytes:
+    with _open(url, allowed) as r:
+        data = r.read(SMALL_MAX + 1)
+    if len(data) > SMALL_MAX:
+        raise InstallError(f"{url}: larger than {SMALL_MAX} bytes")
+    return data
+
+
+def download(url: str, dest: Path, sha256: str, size: int | None, allowed: set[str]) -> Path:
+    if dest.exists() and sha256_file(dest) == sha256:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    part = dest.with_name(dest.name + ".part")
+    got = 0
+    with _open(url, allowed) as r, open(part, "wb") as f:
+        while chunk := r.read(1 << 16):
+            got += len(chunk)
+            if size is not None and got > size:
+                f.close()
+                part.unlink()
+                raise InstallError(f"{url}: more than the signed {size} bytes - refused")
+            f.write(chunk)
+    if sha256_file(part) != sha256:
+        part.unlink()
+        raise InstallError(f"{dest.name}: SHA-256 does not match the signed release.json - refused")
+    os.replace(part, dest)
+    return dest
+
+
+def sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+# --- verification (the same contract as update/hasler_update/verify.py) -----------------
+# A small copy on purpose: this runs before any release code may run. The
+# release's own updater verifies everything again when it stages the release.
+# update/tests/test_hasler_install.py keeps the two in step.
+
+_PUB_RE = re.compile(r"^(ssh-ed25519|sk-ssh-ed25519@openssh\.com|ecdsa-sha2-nistp256|"
+                     r"sk-ecdsa-sha2-nistp256@openssh\.com|ssh-rsa) [A-Za-z0-9+/=]+$")
+
+
+def parse_iso(s: str) -> float:
+    from datetime import datetime, timezone
+    s = s.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def clean_pub(pub: str) -> str:
+    parts = pub.strip().split()
+    if len(parts) < 2 or not _PUB_RE.match(f"{parts[0]} {parts[1]}"):
+        raise InstallError("malformed or unsupported public key")
+    return f"{parts[0]} {parts[1]}"
+
+
+def ssh_verify(data: bytes, sig: bytes, signers: list[tuple[str, str]], namespace: str) -> str:
+    exe = shutil.which("ssh-keygen") or "/usr/bin/ssh-keygen"
+    if not os.path.exists(exe):
+        raise InstallError("ssh-keygen not found (apt-get install openssh-client)")
+    if not signers:
+        raise InstallError(f"no usable keys for {namespace}")
+    with tempfile.TemporaryDirectory(prefix="hasler-install-") as tmp:
+        sig_path = Path(tmp) / "data.sig"
+        sig_path.write_bytes(sig)
+        for key_id, pub in signers:
+            if not re.fullmatch(r"[A-Za-z0-9._-]+", key_id):
+                raise InstallError(f"bad key id {key_id!r}")
+            allowed = Path(tmp) / "allowed_signers"
+            allowed.write_text(f'{key_id} namespaces="{namespace}" {clean_pub(pub)}\n')
+            proc = subprocess.run([exe, "-Y", "verify", "-f", str(allowed), "-I", key_id, "-n", namespace,
+                                   "-s", str(sig_path)], input=data, capture_output=True, timeout=30)
+            if proc.returncode == 0:
+                return key_id
+    raise InstallError(f"bad signature ({namespace}) - refused")
+
+
+def _not_expired(doc: dict, now: float, what: str) -> None:
+    try:
+        exp = parse_iso(str(doc["expires"]))
+    except (KeyError, ValueError) as e:
+        raise InstallError(f"{what}: no valid 'expires'") from e
+    if now >= exp:
+        raise InstallError(f"{what} expired at {doc['expires']} (is the clock right? `date -u`)")
+
+
+def verify_keyring(data: bytes, sig: bytes, root_pubs: list[str], now: float) -> dict:
+    ssh_verify(data, sig, [(f"root{i}", p) for i, p in enumerate(root_pubs)], NS_KEYRING)
+    doc = json.loads(data)
+    if doc.get("schema") != 1 or not isinstance(doc.get("keys"), list):
+        raise InstallError("keyring: unknown schema")
+    _not_expired(doc, now, "keyring")
+    return doc
+
+
+def signers(ring: dict, role: str, now: float) -> list[tuple[str, str]]:
+    out = []
+    for k in ring["keys"]:
+        try:
+            if k.get("role") == role and now < parse_iso(str(k["not_after"])):
+                out.append((str(k["id"]), str(k["pub"])))
+        except (KeyError, ValueError):
+            continue
+    return out
+
+
+def verify_index(data: bytes, sig: bytes, ring: dict, channel: str, now: float) -> dict:
+    ssh_verify(data, sig, signers(ring, "timestamp", now), NS_INDEX)
+    doc = json.loads(data)
+    if doc.get("schema") != 1:
+        raise InstallError("channel index: unknown schema")
+    if doc.get("channel") != channel:
+        raise InstallError(f"channel index is for {doc.get('channel')!r}, not {channel!r}")
+    _not_expired(doc, now, "channel index")
+    if parse_iso(str(doc["issued"])) > now + CLOCK_SKEW_S:
+        raise InstallError("channel index issued in the future (is the clock right?)")
+    cur = doc.get("current")
+    if not isinstance(cur, dict) or not {"version", "seq", "release_url", "release_sha256"} <= cur.keys():
+        raise InstallError("channel index: no current release")
+    if int(cur["seq"]) in (doc.get("halted") or []):
+        raise InstallError(f"the channel's current release {cur['version']} is halted")
+    return doc
+
+
+def verify_release(data: bytes, sig: bytes, ring: dict, index: dict, now: float) -> dict:
+    cur = index["current"]
+    if hashlib.sha256(data).hexdigest() != cur["release_sha256"]:
+        raise InstallError("release.json does not match the channel index - refused")
+    ssh_verify(data, sig, signers(ring, "release", now), NS_RELEASE)
+    doc = json.loads(data)
+    if doc.get("schema") != 1 or doc.get("product") != "hasler":
+        raise InstallError("release.json: wrong schema or product")
+    if int(doc["seq"]) != int(cur["seq"]) or str(doc["version"]) != str(cur["version"]):
+        raise InstallError("release.json does not match the channel index")
+    if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?", str(doc["version"])):
+        raise InstallError(f"release.json: bad version {doc['version']!r}")
+    arts = doc.get("artifacts")
+    if not isinstance(arts, list) or not arts or not re.fullmatch(r"[0-9a-f]{64}", str(arts[0].get("sha256", ""))):
+        raise InstallError("release.json: no artifact sha256")
+    _not_expired(doc, now, f"release {doc['version']}")
+    if int(doc.get("keyring_seq", 0)) > int(ring["keyring_seq"]):
+        raise InstallError("release needs a newer keyring than the published one")
+    return doc
+
+
+def facts() -> dict:
+    codename = None
+    try:
+        for line in Path("/etc/os-release").read_text().splitlines():
+            if line.startswith("VERSION_CODENAME="):
+                codename = line.split("=", 1)[1].strip().strip('"')
+    except OSError:
+        pass
+    moode = None
+    if shutil.which("moodeutl"):
+        try:
+            out = subprocess.run(["moodeutl", "--mooderel"], capture_output=True, text=True, timeout=20).stdout
+            m = re.search(r"\d+\.\d+(\.\d+)?", out)
+            moode = m.group(0) if m else None
+        except (OSError, subprocess.SubprocessError):
+            pass
+    abi = None
+    if os.path.exists("/usr/bin/python3"):
+        tag = subprocess.run(["/usr/bin/python3", "-c", "import sys;print(sys.implementation.cache_tag)"],
+                             capture_output=True, text=True).stdout.strip()
+        m = re.fullmatch(r"cpython-(\d+)", tag)
+        abi = f"cp{m.group(1)}" if m else None
+    return {"arch": platform.machine(), "os": codename, "moode": moode, "python_abi": abi}
+
+
+def _vt(v: str) -> tuple:
+    nums = [int(n) for n in re.findall(r"\d+", v.split("-")[0])[:3]]
+    return tuple(nums + [0] * (3 - len(nums)))
+
+
+def compat_problems(release: dict, have: dict, variant: str | None) -> list[str]:
+    req, out = release.get("requires") or {}, []
+    for key in ("arch", "os", "python_abi"):
+        if req.get(key) and have.get(key) != req[key] and not (key == "python_abi" and release.get("bundles_python")):
+            out.append(f"needs {key} {req[key]}, this machine has {have.get(key)}")
+    if req.get("moode"):
+        if not have.get("moode"):
+            out.append(f"needs moOde {req['moode']}, moOde not found")
+        else:
+            for part in (p.strip() for p in str(req["moode"]).split(",") if p.strip()):
+                m = re.fullmatch(r"(>=|<=|==|>|<)?\s*([0-9.]+)", part)
+                if m:
+                    op, v, h = m.group(1) or "==", _vt(m.group(2)), _vt(have["moode"])
+                    ok = {">=": h >= v, "<=": h <= v, "==": h == v, ">": h > v, "<": h < v}[op]
+                    if not ok:
+                        out.append(f"needs moOde {req['moode']}, this is {have['moode']}")
+    if variant and release.get("variants") and variant not in release["variants"]:
+        out.append(f"release does not ship variant {variant!r}")
+    return out
+
+
+# --- unpacking ------------------------------------------------------------------------
+
+def _decompressor(path: Path) -> list[str] | None:
+    head = path.open("rb").read(6)
+    if head[:4] == b"\x28\xb5\x2f\xfd":
+        if not shutil.which("zstd"):
+            raise InstallError("zstd not found (apt-get install zstd)")
+        return ["zstd", "-q", "-dc", str(path)]
+    return None   # tar or tar.gz: tarfile reads them itself
+
+
+def unpack(tarball: Path, dest: Path, files_sha256: str | None) -> Path:
+    """Extract (data filter: no links out, no devices, no setuid), then check every
+    file against files.sha256 inside. Returns the release root hasler-<v>/."""
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    cmd = _decompressor(tarball)
+    if cmd:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        tf = tarfile.open(fileobj=proc.stdout, mode="r|")
+    else:
+        proc, tf = None, tarfile.open(tarball, mode="r:*")
+    tops = set()
+    with tf:
+        for member in tf:
+            name = member.name
+            if name.startswith("/") or ".." in Path(name).parts:
+                raise InstallError(f"tarball: unsafe path {name!r}")
+            tops.add(Path(name).parts[0])
+            if member.issym() or member.islnk():
+                raise InstallError(f"tarball: link {name!r} - releases have none")
+            tf.extract(member, dest, filter="data")
+    if proc and proc.wait() != 0:
+        raise InstallError("zstd could not decompress the release")
+    if len(tops) != 1:
+        raise InstallError(f"tarball: expected one top directory, found {sorted(tops)}")
+    root = dest / tops.pop()
+    listing = (root / "files.sha256").read_bytes()
+    if files_sha256 and hashlib.sha256(listing).hexdigest() != files_sha256:
+        raise InstallError("files.sha256 does not match release.json")
+    listed = set()
+    for line in listing.decode().splitlines():
+        if not line.strip():
+            continue
+        digest, _mode, rel = line.split(None, 2)
+        p = root / rel
+        listed.add(rel)
+        if not p.is_file() or sha256_file(p) != digest:
+            raise InstallError(f"{rel}: does not match files.sha256 - refused")
+    for p in root.rglob("*"):
+        rel = p.relative_to(root).as_posix()
+        if p.is_file() and rel != "files.sha256" and rel not in listed:
+            raise InstallError(f"{rel}: in the tarball but not in files.sha256 - refused")
+    return root
+
+
+# --- the setup tree --------------------------------------------------------------------
+# scripts/bootstrap.sh and scripts/ota-bootstrap.sh find their files relative to
+# the checkout they live in ($REPO/config/..., $REPO/update/...). A release keeps
+# those files in other places; this lays them out as the scripts expect, from the
+# verified release only. (dest in the setup tree, source in the release, glob?)
+SETUP_MAP: tuple[tuple[str, str], ...] = (
+    ("scripts", "app/setup/scripts"),
+    ("config/update", "app/setup/config/update"),
+    ("config/firstboot", "app/setup/config/firstboot"),
+    ("config/captive", "app/config/captive"),
+    ("config/camilladsp", "app/config/camilladsp"),
+    ("config/moode", "app/config/moode"),
+    ("config/go-librespot", "app/config/go-librespot"),
+    ("config/snapcast", "app/config/snapcast"),
+    ("config/yt-dlp-update.service", "integration/systemd/yt-dlp-update.service"),
+    ("config/yt-dlp-update.timer", "integration/systemd/yt-dlp-update.timer"),
+    ("config/hasler-wifi-rescue.service", "integration/systemd/hasler-wifi-rescue.service"),
+    ("config/configtxt/hasler.block", "integration/configtxt/hasler.block"),
+    ("scripts/hasler-audio-mono", "integration/sbin/hasler-audio-mono"),
+    ("scripts/hasler-ytdlp-update", "integration/sbin/hasler-ytdlp-update"),
+    ("update/hasler_update", "app/hasler_update"),
+    ("update/bin/hasler-update", "integration/sbin/hasler-update"),
+    ("update/systemd/*", "integration/systemd/hasler-update*"),
+)
+NEEDED = ("scripts/bootstrap.sh", "scripts/ota-bootstrap.sh", "update/hasler_update/verify.py",
+          "update/bin/hasler-update", "config/update/50-hasler-update.rules",
+          "config/firstboot/moodecfg.ini")
+
+
+def assemble(release_root: Path, dest: Path) -> Path:
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True)
+    for target, source in SETUP_MAP:
+        if target.endswith("/*"):
+            (dest / target[:-2]).mkdir(parents=True, exist_ok=True)
+            for src in sorted(release_root.glob(source)):
+                shutil.copy2(src, dest / target[:-2] / src.name)
+            continue
+        src = release_root / source
+        if src.is_dir():
+            shutil.copytree(src, dest / target, dirs_exist_ok=True)
+        elif src.is_file():
+            (dest / target).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dest / target)
+    missing = [n for n in NEEDED if not (dest / n).exists()]
+    if missing:
+        raise InstallError("this release cannot set up a new radio (it has no app/setup/: "
+                           f"missing {', '.join(missing)}). Use a newer release or the build guide.")
+    for sh in (dest / "scripts").iterdir():
+        sh.chmod(0o755)
+    return dest
+
+
+# --- fetch: the whole verified download ---------------------------------------------------------
+
+def fetch_release(base: str, channel: str, out: Path, root_pubs: list[str], now: float | None = None) -> dict:
+    """Keyring -> index -> release.json -> tarball -> unpacked + setup tree, all verified.
+    Returns {"version", "seq", "root", "setup", "trust", "release"}."""
+    now = time.time() if now is None else now
+    base = base.rstrip("/")
+    allowed = {"https", urllib.parse.urlparse(base).scheme}
+    if channel not in CHANNELS:
+        raise InstallError(f"channel must be one of {', '.join(CHANNELS)}")
+    out.mkdir(parents=True, exist_ok=True)
+    kr, krs = get_small(f"{base}/keyring.json", allowed), get_small(f"{base}/keyring.json.sig", allowed)
+    ring = verify_keyring(kr, krs, root_pubs, now)
+    which = "the pinned Hasler root key" if root_pubs == [ROOT_PUB] else "the root key given with --root-pub"
+    say(f"keyring {ring['keyring_seq']}: signed by {which}")
+    try:
+        idx = get_small(f"{base}/channels/{channel}.json", allowed)
+    except InstallError as e:
+        if "404" in str(e):
+            raise InstallError(f"there is no {channel!r} channel yet at {base}"
+                               + (" - try channel=bench" if channel == "stable" else "")) from e
+        raise
+    index = verify_index(idx, get_small(f"{base}/channels/{channel}.json.sig", allowed), ring, channel, now)
+    cur = index["current"]
+    say(f"channel {channel}: {cur['version']} (seq {cur['seq']}), index signed")
+    rel_url = str(cur["release_url"])
+    rel = get_small(rel_url, allowed)
+    release = verify_release(rel, get_small(rel_url + ".sig", allowed), ring, index, now)
+    art = release["artifacts"][0]
+    say(f"release.json {release['version']}: signed; downloading {art['name']} ({int(art.get('size', 0)) >> 20} MB)")
+    if not re.fullmatch(r"hasler-[0-9A-Za-z.+-]+\.tar(\.zst|\.gz)?", str(art["name"])):
+        raise InstallError(f"release.json: odd artifact name {art['name']!r}")
+    tarball = download(str(art["url"]), out / "dl" / art["name"], art["sha256"], art.get("size"), allowed)
+    say("tarball: SHA-256 matches the signed release.json")
+    root = unpack(tarball, out / "tree", release.get("files_sha256"))
+    say(f"unpacked {root.name}: every file matches files.sha256")
+    setup = assemble(root, out / "setup")
+    trust = out / "trust"
+    trust.mkdir(exist_ok=True)
+    (trust / "root.pub").write_text("\n".join(root_pubs) + "\n")
+    (trust / "keyring.json").write_bytes(kr)
+    (trust / "keyring.json.sig").write_bytes(krs)
+    (out / "release.json").write_bytes(rel)
+    return {"version": release["version"], "seq": int(release["seq"]), "root": root, "setup": setup,
+            "trust": trust, "release": release}
+
+
+# --- settings ----------------------------------------------------------------------------
+
+DEFAULTS = {"channel": "stable", "update_mode": "auto", "variant": "hasler-hm", "user": "",
+            "moode": "yes", "panel_optional": "no", "update_url": ""}
+
+
+def read_settings(path: Path) -> dict:
+    """hasler.txt: ``key = value`` lines, # comments. Unknown keys are refused, so
+    a typo is not silently ignored."""
+    out = dict(DEFAULTS)
+    if not path.exists():
+        return out
+    for n, raw in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        line = raw.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if "=" not in line:
+            raise InstallError(f"{path}:{n}: expected key = value")
+        k, v = (s.strip().strip('"').strip("'") for s in line.split("=", 1))
+        k = k.lower()
+        if k not in DEFAULTS:
+            raise InstallError(f"{path}:{n}: unknown setting {k!r} (known: {', '.join(DEFAULTS)})")
+        out[k] = v
+    return validate(out)
+
+
+def validate(s: dict) -> dict:
+    if s["channel"] not in CHANNELS:
+        raise InstallError(f"channel must be stable or bench, not {s['channel']!r}")
+    if s["update_mode"] not in ("auto", "ask", "off"):
+        raise InstallError(f"update_mode must be auto, ask or off, not {s['update_mode']!r}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", s["variant"]):
+        raise InstallError(f"bad variant {s['variant']!r}")
+    if s["user"] and not re.fullmatch(r"[a-z_][a-z0-9_-]*", s["user"]):
+        raise InstallError(f"bad user {s['user']!r}")
+    for k in ("moode", "panel_optional"):
+        if s[k].lower() not in ("yes", "no", "true", "false", "1", "0", "on", "off"):
+            raise InstallError(f"{k} must be yes or no")
+        s[k] = "yes" if s[k].lower() in ("yes", "true", "1", "on") else "no"
+    if s["update_url"] and not re.fullmatch(r"(https?|file)://\S+", s["update_url"]):
+        raise InstallError("update_url must be an http(s):// or file:// URL")
+    return s
+
+
+def box_yaml(s: dict, box_id: str | None = None) -> str:
+    """A new radio's /etc/hasler/box.yaml (config/box.yaml.example)."""
+    lines = [
+        "# This Hasler's own settings (docs/ota.md section 1). Updates never touch",
+        "# this file; config/box.yaml.example in the release documents every key.",
+        "# Written by hasler-install for a new radio.",
+        "schema: 1",
+        f"variant: {s['variant']}",
+        f"channel: {s['channel']}",
+        f"update_mode: {s['update_mode']}",
+        f"box_id: {box_id or uuid.uuid4()}",
+        "checkin: false",
+        "metered: false",
+        # 001 moves an old rsync'd checkout; a new radio has none.
+        "migrations: [001_from_rsync_tree]",
+    ]
+    if s["update_url"]:
+        lines.append(f"update_url: {s['update_url']}   # makers: a local channel; remove for the public one")
+    return "\n".join(lines) + "\n"
+
+
+# --- the box steps (root, on the Pi) ---------------------------------------------------------
+
+def run(argv: list[str], **kw) -> None:
+    say("$ " + " ".join(argv))
+    proc = subprocess.run(argv, **kw)
+    if proc.returncode != 0:
+        raise InstallError(f"{argv[0]} {' '.join(argv[1:3])} failed (exit {proc.returncode})")
+
+
+def mark(name: str) -> Path:
+    return STATE / name
+
+
+def daemon_user(s: dict) -> str:
+    import pwd
+    if s["user"]:
+        try:
+            pwd.getpwnam(s["user"])
+        except KeyError as e:
+            raise NotYet(f"no user {s['user']!r} yet (Raspberry Pi Imager's first boot makes it)") from e
+        return s["user"]
+    try:
+        return pwd.getpwuid(1000).pw_name
+    except KeyError as e:
+        raise NotYet("no login user yet (uid 1000)") from e
+
+
+def moode_ready() -> bool:
+    """moOde's worker has finished this boot (it truncates its log at start)."""
+    if not Path("/var/www/daemon/worker.php").exists():
+        return True                       # not moOde: nothing to wait for
+    try:
+        return "Startup complete" in MOODE_LOG.read_text(errors="replace")
+    except OSError:
+        return False
+
+
+def wait_for(what: str, ok, timeout_s: float, step_s: float = 5) -> None:
+    end = time.time() + timeout_s
+    while not ok():
+        if time.time() > end:
+            raise NotYet(f"still waiting for {what}")
+        time.sleep(step_s)
+
+
+def online(base: str) -> bool:
+    host = urllib.parse.urlparse(base).hostname
+    if not host:
+        return True
+    import socket
+    try:
+        socket.getaddrinfo(host, 443)
+        return True
+    except OSError:
+        return False
+
+
+def write_owned(path: Path, text: str, user: str, mode: int = 0o644) -> None:
+    import pwd
+    pw = pwd.getpwnam(user)
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.chmod(tmp, mode)
+    os.chown(tmp, pw.pw_uid, pw.pw_gid)
+    os.replace(tmp, path)
+
+
+def step_setup(s: dict, args) -> dict:
+    """Pass 1: verify + unpack, box setup, updater + trust, box.yaml, moOde settings."""
+    user = daemon_user(s)
+    wait_for("moOde to finish starting", moode_ready, 600)
+    wait_for("the network", lambda: online(args.base), 600)
+    for tool in ("zstd", "ssh-keygen"):
+        if not shutil.which(tool):
+            run(["apt-get", "update", "-q"])
+            run(["apt-get", "install", "-y", "-q", "--no-install-recommends", "zstd", "openssh-client"])
+            break
+    got = fetch_release(args.base, s["channel"], STATE / "work", args.root_pubs)
+    problems = compat_problems(got["release"], facts(), s["variant"])
+    if problems:
+        raise InstallError("this machine can't run the release: " + "; ".join(problems))
+    setup: Path = got["setup"]
+    if not mark("apt-updated").exists():
+        run(["apt-get", "update", "-q"])
+        mark("apt-updated").touch()
+    env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+    run(["bash", str(setup / "scripts/bootstrap.sh"), "--user", user], env=env)
+    run(["bash", str(setup / "scripts/ota-bootstrap.sh"), "--user", user, "--trust", str(got["trust"])], env=env)
+    box = Path("/etc/hasler/box.yaml")
+    if not box.exists():
+        write_owned(box, box_yaml(s), user)
+        say(f"wrote {box} (channel {s['channel']}, update_mode {s['update_mode']})")
+    else:
+        say(f"{box} exists - kept as it is")
+    if s["panel_optional"] == "yes":
+        ov = Path(f"/etc/hasler/variant.d/{s['variant']}.yaml")
+        if not ov.exists():
+            write_owned(ov, "schema: 1\ncontrols: {}\nio: {panel_optional: true}   # hasler.txt panel_optional\n", user)
+            say(f"wrote {ov}: the radio may run without its key board (a bare Pi)")
+    run(["bash", str(setup / "scripts/ota-bootstrap.sh"), "--user", user], env=env)   # ownership after box.yaml
+    reboot = False
+    if s["moode"] == "yes" and not mark("moode-handed").exists():
+        shutil.copyfile(setup / "config/firstboot/moodecfg.ini", MOODE_CFG)
+        os.sync()
+        mark("moode-handed").touch()
+        say(f"moOde settings in {MOODE_CFG}: moOde applies them at the next start, then restarts once more")
+        reboot = True
+    mark("setup.done").write_text(json.dumps({"version": got["version"], "seq": got["seq"], "user": user}))
+    return {"reboot": reboot, **{k: got[k] for k in ("version", "seq")}}
+
+
+def updater_status() -> dict:
+    try:
+        out = subprocess.run(["/usr/local/sbin/hasler-update", "status"], capture_output=True, text=True,
+                             timeout=60).stdout
+        return json.loads(out)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+
+
+def _staged() -> str | None:
+    try:
+        return json.loads(Path("/var/lib/hasler-update/status.json").read_text()).get("staged")
+    except (OSError, ValueError):
+        return None
+
+
+def step_release(s: dict, args) -> str:
+    """Pass 2: the release's updater stages and installs the release (a reboot into its trial)."""
+    st = updater_status()
+    phase = (st.get("state") or {}).get("phase")
+    if (st.get("installed") or {}).get("version") and phase in ("probation", "committed", "idle"):
+        return "installed"
+    if phase == "trial":
+        raise NotYet("the release is on trial (the updater judges it after this boot)")
+    if phase == "rolled_back":
+        raise InstallError("the release failed its health check and was rolled back: "
+                           f"{(st.get('state') or {}).get('reason')} - see `hasler-update status`")
+    wait_for("moOde to finish starting", moode_ready, 600)
+    if MOODE_CFG.exists() and mark("moode-handed").exists():
+        say(f"warning: {MOODE_CFG} is still there - moOde did not apply it; check /var/log/moode_autocfg.log")
+    wait_for("the network", lambda: online(args.base), 600)
+    run(["systemctl", "start", "hasler-update-check.service"])
+    if s["update_mode"] == "off" and not _staged():
+        # mode off stages nothing on its own; the first install is asked for
+        run(["runuser", "-u", "hasler-update", "--", "/usr/bin/python3", "-I",
+             "/usr/local/sbin/hasler-update", "check", "--stage", "--force"])
+    try:
+        status = json.loads(Path("/var/lib/hasler-update/status.json").read_text())
+    except (OSError, ValueError) as e:
+        raise NotYet("no update status yet") from e
+    staged = status.get("staged")
+    if not staged:
+        raise NotYet(f"nothing staged yet: {status.get('message')}")
+    seq = int(Path(staged).name)
+    say(f"staged {status.get('available', {}).get('version')} (seq {seq}): installing - the radio restarts into it")
+    mark("apply.started").touch()
+    run(["/usr/local/sbin/hasler-update", "apply", "--seq", str(seq), "--force", "--allow-reboot"])
+    # With a config.txt change the updater restarts the Pi into the trial (this
+    # service carries on after that boot); without one it has judged it already.
+    st = updater_status()
+    if (st.get("installed") or {}).get("version") and (st.get("state") or {}).get("phase") in ("probation", "committed"):
+        return "installed"
+    return "applying"
+
+
+def finish() -> None:
+    mark("done").write_text(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+    subprocess.run(["systemctl", "disable", "--quiet", "hasler-install.service"], check=False)
+    say("done: the radio runs its signed release and updates itself from now on")
+    say("next, by hand (docs/new-install.md, 'After the install'): volume ceiling, Spotify login, "
+        "YouTube Music sign-in, Home Assistant, knob calibration")
+
+
+def resume(args) -> int:
+    if os.geteuid() != 0:
+        raise SystemExit("hasler-install resume: run as root")
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o755)
+    if mark("done").exists():
+        say("already installed")
+        return 0
+    s = settings_for(args)
+    if not mark("setup.done").exists():
+        out = step_setup(s, args)
+        if out["reboot"]:
+            say("restarting so moOde can take its settings")
+            subprocess.run(["systemctl", "reboot"], check=False)
+            return 0
+    result = step_release(s, args)
+    if result == "installed":
+        finish()
+    return 0
+
+
+def settings_for(args) -> dict:
+    saved = mark("settings.json")
+    if saved.exists():
+        s = json.loads(saved.read_text())
+    else:
+        s = read_settings(Path(args.settings))
+        for k in ("channel", "user", "variant"):
+            if getattr(args, k, None):
+                s[k] = getattr(args, k)
+        if getattr(args, "panel_optional", False):
+            s["panel_optional"] = "yes"
+        if getattr(args, "no_moode", False):
+            s["moode"] = "no"
+        s = validate(s)
+        saved.write_text(json.dumps(s, indent=1) + "\n")
+    if s.get("update_url") and args.base == BASE:
+        args.base = s["update_url"]
+    return s
+
+
+def install_unit() -> None:
+    if Path(sys.argv[0]).resolve() != SELF:
+        shutil.copyfile(Path(sys.argv[0]).resolve(), SELF)
+        SELF.chmod(0o755)
+    UNIT.write_text(UNIT_TEXT)
+    subprocess.run(["systemctl", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "enable", "--quiet", "hasler-install.service"], check=False)
+
+
+def hook(args) -> int:
+    """cloud-init vendor-data, first boot: copy this file in and start the service."""
+    if os.geteuid() != 0:
+        raise SystemExit("hasler-install hook: run as root")
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o755)
+    if mark("done").exists():
+        return 0
+    install_unit()
+    subprocess.run(["systemctl", "start", "--no-block", "hasler-install.service"], check=False)
+    say("first boot: hasler-install.service will set the radio up (about 15 minutes, a few restarts)")
+    return 0
+
+
+def install(args) -> int:
+    """The SSH path: same steps as the first boot, started by hand."""
+    if os.geteuid() != 0:
+        raise SystemExit("hasler-install install: run as root (sudo)")
+    if Path("/opt/hasler/current").is_symlink() and not mark("setup.done").exists():
+        raise InstallError("this radio already runs a release - it updates itself (hasler-update status)")
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o755)
+    s = settings_for(args)
+    say(f"installing Hasler: channel {s['channel']}, variant {s['variant']}, "
+        f"moOde settings {'yes' if s['moode'] == 'yes' else 'no'}")
+    if not args.yes and sys.stdin.isatty():
+        if input("Go ahead? It installs packages and restarts the Pi 2-3 times. [y/N] ").strip().lower() != "y":
+            return 1
+    install_unit()          # finishes the install after each restart
+    return resume(args)
+
+
+def status(_args) -> int:
+    marks = sorted(p.name for p in STATE.glob("*") if p.is_file()) if STATE.is_dir() else []
+    print(json.dumps({"state_dir": str(STATE), "marks": marks,
+                      "updater": updater_status() if Path("/usr/local/sbin/hasler-update").exists() else None},
+                     indent=2, default=str))
+    return 0
+
+
+def fetch_cmd(args) -> int:
+    got = fetch_release(args.base, args.channel or "stable", Path(args.out), args.root_pubs)
+    problems = compat_problems(got["release"], facts(), None)
+    print(json.dumps({"version": got["version"], "seq": got["seq"], "tree": str(got["root"]),
+                      "setup": str(got["setup"]), "trust": str(got["trust"]),
+                      "compat_here": problems or "ok"}, indent=2))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="hasler-install", description=__doc__.split("\n")[0])
+    ap.add_argument("--base", default=BASE, help="release site (default: the public channel)")
+    ap.add_argument("--root-pub", action="append", help="root public key file (default: the pinned Hasler root)")
+    ap.add_argument("--settings", default=str(SETTINGS), help="hasler.txt (default on the SD card)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    f = sub.add_parser("fetch")
+    f.add_argument("--out", required=True)
+    f.add_argument("--channel", choices=CHANNELS)
+    i = sub.add_parser("install")
+    i.add_argument("--channel", choices=CHANNELS)
+    i.add_argument("--user")
+    i.add_argument("--variant")
+    i.add_argument("--panel-optional", action="store_true")
+    i.add_argument("--no-moode", action="store_true")
+    i.add_argument("--yes", "-y", action="store_true")
+    sub.add_parser("resume")
+    sub.add_parser("hook")
+    sub.add_parser("status")
+    args = ap.parse_args(argv)
+    args.root_pubs = [Path(p).read_text().strip() for p in args.root_pub] if args.root_pub else [ROOT_PUB]
+    try:
+        return {"fetch": fetch_cmd, "install": install, "resume": resume, "hook": hook, "status": status}[args.cmd](args)
+    except NotYet as e:
+        say(f"not yet: {e} (tries again)")
+        return EX_LATER
+    except InstallError as e:
+        say(f"error: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

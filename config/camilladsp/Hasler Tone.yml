@@ -1,4 +1,4 @@
-description: Hasler tone knob - treble shelf driven by haslerd (scripts/hasler-tone).
+description: Hasler knobs - every effect's blocks, neutral until a knob moves; driven by haslerd (scripts/hasler-dsp).
 devices:
   adjust_period: null
   capture:
@@ -22,62 +22,166 @@ devices:
   stop_on_rate_change: null
   target_level: null
   volume_ramp_time: 150
+title: Hasler Tone
 filters:
-  Treble:
-    description: Hasler tone knob
-    parameters:
-      freq: 2500
-      gain: 0
-      q: 0.7
-      type: Highshelf
-    type: Biquad
   Master gain:
-    description: null
+    type: Gain
+    description: 'haslerd: cancels the highest boost (never clips)'
     parameters:
-      gain: 0
+      gain: 0.0
       inverted: false
       mute: false
       scale: dB
-    type: Gain
+  Treble:
+    type: Biquad
+    description: null
+    parameters:
+      type: Highshelf
+      freq: 2500
+      gain: 0.0
+      q: 0.7
+  Bass:
+    type: Biquad
+    description: null
+    parameters:
+      type: Lowshelf
+      freq: 200
+      gain: 0.0
+      q: 0.7
+  Tilt low:
+    type: Biquad
+    description: null
+    parameters:
+      type: Lowshelf
+      freq: 800
+      gain: 0.0
+      q: 0.5
+  Tilt high:
+    type: Biquad
+    description: null
+    parameters:
+      type: Highshelf
+      freq: 800
+      gain: 0.0
+      q: 0.5
+  Loudness low:
+    type: Biquad
+    description: null
+    parameters:
+      type: Lowshelf
+      freq: 150
+      gain: 0.0
+      q: 0.7
+  Loudness high:
+    type: Biquad
+    description: null
+    parameters:
+      type: Highshelf
+      freq: 6000
+      gain: 0.0
+      q: 0.7
+  Presence:
+    type: Biquad
+    description: null
+    parameters:
+      type: Peaking
+      freq: 3000
+      gain: 0.0
+      q: 1.0
+  Vintage low:
+    type: Biquad
+    description: null
+    parameters:
+      type: Lowshelf
+      freq: 120
+      gain: 0.0
+      q: 0.7
+  Vintage mid:
+    type: Biquad
+    description: null
+    parameters:
+      type: Peaking
+      freq: 1500
+      gain: 0.0
+      q: 0.8
+  Vintage high:
+    type: Biquad
+    description: null
+    parameters:
+      type: Highshelf
+      freq: 6000
+      gain: 0.0
+      q: 0.7
 mixers:
   Stereo:
+    description: 'haslerd: width (mono .. stereo)'
     channels:
       in: 2
       out: 2
-    description: null
     mapping:
     - dest: 0
       mute: false
       sources:
       - channel: 0
-        gain: 0
+        gain: 1.0
         inverted: false
         mute: false
-        scale: dB
+        scale: linear
+      - channel: 1
+        gain: 0.0
+        inverted: false
+        mute: true
+        scale: linear
     - dest: 1
       mute: false
       sources:
       - channel: 1
-        gain: 0
+        gain: 1.0
         inverted: false
         mute: false
-        scale: dB
+        scale: linear
+      - channel: 0
+        gain: 0.0
+        inverted: false
+        mute: true
+        scale: linear
 pipeline:
-- bypassed: null
+- type: Mixer
+  name: Stereo
+  description: null
+  bypassed: null
+- type: Filter
   channels:
   - 0
-  description: null
   names:
   - Master gain
   - Treble
-  type: Filter
-- bypassed: null
+  - Bass
+  - Tilt low
+  - Tilt high
+  - Loudness low
+  - Loudness high
+  - Presence
+  - Vintage low
+  - Vintage mid
+  - Vintage high
+  description: null
+  bypassed: null
+- type: Filter
   channels:
   - 1
-  description: null
   names:
   - Master gain
   - Treble
-  type: Filter
+  - Bass
+  - Tilt low
+  - Tilt high
+  - Loudness low
+  - Loudness high
+  - Presence
+  - Vintage low
+  - Vintage mid
+  - Vintage high
+  description: null
+  bypassed: null
 processors: null
-title: Hasler Tone

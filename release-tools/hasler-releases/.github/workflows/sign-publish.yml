@@ -1,0 +1,415 @@
+# Lives in Delgado-Murphy/hasler-releases (template kept in Delgado-Murphy/hasler
+# under release-tools/hasler-releases/). Tools in tools/ are copies of
+# hasler's scripts/release/ (docs/release.md).
+#
+# workflow_dispatch, mode=publish: take a finished release.yml run of
+# Delgado-Murphy/hasler, re-check everything, sign release.json with the release key
+# (environment `sign`, main branch only), create the GitHub release, point a
+# channel at it (timestamp key).
+# workflow_dispatch, mode=promote: point another channel at an existing
+# release (the same artifact - never rebuilt).
+# workflow_dispatch, mode=halt: add <version>'s seq to the channel's `halted`
+# list and re-sign the index (timestamp key) - boxes then never install it.
+# schedule: re-sign every channel index daily with a fresh issued/expires.
+#
+# releases.json on gh-pages feeds the website (index.html there): publish adds
+# the release, promote adds the channel to its `channels`, halt adds the
+# channel to its `halted`. It is informational and unsigned - boxes never read
+# it - so a failure there warns and never blocks a release or a channel.
+#
+# No third-party actions: actions/checkout only, plus gh, ssh-keygen, curl,
+# python3 that ship on the runner image.
+name: sign-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: publish (new release), promote (existing release to another channel) or halt (stop a bad release on a channel)
+        type: choice
+        options: [publish, promote, halt]
+        default: publish
+      version:
+        description: version without v, e.g. 0.2.0 or 0.2.1-rc.1
+        required: true
+        type: string
+      artifact_sha256:
+        description: sha256 of hasler-<version>-arm64.tar.zst (from the build run's summary; publish only)
+        required: false
+        type: string
+      run_id:
+        description: release.yml run id in delgado-murphy/hasler (publish only)
+        required: false
+        type: string
+      channel:
+        description: channel to point at this release (halt - the channel to halt it on)
+        type: choice
+        options: [bench, stable]
+        default: bench
+  schedule:
+    - cron: "17 3 * * *"     # daily; indexes expire after 14 days
+
+permissions: {}
+
+concurrency:
+  group: hasler-releases-pages
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: Delgado-Murphy/hasler    # GitHub reports names in this case; compared case-insensitively
+  SOURCE_WORKFLOW: .github/workflows/release.yml
+  # python3 -c "$RELEASES_INDEX_PY" upsert <releases.json> <release.json> <gh-release.json> [channel]
+  # python3 -c "$RELEASES_INDEX_PY" halt <releases.json> <version> <channel>
+  RELEASES_INDEX_PY: |
+    import hashlib, json, os, sys
+    from datetime import datetime, timezone
+    op, path = sys.argv[1], sys.argv[2]
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except FileNotFoundError:
+        d = {}
+    d.setdefault("schema", 1)
+    d.setdefault("releases", [])
+    def find(v):
+        return next((r for r in d["releases"] if r.get("version") == v), None)
+    def add(lst, x):
+        if x and x not in lst:
+            lst.append(x)
+    if op == "upsert":
+        raw = open(sys.argv[3], "rb").read()
+        rel, gh = json.loads(raw), json.load(open(sys.argv[4]))
+        channel = sys.argv[5] if len(sys.argv) > 5 else ""
+        names = {a["name"]: a for a in gh.get("assets", [])}
+        def asset(name):
+            a = names.get(name)
+            return {"name": name, "url": a["url"], "size": a.get("size")} if a else None
+        v, art = rel["version"], rel["artifacts"][0]
+        old = find(v)
+        entry = {
+            "version": v, "seq": rel["seq"], "date": gh.get("publishedAt") or rel.get("created"),
+            "created": rel.get("created"), "kind": rel.get("kind"),
+            "prerelease": bool(gh.get("isPrerelease")), "notes": rel.get("notes") or "",
+            "channels": list(old.get("channels", [])) if old else [],
+            "halted": list(old.get("halted", [])) if old else [],
+            "requires_migration": bool(rel.get("requires_migration")),
+            "min_from_seq": rel.get("min_from_seq"), "variants": rel.get("variants", []),
+            "release_page": gh.get("url"),
+            "assets": {
+                "tarball": dict(asset(art["name"]) or {"name": art["name"], "url": art["url"]},
+                                sha256=art["sha256"], size=art.get("size")),
+                "release_json": dict(asset("release.json") or {}, sha256=hashlib.sha256(raw).hexdigest()),
+                "signature": asset("release.json.sig"),
+                "sbom": asset(f"hasler-{v}.cdx.json"),
+                "sha256sums": asset("SHA256SUMS"),
+            },
+        }
+        add(entry["channels"], channel)
+        if old:
+            d["releases"][d["releases"].index(old)] = entry
+        else:
+            d["releases"].append(entry)
+    elif op == "halt":
+        entry = find(sys.argv[3])
+        if entry is None:
+            sys.exit(f"{sys.argv[3]} is not in {path}")
+        add(entry.setdefault("halted", []), sys.argv[4])
+    else:
+        sys.exit(f"unknown op {op}")
+    d["releases"].sort(key=lambda r: r.get("seq", 0), reverse=True)
+    d["updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with open(path + ".tmp", "w") as f:
+        json.dump(d, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+    os.replace(path + ".tmp", path)
+    print(f"{path}: {op} {sys.argv[3] if op == 'halt' else v} ok")
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: sign
+    permissions:
+      contents: write          # create the release
+    env:
+      VERSION: ${{ inputs.version }}
+      WANT_SHA: ${{ inputs.artifact_sha256 }}
+      RUN_ID: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Inputs
+        run: |
+          echo "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$' || { echo "::error::bad version"; exit 1; }
+          echo "$WANT_SHA" | grep -Eq '^[0-9a-f]{64}$' || { echo "::error::artifact_sha256 must be 64 hex chars"; exit 1; }
+          echo "$RUN_ID" | grep -Eq '^[0-9]+$' || { echo "::error::run_id must be a number"; exit 1; }
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::v$VERSION is already published - use mode=promote"; exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: The run is release.yml on tag v<version>, green
+        env:
+          GH_TOKEN: ${{ secrets.BUILD_READ_TOKEN }}
+        run: |
+          gh api "repos/$SOURCE_REPO/actions/runs/$RUN_ID" > run.json
+          python3 - <<'EOF'
+          import json, os, sys
+          r = json.load(open("run.json"))
+          want = {"path": os.environ["SOURCE_WORKFLOW"], "event": "push", "status": "completed",
+                  "conclusion": "success", "head_branch": "v" + os.environ["VERSION"]}
+          bad = {k: r.get(k) for k, v in want.items() if r.get(k) != v}
+          if r["repository"]["full_name"].lower() != os.environ["SOURCE_REPO"].lower():
+              bad["repository"] = r["repository"]["full_name"]
+          if bad:
+              sys.exit(f"run {r['id']} does not look like the release build: {bad}")
+          open(os.environ["GITHUB_ENV"], "a").write(f"HEAD_SHA={r['head_sha']}\n")
+          EOF
+          # GITHUB_ENV only reaches later steps - read it here too
+          HEAD_SHA="$(jq -r .head_sha run.json)"
+          # the tag still points at the commit that was built
+          ref="$(gh api "repos/$SOURCE_REPO/git/ref/tags/v$VERSION")"
+          sha="$(jq -r .object.sha <<<"$ref")"; type="$(jq -r .object.type <<<"$ref")"
+          [[ "$type" == tag ]] && sha="$(gh api "repos/$SOURCE_REPO/git/tags/$sha" --jq .object.sha)"
+          [[ "$sha" == "$HEAD_SHA" ]] || { echo "::error::tag v$VERSION is $sha, run built $HEAD_SHA"; exit 1; }
+
+      - name: Download the build artifact and check its digest
+        env:
+          GH_TOKEN: ${{ secrets.BUILD_READ_TOKEN }}
+        run: |
+          name="hasler-release-$VERSION"
+          gh api "repos/$SOURCE_REPO/actions/runs/$RUN_ID/artifacts" \
+            --jq ".artifacts[] | select(.name == \"$name\") | [.id, .digest] | @tsv" > art.tsv
+          [[ "$(wc -l < art.tsv)" == 1 ]] || { echo "::error::expected one artifact $name"; exit 1; }
+          read -r art_id art_digest < art.tsv
+          gh api "repos/$SOURCE_REPO/actions/artifacts/$art_id/zip" > art.zip
+          if [[ -n "$art_digest" && "$art_digest" != null ]]; then
+            echo "${art_digest#sha256:}  art.zip" | sha256sum -c -
+          fi
+          mkdir in && unzip -q art.zip -d in
+          ls -l in
+          echo "$WANT_SHA  in/hasler-$VERSION-arm64.tar.zst" | sha256sum -c -
+
+      - name: Build attestation
+        if: vars.ATTESTATIONS == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.BUILD_READ_TOKEN }}
+        run: |
+          gh attestation verify "in/hasler-$VERSION-arm64.tar.zst" --repo "$SOURCE_REPO" \
+            --signer-workflow "$SOURCE_REPO/$SOURCE_WORKFLOW" --source-ref "refs/tags/v$VERSION"
+
+      - name: Tarball matches release.json; release.json is sane
+        run: |
+          python3 tools/make_manifest.py check --release in/release.json --tarball "in/hasler-$VERSION-arm64.tar.zst"
+          python3 - <<'EOF'
+          import json, os, sys
+          d = json.load(open("in/release.json"))
+          v, repo = os.environ["VERSION"], os.environ["GITHUB_REPOSITORY"]
+          url = f"https://github.com/{repo}/releases/download/v{v}/hasler-{v}-arm64.tar.zst"
+          # GitHub URLs are case-insensitive; release.json is built with the
+          # lower-case org name, GITHUB_REPOSITORY has the real case.
+          if d["version"] != v or d["artifacts"][0]["url"].lower() != url.lower():
+              sys.exit(f"release.json version/url mismatch: {d['version']} {d['artifacts'][0]['url']}")
+          EOF
+
+      - name: Keyring (verified by the root key in trust/)
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          git show origin/gh-pages:keyring.json > keyring.json
+          git show origin/gh-pages:keyring.json.sig > keyring.json.sig
+          roots=(); for r in trust/root*.pub; do roots+=(--root "$r"); done
+          python3 tools/keyring.py verify "${roots[@]}" keyring.json
+          python3 - <<'EOF'
+          import json
+          ring, rel = json.load(open("keyring.json")), json.load(open("in/release.json"))
+          assert rel["keyring_seq"] <= ring["keyring_seq"], "release wants a newer keyring than published"
+          EOF
+
+      - name: Sign release.json
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          printf '%s\n' "$RELEASE_SIGNING_KEY" | (umask 077; cat > "$RUNNER_TEMP/k")
+          pub="$(ssh-keygen -y -f "$RUNNER_TEMP/k")"; rm -f "$RUNNER_TEMP/k"
+          kid="$(python3 tools/keyring.py find --pub "$pub" --role release keyring.json)"
+          echo "signing as $kid"
+          bash tools/sign.sh -n hasler-release -e RELEASE_SIGNING_KEY -p "$pub" in/release.json
+          bash tools/verify.sh -n hasler-release -r release -K keyring.json in/release.json
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -c 'import json; print(json.load(open("in/release.json"))["notes"] or "No notes.")' > notes.md
+          pre=(); [[ "$VERSION" == *-rc.* ]] && pre=(--prerelease)
+          (cd in && sha256sum "hasler-$VERSION-arm64.tar.zst" release.json release.json.sig > SHA256SUMS)
+          assets=("in/hasler-$VERSION-arm64.tar.zst" in/release.json in/release.json.sig in/SHA256SUMS)
+          [[ -f "in/hasler-$VERSION.cdx.json" ]] && assets+=("in/hasler-$VERSION.cdx.json")
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --title "hasler $VERSION" \
+            --notes-file notes.md "${pre[@]}" "${assets[@]}"
+
+      - name: List it in releases.json on gh-pages (the website)
+        continue-on-error: true      # the release exists; the channel job lists it too
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json url,publishedAt,isPrerelease,assets > gh-release.json
+          git fetch -q --depth 1 origin gh-pages
+          git worktree add -q --detach site FETCH_HEAD
+          python3 -c "$RELEASES_INDEX_PY" upsert site/releases.json in/release.json gh-release.json
+          cd site
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git add releases.json
+          git diff --cached --quiet && exit 0
+          git commit -q -m "releases.json: $VERSION"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
+
+  channel:
+    needs: publish
+    if: >-
+      always() && github.event_name == 'workflow_dispatch' &&
+      (needs.publish.result == 'success' || (inputs.mode == 'promote' && needs.publish.result == 'skipped'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: timestamp
+    permissions:
+      contents: write          # push gh-pages
+    env:
+      VERSION: ${{ inputs.version }}
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: pages
+      - name: Fetch and verify the published release.json
+        run: |
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' || exit 1
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION"
+          curl -fsSL --retry 3 -o release.json "$base/release.json"
+          curl -fsSL --retry 3 -o release.json.sig "$base/release.json.sig"
+          roots=(); for r in main/trust/root*.pub; do roots+=(--root "$r"); done
+          python3 main/tools/keyring.py verify "${roots[@]}" pages/keyring.json
+          bash main/tools/verify.sh -n hasler-release -r release -K pages/keyring.json release.json
+          echo "RELEASE_URL=$base/release.json" >> "$GITHUB_ENV"
+      - name: Point the channel at it and sign
+        env:
+          TIMESTAMP_SIGNING_KEY: ${{ secrets.TIMESTAMP_SIGNING_KEY }}
+        run: |
+          idx="pages/channels/$CHANNEL.json"
+          python3 main/tools/channel.py promote --index "$idx" --release release.json --release-url "$RELEASE_URL"
+          bash main/tools/sign.sh -n hasler-channel -e TIMESTAMP_SIGNING_KEY "$idx"
+          bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
+      - name: Note the channel in releases.json (the website)
+        continue-on-error: true      # informational; never blocks the channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json url,publishedAt,isPrerelease,assets > gh-release.json
+          python3 -c "$RELEASES_INDEX_PY" upsert pages/releases.json release.json gh-release.json "$CHANNEL"
+      - name: Push gh-pages
+        run: |
+          cd pages
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git add channels
+          if [[ -f releases.json ]]; then git add releases.json; fi
+          git commit -q -m "$CHANNEL -> $VERSION"
+          git push -q origin HEAD:gh-pages
+
+  halt:
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'halt'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: timestamp
+    permissions:
+      contents: write          # push gh-pages
+    env:
+      VERSION: ${{ inputs.version }}
+      CHANNEL: ${{ inputs.channel }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: pages
+      - name: Halt the release on the channel and sign
+        env:
+          TIMESTAMP_SIGNING_KEY: ${{ secrets.TIMESTAMP_SIGNING_KEY }}
+        run: |
+          echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' || exit 1
+          idx="pages/channels/$CHANNEL.json"
+          [[ -f "$idx" ]] || { echo "::error::$idx does not exist"; exit 1; }
+          roots=(); for r in main/trust/root*.pub; do roots+=(--root "$r"); done
+          python3 main/tools/keyring.py verify "${roots[@]}" pages/keyring.json
+          bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
+          seq="$(cd main/tools && python3 -c 'import sys, make_manifest; print(make_manifest.seq_for(sys.argv[1]))' "$VERSION")"
+          echo "halting $VERSION (seq $seq) on $CHANNEL"
+          python3 main/tools/channel.py halt --index "$idx" --seq "$seq"
+          bash main/tools/sign.sh -n hasler-channel -e TIMESTAMP_SIGNING_KEY "$idx"
+          bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
+          echo "HALT_SEQ=$seq" >> "$GITHUB_ENV"
+      - name: Mark it halted in releases.json (the website)
+        continue-on-error: true      # informational; never blocks the halt
+        run: python3 -c "$RELEASES_INDEX_PY" halt pages/releases.json "$VERSION" "$CHANNEL"
+      - name: Push gh-pages
+        run: |
+          cd pages
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git add channels
+          if [[ -f releases.json ]]; then git add releases.json; fi
+          git commit -q -m "$CHANNEL: halt $VERSION (seq $HALT_SEQ)"
+          git push -q origin HEAD:gh-pages
+
+  refresh:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: timestamp
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: pages
+      - name: Re-sign every channel index (only ones that verify today)
+        env:
+          TIMESTAMP_SIGNING_KEY: ${{ secrets.TIMESTAMP_SIGNING_KEY }}
+        run: |
+          shopt -s nullglob
+          idxs=(pages/channels/*.json)
+          if (( ${#idxs[@]} == 0 )); then echo "no channel indexes yet (before the first release) - nothing to do"; exit 0; fi
+          roots=(); for r in main/trust/root*.pub; do roots+=(--root "$r"); done
+          python3 main/tools/keyring.py verify "${roots[@]}" pages/keyring.json
+          for idx in "${idxs[@]}"; do
+            # never bless an index someone edited on gh-pages without a signature
+            bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json "$idx"
+            python3 main/tools/channel.py refresh "$idx"
+            bash main/tools/sign.sh -n hasler-channel -e TIMESTAMP_SIGNING_KEY "$idx"
+          done
+      - name: Push gh-pages
+        run: |
+          cd pages
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git add channels
+          git diff --cached --quiet || git commit -q -m "refresh channel indexes"
+          git push -q origin HEAD:gh-pages

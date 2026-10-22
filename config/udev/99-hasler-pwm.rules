@@ -1,0 +1,14 @@
+# Pilot lamp: let the gpio group (haslerd runs as pi, in gpio) drive the
+# pwm-gpio chips in /sys/class/pwm. Installed by scripts/install.sh into
+# /etc/udev/rules.d/.
+#
+# "add" is the chip appearing (export, unexport); "change" is the kernel's
+# EXPORT=pwm0 event after an export, which is when pwm0/period, duty_cycle,
+# enable and polarity exist. The exported pwm0/ is a plain child directory
+# with no uevent of its own, so both are handled on the chip.
+#
+# g=u copies the owner's (root's) bits to the group: writable attributes
+# become group-writable, read-only ones (npwm, capture) stay read-only.
+# chgrp/chmod -R do not follow sysfs' device/subsystem symlinks.
+SUBSYSTEM=="pwm", KERNEL=="pwmchip*", ACTION=="add|change", \
+  RUN+="/bin/sh -c 'chgrp -R gpio /sys%p && chmod -R g=u /sys%p'"

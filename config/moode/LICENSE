@@ -1,0 +1,29 @@
+config/moode/: GPL-3.0-or-later
+
+patch-ytm-art.py and ytm-art.php modify moOde audio player
+(https://github.com/moode-player/moode), which is licensed under the GNU
+General Public License, version 3 or (at your option) any later version. The
+line in ytm-art.php, and the lines patch-ytm-art.py writes, become part of
+moOde's own PHP files (/var/www/inc/mpd.php, /var/www/inc/music-library.php)
+on the radio. These two files are therefore licensed under the same terms:
+
+  SPDX-License-Identifier: GPL-3.0-or-later
+  Copyright (c) 2026 Delgado & Murphy (Bill Murphy)
+
+  This program is free software: you can redistribute it and/or modify it
+  under the terms of the GNU General Public License as published by the Free
+  Software Foundation, either version 3 of the License, or (at your option)
+  any later version. This program is distributed in the hope that it will be
+  useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+  Public License for more details.
+
+The full licence text is in ../../licenses/GPL-3.0.txt (and at the root of
+every release tarball, licenses/GPL-3.0.txt).
+
+ytm-art.php is a single PHP line that patch-ytm-art.py copies verbatim into
+moOde, so it carries no header of its own; its licence is recorded in
+ytm-art.php.license (the REUSE convention for files that cannot hold one).
+
+Other files in this directory (shairport-sync.conf) are ours and MIT
+licensed, like the rest of the repository (../../LICENSE).

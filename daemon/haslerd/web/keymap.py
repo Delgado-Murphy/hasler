@@ -15,15 +15,15 @@ old layout or the new one, never half of each.
 from __future__ import annotations
 
 import logging
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import yaml
 
 from ..actions import Actions, build_presets
+from ..boxconfig import SCHEMA as KEYS_SCHEMA, atomic_write_text
+from ..ha import behaviour
 from ..panel.controls import Momentary
 from ..player.base import Preset
 
@@ -38,17 +38,29 @@ VOLUME_REPEAT_S = 0.15    # a held volume key ramps at this rate
 VERBS: list[dict[str, Any]] = [
     {"do": "none", "label": "Nothing"},
     {"do": "preset", "label": "Play a preset", "params": ["n"]},
-    {"do": "cycle_source", "label": "Next source (radio → Bluetooth → AirPlay → Spotify)"},
+    {"do": "cycle_source", "label": "Next source (order set in Settings → Sources & casting)"},
     {"do": "bt_pair", "label": "Bluetooth pairing", "params": ["seconds"]},
+    # Selects Bluetooth and calls the last phone; while a phone plays, again =
+    # next track and this key's hold = pause/play (Settings -> Bluetooth).
+    {"do": "bluetooth", "label": "Bluetooth (again: next track, hold: pause)"},
     {"do": "volume_up", "label": "Volume up (ramps while held)"},
     {"do": "volume_down", "label": "Volume down (ramps while held)"},
     {"do": "standby_toggle", "label": "Standby / wake"},
-    {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity"], "domains": ["scene"]},
+    # Multiroom (multiroom/group.py): follow the Hasler leading a group, else
+    # the one playing; on a follower, leave the group.
+    {"do": "join_group", "label": "Join the music in another room (again: leave)"},
+    {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity", "transition"], "domains": ["scene"]},
     {"do": "ha_script", "label": "Run a Home Assistant script", "params": ["entity"], "domains": ["script"]},
     {"do": "ha_toggle", "label": "Toggle a Home Assistant device", "params": ["entity"],
      "domains": ["light", "switch", "input_boolean", "fan", "cover", "media_player"]},
     {"do": "ha_automation", "label": "Trigger a Home Assistant automation", "params": ["entity"],
      "domains": ["automation"]},
+    # After ha_toggle: a page that picks "the first verb whose domains hold this
+    # entity's domain" keeps toggling a light rather than switching it on.
+    {"do": "ha_light", "label": "Set Home Assistant lights",
+     "params": ["entities", "mode", "brightness", "color", "kelvin", "transition"], "domains": ["light"]},
+    {"do": "ha_service", "label": "Call a Home Assistant service (advanced)",
+     "params": ["service", "entities", "data"], "domains": list(behaviour.SAFE_SERVICES)},
 ]
 VERB_NAMES = {v["do"] for v in VERBS}
 
@@ -56,7 +68,7 @@ VERB_NAMES = {v["do"] for v in VERBS}
 # entity picker with the same lists (the "domains" hint above); the daemon
 # re-checks here, because a hand-edited request must not toggle a scene.
 HA_VERBS: dict[str, list[str]] = {v["do"]: v["domains"] for v in VERBS if "domains" in v}
-ENTITY_ID = re.compile(r"^[a-z_]+\.[a-z0-9_]+$")
+ENTITY_ID = behaviour.ENTITY_ID
 
 SPOTIFY_URI = re.compile(r"^spotify:(playlist|album|track|artist|show|episode):[A-Za-z0-9]{22}$")
 SPOTIFY_LINK = re.compile(
@@ -95,14 +107,14 @@ def to_page(spec: dict | None) -> dict | None:
         if not delta:
             return None
         return {"do": "volume_up" if delta > 0 else "volume_down"}
-    if verb in ("standby_toggle", "cycle_source"):
+    if verb in ("standby_toggle", "cycle_source", "join_group", "bluetooth"):
         return {"do": verb}
     if verb == "preset":
         return {"do": "preset", "n": int(spec["n"])}
     if verb == "bt_pair":
         return {"do": "bt_pair", "seconds": int(spec.get("seconds", 120))}
     if verb in HA_VERBS:
-        return {"do": verb, "entity": str(spec.get("entity", ""))}
+        return behaviour.to_page(spec)
     # Something the page has no control for (set in the descriptor by hand):
     # shown, kept as-is on save.
     return {"do": "custom", "label": verb or "?", "spec": dict(spec)}
@@ -172,18 +184,12 @@ def check_uri(source: str, uri: str) -> str | None:
 
 def check_entity(verb: str, entity: str) -> str | None:
     """Why ``entity`` can't be the target of HA ``verb``, or None if it can."""
-    domains = HA_VERBS[verb]
-    example = {"scene": "scene.living_room", "script": "script.good_night",
-               "automation": "automation.lights_out"}.get(domains[0], "light.kitchen")
-    if not entity:
-        return f"pick a Home Assistant entity, e.g. {example}"
-    if not ENTITY_ID.match(entity):
-        if verb == "ha_scene":
-            return "a scene id looks like scene.living_room"
-        return f"an entity id looks like {example}"
-    if entity.split(".", 1)[0] not in domains:
-        kinds = ", ".join(domains[:-1]) + (" or " if len(domains) > 1 else "") + domains[-1]
-        return f"{entity} isn't a {kinds} - pick one like {example}"
+    if verb in behaviour.SIMPLE:
+        return behaviour.check_entity(verb, entity)
+    try:
+        behaviour.normalise({"do": verb, "entity": entity})
+    except behaviour.Problem as exc:
+        return str(exc)
     return None
 
 
@@ -248,13 +254,12 @@ def action_from_page(raw: Any, where: str, preset_ns: set[int], current: dict | 
             return None
         return {"do": "bt_pair", "seconds": seconds}
     if verb in HA_VERBS:
-        entity = str(raw.get("entity") or "").strip()
-        problem = check_entity(verb, entity)
-        if problem:
-            errors.append({"where": where, "message": problem})
+        try:
+            return behaviour.normalise(raw)
+        except behaviour.Problem as exc:
+            errors.append({"where": where, "message": str(exc)})
             return None
-        return {"do": verb, "entity": entity}
-    return {"do": verb}         # cycle_source, standby_toggle
+    return {"do": verb}         # cycle_source, standby_toggle, join_group, bluetooth
 
 
 def parse(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict | None]]:
@@ -317,13 +322,15 @@ def apply(actions: Actions, panel: Any, specs: list[dict], table: dict[str, dict
 
 
 def ha_entries(actions: Actions) -> list[tuple[str, str, dict]]:
-    """Every key action that targets a Home Assistant entity: (key, event, spec)."""
+    """Every key action that targets Home Assistant entities: (key, event, spec).
+
+    ``behaviour.entity_ids(spec)`` lists them (one ``entity``, or ``entities``)."""
     table = actions.variant.actions
     out = []
     for cid in key_ids(actions):
         for event in EVENTS:
             spec = table.get(f"{cid}.{event}")
-            if spec and spec.get("do") in HA_VERBS and spec.get("entity"):
+            if spec and spec.get("do") in HA_VERBS and behaviour.entity_ids(spec):
                 out.append((cid, event, dict(spec)))
     return out
 
@@ -359,21 +366,22 @@ def tune_repeat(actions: Actions, panel: Any) -> None:
 
 
 def save(path: Path, specs: list[dict], table: dict[str, dict | None]) -> None:
-    """Write the overlay atomically - a power cut mid-save leaves the old file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    doc = {"presets": specs, "actions": table}
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".keys-", suffix=".yaml")
-    try:
-        with os.fdopen(fd, "w") as fh:
-            fh.write("# Written by the haslerd web page. Delete to go back to the descriptor.\n")
-            yaml.safe_dump(doc, fh, sort_keys=False, allow_unicode=True)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
+    """Write the overlay atomically (tmp + fsync + rename): the box is switched
+    off at the wall, and a power cut mid-save must leave the old file."""
+    # schema as boxconfig writes it, so a migration knows what it is reading.
+    doc = {"schema": KEYS_SCHEMA, "presets": specs, "actions": table}
+    text = "# Written by the haslerd web page. Delete to go back to the descriptor.\n" + \
+        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+    atomic_write_text(path, text, mode=0o600)
 
 
 def load(path: Path | None) -> tuple[list[dict], dict[str, dict | None]] | None:
+    """The saved layout, or None (descriptor's keys) if absent or not a layout.
+
+    A hand-edited or half-understood file must cost the saved keys, never the
+    daemon: anything that isn't ``{presets: [...], actions: {...}}`` is logged
+    and ignored.
+    """
     if path is None or not path.exists():
         return None
     try:
@@ -381,7 +389,15 @@ def load(path: Path | None) -> tuple[list[dict], dict[str, dict | None]] | None:
     except (OSError, yaml.YAMLError):
         log.exception("could not read %s; using the descriptor's keys", path)
         return None
-    return list(doc.get("presets") or []), dict(doc.get("actions") or {})
+    presets, actions = (doc.get("presets"), doc.get("actions")) if isinstance(doc, dict) else (None, None)
+    if not isinstance(doc, dict) or not isinstance(presets or [], list) or not isinstance(actions or {}, dict):
+        log.error("%s is not a key layout ({presets: [...], actions: {...}}); using the descriptor's keys", path)
+        return None
+    schema = doc.get("schema", KEYS_SCHEMA)
+    if not isinstance(schema, int) or schema > KEYS_SCHEMA:
+        log.warning("%s has schema %r, newer than this release's %d; reading what it can",
+                    path, schema, KEYS_SCHEMA)
+    return list(presets or []), dict(actions or {})
 
 
 def apply_saved(path: Path | None, actions: Actions, panel: Any) -> bool:

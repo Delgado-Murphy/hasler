@@ -1,0 +1,30 @@
+[Unit]
+Description=Hasler pilot lamp - early amber breath until haslerd takes over
+Documentation=file:/home/pi/hasler/docs/lamp.md
+# Early boot (docs/lamp.md "Boot and shutdown", ~3-5 s after power): no
+# default dependencies, so it does not wait for basic.target or local-fs.
+# It needs /sys (always mounted by PID 1), the pwm-gpio module, which udev
+# coldplug loads from the overlays' modalias, and the script on the root fs.
+# The script itself waits up to 10 s for the three pwmchips to appear.
+DefaultDependencies=no
+After=systemd-udev-trigger.service systemd-modules-load.service
+Wants=systemd-udev-trigger.service
+# haslerd.service is After= this unit and stops it in ExecStartPre= (SIGTERM;
+# the LED keeps its last duty), so they never both write the LED.
+Conflicts=shutdown.target
+Before=shutdown.target
+# Only on a box with the overlays loaded (none of this on a dev laptop).
+ConditionPathExists=/sys/class/pwm
+
+[Service]
+Type=simple
+ExecStart=/usr/local/sbin/hasler-lamp-boot
+# Root: it starts before udev has necessarily applied 99-hasler-pwm.rules.
+# It only writes /sys/class/pwm and /run/hasler-lamp.
+KillSignal=SIGTERM
+TimeoutStopSec=2
+Restart=no
+Nice=-5
+
+[Install]
+WantedBy=sysinit.target

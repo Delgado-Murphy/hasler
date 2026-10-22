@@ -167,10 +167,14 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
      driver loads);
    - TP 3V3A reads 3.3 V and the red **3V3A** LED is lit.
 5. Re-crimp the HM ribbon into a 26-way plug flush to pin 1 and plug it into J2 **first**, then
-   point `haslerd.service`'s `--variant` at `config/variants/hasler-hm-hat.yaml` (pins d8–d14,
-   d0 for the tone switch, `addr: 0x20`). `hasler-hm.yaml` stays the prototype stripboard's
-   mapping until then. (The daemon on this branch only arms the end-switch shutdown after it has
-   read the switch on once, so an unplugged ribbon no longer halts the Pi; older builds would.)
+   set `variant: hasler-hm-hat` in `/etc/hasler/box.yaml` and restart haslerd (pins d8–d14, d0 for
+   the tone switch, `addr: 0x20`; a box without `box.yaml` takes `--variant hasler-hm-hat`).
+   `hasler-hm.yaml` stays the prototype stripboard's mapping until then. The HAT file's name inside
+   is still `hasler-hm`, so the box's calibration overlay `/etc/hasler/variant.d/hasler-hm.yaml`
+   applies to it: if that overlay sets `io.digital.addr` (the stripboard's chip was found by
+   `auto`), remove it. The release must be one that ships `hasler-hm-hat.yaml` (merged to master
+   October 2026). (The daemon only arms the end-switch shutdown after the switch has read on for a
+   debounce time, so an unplugged ribbon doesn't halt the Pi.)
    Run `scripts/panel-probe.py --variant config/variants/hasler-hm-hat.yaml`.
 6. Support J2 with a finger when you push the IDC plug in: the board is held along its header
    edge only, ~30 mm away. A ~6–7 mm silicone bumper glued under the HAT's far end (around the

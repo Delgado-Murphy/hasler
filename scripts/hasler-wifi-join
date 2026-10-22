@@ -1,63 +1,318 @@
 #!/usr/bin/php
 <?php
 /*
- * hasler-wifi-join - point moOde at a new Wi-Fi network, then reboot onto it.
+ * hasler-wifi-join - moOde's Wi-Fi, for haslerd's setup page and its watchdog.
  *
- * Run as root by haslerd's Wi-Fi setup page (sudoers allows exactly this file).
- * Reads one JSON object on stdin - never argv, which any user can see in ps:
- *     {"ssid": "Home", "password": "secret", "security": "wpa-psk|sae|none|auto"}
- * Prints one JSON object: {"ok": true} or {"ok": false, "error": "..."}.
+ * Run as root by haslerd (sudoers allows exactly this file, no arguments).
+ * Reads one JSON object on stdin - never argv, which any user can see in ps -
+ * and prints one JSON object: {"ok": true, ...} or {"ok": false, "error": "..."}.
  *
- * It writes moOde's own tables (cfg_network wlan0, cfg_ssid) and then calls
- * moOde's cfgNetworks() to regenerate the NetworkManager files, so moOde's
- * Network page shows the result exactly as if it had been entered there.
+ *   {"ssid": "Home", "password": "secret", "security": "wpa-psk|sae|none|auto"}
+ *   (the same with "action": "join"; "reboot": false skips the restart)
+ *       Point moOde at a network: moOde's own tables (cfg_network wlan0,
+ *       cfg_ssid), then moOde's cfgNetworks() regenerates the NetworkManager
+ *       files, so moOde's Network page shows it exactly as if entered there.
+ *       Then a restart, unless "reboot": false (scripts/hasler-wifi-rescue,
+ *       the boot-partition rescue, which runs before moOde's worker).
+ *
+ *   {"action": "retry", "force": false}
+ *       In setup mode (moOde's hotspot): is a saved network back? ->
+ *       {"result": "joined" (it restarts onto it) | "not-visible" | "failed"
+ *       ("reason": "secrets" = wrong password) | "busy" (a phone is on the
+ *       hotspot; "force" ignores that) | "no-network" | "not-hotspot"}.
+ *       The hotspot is dropped only when a saved network is visible, or when
+ *       the chip can't scan while it is a hotspot; it always comes back if no
+ *       join works.
+ *
+ *   {"action": "scan"}
+ *       `iw dev wlan0 scan ap-force` (it works in hotspot mode on many chips)
+ *       -> {"iw": "<raw output>"} for haslerd to parse. Changes nothing.
+ *
+ *   {"action": "hotspot", "password": "..."}
+ *       Set the setup hotspot's password (8-63 characters); with no password,
+ *       just regenerate its profile (repairs "address1="). No restart:
+ *       NetworkManager re-reads that one file.
+ *   {"action": "hotspot", "ensure": true, "password": "..."}
+ *       haslerd at start: only if needed - the password only if the hotspot
+ *       has none (moOde's import of Raspberry Pi Imager's Wi-Fi blanks it, and
+ *       a hotspot without one never starts), else the profile only if its
+ *       address is missing. -> {"changed": bool, "password_used": bool, ...}
  *
  * One deliberate difference from moOde's net-config.php: the WPA key is
  * computed here with PBKDF2 (what wpa_passphrase does) instead of moOde's
  * genWpaPSK(), which passes the SSID through a shell and writes the password
  * to /tmp. The SSID comes from a web form; it must not reach a shell.
+ *
+ * moOde's cfgNetworks() also reads two PHP session values that exist only in
+ * moOde's own pages and worker. Called from here without them it wrote
+ * "address1=" into the hotspot's profile - NetworkManager then puts the
+ * hotspot on 10.42.0.1 instead of 172.24.1.1, and the captive portal, the lamp
+ * and the setup page all miss it - and "proto=". moode_session() supplies them.
  */
 
-function done($ok, $error = '') {
-	echo json_encode($ok ? array('ok' => true) : array('ok' => false, 'error' => $error)), "\n";
+const HOTSPOT_FILE = '/etc/NetworkManager/system-connections/Hotspot.nmconnection';
+const RESERVED = array('None', 'Activate Hotspot');
+
+function done($ok, $error = '', $extra = array()) {
+	$out = $ok ? array('ok' => true) : array('ok' => false, 'error' => $error);
+	echo json_encode($out + $extra), "\n";
 	exit($ok ? 0 : 1);
 }
+
+function check_ssid($ssid) {
+	// An SSID is 1-32 bytes. moOde also uses it as a file name and an ini value,
+	// so no slashes, newlines or control characters, and not its own magic words.
+	if (strlen($ssid) < 1 || strlen($ssid) > 32) done(false, 'network name must be 1-32 characters');
+	if (preg_match('/[\x00-\x1f\x7f\/\\\\]/', $ssid)) done(false, 'network name has characters moOde cannot store');
+	if (in_array($ssid, RESERVED, true)) done(false, 'that name is reserved');
+}
+
+// Run a command without a shell's word splitting: every argument quoted.
+function sh(array $argv, &$out = null) {
+	$out = array();
+	exec(implode(' ', array_map('escapeshellarg', $argv)) . ' 2>&1', $out, $rc);
+	return $rc;
+}
+
+function nm_unescape($s) {
+	return str_replace(array('\\:', '\\\\'), array(':', '\\'), $s);
+}
+
+// The session values moOde's own pages would give cfgNetworks().
+function moode_session($dbh) {
+	$row = $dbh->query("SELECT value FROM cfg_system WHERE param='ap_network_addr'")->fetch(PDO::FETCH_ASSOC);
+	$addr = ($row && preg_match('#^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$#', $row['value'])) ? $row['value'] : '172.24.1.1/24';
+	// moOde's worker picks the protocol at every boot (wpa on a Pi 3B, rsn on
+	// the others) and writes it into the hotspot's file; keep its choice.
+	$proto = 'rsn';
+	$cur = @file_get_contents(HOTSPOT_FILE);
+	if ($cur !== false && preg_match('/^proto=(rsn|wpa)\s*$/m', $cur, $m)) $proto = $m[1];
+	$_SESSION['ap_network_addr'] = $addr;
+	$_SESSION['approto'] = $proto;
+	return $addr;
+}
+
+function schedule_reboot() {
+	// A moment later, so the page gets its answer first.
+	return sh(array('/usr/bin/systemd-run', '--quiet', '--on-active=4', '/usr/bin/systemctl', 'reboot')) === 0;
+}
+
+// [psk, pwd, saepwd] as moOde stores them.
+function wpa_key($ssid, $password, $security) {
+	if ($security === 'none') return array('', '', '');
+	if ($security === 'wpa-psk') {
+		if (strlen($password) === 64 && ctype_xdigit($password)) {
+			$psk = strtolower($password);          // already a raw key
+		} else if (strlen($password) >= 8 && strlen($password) <= 63) {
+			$psk = hash_pbkdf2('sha1', $password, $ssid, 4096, 64);
+		} else {
+			done(false, 'a WPA password is 8-63 characters');
+		}
+		return array($psk, $psk, '');            // moOde stores the key, not the passphrase
+	}
+	if ($security === 'sae') {
+		if (strlen($password) < 8 || strlen($password) > 63) done(false, 'a WPA3 password is 8-63 characters');
+		return array('', $password, $password);  // SAE needs the plaintext
+	}
+	done(false, 'unknown security type');
+}
+
+// --- join ------------------------------------------------------------------------
+
+function action_join($dbh, $in) {
+	$ssid = isset($in['ssid']) ? (string)$in['ssid'] : '';
+	$password = isset($in['password']) ? (string)$in['password'] : '';
+	$security = isset($in['security']) ? (string)$in['security'] : 'auto';
+	$reboot = !(isset($in['reboot']) && $in['reboot'] === false);
+
+	check_ssid($ssid);
+	if (preg_match('/[\x00-\x1f\x7f]/', $password)) done(false, 'password has control characters');
+	if ($security === 'auto') $security = $password === '' ? 'none' : 'wpa-psk';
+	list($psk, $pwd, $saepwd) = wpa_key($ssid, $password, $security);
+
+	$cur = $dbh->query("SELECT wlancc FROM cfg_network WHERE iface='wlan0'")->fetch(PDO::FETCH_ASSOC);
+	$uuid = trim(file_get_contents('/proc/sys/kernel/random/uuid'));
+
+	$st = $dbh->prepare("UPDATE cfg_network SET method='dhcp', ipaddr='', netmask='', gateway='',
+		pridns='', secdns='', wlanssid=:ssid, wlanuuid=:uuid, wlanpwd=:pwd, wlanpsk=:psk,
+		wlancc=:cc, wlansec=:sec WHERE iface='wlan0'");
+	$st->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':pwd' => $pwd, ':psk' => $psk,
+		':cc' => $cur ? $cur['wlancc'] : '', ':sec' => $security));
+
+	// moOde's "saved networks" list, so the Network page offers it next time
+	// too. The network it replaces stays in that list: if the new one fails at
+	// boot, NetworkManager falls back to it (cfgNetworks writes saved ones too).
+	$dbh->prepare("DELETE FROM cfg_ssid WHERE ssid=:ssid")->execute(array(':ssid' => $ssid));
+	$dbh->prepare("INSERT INTO cfg_ssid (ssid, uuid, psk, method, ipaddr, netmask, gateway, pridns, secdns,
+		security, saepwd) VALUES (:ssid, :uuid, :psk, 'dhcp', '', '', '', '', '', :sec, :sae)")
+		->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':psk' => $psk, ':sec' => $security, ':sae' => $saepwd));
+
+	cfgNetworks();
+
+	if (!$reboot) {
+		sh(array('/usr/bin/nmcli', 'connection', 'reload'));
+		done(true);
+	}
+	// At boot moOde tries the new network (NetworkManager also any saved
+	// one); if none answers within 90 s, the hotspot comes back for another go.
+	if (!schedule_reboot()) done(false, 'saved, but could not schedule the restart - power-cycle the radio');
+	done(true);
+}
+
+// --- hotspot password / repair -------------------------------------------------
+
+function action_hotspot($dbh, $in) {
+	$row = $dbh->query("SELECT wlanssid, wlanuuid, wlanpsk FROM cfg_network WHERE iface='apd0'")->fetch(PDO::FETCH_ASSOC);
+	if (!$row) done(false, 'moOde has no hotspot settings');
+	$used = isset($in['password']) && (string)$in['password'] !== '';
+	if (!empty($in['ensure'])) {
+		$cur = @file_get_contents(HOTSPOT_FILE);
+		$has_addr = $cur !== false && preg_match('/^address1=\d/m', $cur);
+		if ($row['wlanpsk'] !== '') {
+			$used = false;                     // it has one: never replace it
+			if ($has_addr) done(true, '', array('changed' => false, 'password_used' => false));
+		}
+	}
+	$ssid = $row['wlanssid'] !== '' ? $row['wlanssid'] : 'Hasler';
+	$uuid = $row['wlanuuid'] !== '' ? $row['wlanuuid'] : trim(file_get_contents('/proc/sys/kernel/random/uuid'));
+	if ($used) {
+		$password = (string)$in['password'];
+		if (strlen($password) < 8 || strlen($password) > 63 || preg_match('/[\x00-\x1f\x7f]/', $password)) {
+			done(false, 'a hotspot password is 8-63 characters');
+		}
+		$psk = hash_pbkdf2('sha1', $password, $ssid, 4096, 64);
+		$dbh->prepare("UPDATE cfg_network SET wlanssid=:ssid, wlanuuid=:uuid, wlanpwd=:psk, wlanpsk=:psk,
+			wlansec='wpa-psk' WHERE iface='apd0'")->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':psk' => $psk));
+	}
+	$addr = moode_session($dbh);
+	cfgNetworks();
+	// Only the hotspot's file changes in substance (the others are written
+	// again as they were): re-read just that one, the connection in use stays.
+	sh(array('/usr/bin/nmcli', 'connection', 'load', HOTSPOT_FILE));
+	$check = $dbh->query("SELECT wlanpsk FROM cfg_network WHERE iface='apd0'")->fetch(PDO::FETCH_ASSOC);
+	done(true, '', array('ssid' => $ssid, 'address' => $addr, 'password_set' => $check && $check['wlanpsk'] !== '',
+		'changed' => true, 'password_used' => $used));
+}
+
+// --- scan / retry ------------------------------------------------------------------
+
+// The connection NetworkManager has on wlan0 ('' if none).
+function wlan0_connection() {
+	sh(array('/usr/bin/nmcli', '-t', '-g', 'GENERAL.CONNECTION', 'device', 'show', 'wlan0'), $out);
+	return isset($out[0]) ? nm_unescape(trim($out[0])) : '';
+}
+
+function wlan0_ipv4() {
+	sh(array('/usr/bin/ip', '-4', '-o', 'addr', 'show', 'dev', 'wlan0'), $out);
+	foreach ($out as $line) {
+		if (preg_match('#\binet (\d+\.\d+\.\d+\.\d+)/#', $line, $m)) return $m[1];
+	}
+	return '';
+}
+
+// SSID => true for what `iw ... scan ap-force` sees, or null if the chip can't
+// scan while it is a hotspot. (A numeric SSID becomes an int key: look up with isset.)
+function iw_scan(&$raw = null) {
+	$rc = sh(array('/usr/sbin/iw', 'dev', 'wlan0', 'scan', 'ap-force'), $out);
+	$raw = implode("\n", $out);
+	if ($rc !== 0) return null;
+	$seen = array();
+	foreach ($out as $line) {
+		if (preg_match('/^\s*SSID: (.+)$/', $line, $m)) $seen[stripcslashes($m[1])] = true;
+	}
+	return $seen;
+}
+
+// The same through NetworkManager - only once the hotspot is down.
+function nm_scan() {
+	sh(array('/usr/bin/nmcli', 'device', 'wifi', 'rescan'));
+	sleep(6);
+	sh(array('/usr/bin/nmcli', '-t', '-f', 'SSID', 'device', 'wifi', 'list'), $out);
+	$seen = array();
+	foreach ($out as $line) {
+		$s = nm_unescape(trim($line));
+		if ($s !== '') $seen[$s] = true;
+	}
+	return $seen;
+}
+
+function hotspot_up($id) {
+	for ($i = 0; $i < 3; $i++) {
+		if (sh(array('/usr/bin/nmcli', '-w', '30', 'connection', 'up', 'id', $id)) === 0) return true;
+		sleep(3);
+	}
+	return false;
+}
+
+function action_scan($dbh, $in) {
+	iw_scan($raw);
+	done(true, '', array('iw' => $raw));
+}
+
+function action_retry($dbh, $in) {
+	$force = !empty($in['force']);
+	$ap = $dbh->query("SELECT wlanssid FROM cfg_network WHERE iface='apd0'")->fetch(PDO::FETCH_ASSOC);
+	$hotspot = $ap ? (string)$ap['wlanssid'] : '';
+	if ($hotspot === '' || wlan0_connection() !== $hotspot) done(true, '', array('result' => 'not-hotspot'));
+
+	// What to look for: moOde's network first, then the saved ones.
+	$home = $dbh->query("SELECT wlanssid FROM cfg_network WHERE iface='wlan0'")->fetch(PDO::FETCH_ASSOC);
+	$home = $home ? (string)$home['wlanssid'] : '';
+	if ($home === 'Activate Hotspot') done(true, '', array('result' => 'no-network'));   // hotspot on purpose
+	$want = array();
+	if ($home !== '' && !in_array($home, RESERVED, true)) $want[] = $home;
+	foreach ($dbh->query("SELECT ssid FROM cfg_ssid") as $r) {
+		$s = (string)$r['ssid'];
+		if ($s !== '' && $s !== $hotspot && !in_array($s, RESERVED, true) && !in_array($s, $want, true)) $want[] = $s;
+	}
+	if (!$want) done(true, '', array('result' => 'no-network'));
+
+	// A phone on the hotspot is somebody setting the radio up: leave them be.
+	sh(array('/usr/sbin/iw', 'dev', 'wlan0', 'station', 'dump'), $st);
+	$stations = count(preg_grep('/^Station /', $st));
+	if ($stations > 0 && !$force) done(true, '', array('result' => 'busy', 'stations' => $stations));
+
+	// Look without dropping the hotspot, where the chip allows it.
+	$seen = iw_scan();
+	if ($seen !== null) {
+		$any = false;
+		foreach ($want as $s) if (isset($seen[$s])) $any = true;
+		if (!$any) done(true, '', array('result' => 'not-visible'));
+	}
+
+	sh(array('/usr/bin/nmcli', '-w', '15', 'connection', 'down', 'id', $hotspot));
+	if ($seen === null) $seen = nm_scan();
+	$result = 'not-visible';
+	$reason = '';
+	foreach ($want as $ssid) {
+		if (!isset($seen[$ssid])) continue;
+		$rc = sh(array('/usr/bin/nmcli', '-w', '45', 'connection', 'up', 'id', $ssid), $out);
+		if ($rc === 0 && wlan0_ipv4() !== '' && wlan0_connection() === $ssid) {
+			// On a real network again. Restart, so moOde (which still thinks it
+			// is a hotspot) and everything that bound at boot start clean.
+			schedule_reboot();
+			done(true, '', array('result' => 'joined', 'ssid' => $ssid));
+		}
+		$result = 'failed';
+		if (preg_grep('/[Ss]ecrets were required/', $out)) $reason = 'secrets';
+		sh(array('/usr/bin/nmcli', '-w', '10', 'connection', 'down', 'id', $ssid));
+	}
+	if (!hotspot_up($hotspot)) {
+		// NetworkManager keeps trying the saved networks by itself; a restart
+		// brings moOde's hotspot back. Say so rather than pretend.
+		done(false, 'the hotspot did not come back - restart the radio', array('result' => $result));
+	}
+	done(true, '', array('result' => $result, 'reason' => $reason));
+}
+
+// --- main ----------------------------------------------------------------------
 
 if (posix_geteuid() !== 0) done(false, 'must run as root');
 
 $in = json_decode(stream_get_contents(STDIN), true);
 if (!is_array($in)) done(false, 'expected a JSON object on stdin');
-
-$ssid = isset($in['ssid']) ? (string)$in['ssid'] : '';
-$password = isset($in['password']) ? (string)$in['password'] : '';
-$security = isset($in['security']) ? (string)$in['security'] : 'auto';
-
-// An SSID is 1-32 bytes. moOde also uses it as a file name and an ini value,
-// so no slashes, newlines or control characters, and not its own magic words.
-if (strlen($ssid) < 1 || strlen($ssid) > 32) done(false, 'network name must be 1-32 characters');
-if (preg_match('/[\x00-\x1f\x7f\/\\\\]/', $ssid)) done(false, 'network name has characters moOde cannot store');
-if (in_array($ssid, array('None', 'Activate Hotspot'), true)) done(false, 'that name is reserved');
-if (preg_match('/[\x00-\x1f\x7f]/', $password)) done(false, 'password has control characters');
-
-if ($security === 'auto') $security = $password === '' ? 'none' : 'wpa-psk';
-
-if ($security === 'none') {
-	$psk = ''; $pwd = ''; $saepwd = '';
-} else if ($security === 'wpa-psk') {
-	if (strlen($password) === 64 && ctype_xdigit($password)) {
-		$psk = strtolower($password);          // already a raw key
-	} else if (strlen($password) >= 8 && strlen($password) <= 63) {
-		$psk = hash_pbkdf2('sha1', $password, $ssid, 4096, 64);
-	} else {
-		done(false, 'a WPA password is 8-63 characters');
-	}
-	$pwd = $psk; $saepwd = '';               // moOde stores the key, not the passphrase
-} else if ($security === 'sae') {
-	if (strlen($password) < 8 || strlen($password) > 63) done(false, 'a WPA3 password is 8-63 characters');
-	$psk = ''; $pwd = $password; $saepwd = $password;   // SAE needs the plaintext
-} else {
-	done(false, 'unknown security type');
-}
+$action = isset($in['action']) ? (string)$in['action'] : 'join';
+if (!in_array($action, array('join', 'retry', 'scan', 'hotspot'), true)) done(false, 'unknown action');
 
 chdir('/var/www');
 require_once '/var/www/inc/common.php';
@@ -66,26 +321,9 @@ require_once '/var/www/inc/network.php';
 
 $dbh = sqlConnect();
 if (!$dbh) done(false, 'cannot open the moOde database');
+moode_session($dbh);
 
-$cur = $dbh->query("SELECT wlancc FROM cfg_network WHERE iface='wlan0'")->fetch(PDO::FETCH_ASSOC);
-$uuid = trim(file_get_contents('/proc/sys/kernel/random/uuid'));
-
-$st = $dbh->prepare("UPDATE cfg_network SET method='dhcp', ipaddr='', netmask='', gateway='',
-	pridns='', secdns='', wlanssid=:ssid, wlanuuid=:uuid, wlanpwd=:pwd, wlanpsk=:psk,
-	wlancc=:cc, wlansec=:sec WHERE iface='wlan0'");
-$st->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':pwd' => $pwd, ':psk' => $psk,
-	':cc' => $cur ? $cur['wlancc'] : '', ':sec' => $security));
-
-// moOde's "saved networks" list, so the Network page offers it next time too.
-$dbh->prepare("DELETE FROM cfg_ssid WHERE ssid=:ssid")->execute(array(':ssid' => $ssid));
-$dbh->prepare("INSERT INTO cfg_ssid (ssid, uuid, psk, method, ipaddr, netmask, gateway, pridns, secdns,
-	security, saepwd) VALUES (:ssid, :uuid, :psk, 'dhcp', '', '', '', '', '', :sec, :sae)")
-	->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':psk' => $psk, ':sec' => $security, ':sae' => $saepwd));
-
-cfgNetworks();
-
-// Reboot a moment later, so the page gets its answer first. At boot moOde
-// tries the new network; if it fails, the hotspot comes back for another go.
-exec('/usr/bin/systemd-run --quiet --on-active=4 /usr/bin/systemctl reboot 2>&1', $out, $rc);
-if ($rc !== 0) done(false, 'saved, but could not schedule the restart - power-cycle the radio');
-done(true);
+if ($action === 'join') action_join($dbh, $in);
+if ($action === 'hotspot') action_hotspot($dbh, $in);
+if ($action === 'scan') action_scan($dbh, $in);
+action_retry($dbh, $in);

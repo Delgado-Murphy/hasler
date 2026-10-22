@@ -5,7 +5,8 @@ controller with the same ``set_rgb``. gpiozero's RGBLED does the PWM in
 software through lgpio, so it needs no PWM peripheral - the Pi's own
 analogue audio claims that - and dims, pulses and mixes any colour.
 
-Wiring is in docs/hardware.md. ``common`` must match the LED: ``cathode``
+Superseded by lamp/ (engine + outputs, docs/lamp.md); kept for the old
+``Lamp`` in hw/powerctl.py. Wiring is in the descriptor's ``io.lamp``. ``common`` must match the LED: ``cathode``
 (long leg to GND, GPIO high = on) or ``anode`` (long leg to 3V3, GPIO low
 = on). Get it backwards and the colours come out inverted, nothing worse.
 """

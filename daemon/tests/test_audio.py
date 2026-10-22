@@ -110,13 +110,13 @@ def test_settings_report_mono(app):
 def test_put_mono_applies_and_persists(app, tmp_path):
     doc = app.put_settings({"mono": True})
     assert doc["mono"]["on"] is True
-    assert load_settings(tmp_path / "settings.json") == {"mono": True}
+    assert load_settings(tmp_path / "settings.json") == {"schema": 1, "mono": True}
     assert doc["volume_limit"] == 70                 # untouched
 
 
 def test_put_both_at_once(app, tmp_path):
     app.put_settings({"mono": False, "volume_limit": 60})
-    assert load_settings(tmp_path / "settings.json") == {"mono": False, "volume_limit": 60}
+    assert load_settings(tmp_path / "settings.json") == {"schema": 1, "mono": False, "volume_limit": 60}
 
 
 @pytest.mark.parametrize("body", [{"mono": "yes"}, {"mono": 1}, {}, {"other": True}])

@@ -1,0 +1,18 @@
+# Shipped in every release (integration/systemd); haslerd.service pulls it in
+# at boot (Wants=), so no `systemctl enable` is needed. docs/using.md "Wi-Fi".
+[Unit]
+Description=Hasler: Wi-Fi from hasler-wifi.txt on the SD card's boot partition
+# Only when the file is there. Before rc-local, which starts moOde's worker:
+# the worker's 90 s wait for an address (then its hotspot) sees the network.
+ConditionPathExists=/boot/firmware/hasler-wifi.txt
+After=NetworkManager.service local-fs.target
+Wants=NetworkManager.service
+Before=rc-local.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hasler-wifi-rescue
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

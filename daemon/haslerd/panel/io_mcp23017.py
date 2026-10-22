@@ -21,11 +21,12 @@ an error - better a clear refusal than reading the wrong one.
 
 **Reset recovery.** A supply dip or ESD on the cabinet ribbon can reset the
 chip, and its registers go back to power-on defaults: IPOL = 0, so every open
-contact reads as pressed. Every ``read`` reads IPOLA/IPOLB back with the
-ports; if they are not what was written it re-runs the setup and returns the
-last good sample instead (so a reset never shows up as every key pressed). An
-I2C error in the reset check or the setup is logged and retried on the next
-read, never raised into the poll loop.
+contact reads as pressed (and the pull-ups are off). Every ``read`` reads
+IPOLA/IPOLB back before the ports; if they are not what was written it re-runs
+the setup and returns the last good sample instead, so a reset never shows up
+as every key pressed - not even for one poll, which would be enough to fire
+taps or arm the end switch. An I2C error in the check or the setup is logged
+and retried on the next read, never raised into the poll loop.
 """
 
 from __future__ import annotations
@@ -115,10 +116,7 @@ class Mcp23017Digital:
     def _reset_seen(self) -> bool:
         """True if the chip has reset since it was set up (and set it up again)."""
         try:
-            ipol = (
-                self._bus.read_byte_data(self.addr, IPOLA),
-                self._bus.read_byte_data(self.addr, IPOLB),
-            )
+            ipol = tuple(self._bus.read_i2c_block_data(self.addr, IPOLA, 2))
             if ipol == (0xFF, 0xFF):
                 return False
             log.warning(
@@ -133,8 +131,11 @@ class Mcp23017Digital:
     def read(self) -> dict[str, bool]:
         if self._reset_seen():
             return dict(self._last)
-        a = self._bus.read_byte_data(self.addr, GPIOA)
-        b = self._bus.read_byte_data(self.addr, GPIOB)
+        # GPIOA and GPIOB in one transaction: the register pointer steps from
+        # 0x12 to 0x13 by itself (IOCON.BANK=0, SEQOP=0 - the power-on
+        # defaults, which nothing here changes). With the IPOL check, two I2C
+        # transfers per poll at 50 Hz.
+        a, b = self._bus.read_i2c_block_data(self.addr, GPIOA, 2)
         word = a | (b << 8)
         self._last = {name: bool(word & (1 << int(name[1:]))) for name in self.names}
         return dict(self._last)

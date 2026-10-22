@@ -24,8 +24,13 @@ DEFAULT_PORT = 53
 DEFAULT_INTERVAL_S = 10.0
 DEFAULT_TIMEOUT_S = 2.0
 # moOde's fallback hotspot ("Hasler", started when no known Wi-Fi answers at
-# boot) always puts the Pi at this address.
+# boot) puts the Pi at this address (cfg_system ap_network_addr). A hotspot
+# profile written without it (scripts/hasler-wifi-join before 2026-10-21, or
+# moOde's cfgNetworks run outside moOde) lands on NetworkManager's default for
+# shared connections instead: still setup mode, so both count.
 HOTSPOT_ADDR = "172.24.1.1"
+NM_SHARED_ADDR = "10.42.0.1"
+HOTSPOT_ADDRS = (HOTSPOT_ADDR, NM_SHARED_ADDR)
 
 
 def tcp_probe(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, timeout: float = DEFAULT_TIMEOUT_S) -> bool:
@@ -36,18 +41,25 @@ def tcp_probe(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, timeout: float
         return False
 
 
-def hotspot_probe(addr: str = HOTSPOT_ADDR) -> bool:
-    """True while the Pi itself owns the hotspot address.
+def hotspot_address(addrs: str | tuple[str, ...] = HOTSPOT_ADDRS) -> str:
+    """The hotspot address the Pi itself owns right now, or "".
 
     Binding to an address only works if one of our interfaces has it, so this
     answers without shelling out to nmcli or ip.
     """
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-            sock.bind((addr, 0))
-        return True
-    except OSError:
-        return False
+    for addr in (addrs,) if isinstance(addrs, str) else addrs:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.bind((addr, 0))
+            return addr
+        except OSError:
+            continue
+    return ""
+
+
+def hotspot_probe(addrs: str | tuple[str, ...] = HOTSPOT_ADDRS) -> bool:
+    """True while the Pi is moOde's setup hotspot."""
+    return bool(hotspot_address(addrs))
 
 
 class Connectivity:
@@ -102,7 +114,7 @@ class Connectivity:
             except Exception:
                 hotspot = False
             if hotspot != self.hotspot:
-                log.info("Wi-Fi hotspot %s", "up - join 'Hasler', open http://172.24.1.1" if hotspot else "down")
+                log.info("Wi-Fi hotspot %s", "up - setup mode: join its Wi-Fi, the page is http://172.24.1.1:8080/wifi" if hotspot else "down")
             self.hotspot = hotspot
         finally:
             self._busy.release()

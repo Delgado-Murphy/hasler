@@ -1,0 +1,9 @@
+#!/bin/sh
+# Hasler first boot (docs/new-install.md). cloud-init runs this once, on the
+# first boot that finds it on the boot partition. It only starts the installer
+# that sits next to it; the installer checks every download against the Hasler
+# root key before it runs anything from it.
+if [ -f /boot/firmware/hasler-install ]; then
+  exec /usr/bin/python3 -I /boot/firmware/hasler-install hook
+fi
+echo "hasler: /boot/firmware/hasler-install not found - nothing to do"

@@ -1,0 +1,106 @@
+# Every push and PR: ruff + pytest. Also called by release.yml before a build.
+# Jobs run in parallel; `test` gathers them so branch protection keeps
+# requiring a single `ci / test` check.
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR cancels the older run. Never for tags
+# (release.yml calls this on a tag; github.event_name is the caller's there).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/ci-requirements.txt
+      - run: python -m pip install -q "$(grep '^ruff==' .github/ci-requirements.txt)"
+      - name: Ruff
+        # Syntax errors and undefined names only for now; widen the rule set
+        # once the existing code is clean under it.
+        run: ruff check --isolated --select E9,F63,F7,F82 daemon scripts update
+
+  pytest:
+    name: pytest (${{ matrix.suite }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: daemon
+            dir: daemon
+            args: ""
+          - suite: updater
+            dir: update
+            args: tests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"   # trixie's python3, what the boxes run
+          cache: pip
+          cache-dependency-path: |
+            .github/ci-requirements.txt
+            daemon/pyproject.toml
+      - name: Tools
+        run: |
+          if ! command -v zstd >/dev/null || ! command -v ssh-keygen >/dev/null; then
+            sudo apt-get install -y -q zstd openssh-client
+          fi
+          python -m pip install -q -r .github/ci-requirements.txt
+      - name: Pytest (xdist)
+        working-directory: ${{ matrix.dir }}
+        run: python -m pytest -q -n auto ${{ matrix.args }}
+
+  release-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"   # stdlib only, no pip installs
+      - name: Tools
+        run: command -v zstd >/dev/null || sudo apt-get install -y -q zstd
+      - name: Release builder smoke test (no wheels)
+        run: |
+          v="$(sed -n 's/^version *= *"\(.*\)"/\1/p' daemon/pyproject.toml)"
+          python scripts/release/build_release.py --version "$v" --out "$RUNNER_TEMP/dist" --no-wheels
+          python scripts/release/make_manifest.py check --release "$RUNNER_TEMP/dist/release.json" \
+            --tarball "$RUNNER_TEMP/dist/hasler-$v-arm64.tar.zst"
+
+  # The required status check: green only if every job above is green.
+  test:
+    needs: [lint, pytest, release-smoke]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: All jobs green
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || exit 1; done

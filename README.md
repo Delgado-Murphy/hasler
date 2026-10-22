@@ -2,92 +2,123 @@
 
 <sub><i>A Delgado &amp; Murphy restoration</i></sub>
 
-A gutted **Hasler HM** (Bern, ~1964) — a Telefónica *Hilo Musical* wired-music receiver whose
-piano keys once selected preset music channels over the telephone line — rebuilt around a
-Raspberry Pi. Tap a key, get a radio station, a Spotify playlist or a YouTube Music playlist — no
-phone, no cloud app, no Home Assistant needed. Plus Bluetooth, AirPlay, Spotify Connect and DLNA,
-and Home Assistant if you want it.
+<p align="center">
+  <img src="docs/img/hasler.jpg" width="720"
+       alt="The Hasler HAT, rev A: a green circuit board the size of a Raspberry Pi, with the cabinet's ribbon-cable connector along the bottom edge, a green 20 V power terminal at the left and 'Delgado &amp; Murphy, Hasler HAT rev A 2026' printed on it">
+</p>
 
-```
-keys ──▶ digital backend ─┐            ┌──▶ MPD (moOde) ◀── radio: stream URL
-         (GPIO │ MCP23017)│            │       ▲
-wheels ─▶ analog backend ─┼──▶ haslerd ┤       └── ytm: :8099/ytm/<id> ──302──▶ yt-dlp-resolved stream
-         (none │ ADS1115) │       │    │
-RGB lamp ─▶ Power Controller      │    └──▶ go-librespot :3678 ◀── spotify: playlist URI
-                                  │
-                                  └──▶ Home Assistant (optional - key actions, now-playing sensor)
+A Swiss radio from the 1960s that plays music again.
 
-MPD │ go-librespot │ BT │ AirPlay ──▶ Amp4 Pro (hardware mixer = the knob) ──▶ original speaker
-```
+The **Hasler HM** was built in Bern around 1964 for Telefónica's *Hilo Musical*,
+a service that sent music to homes over the telephone line. Its piano keys chose
+one of six music channels. We took out the old electronics and put a small
+computer (a Raspberry Pi) and a modern amplifier inside. The keys, the knobs,
+the pilot lamp and the original speaker all still work.
 
-**Not a one-cabinet project.** An *Excelsior* and others are waiting, and their panels behave
-completely differently — momentary keys here, a mechanically interlocked bank there. So the panel
-is **data, not code**: one daemon, five control primitives, a YAML descriptor per cabinet.
+<!-- docs/img/hasler.jpg is a render of the HAT board for now; swap in a photo of the finished cabinet when there is one. -->
 
-## Presets
+## What it can do
 
-One source per key, in the cabinet's descriptor:
+- **Press a key, hear music.** Each of the six keys plays an internet radio
+  station, a Spotify playlist or a YouTube Music playlist. No phone, no app.
+- **Be a speaker for your phone** with Spotify Connect (guests on your Wi-Fi
+  too), AirPlay, Bluetooth or other music apps (UPnP/DLNA). It remembers your
+  Bluetooth phones and calls the last one when you switch to Bluetooth.
+- **Play in several rooms.** Two or more Haslers play the same music in step:
+  tap *Also play on…* and the kitchen joins the living room. Each radio keeps
+  its own volume and its own room name (*Hasler Kitchen*).
+- **Two knobs, like the old radio.** Volume works for everything, with a
+  ceiling that protects the old speaker. Tone makes the sound warmer or
+  brighter (or one of several other effects), and clicks off to put the radio
+  to sleep.
+- **A pilot lamp that talks:** amber for the radio, blue for a phone, a dim
+  ember when asleep, dark when it is safe to unplug.
+- **A key page** in your browser (`http://hasler.local:8080`) to choose the
+  music on each key and change settings.
+- **Safe updates.** Small ones install by themselves at night, in standby;
+  bigger ones ask first. If an update doesn't work, the radio goes back to the
+  version before by itself.
+- **Home Assistant**, if you want it: a held key can run a scene or set the
+  lights, and the [Hasler Radio integration](https://github.com/Delgado-Murphy/hasler-homeassistant)
+  shows each radio in Home Assistant. Everything else works without it.
 
-```yaml
-presets:
-  - {n: 1, name: "Jazz",    radio: "http://example.com/jazz.mp3"}
-  - {n: 2, name: "Morning", spotify: "spotify:playlist:<id>", shuffle: true}
-  - {n: 3, name: "Kitchen", ytm: "https://music.youtube.com/playlist?list=<id>"}
-  - {n: 4, name: "Legacy",  url: "http://example.com/stream"}   # plain url: still means radio
-```
+New to your Hasler? [Using your Hasler](docs/using.md) starts with the first
+ten minutes.
 
-Tap a key to play it. Tap a playing playlist key again to skip. The last preset survives a
-power-cycle. **Spotify needs Premium** — go-librespot is a Connect device, logged in once over SSH;
-no Web API, no developer app. YouTube Music needs nothing for public playlists and a `cookies.txt`
-for private ones. Setup: [build guide, Phase 3c](docs/build-guide.md#phase-3c--streaming-sources-spotify--youtube-music).
+## Where to start
 
-## Layout
-
-| | |
+| You are... | Read this |
 |---|---|
-| `daemon/haslerd/` | the service. `panel/` holds the IO backends and control primitives |
-| `config/variants/` | one descriptor per cabinet — `hasler-hm.yaml` (prototype stripboard), `hasler-hm-hat.yaml` (on the Hasler HAT), `excelsior.yaml` |
-| `config/` | `haslerd.yaml.example`, systemd units, go-librespot config template |
-| `scripts/install.sh` | idempotent installer: haslerd, go-librespot, yt-dlp + deno. `--dry-run` first |
-| `scripts/panel-probe.py` | live view of the panel. Wire against this |
-| `docs/hardware.md` | bill of materials, GPIO map, and the two steps that can destroy something |
-| `hardware/hat/` | the Hasler HAT PCB: KiCad project generated from `gen/design.py`; order with `ORDERING.md`, decisions and rebuild in `docs/hat/DESIGN.md` |
+| **Living with a Hasler** and want to know how to use it | [Using your Hasler](docs/using.md) |
+| **Building one** | [Build guide](docs/build-guide.md), then [Hardware](docs/hardware.md) |
+| **Helping with the code** | [Contributing](docs/contributing.md) |
+| **Curious what changed** | [Releases](https://delgado-murphy.github.io/hasler-releases/) and the [changelog](CHANGELOG.md) |
 
-## Wiring the panel
+## All the documents
 
-Cables into any eight GPIOs, then let the Pi work out which is which:
+**For owners**
 
-```sh
-scripts/panel-probe.py --identify        # actuate each key, get the pins: array
-scripts/panel-probe.py                   # live view - check for bounce and ghosting
+- [Using your Hasler](docs/using.md): the first ten minutes, keys, knobs, lamp, phones, several rooms, the key page, Wi-Fi, updates, and what to do when something is wrong.
+- [The pilot lamp](docs/lamp.md): every colour and what it means, in detail.
+- [Remote help](docs/remote-help.md): letting the makers look at your radio from afar, for 24 hours, and what they can see.
+
+**For makers**
+
+- [Build guide](docs/build-guide.md): from an empty cabinet to a working radio, step by step.
+- [A new SD card](docs/new-install.md): the radio's software from a blank card, headless, from a signed release.
+- [Hardware](docs/hardware.md): parts list, wiring, power and protection.
+- [The knobs' sound effects](docs/sound.md): the tone knob's effects and how a cabinet's knobs get them.
+- [Multiroom and casting](docs/multiroom.md): how Haslers play in step (Snapcast), room names, AirPlay, UPnP, Bluetooth, Spotify.
+- [Hasler HM panel survey](docs/variants/hasler-hm.md): measuring this cabinet's keys, knobs and speaker.
+- [Prototype board](docs/prototype/README.md), and the Hasler HAT: [brief](docs/hat/BRIEF.md), [design](docs/hat/DESIGN.md), [ordering and bring-up](hardware/hat/ORDERING.md).
+
+**For contributors and maintainers**
+
+- [Contributing](docs/contributing.md): code layout, tests, how a cabinet's panel is described.
+- [Over-the-air updates](docs/ota.md): how updates stay safe.
+- [Releasing](docs/release.md): how a new version is built, signed and published.
+- [OTA formats](docs/ota-format.md): the exact file formats (a contract between the builder and the radio).
+
+## How it works, in one picture
+
+```
+keys ───▶ MCP23017 (or Pi GPIO) ──┐
+knobs ──▶ ADS1115 ────────────────┤
+                                  ▼
+                               haslerd ──▶ pilot lamp
+                    ┌─────────────┼──────────────┬───────────────────┐
+                    ▼             ▼              ▼                   ▼
+             MPD (moOde)    go-librespot     key page :8080    Home Assistant
+          radio, YouTube      Spotify                            (optional)
+              Music
+
+MPD │ go-librespot │ Bluetooth │ AirPlay │ UPnP ──▶ Amp4 Pro (hardware mixer = the knob) ──▶ original speaker
+                         │
+                         └─ in a group: Snapcast ──▶ the other Haslers (each through its own amp and knob)
 ```
 
-`--identify` prints a corrected `io.digital.pins` array to paste into the descriptor. Control
-assignments (`k1: d0`, …) never move; only that one array is reordered.
+`haslerd` is our small service on the Pi. It reads the keys and knobs, starts
+the music, drives the lamp and serves the key page. The music system underneath
+is [moOde audio](https://moodeaudio.org/). Bluetooth, AirPlay (shairport-sync)
+and UPnP come from moOde; Spotify comes from go-librespot; YouTube Music
+streams are found by yt-dlp; the tone knob's effects run in CamillaDSP
+([sound.md](docs/sound.md)). Several Haslers play in step through
+[Snapcast](https://github.com/badaix/snapcast) ([multiroom.md](docs/multiroom.md)).
 
-Watch for: each key lighting its own row and nobody else's, and the TRANSITIONS column staying in
-low single digits per press. Tens means dirty contacts or a missing 100 nF — fix it in hardware
-before it becomes the daemon's problem.
+**More cabinets are coming.** An *Excelsior* and others are waiting, and their
+panels work differently (for example, keys that lock down). So the panel is
+**data, not code**: one service, a few control types, and one YAML file per
+cabinet in `config/variants/`.
 
-No hardware to hand? `--fake` runs the whole thing on a laptop with 0–9 toggling inputs.
+## Licence
 
-## Develop
-
-```sh
-cd daemon && uv venv --python 3.11 && uv pip install -e ".[dev]"
-.venv/bin/python -m pytest -q
-```
-
-The panel is a pure function of (time, input snapshot) → events, with time passed in rather than
-read from the clock — so a 5-second hold costs nothing to test and the Excelsior can be developed
-before it is wired. On the Pi, add the hardware extras: `uv pip install -e ".[pi]"`.
-
-## Why not a Volumio plugin
-
-That was attempt one, and an ESPHome device was attempt two. Both failed the same way — code living
-inside someone else's sandbox, half-working with no way to see why. moOde is plain Raspberry Pi OS
-+ MPD with a documented REST API, so this is an ordinary systemd service that we own end to end,
-and `panel-probe` means the hardware is never a black box.
+Hasler's code is [MIT](LICENSE). Two exceptions: the moOde patch in
+`config/moode/` is GPL-3.0-or-later, because it changes moOde
+([config/moode/LICENSE](config/moode/LICENSE)), and the HAT hardware design in
+`docs/hat/` is [CERN-OHL-P-2.0](docs/hat/LICENSE). Releases also bundle
+go-librespot (GPL-3.0), Deno (MIT), two fonts (SIL OFL 1.1) and Python
+packages under their own licences; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+lists them, and every release carries it with the full texts in `licenses/`.
 
 ---
 

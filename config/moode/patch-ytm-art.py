@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Delgado & Murphy (Bill Murphy)
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Modifies moOde audio player (GPL-3.0-or-later); see LICENSE in this directory.
 """Make moOde's player handle haslerd's YouTube Music tracks well.
 
 moOde treats our tracks (http://127.0.0.1:8099/ytm/<id>, tagged with Artist)

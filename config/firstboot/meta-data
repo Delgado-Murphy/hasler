@@ -1,0 +1,5 @@
+# Hasler first boot: cloud-init needs this file to read the others here
+# (user-data, vendor-data, network-config). Raspberry Pi Imager writes none of
+# them for moOde (it uses firstrun.sh). If Imager made its own meta-data, keep
+# Imager's and skip this one.
+instance-id: hasler-first-boot

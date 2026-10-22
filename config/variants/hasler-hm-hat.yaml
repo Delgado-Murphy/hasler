@@ -6,10 +6,15 @@
 # to three Pi GPIOs. The cabinet's 16-wire ribbon is crimped into a 26-way
 # IDC plug flush to pin 1, so wire n lands on J2 pin n (17-26 empty).
 #
-# Deploy this only once the HAT is fitted: point haslerd.service's --variant here.
-# Until then hasler-hm.yaml (the prototype stripboard's mapping) stays live; this
-# file on the stripboard would read the keys on the wrong pins and the end switch as
-# off (standby at boot; no shutdown, since it never reads on).
+# Use this only once the HAT is fitted: `variant: hasler-hm-hat` in
+# /etc/hasler/box.yaml (or `haslerd --variant hasler-hm-hat` on a box without
+# box.yaml). Until then hasler-hm.yaml (the prototype stripboard's mapping) stays
+# live; this file on the stripboard would read the keys on the wrong pins and the
+# end switch as off (standby at boot; no shutdown, since it never reads on).
+# The descriptor's name stays hasler-hm (same cabinet), so the box's calibration
+# overlay /etc/hasler/variant.d/hasler-hm.yaml applies to both.
+# Calibration below is the stripboard's (hasler-hm.yaml, 19 Oct): the same pots
+# on the same ADS channels, 3V3A instead of the Pi's 3.3 V - re-check on the HAT.
 variant: hasler-hm
 
 io:
@@ -35,10 +40,14 @@ io:
     addr: 0x48
   # Pilot lamp: the cabinet's 4-leg RGB LED. Its resistors sit on the HAT
   # (220/100/100 ohm); the common anode is J2-12 (3V3A).
+  # docs/lamp.md. pwm-sysfs = the kernel pwm-gpio overlays on 17/22/27
+  # (config.txt), hrtimer PWM at 800 Hz; `backend: gpio` (software PWM) is the
+  # fallback, used anyway with a warning if the overlays are missing.
   lamp:
-    backend: gpio
+    backend: pwm-sysfs
     pins: {red: 17, green: 22, blue: 27}   # J2-13, J2-15, J2-16 - Pi header 11, 15, 13
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
+    frequency_hz: 800
 
 controls:
   # J2: 2x13 keyed header, standard IDC numbering (pin 1 by the key slot).
@@ -56,11 +65,12 @@ controls:
   - id: volume
     kind: pot
     channel: 1   # volume wiper, J2-10 -> A1
-    # The pot is audio taper. Measured 2026-10-13 (median counts): quarter 770,
-    # half 3070, full 26200; the rest from an exponential fit through those.
-    # The curve undoes the taper so knob angle -> 0-100 evenly, and the
-    # player's dB-linear mapping (volume_floor..volume_limit) does the rest.
-    curve: [[0, 0], [240, 12.5], [770, 25], [1500, 37.5], [3070, 50], [5000, 62.5], [8500, 75], [15000, 87.5], [26200, 100]]
+    # Measured on the stripboard 19 Oct after the pot rework (hasler-hm.yaml has
+    # the story): the curve undoes the pot's S-shaped taper so knob angle ->
+    # 0-100 evenly, and runs backwards because the pot reads low at the right
+    # end (clockwise is louder).
+    hysteresis_counts: 30
+    curve: [[25, 100], [1879, 87.5], [10882, 75], [21106, 62.5], [23783, 50], [24850, 37.5], [25616, 25], [25960, 12.5], [26150, 0]]
 
   - id: tone
     kind: pot
@@ -69,6 +79,9 @@ controls:
     # TODO(phase-0): first value is the ADC count AT THE DETENT. The switch
     # eats the bottom of the sweep, so the usable range starts above it.
     range: [0, 25500]
+    # Tilt: left warmer, right brighter, pivoting at 800 Hz (hasler-hm.yaml).
+    effect: tilt
+    effect_params: {range_db: 6, pivot: 800}
     end_switch:
       id: power
       pin: d0              # J2-14 (GPA0)

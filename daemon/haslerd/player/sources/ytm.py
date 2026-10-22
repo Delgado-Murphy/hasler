@@ -51,15 +51,54 @@ The catalogue (optional, ``catalog=``) changes three things when available:
   appends only ids not already queued. The queue is capped at ``QUEUE_CAP`` by
   deleting already-played songs from the front.
 * ``now_playing()`` names the current track for the key page.
+
+Boot (``state_dir=``, /var/lib/haslerd). A cold box used to wait for Wi-Fi,
+then expansion, then one resolve before the first note. Three things cut that:
+
+* **State survives reboots** in ``ytm-state.json``: each preset's track ids,
+  the opening track warm() chose, the names, the last-played preset and the
+  resolved stream URLs with their expiry. At boot a press uses the stale list
+  at once (warm() refreshes it in the background); a stale URL is caught by
+  the stream check and resolved again, like any other refused link.
+* **warm() goes last-played first**, and until a round has fully succeeded
+  (the box booted before its Wi-Fi) retries the failed presets every
+  ``BOOT_RETRY_S`` rather than every ``WARM_RETRY_S``.
+* **The opening track is on disk.** ``prepare_for_boot(preset)`` - called
+  when the radio goes to standby or shuts down cleanly - downloads the track
+  that preset will open on into ``ytm-cache/`` (one per preset, at most
+  ``CACHE_MAX_BYTES``). The proxy then answers that track's usual URL with
+  the file itself instead of a redirect, so the queue is unchanged, MPD needs
+  no network for its first song and the rest resolve once Wi-Fi is up. Served
+  by the proxy rather than dropped into MPD's music directory because MPD over
+  TCP refuses absolute paths, a relative one needs a database update first,
+  and the daemon has no business writing into moOde's library.
+
+Why not just redirect (``stream_dir=``, production: <state_dir>/ytm-stream).
+googlevideo throttles one plain GET of a whole track to roughly real time
+(~32 KB/s in bursts, measured), so MPD's decoder starved every few seconds
+("Decoder is too slow; playing silence") - while Range requests come back at
+full speed. So the proxy now fetches the track itself in ``STREAM_CHUNK``
+Range requests into ``<stream_dir>/.tmp-<id>`` and streams that growing file
+to MPD as soon as the first chunk is on disk, honouring MPD's own Range
+requests (a seek far past the download is fetched directly). One download per
+id however many requests ask for it; the finished file is renamed to
+``<id>.m4a`` and kept for a replay. The prefetch downloads the *next* track
+too, so a track change starts from disk. At most ``STREAM_KEEP`` tracks and
+``STREAM_MAX_BYTES`` stay (least recently used go first). If the ranged fetch
+fails outright (no first chunk), the proxy falls back to the 302 and logs it.
 """
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
+import os
 import random
 import re
+import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -95,9 +134,25 @@ EXPIRY_MARGIN_S = 30 * 60
 WARM_INTERVAL_S = 30 * 60
 # After a round with failures (e.g. booted before the Wi-Fi), try again soon.
 WARM_RETRY_S = 60
+# Until a round has fully succeeded since start-up (booted before the Wi-Fi),
+# the failed presets are retried this often - for at most BOOT_FAST_S.
+BOOT_RETRY_S = 5
+BOOT_FAST_S = 10 * 60
 # Playlists carry dead entries (removed, region-locked). If the opening track
 # won't resolve, warm() tries this many in all before giving up for the round.
 WARM_TRIES = 3
+
+# Kept in the state directory (see the module docstring).
+STATE_FILE = "ytm-state.json"
+CACHE_DIR = "ytm-cache"
+# One opening track per preset; a longer one is simply not cached.
+CACHE_MAX_BYTES = 15 * 1024 * 1024
+# Never fill the card: skip the download unless this much is free beyond it.
+DISK_RESERVE_BYTES = 64 * 1024 * 1024
+DOWNLOAD_TIMEOUT_S = 180
+TMP_PREFIX = ".tmp-"
+MIME = {".m4a": "audio/mp4", ".mp4": "audio/mp4", ".webm": "audio/webm",
+        ".opus": "audio/ogg", ".ogg": "audio/ogg", ".mp3": "audio/mpeg"}
 
 # A video that won't resolve is remembered as dead for a while, so MPD skipping
 # it, the prefetch and warm() don't each re-run yt-dlp on it every few seconds
@@ -116,6 +171,76 @@ QUEUE_CAP = 500
 # Names learned from the catalogue, kept for the tags and the key page.
 META_CAP = 20000   # whole libraries are exported to moOde (ytm_playlists)
 TAG_POLL_S = 2.0   # how often tag_queue looks for a changed MPD queue
+
+# Ranged streaming (see "Why not just redirect" in the module docstring).
+# Where the tracks go: <state_dir>/ytm-stream, or stream_dir=.
+STREAM_DIR = "ytm-stream"
+STREAM_CHUNK = 1024 * 1024          # one Range request
+STREAM_RETRIES = 3                  # per chunk, before the download gives up
+STREAM_TIMEOUT_S = 15               # per Range request
+STREAM_KEEP = 3                     # tracks kept: the current one and the next two
+STREAM_MAX_BYTES = 60 * 1024 * 1024 # ... and never more than this (the newest is exempt)
+# A request may wait this long for its first bytes (a cold yt-dlp resolve on a
+# Pi takes several seconds) before the proxy gives up and redirects instead.
+STREAM_READY_S = 40
+# A reader stuck this long with no new bytes gives up (closes the connection).
+STREAM_STALL_S = 30
+# A seek landing further than this past what is on disk is fetched directly
+# from googlevideo rather than waiting for the download to get there.
+STREAM_DIRECT_GAP = 2 * 1024 * 1024
+STREAM_UA = "Music Player Daemon"
+CTYPE_EXT = {"audio/mp4": ".m4a", "audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mpeg": ".mp3"}
+
+
+class _Download:
+    """One track being (or done being) fetched into the stream dir.
+
+    ``have`` bytes from offset 0 are on disk at ``path``; readers wait on
+    ``cond`` for it to grow. All fields change only under ``cond``.
+    """
+
+    def __init__(self, vid: str, path: Path) -> None:
+        self.vid = vid
+        self.path = path
+        self.cond = threading.Condition()
+        self.size: int | None = None
+        self.ctype = "application/octet-stream"
+        self.have = 0
+        self.done = False
+        self.failed = False
+
+    @property
+    def active(self) -> bool:
+        return not (self.done or self.failed)
+
+
+class _RangeRefused(Exception):
+    """googlevideo answered a Range request with something other than 206."""
+
+    def __init__(self, status: int) -> None:
+        super().__init__(f"HTTP {status}")
+        self.status = status
+
+
+def fetch_range(url: str, first: int, last: int, timeout: float = STREAM_TIMEOUT_S) -> tuple[bytes, int | None, str | None]:
+    """One ``Range: bytes=first-last`` GET -> (body, total size or None, Content-Type).
+
+    Raises ``_RangeRefused`` for any answer but 206 (a plain 200 means the
+    server ignored the range: that is the throttled path, not ours).
+    """
+    req = urllib.request.Request(url, headers={"Range": f"bytes={first}-{last}", "User-Agent": STREAM_UA})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 206:
+                raise _RangeRefused(resp.status)
+            total = None
+            m = re.fullmatch(r"\s*bytes\s+\d+-\d+/(\d+)\s*", resp.headers.get("Content-Range") or "")
+            if m:
+                total = int(m.group(1))
+            ctype = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip() or None
+            return resp.read(), total, ctype
+    except urllib.error.HTTPError as err:
+        raise _RangeRefused(err.code) from None
 
 
 def stream_ok(url: str, timeout: float = 4.0) -> bool:
@@ -150,6 +275,8 @@ class YtmSource:
     """
 
     name = "ytm"
+    # Same MPD as radio: the router does not stop one to play the other.
+    backend = "mpd"
 
     def __init__(
         self,
@@ -162,6 +289,8 @@ class YtmSource:
         playlist_ttl_s: float = PLAYLIST_TTL_S,
         catalog: Any = None,
         probe: Callable[[str], bool] | None = None,
+        state_dir: str | Path | None = None,
+        stream_dir: str | Path | None = None,
     ) -> None:
         self._mpd = mpd
         # ytm_playlists.PlaylistSync, attached by build_sources; told about
@@ -195,9 +324,20 @@ class YtmSource:
         self._dead: dict[str, float] = {}
         # Queue order as we added it, used to guess the next id if MPD can't say.
         self._queue: list[str] = []
-        # playlist uri -> the start index warm() resolved: a pre-picked random
-        # start for shuffle, the first *playable* track otherwise.
-        self._starts: dict[str, int] = {}
+        # playlist uri -> the video id warm() resolved to open on: a pre-picked
+        # random start for shuffle, the first *playable* track otherwise.
+        self._starts: dict[str, str] = {}
+        # Playlists loaded from the state file: a press may use them however
+        # old, until warm() (or a failed refresh's fallback) has a fresh list.
+        self._stale_ok: set[str] = set()
+        # The ytm preset played last (warmed first; prepare_for_boot's default).
+        self._last_uri: str | None = None
+        # playlist uri -> file name in the cache dir of its opening track.
+        self._files: dict[str, str] = {}
+        self._prepare_lock = threading.RLock()  # one download (or prune) at a time
+        self._save_lock = threading.Lock()
+        self._state_file = Path(state_dir) / STATE_FILE if state_dir is not None else None
+        self._cache_dir = Path(state_dir) / CACHE_DIR if state_dir is not None else None
         self._warm_stop = threading.Event()
         self._warm_kick = threading.Event()     # "new preset list - go round now"
         self._warm_presets: list[Preset] = []
@@ -216,6 +356,13 @@ class YtmSource:
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._server_lock = threading.Lock()
+        # Ranged streaming; None = off (redirect only). id -> _Download, least
+        # recently used first. Guarded by _stream_lock.
+        self._stream_dir = Path(stream_dir) if stream_dir is not None else None
+        self._streams: dict[str, _Download] = {}
+        self._stream_lock = threading.Lock()
+        self._load_state()
+        self._load_streams()
 
     # -- Source protocol --------------------------------------------------
 
@@ -249,21 +396,22 @@ class YtmSource:
                     # song; without a random start every press opens on track 1.
                     # Use the start warm() picked (and resolved) if there is one.
                     with self._cache_lock:
-                        start = self._starts.pop(preset.uri, None)
-                    if start is None or start >= len(ids):
-                        start = random.randrange(len(ids))
+                        vid = self._starts.pop(preset.uri, None)
+                    start = ids.index(vid) if vid in ids else random.randrange(len(ids))
                     client.play(start)
                 else:
                     # Kept, not popped: in order, the opening track is stable.
                     with self._cache_lock:
-                        start = self._starts.get(preset.uri)
-                    if start is None or start >= len(ids):
-                        client.play()
+                        vid = self._starts.get(preset.uri)
+                    if vid in ids:
+                        client.play(ids.index(vid))
                     else:
-                        client.play(start)
+                        client.play()
         except Exception as exc:
             raise YtmError(f"MPD refused ytm preset {preset.n}: {exc}") from exc
         self._queue = ids
+        self._last_uri = preset.uri
+        self.save_state()
         if _is_radio(preset.uri) and self._catalog_ready():
             self._endless = preset.uri
         log.info("playing ytm preset %s (%s), %d tracks%s", preset.n, preset.name, len(ids),
@@ -390,6 +538,7 @@ class YtmSource:
     def close(self) -> None:
         self._warm_stop.set()
         self._warm_kick.set()
+        self.save_state()
         if self.playlists is not None:
             self.playlists.close()
         with self._server_lock:
@@ -411,13 +560,16 @@ class YtmSource:
         """Keep each ytm preset's playlist and opening track resolved, forever.
 
         Runs on a daemon thread: one round now, then every ``interval_s``
-        (``WARM_RETRY_S`` after a round where anything failed). Calling it
-        again replaces the list and starts a fresh round at once - the web
-        page does that when presets change.
+        (``WARM_RETRY_S`` after a round where anything failed; just the failed
+        presets every ``BOOT_RETRY_S`` until a round has fully succeeded since
+        start-up). The last-played preset goes first. Calling it again
+        replaces the list and starts a fresh round at once - the web page does
+        that when presets change.
         """
         self._warm_presets = [p for p in presets if p.source == "ytm"]
         if self.playlists is not None:
             self.playlists.update(self._warm_presets)
+        self._forget_files({p.uri for p in self._warm_presets})
         self._start_tagger()
         if self._warm_thread is not None:
             self._warm_kick.set()
@@ -427,14 +579,38 @@ class YtmSource:
         self._warm_interval_s = interval_s
 
         def loop() -> None:
+            started = time.monotonic()
+            settled = False                 # a round has fully succeeded
+            retry: list[Preset] | None = None
             while not self._warm_stop.is_set():
-                ok = all([self.warm_once(p) for p in list(self._warm_presets)])
-                self._warm_kick.wait(interval_s if ok else min(WARM_RETRY_S, interval_s))
+                todo = retry if retry is not None else self._ordered(self._warm_presets)
+                failed = [p for p in todo if not self.warm_once(p)]
+                self.save_state()
+                if not failed:
+                    settled = True
+                    wait, retry = interval_s, None
+                elif not settled and time.monotonic() - started < BOOT_FAST_S:
+                    wait, retry = min(BOOT_RETRY_S, interval_s), failed
+                else:
+                    wait, retry = min(WARM_RETRY_S, interval_s), None
+                if self._warm_kick.wait(wait):
+                    retry = None            # new list, or the network came up
                 self._warm_kick.clear()
 
         self._warm_thread = threading.Thread(target=loop, name="ytm-warm", daemon=True)
         self._warm_thread.start()
         log.info("warming %d ytm preset(s) every %ds", len(self._warm_presets), interval_s)
+
+    def network_up(self) -> None:
+        """Connectivity just (re)appeared: start a warm-up round now. Optional -
+        the boot retry finds the network within ``BOOT_RETRY_S`` anyway."""
+        if self._warm_thread is not None:
+            self._warm_kick.set()
+
+    def _ordered(self, presets: list[Preset]) -> list[Preset]:
+        """The last-played preset first: it is the one the boot resume plays."""
+        last = self._last_uri
+        return sorted(presets, key=lambda p: p.uri != last)
 
     def warm_once(self, preset: Preset) -> bool:
         """Expand ``preset`` and resolve the track it will open on. True if both worked."""
@@ -448,12 +624,18 @@ class YtmSource:
             tries = min(WARM_TRIES, len(ids))
             if preset.shuffle:
                 candidates = random.sample(range(len(ids)), tries)
+                # A pick not yet played keeps its place, so the track
+                # prepare_for_boot put on disk is still the one the box opens on.
+                with self._cache_lock:
+                    kept = self._starts.get(preset.uri)
+                if kept in ids:
+                    candidates = [ids.index(kept)] + [c for c in candidates if ids[c] != kept]
             else:
                 candidates = list(range(tries))
-            for start in candidates:
-                if self.resolve(ids[start]) is not None:
+            for start in candidates[:tries]:
+                if self._disk_path(ids[start]) is not None or self.resolve(ids[start]) is not None:
                     with self._cache_lock:
-                        self._starts[preset.uri] = start
+                        self._starts[preset.uri] = ids[start]
                     log.debug("warmed ytm preset %s: opens on track %d", preset.n, start)
                     return True
             log.warning("ytm preset %s: none of %d opening tracks would resolve", preset.n, tries)
@@ -507,6 +689,18 @@ class YtmSource:
             return 502, None
         self._prefetch_after(vid)
         return 302, url
+
+    def local_file(self, path: str) -> Path | None:
+        """The opening track on disk for a proxy request, if prepare_for_boot
+        cached it - served as-is instead of a redirect. Starts the prefetch."""
+        parts = path.split("?", 1)[0].strip("/").split("/")
+        if len(parts) != 2 or parts[0] != "ytm" or not VIDEO_ID.match(parts[1]):
+            return None
+        found = self._disk_path(parts[1])
+        if found is not None:
+            log.info("ytm proxy: %s from the boot cache", parts[1])
+            self._prefetch_after(parts[1])
+        return found
 
     # -- resolution -------------------------------------------------------
 
@@ -581,6 +775,10 @@ class YtmSource:
         """Playlist (or watch) URL -> video ids, in playlist order.
 
         Cached for ``ttl_s`` (default ``playlist_ttl_s``); ``force`` skips the cache.
+        A list loaded from the state file is used however old until a fresh
+        one arrives, and a press whose expansion fails falls back to any old
+        list rather than to silence. ``force`` (warm()) never falls back: it
+        must see the failure, or it would resolve tracks with no network.
         """
         single = _single_video_id(uri)
         if single:
@@ -588,17 +786,22 @@ class YtmSource:
         now = time.time()
         with self._cache_lock:
             hit = self._playlists.get(uri)
-        if hit and hit[0] > now and not force:
+            stale_ok = uri in self._stale_ok
+        if hit and not force and (hit[0] > now or stale_ok):
             return list(hit[1])
 
         ids = self._expand_catalog(uri) if self._catalog_ready() else None
         if not ids:
             ids = self._expand_ytdlp(uri)
         if ids is None:
+            if hit and not force:
+                log.info("could not expand %s; playing its last known list", uri)
+                return list(hit[1])
             return []   # a failure: not cached, so the next press tries again
         ttl = self.playlist_ttl_s if ttl_s is None else ttl_s
         with self._cache_lock:
             self._playlists[uri] = (now + ttl, ids)
+            self._stale_ok.discard(uri)
         return list(ids)
 
     def _expand_catalog(self, uri: str) -> list[str] | None:
@@ -682,6 +885,462 @@ class YtmSource:
                 self._tags_ok = False
                 return
 
+    # -- state across reboots ---------------------------------------------
+
+    def save_state(self) -> None:
+        """Write what a cold boot needs to ``ytm-state.json``. Never raises."""
+        if self._state_file is None:
+            return
+        now = time.time()
+        keep = {p.uri for p in self._warm_presets}
+        if self._last_uri:
+            keep.add(self._last_uri)
+        with self._cache_lock:
+            keep.update(self._starts, self._files)
+            playlists = {u: {"expires": exp, "ids": ids}
+                         for u, (exp, ids) in self._playlists.items() if u in keep}
+            wanted = {vid for entry in playlists.values() for vid in entry["ids"]}
+            data = {
+                "version": 1,
+                "last": self._last_uri,
+                "playlists": playlists,
+                "starts": {u: v for u, v in self._starts.items() if u in keep},
+                "files": dict(self._files),
+                "urls": {v: [exp, url] for v, (exp, url) in self._urls.items()
+                         if exp > now and v in wanted},
+                "meta": {v: m for v, m in self._meta.items() if v in wanted},
+            }
+        try:
+            body = json.dumps(data, separators=(",", ":")).encode()
+            with self._save_lock:
+                _write_atomic(self._state_file, body)
+        except (OSError, TypeError, ValueError):
+            log.warning("could not save the ytm state to %s", self._state_file, exc_info=True)
+
+    def _load_state(self) -> None:
+        """Pick up the last run's state. A missing or broken file is a cold start."""
+        if self._state_file is None:
+            return
+        self._clear_tmp()
+        try:
+            data = json.loads(self._state_file.read_text())
+        except FileNotFoundError:
+            return
+        except (OSError, ValueError):
+            log.warning("ignoring an unreadable %s", self._state_file, exc_info=True)
+            return
+        if not isinstance(data, dict):
+            return
+        now = time.time()
+
+        def valid(vid: Any) -> bool:
+            return isinstance(vid, str) and bool(VIDEO_ID.match(vid))
+
+        with self._cache_lock:
+            for uri, entry in (data.get("playlists") or {}).items():
+                try:
+                    ids = [v for v in entry["ids"] if valid(v)]
+                    self._playlists[uri] = (float(entry["expires"]), ids)
+                    self._stale_ok.add(uri)
+                except (KeyError, TypeError, ValueError):
+                    continue
+            for uri, vid in (data.get("starts") or {}).items():
+                if valid(vid):
+                    self._starts[uri] = vid
+            for vid, hit in (data.get("urls") or {}).items():
+                try:
+                    exp, url = float(hit[0]), str(hit[1])
+                except (IndexError, TypeError, ValueError):
+                    continue
+                if valid(vid) and exp > now and url.startswith("http"):
+                    self._urls[vid] = (exp, url)
+            for vid, meta in (data.get("meta") or {}).items():
+                if valid(vid) and isinstance(meta, dict):
+                    self._meta[vid] = {k: str(meta.get(k) or "") for k in ("title", "artist", "album", "thumb")}
+            for uri, name in (data.get("files") or {}).items():
+                if isinstance(name, str) and valid(name.split(".", 1)[0]) and "/" not in name:
+                    self._files[uri] = name
+        last = data.get("last")
+        self._last_uri = last if isinstance(last, str) else None
+        log.info("ytm state: %d playlist(s), %d stream URL(s), %d cached opener(s) from %s",
+                 len(self._playlists), len(self._urls), len(self._files), self._state_file)
+
+    # -- the opening track on disk ------------------------------------------
+
+    def prepare_for_boot(self, preset: Preset | None = None, wait_s: float = 0.0) -> bool:
+        """Put the track ``preset`` will open on next time onto disk.
+
+        For standby and clean shutdown: the boot resume then plays its first
+        song from the card. ``preset`` is the one the box will resume (None =
+        the last-played ytm preset); anything but a ytm preset is a no-op.
+        Downloads on a background thread; ``wait_s`` waits up to that long for
+        it (shutdown). True if the opener is on disk when this returns.
+        """
+        if self._cache_dir is None:
+            return False
+        if preset is None:
+            preset = next((p for p in self._warm_presets if p.uri == self._last_uri), None)
+        if preset is None or preset.source != "ytm":
+            return False
+        self._last_uri = preset.uri
+        worker = threading.Thread(target=self._prepare, args=(preset,), name="ytm-boot-cache", daemon=True)
+        worker.start()
+        if wait_s > 0:
+            worker.join(wait_s)
+        with self._cache_lock:
+            name = self._files.get(preset.uri)
+        return name is not None and self._disk_path(name.split(".", 1)[0]) is not None
+
+    def _prepare(self, preset: Preset) -> None:
+        with self._prepare_lock:
+            try:
+                ids = self._expand(preset.uri)
+                with self._cache_lock:
+                    vid = self._starts.get(preset.uri)
+                if vid not in ids and ids:
+                    self.warm_once(preset)          # picks (and checks) the opener
+                    with self._cache_lock:
+                        vid = self._starts.get(preset.uri)
+                if not vid or vid not in ids:
+                    log.info("ytm preset %s: no opening track known; nothing cached", preset.n)
+                    return
+                path = self._disk_path(vid) or self._download(vid)
+                if path is None:
+                    return
+                with self._cache_lock:
+                    self._files[preset.uri] = path.name
+                self._prune()
+                log.info("ytm preset %s opens from the card next boot (%s, %d kB)",
+                         preset.n, vid, path.stat().st_size // 1024)
+            except Exception:
+                log.warning("could not cache the opening track of ytm preset %s", preset.n, exc_info=True)
+            finally:
+                self.save_state()
+
+    def _download(self, vid: str) -> Path | None:
+        """yt-dlp ``vid``'s audio into the cache dir, atomically. None on any failure."""
+        assert self._cache_dir is not None
+        stem = TMP_PREFIX + vid
+        try:
+            self._cache_dir.mkdir(parents=True, exist_ok=True)
+            self._clear_tmp(stem)
+            free = shutil.disk_usage(self._cache_dir).free
+            if free < CACHE_MAX_BYTES + DISK_RESERVE_BYTES:
+                log.warning("only %d MB free; not caching %s", free // 2**20, vid)
+                return None
+            cmd = [self.ytdlp, "-f", AUDIO_FORMAT, "--max-filesize", str(CACHE_MAX_BYTES),
+                   "--no-playlist", "--no-progress", "--no-mtime",
+                   "-o", str(self._cache_dir / (stem + ".%(ext)s")), *self._cookie_args(),
+                   WATCH_URL.format(id=vid)]
+            result = self._run(cmd, capture_output=True, text=True, timeout=DOWNLOAD_TIMEOUT_S, check=False)
+            done = [p for p in self._cache_dir.glob(stem + ".*")
+                    if p.suffix not in (".part", ".ytdl") and ".temp" not in p.suffixes]
+            if result.returncode != 0 or len(done) != 1:
+                log.warning("could not download %s for the boot cache: %s", vid, _tail(result.stderr))
+                return None
+            size = done[0].stat().st_size
+            if not 0 < size <= CACHE_MAX_BYTES:
+                log.info("not caching %s: %d bytes", vid, size)
+                return None
+            final = self._cache_dir / (vid + done[0].suffix)
+            os.chmod(done[0], 0o644)
+            os.replace(done[0], final)
+            return final
+        except subprocess.TimeoutExpired:
+            log.warning("yt-dlp took too long downloading %s", vid)
+            return None
+        except OSError:
+            # A full card lands here too; the box boots the slow way, that's all.
+            log.warning("could not write %s to the boot cache", vid, exc_info=True)
+            return None
+        finally:
+            self._clear_tmp(stem)
+
+    def _disk_path(self, vid: str) -> Path | None:
+        if self._cache_dir is None:
+            return None
+        with self._cache_lock:
+            names = [n for n in self._files.values() if n.split(".", 1)[0] == vid]
+        for name in names:
+            path = self._cache_dir / name
+            if path.is_file():
+                return path
+        return None
+
+    def _forget_files(self, uris: set[str]) -> None:
+        """Presets changed: drop the cached openers of presets that are gone."""
+        with self._cache_lock:
+            gone = [u for u in self._files if u not in uris]
+            for uri in gone:
+                del self._files[uri]
+        # Mid-download, leave it: that download prunes when it is done.
+        if gone and self._prepare_lock.acquire(blocking=False):
+            try:
+                self._prune()
+            finally:
+                self._prepare_lock.release()
+
+    def _prune(self) -> None:
+        """Delete every finished file in the cache dir no preset points at."""
+        if self._cache_dir is None:
+            return
+        with self._cache_lock:
+            wanted = set(self._files.values())
+        try:
+            for path in self._cache_dir.iterdir():
+                if path.name not in wanted and not path.name.startswith(TMP_PREFIX):
+                    path.unlink(missing_ok=True)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.debug("could not prune the ytm boot cache", exc_info=True)
+
+    def _clear_tmp(self, stem: str = TMP_PREFIX) -> None:
+        """Remove half-written downloads (all of them, or one video's)."""
+        if self._cache_dir is None:
+            return
+        try:
+            for path in self._cache_dir.glob(stem + "*"):
+                path.unlink(missing_ok=True)
+        except OSError:
+            log.debug("could not clear %s*", stem, exc_info=True)
+
+    # -- ranged streaming ---------------------------------------------------
+
+    def stream(self, path: str) -> _Download | None:
+        """The download serving a proxy request, once its first chunk is on disk.
+
+        None when streaming is off, the path isn't ours, or the ranged fetch
+        failed before any data arrived - the caller then redirects. Starts the
+        prefetch on success.
+        """
+        if self._stream_dir is None:
+            return None
+        parts = path.split("?", 1)[0].strip("/").split("/")
+        if len(parts) != 2 or parts[0] != "ytm" or not VIDEO_ID.match(parts[1]):
+            return None
+        vid = parts[1]
+        if self._is_dead(vid):
+            return None
+        dl = self._ensure_download(vid)
+        if dl is None or not self._wait_ready(dl, STREAM_READY_S):
+            log.warning("ytm proxy: ranged fetch of %s failed; redirecting MPD to googlevideo", vid)
+            return None
+        self._prefetch_after(vid)
+        return dl
+
+    def _wait_ready(self, dl: _Download, timeout: float) -> bool:
+        """Wait until the size and the first bytes are known. False if it failed."""
+        deadline = time.monotonic() + timeout
+        with dl.cond:
+            while not (dl.have > 0 and dl.size is not None) and not dl.failed:
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    return False
+                dl.cond.wait(left)
+            return not dl.failed
+
+    def _wait_bytes(self, dl: _Download, pos: int) -> int:
+        """For a reader at ``pos``: bytes ready on disk there (> 0), 0 = fetch this
+        part directly (far past the download), -1 = give up."""
+        with dl.cond:
+            while True:
+                if dl.have > pos:
+                    return dl.have - pos
+                if dl.failed or dl.done:
+                    return -1               # done and still short: past the end
+                if pos >= dl.have + STREAM_DIRECT_GAP:
+                    return 0
+                before = dl.have
+                dl.cond.wait(STREAM_STALL_S)
+                if dl.have == before and dl.active:
+                    log.warning("ytm proxy: download of %s stalled", dl.vid)
+                    return -1
+
+    def _open_stream(self, dl: _Download) -> Any:
+        """Open the download's file. Under its lock, so the rename can't race it;
+        an open handle keeps reading across the rename (and a prune)."""
+        with dl.cond:
+            return open(dl.path, "rb")
+
+    def fetch_direct(self, vid: str, first: int, last: int) -> bytes:
+        """Bytes ``first..last`` straight from googlevideo, for a far seek."""
+        url = self.resolve(vid)
+        if url is None:
+            raise OSError(f"{vid} no longer resolves")
+        return fetch_range(url, first, last)[0]
+
+    def _ensure_download(self, vid: str) -> _Download | None:
+        """The one download of ``vid``: an existing one (running or finished),
+        else a new one on a background thread. None if streaming is off."""
+        if self._stream_dir is None:
+            return None
+        with self._stream_lock:
+            dl = self._streams.pop(vid, None)
+            if dl is not None and dl.failed:
+                dl = None
+            if dl is not None and dl.done and not dl.path.is_file():
+                dl = None                   # deleted behind our back
+            fresh = dl is None
+            if fresh:
+                dl = _Download(vid, self._stream_dir / (TMP_PREFIX + vid))
+            self._streams[vid] = dl         # most recently used last
+        if fresh:
+            threading.Thread(target=self._download_stream, args=(dl,),
+                             name="ytm-stream", daemon=True).start()
+        return dl
+
+    def _download_stream(self, dl: _Download) -> None:
+        vid = dl.vid
+        try:
+            if self._fetch_stream(dl):
+                return
+        except Exception:
+            log.warning("ytm stream download of %s failed", vid, exc_info=True)
+        with dl.cond:
+            dl.failed = True
+            dl.cond.notify_all()
+        with self._stream_lock:
+            if self._streams.get(vid) is dl:
+                del self._streams[vid]
+        try:
+            dl.path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _fetch_stream(self, dl: _Download) -> bool:
+        """Download ``dl`` chunk by chunk. True when complete and renamed."""
+        assert self._stream_dir is not None
+        vid = dl.vid
+        url = self.resolve(vid)
+        if url is None:
+            return False
+        self._stream_dir.mkdir(parents=True, exist_ok=True)
+        clen = _clen(url)
+        free = shutil.disk_usage(self._stream_dir).free
+        if free < (clen or CACHE_MAX_BYTES) + DISK_RESERVE_BYTES:
+            log.warning("only %d MB free; not streaming %s through the card", free // 2**20, vid)
+            return False
+        self._prune_streams()
+        reresolved = False
+        started = time.monotonic()
+        with open(dl.path, "wb") as fh:
+            pos, size, tries = 0, clen, 0
+            while size is None or pos < size:
+                if self._warm_stop.is_set():
+                    return False            # shutting down
+                last = pos + STREAM_CHUNK - 1
+                if size is not None:
+                    last = min(last, size - 1)
+                want = last - pos + 1
+                try:
+                    data, total, ctype = fetch_range(url, pos, last)
+                except _RangeRefused as exc:
+                    if exc.status in (403, 410) and not reresolved:
+                        log.info("googlevideo refused %s (%s); resolving again", vid, exc)
+                        reresolved = True
+                        with self._cache_lock:
+                            self._urls.pop(vid, None)
+                        url = self.resolve(vid)
+                        if url is None:
+                            return False
+                        continue
+                    if exc.status in (403, 410, 200) or tries >= STREAM_RETRIES:
+                        log.warning("ytm stream %s: Range %d-%d refused: %s", vid, pos, last, exc)
+                        return False
+                    tries += 1
+                    time.sleep(0.5 * tries)
+                    continue
+                except (OSError, ValueError, http.client.HTTPException) as exc:   # timeouts, resets, short reads
+                    if tries >= STREAM_RETRIES:
+                        log.warning("ytm stream %s: Range %d-%d failed: %s", vid, pos, last, exc)
+                        return False
+                    tries += 1
+                    time.sleep(0.5 * tries)
+                    continue
+                tries = 0
+                if not data:
+                    if size is None:
+                        size = pos          # the server says that's all
+                        break
+                    log.warning("ytm stream %s: empty chunk at %d of %d", vid, pos, size)
+                    return False
+                if total is not None:
+                    size = total
+                fh.write(data)
+                fh.flush()
+                pos += len(data)
+                if size is None and len(data) < want:
+                    size = pos              # short read, no total: the end
+                with dl.cond:
+                    if ctype and ctype != "application/octet-stream":
+                        dl.ctype = ctype
+                    elif dl.ctype == "application/octet-stream":
+                        dl.ctype = _url_mime(url) or dl.ctype
+                    dl.size = size
+                    dl.have = pos
+                    dl.cond.notify_all()
+        final = self._stream_dir / (vid + CTYPE_EXT.get(dl.ctype, ".bin"))
+        with dl.cond:
+            os.chmod(dl.path, 0o644)
+            os.replace(dl.path, final)
+            dl.path = final
+            dl.size = dl.have
+            dl.done = True
+            dl.cond.notify_all()
+        log.info("ytm stream %s: %d kB in %.1f s", vid, dl.have // 1024, time.monotonic() - started)
+        self._prune_streams()
+        return True
+
+    def _prune_streams(self) -> None:
+        """Keep the ``STREAM_KEEP`` most recently used tracks and at most
+        ``STREAM_MAX_BYTES`` of them; running downloads are never touched, nor
+        is the most recent finished one, however big."""
+        if self._stream_dir is None:
+            return
+        doomed: list[Path] = []
+        with self._stream_lock:
+            order = list(self._streams.values())           # oldest first
+            finished = [d for d in order if d.done]
+            total = sum(d.size or 0 for d in finished)
+            excess = len(order) - STREAM_KEEP
+            for dl in finished[:-1]:
+                if excess <= 0 and total <= STREAM_MAX_BYTES:
+                    break
+                del self._streams[dl.vid]
+                doomed.append(dl.path)
+                excess -= 1
+                total -= dl.size or 0
+            keep = {d.path.name for d in self._streams.values()}
+        for path in doomed:
+            path.unlink(missing_ok=True)
+        try:
+            for path in self._stream_dir.iterdir():     # strays from older runs
+                if path.name not in keep:
+                    path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _load_streams(self) -> None:
+        """Pick up finished tracks from the last run; drop half-written ones."""
+        if self._stream_dir is None:
+            return
+        try:
+            paths = sorted(self._stream_dir.iterdir(), key=lambda p: p.stat().st_mtime)
+        except OSError:
+            return
+        for path in paths:
+            vid, ext = path.stem, path.suffix
+            ctype = next((c for c, e in CTYPE_EXT.items() if e == ext), None)
+            if path.name.startswith(TMP_PREFIX) or not VIDEO_ID.match(vid) or ctype is None:
+                path.unlink(missing_ok=True)
+                continue
+            dl = _Download(vid, path)
+            dl.size = dl.have = path.stat().st_size
+            dl.ctype, dl.done = ctype, True
+            self._streams[vid] = dl
+        self._prune_streams()
+
     # -- prefetch ---------------------------------------------------------
 
     def _prefetch_after(self, vid: str) -> None:
@@ -696,6 +1355,8 @@ class YtmSource:
             if nxt and nxt != vid and not self._cached_url(nxt):
                 log.debug("prefetching %s", nxt)
                 self.resolve(nxt)
+            if nxt and nxt != vid and self._disk_path(nxt) is None and not self._is_dead(nxt):
+                self._ensure_download(nxt)  # on its own thread; no-op if streaming is off
         except Exception:
             log.debug("ytm prefetch failed", exc_info=True)
         try:
@@ -793,6 +1454,28 @@ def _make_handler(source: YtmSource) -> type[BaseHTTPRequestHandler]:
 
         def do_GET(self) -> None:  # noqa: N802 - http.server's naming
             try:
+                local = source.local_file(self.path)
+            except Exception:
+                log.exception("ytm boot cache lookup failed for %s", self.path)
+                local = None
+            if local is not None:
+                try:
+                    if self._send_file(local):
+                        return
+                except (BrokenPipeError, ConnectionResetError):
+                    return                  # MPD skipped or seeked away mid-file
+            try:
+                dl = source.stream(self.path)
+            except Exception:
+                log.exception("ytm stream failed for %s", self.path)
+                dl = None
+            if dl is not None:
+                try:
+                    if self._send_stream(dl):
+                        return
+                except (BrokenPipeError, ConnectionResetError):
+                    return                  # MPD skipped or seeked away mid-track
+            try:
                 status, location = source.handle(self.path)
             except Exception:
                 log.exception("ytm proxy error for %s", self.path)
@@ -805,6 +1488,100 @@ def _make_handler(source: YtmSource) -> type[BaseHTTPRequestHandler]:
             self.end_headers()
 
         do_HEAD = do_GET
+
+        def _send_file(self, path: Path) -> bool:
+            """200, or 206 for one ``Range``, with the file's bytes. False if it
+            vanished (pruned) - the caller falls back to the redirect."""
+            try:
+                fh = open(path, "rb")
+            except OSError:
+                return False
+            with fh:
+                size = os.fstat(fh.fileno()).st_size
+                span = _byte_range(self.headers.get("Range"), size)
+                if span is None:
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.send_header("Connection", "close")
+                    self.end_headers()
+                    return True
+                start, end, partial = span
+                self.send_response(206 if partial else 200)
+                self.send_header("Content-Type", MIME.get(path.suffix, "application/octet-stream"))
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(end - start + 1))
+                if partial:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                if self.command == "HEAD":
+                    return True
+                fh.seek(start)
+                left = end - start + 1
+                while left > 0:
+                    chunk = fh.read(min(64 * 1024, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+            return True
+
+        def _send_stream(self, dl: _Download) -> bool:
+            """Like _send_file, from a download that may still be growing.
+            False if its file vanished before we got it open (redirect instead)."""
+            with dl.cond:
+                size, ctype = dl.size, dl.ctype
+            assert size is not None             # stream() waited for it
+            span = _byte_range(self.headers.get("Range"), size)
+            if span is None:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                return True
+            try:
+                fh = source._open_stream(dl)
+            except OSError:
+                return False
+            with fh:
+                start, end, partial = span
+                self.send_response(206 if partial else 200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Accept-Ranges", "bytes")
+                self.send_header("Content-Length", str(end - start + 1))
+                if partial:
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                if self.command == "HEAD":
+                    return True
+                pos = start
+                while pos <= end:
+                    ready = source._wait_bytes(dl, pos)
+                    if ready < 0:
+                        # Failed or stalled: cut the body short. MPD notices the
+                        # short read and reconnects or skips - better than hanging.
+                        self.close_connection = True
+                        return True
+                    if ready == 0:
+                        last = min(end, pos + STREAM_CHUNK - 1)
+                        try:
+                            chunk = source.fetch_direct(dl.vid, pos, last)[: last - pos + 1]
+                        except Exception as exc:
+                            log.warning("ytm proxy: direct fetch of %s at %d failed: %s", dl.vid, pos, exc)
+                            self.close_connection = True
+                            return True
+                    else:
+                        fh.seek(pos)
+                        chunk = fh.read(min(64 * 1024, ready, end - pos + 1))
+                    if not chunk:
+                        self.close_connection = True
+                        return True
+                    self.wfile.write(chunk)
+                    pos += len(chunk)
+            return True
 
         def log_message(self, fmt: str, *args: Any) -> None:
             # MPD hits this once per track; keep it out of the journal at INFO.
@@ -847,11 +1624,56 @@ def _ids_from_info(data: Any) -> list[str]:
     return ids
 
 
+def _clen(url: str) -> int | None:
+    """googlevideo's ``clen=`` (the stream's byte length), if the URL has one."""
+    try:
+        n = int(parse_qs(urlparse(url).query)["clen"][0])
+        return n if n > 0 else None
+    except (KeyError, IndexError, ValueError):
+        return None
+
+
+def _url_mime(url: str) -> str | None:
+    """googlevideo's ``mime=audio/mp4`` (itag 140), if the URL has one."""
+    mime = (parse_qs(urlparse(url).query).get("mime") or [""])[0]
+    return mime or None
+
+
 def _expire_stamp(url: str) -> float | None:
     try:
         return float(parse_qs(urlparse(url).query)["expire"][0])
     except (KeyError, IndexError, ValueError):
         return None
+
+
+def _byte_range(header: str | None, size: int) -> tuple[int, int, bool] | None:
+    """``Range: bytes=a-b`` -> (first, last, partial), inclusive. The whole file
+    (partial False) if absent or not one byte range we understand; None if
+    unsatisfiable (416)."""
+    m = re.fullmatch(r"\s*bytes=(\d*)-(\d*)\s*", header or "")
+    if not m or not (m.group(1) or m.group(2)):
+        return 0, size - 1, False
+    first, last = m.group(1), m.group(2)
+    if not first:                                   # the last N bytes
+        n = int(last)
+        return (max(0, size - n), size - 1, True) if n > 0 else None
+    start = int(first)
+    end = min(int(last), size - 1) if last else size - 1
+    if start >= size or end < start:
+        return None
+    return start, end, True
+
+
+def _write_atomic(path: Path, data: bytes) -> None:
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".hasler-", suffix=path.suffix)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.chmod(tmp, 0o600)     # signed stream URLs: the daemon's business only
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def _tail(text: str | None, limit: int = 300) -> str:

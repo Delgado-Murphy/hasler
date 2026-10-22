@@ -169,6 +169,13 @@ class TestEndSwitch:
         events = run(c, [(1.0, {"d7": False}), (0.01, {"d7": True}), (10.0, {"d7": False})], tick=0.01)
         assert [str(e) for e in events] == ["power.off"]
 
+    def test_a_glitch_at_start_does_not_arm(self):
+        # The settled state starts on (boot assumption): one "on" sample from a
+        # ribbon that is really unplugged must not arm the shutdown.
+        c = EndSwitch("power", "d7", off_hold_s=5.0)
+        events = run(c, [(0.01, {"d7": True}), (10.0, {"d7": False})], tick=0.01)
+        assert [str(e) for e in events] == ["power.off"]
+
     def test_unarmed_off_is_logged_once(self, caplog):
         c = EndSwitch("power", "d7", off_hold_s=5.0)
         with caplog.at_level("INFO", logger="haslerd.panel.controls"):
@@ -270,7 +277,7 @@ class TestBuildControls:
 class TestVariants:
     """Both cabinets must load and build - the Excelsior before it is wired."""
 
-    @pytest.mark.parametrize("name", ["hasler-hm", "hasler-hm-hat", "excelsior"])
+    @pytest.mark.parametrize("name", ["hasler-hm", "excelsior"])
     def test_descriptor_builds_a_panel(self, name):
         variant = load_variant(VARIANTS / f"{name}.yaml")
         panel = Panel.from_variant(variant, fake=True)

@@ -36,6 +36,9 @@ class Variant:
     actions: dict[str, Any] = field(default_factory=dict)
     presets: list[dict] = field(default_factory=list)
     path: Path | None = None
+    # The box's calibration overlay (/etc/hasler/variant.d/<name>.yaml) when
+    # one was laid over this descriptor - see boxconfig.load_effective_variant.
+    overlay_path: Path | None = None
 
     def pin_names(self) -> list[str]:
         """Every logical pin the descriptor references, in `d0..dN` order."""
@@ -55,7 +58,11 @@ class Variant:
 
     def channels(self) -> list[int]:
         return sorted(
-            {spec["channel"] for spec in self.controls if spec.get("kind") == "pot"}
+            {
+                spec["channel"]
+                for spec in self.controls
+                if spec.get("kind") in ("pot", "analog_selector")
+            }
         )
 
 
@@ -147,6 +154,17 @@ def open_backends(
     return digital, analog
 
 
+# What Panel.apply_specs may change on a running control. Not the pins or
+# the channel (the backends were opened for those) and not a key's repeat,
+# which the key page owns (keymap.tune_repeat).
+LIVE_ATTRS = {
+    "pot": ("taper", "median_n", "hysteresis", "curve", "counts_range"),
+    "end_switch": ("off_hold_s",),
+    "momentary": ("hold_s",),
+    "interlocked_bank": ("hold_s",),
+}
+
+
 class Panel:
     """Backends plus controls. Poll it with a timestamp, get events back."""
 
@@ -156,6 +174,7 @@ class Panel:
         self.controls = controls
         self.digital = digital
         self.analog = analog
+        self._bus_failing = False
 
     @classmethod
     def from_variant(cls, variant: Variant, fake: bool = False) -> "Panel":
@@ -170,8 +189,21 @@ class Panel:
     def poll(self, now: float) -> list[Event]:
         if self.absent:
             return []
-        digital = self.digital.read()
-        analog = self.analog.read()
+        try:
+            digital = self.digital.read()
+            analog = self.analog.read()
+        except OSError as exc:
+            # A glitch on the cabinet ribbon (ESD, a bus collision) fails one
+            # I2C transfer. Skip the tick rather than let it end haslerd -
+            # and never hand the controls an empty reading: every contact
+            # open looks like the power knob turned off.
+            if not self._bus_failing:
+                log.warning("panel read failed, skipping polls until it answers: %s", exc)
+                self._bus_failing = True
+            return []
+        if self._bus_failing:
+            log.info("panel reads again")
+            self._bus_failing = False
         events: list[Event] = []
         for control in self.controls:
             events.extend(control.update(now, digital, analog))
@@ -182,6 +214,39 @@ class Panel:
 
     def raw(self) -> tuple[Mapping[str, bool], Mapping[int, int]]:
         return self.digital.read(), self.analog.read()
+
+    def apply_specs(self, specs: list[dict]) -> list[str]:
+        """Re-apply control specs to the running controls, in place, by id.
+
+        For a changed calibration overlay (boxconfig): a pot's curve, range,
+        taper, median and hysteresis, an end switch's hold, a key's hold time
+        all change without a restart, and each control keeps its live state.
+        A pot forgets its committed reading, so the next poll reports the
+        knob through the new curve. A control that defines
+        ``reconfigure(new_control)`` does it itself. Anything structural (a
+        new id, another kind) needs a restart and is only logged. Returns the
+        ids that changed.
+        """
+        fresh = {c.id: c for c in build_controls(specs)}
+        changed: list[str] = []
+        for control in self.controls:
+            new = fresh.get(control.id)
+            if new is None or type(new) is not type(control):
+                log.warning("control %s changed shape; restart haslerd to apply it", control.id)
+                continue
+            reconfigure = getattr(control, "reconfigure", None)
+            if callable(reconfigure):
+                reconfigure(new)
+                changed.append(control.id)
+                continue
+            attrs = [a for a in LIVE_ATTRS.get(control.kind, ()) if hasattr(new, a)]
+            if any(getattr(control, a) != getattr(new, a) for a in attrs):
+                for attr in attrs:
+                    setattr(control, attr, getattr(new, attr))
+                if control.kind == "pot":
+                    control._committed_counts = None
+                changed.append(control.id)
+        return changed
 
     def close(self) -> None:
         self.digital.close()

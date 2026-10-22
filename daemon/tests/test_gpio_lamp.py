@@ -2,7 +2,6 @@
 
 import pytest
 
-from haslerd import main
 from haslerd.hw.gpio_lamp import GpioRgbController
 from haslerd.hw.powerctl import Lamp
 
@@ -86,37 +85,10 @@ def test_lamp_drives_the_gpio_controller():
     assert led.value[1] > 0.5 and led.value[0] == 0.0
 
 
-class TestOpenLamp:
-    def test_gpio_backend(self, monkeypatch):
-        seen = {}
-
-        class Ctl:
-            available = True
-
-            def __init__(self, pins, common, balance):
-                seen.update(pins=pins, common=common)
-
-        monkeypatch.setattr(main, "GpioRgbController", Ctl)
-        lamp = main.open_lamp({"backend": "gpio", "pins": {"red": 5}, "common": "anode"})
-        assert isinstance(lamp, Lamp)
-        assert seen == {"pins": {"red": 5}, "common": "anode"}
-
-    def test_none_and_unknown_give_no_lamp(self):
-        assert main.open_lamp({"backend": "none"}) is None
-        assert main.open_lamp({"backend": "neon"}) is None
-
-    def test_default_is_the_power_controller(self, monkeypatch):
-        class Pc:
-            available = False
-
-        monkeypatch.setattr(main, "PowerController", Pc)
-        assert main.open_lamp({}) is None   # absent controller -> no lamp
-
-
-def test_hasler_descriptor_uses_the_gpio_lamp():
+def test_hasler_descriptor_uses_the_pwm_lamp():
     from conftest import VARIANTS
     from haslerd.variant import load_variant
 
     lamp = load_variant(VARIANTS / "hasler-hm.yaml").io["lamp"]
-    assert lamp["backend"] == "gpio"
+    assert lamp["backend"] == "pwm-sysfs"
     assert lamp["pins"] == {"red": 17, "green": 22, "blue": 27}   # odd-row pins 11, 15, 13

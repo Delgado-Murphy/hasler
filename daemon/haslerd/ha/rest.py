@@ -19,8 +19,12 @@ default returns 4xx/5xx as statuses and raises only for transport failures
 
 The token is sent only in the Authorization header and is never logged.
 
-The ``media_player.hasler`` entity needs nothing here: it comes free from HA's
-built-in MPD integration.
+What the radio is playing reaches HA through the Hasler integration (a separate
+repo) talking to the radio's own API - ``GET /api/status``, ``/api/info``,
+``/api/art/current``, found over mDNS as ``_hasler._tcp``. Pointing HA's MPD
+integration at the radio is *not* the way: MPD only knows the radio stream,
+not Spotify, YouTube Music, Bluetooth or AirPlay, nor the presets, the keys or
+standby, and an HA-side "play"/"stop" behind haslerd's back confuses it.
 """
 
 from __future__ import annotations
@@ -34,18 +38,18 @@ import urllib.error
 import urllib.request
 from typing import Any, Callable
 
+from . import behaviour
+
 log = logging.getLogger(__name__)
 
 SYNC_TIMEOUT = 3.0
 
 Fetch = Callable[[str, str, dict, "bytes | None", float], "tuple[int, bytes]"]
 
-# Key-action kinds (what Actions passes) -> HA service.
+# The original key-action kinds (what Actions passes) -> HA service. The
+# richer kinds ("light", "service") are translated by ha/behaviour.calls.
 SERVICES: dict[str, tuple[str, str]] = {
-    "scene": ("scene", "turn_on"),
-    "script": ("script", "turn_on"),
-    "toggle": ("homeassistant", "toggle"),
-    "automation": ("automation", "trigger"),
+    behaviour.KIND[verb]: svc for verb, svc in behaviour.SIMPLE_SERVICE.items()
 }
 
 # One template, one round trip: every area with its name and its entities.
@@ -111,6 +115,9 @@ class HomeAssistant:
         # typically the radio moved house and the key still names the old
         # home's scene. Replaced wholesale, never mutated, so no lock.
         self.missing: frozenset[str] = frozenset()
+        # What each light can do ({entity_id: behaviour.light_caps(...)}), also
+        # learnt by web/ha_api, so a key sends each bulb only what it supports.
+        self.lights: dict[str, dict | None] = {}
         self._warned: set[str] = set()
 
     def __repr__(self) -> str:
@@ -119,18 +126,20 @@ class HomeAssistant:
     # -- fire-and-forget (keys) --------------------------------------------
 
     def __call__(self, kind: str, payload: dict) -> None:
-        service = SERVICES.get(kind)
-        if service is None:
+        verb = behaviour.VERB_OF_KIND.get(kind)
+        if verb is None:
             log.warning("unknown HA call kind %r", kind)
             return
-        entity = payload["entity"]
-        if entity in self.missing:
+        spec = {**payload, "do": verb}
+        entities = behaviour.entity_ids(spec)
+        gone = [e for e in entities if e in self.missing]
+        for entity in gone:
             if entity not in self._warned:
                 self._warned.add(entity)
                 log.warning("%s doesn't exist in this Home Assistant; the key does nothing "
                             "(fix or clear it on the key page)", entity)
-            return
-        self.call_service(service[0], service[1], {"entity_id": payload["entity"]})
+        for domain, service, data in behaviour.calls(spec, self.lights, frozenset(gone)):
+            self.call_service(domain, service, data)
 
     def call_service(self, domain: str, service: str, data: dict) -> None:
         self._background("POST", f"/api/services/{domain}/{service}", data)
@@ -218,6 +227,15 @@ class HomeAssistant:
         """A key action, now, and say if it failed (the page's "Try it")."""
         domain, service = SERVICES[kind]
         self._sync("POST", f"/api/services/{domain}/{service}", {"entity_id": entity})
+
+    def run_calls(self, calls: list[tuple[str, str, dict]]) -> list[dict]:
+        """Service calls, now, in order -> the states HA says changed. Raises HaError."""
+        changed: list[dict] = []
+        for domain, service, data in calls:
+            doc = self._sync("POST", f"/api/services/{domain}/{service}", data)
+            if isinstance(doc, list):
+                changed.extend(d for d in doc if isinstance(d, dict))
+        return changed
 
 
 def parse_areas(rendered: Any) -> list[dict]:

@@ -1,0 +1,62 @@
+#!/bin/bash
+# hasler-wifi-rescue - Wi-Fi from a file on the SD card, for a radio that has
+# no network at all (a wrong password typed in Raspberry Pi Imager, a hotspot
+# that never came up, a move with nobody to join the setup hotspot).
+#
+# Put a plain text file called hasler-wifi.txt on the card's boot partition
+# (the drive called "bootfs" on any computer), next to config.txt:
+#
+#     ssid = My home Wi-Fi
+#     password = its password
+#     hotspot_password = a new password for the setup hotspot   (optional)
+#
+# hasler-wifi-rescue.service runs this at boot, after NetworkManager and
+# before moOde's worker looks for a network. It hands the values to
+# hasler-wifi-join on stdin (as the setup page does, without the restart),
+# writes what happened to hasler-wifi-result.txt next to it and deletes
+# hasler-wifi.txt, which holds a password. docs/using.md "Wi-Fi".
+set -u
+BOOT=/boot/firmware
+IN="$BOOT/hasler-wifi.txt"
+OUT="$BOOT/hasler-wifi-result.txt"
+HELPER=/usr/local/sbin/hasler-wifi-join
+[[ -f "$IN" ]] || exit 0
+
+# key = value lines -> JSON for the helper (never a shell word).
+read_json() {
+  python3 -I - "$IN" "$1" <<'PY'
+import json, sys
+vals = {}
+with open(sys.argv[1], encoding="utf-8-sig", errors="replace") as f:
+    for line in f:
+        line = line.strip().rstrip("\r")
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        vals[k.strip().lower().replace(" ", "_")] = v.strip()
+if sys.argv[2] == "join":
+    if vals.get("ssid"):
+        print(json.dumps({"action": "join", "ssid": vals["ssid"], "password": vals.get("password", ""),
+                          "security": vals.get("security", "auto"), "reboot": False}))
+elif vals.get("hotspot_password"):
+    print(json.dumps({"action": "hotspot", "password": vals["hotspot_password"]}))
+PY
+}
+
+{
+  echo "hasler-wifi-rescue, $(date '+%Y-%m-%d %H:%M')"
+  JOIN="$(read_json join)"
+  if [[ -n "$JOIN" ]]; then
+    echo "Wi-Fi: $(printf '%s' "$JOIN" | "$HELPER" 2>&1 | tail -n1)"
+  fi
+  HOTSPOT="$(read_json hotspot)"
+  if [[ -n "$HOTSPOT" ]]; then
+    echo "Setup hotspot password: $(printf '%s' "$HOTSPOT" | "$HELPER" 2>&1 | tail -n1)"
+  fi
+  [[ -n "$JOIN$HOTSPOT" ]] || echo "Nothing to do: the file needs a line 'ssid = ...' (and 'password = ...')."
+  echo '{"ok":true} means it was saved; the radio now looks for that network.'
+} > "$OUT" 2>&1
+
+rm -f "$IN"
+sync
+exit 0

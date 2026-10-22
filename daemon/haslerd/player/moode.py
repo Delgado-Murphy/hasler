@@ -25,13 +25,19 @@ import logging
 import re
 import shlex
 import shutil
+import sqlite3
 import subprocess
+import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from ..bootresume import http_answers, mpd_answers
 from .base import Preset, Source
+from .bluetooth import Bluetooth
+from .renderers import MoodeRenderers
 from .sources.radio import RadioSource
 
 log = logging.getLogger(__name__)
@@ -55,8 +61,15 @@ DEFAULT_RENDERER_UNITS = {
     "airplay": "shairport-sync",
 }
 
+MOODE_DB = Path("/var/local/www/db/moode-sqlite3.db")
+
+# The boot resume's swell (bootresume.py): silent -> the knob's level in
+# steps, in step with the lamp's 1.5 s fade to playing.
+SWELL_S = 3.0
+SWELL_STEPS = 20
+
 # active_source() is asked by the main loop and by every key press. The answer
-# costs an HTTP status call and up to three moodeutl shell-outs, and a human
+# costs an HTTP status call and a read of moOde's sqlite db, and a human
 # cannot tell a one-second-old answer from a fresh one.
 SOURCE_CACHE_S = 1.0
 
@@ -92,7 +105,7 @@ class MoodeConfig:
     mixer: str = "Digital"          # from: moodeutl -q "select value from cfg_system where param='amixname'"
     # amixer -c takes an index or the ALSA card id. The id survives HDMI
     # cards shifting the numbering; the Amp4 Pro is "sndrpihifiberry".
-    card: int | str = 0
+    card: int | str = "sndrpihifiberry"
     moodeutl: str = "moodeutl"
     amixer: str = "amixer"
     # Ceiling on the hardware mixer, as a percentage. The Amp4 Pro can deliver
@@ -103,15 +116,20 @@ class MoodeConfig:
     volume_limit: int = 70
     # Mixer percentage at the knob's first step above zero. Digital on the
     # Amp4 Pro is linear in dB (0.5 dB per step, 0% = -103.5 dB), so without
-    # a floor the bottom half of the knob is silent. 0 keeps the plain mapping.
-    volume_floor: int = 0
+    # a floor the bottom half of the knob is silent (1% is -102.5 dB). 28%
+    # (-74.5 dB) is the quietest step heard on the bench radio; the key page's
+    # saved volume_floor wins over this. 0 keeps the plain mapping.
+    volume_floor: int = 28
     bluetoothctl: str = "bluetoothctl"
     source_flags: dict = field(default_factory=lambda: dict(DEFAULT_SOURCE_FLAGS))
     renderer_units: dict = field(default_factory=lambda: dict(DEFAULT_RENDERER_UNITS))
-    # Tone wheels. Fill these in during Phase 4 against the real box - e.g. a
-    # CamillaDSP helper or moOde's eqctl.php. `{gain}` is dB, `{value}` is the
-    # raw 0-100, `{control}` is the wheel id. Empty means the wheels do nothing,
-    # which is the correct behaviour before Phase 4.
+    # The knobs' sound effects (haslerd/dsp/): the helper that puts them into
+    # CamillaDSP. While it is installed it drives every knob that carries an
+    # effect and tone_commands below is not used; "" turns it off.
+    dsp_command: str = "/usr/local/bin/hasler-dsp"
+    # The old per-wheel commands, used only without dsp_command: `{gain}` is
+    # dB, `{value}` the raw 0-100, `{control}` the wheel id. Empty means the
+    # wheels do nothing.
     tone_commands: dict = field(default_factory=dict)
     # Blocks of their own in haslerd.yaml (``moode: {spotify: {...}, ytm: {...}}``).
     spotify: SpotifyConfig = field(default_factory=SpotifyConfig)
@@ -131,7 +149,8 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
     Imported lazily and inside a try so the daemon still plays radio when a
     source module is missing, half-written, or its dependencies are absent -
     the box must never lose its radio because Spotify broke. ``state_dir``
-    (/var/lib/haslerd) is where the YouTube Music sign-in is kept.
+    (/var/lib/haslerd) is where the YouTube Music sign-in, its state across
+    reboots and the boot cache of opening tracks are kept.
     """
     radio = RadioSource(config.mpd_host, config.mpd_port, ytm_port=config.ytm.port)
     sources: dict[str, Source] = {"radio": radio}
@@ -148,7 +167,7 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
             log.warning("spotify source unavailable; spotify presets will not play", exc_info=True)
     if config.ytm.enabled:
         try:
-            from .sources.ytm import YtmSource, stream_ok
+            from .sources.ytm import STREAM_DIR, YtmSource, stream_ok
 
             catalog = None
             if config.ytm.catalog:
@@ -165,6 +184,10 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
                 cookies=config.ytm.cookies or None,
                 catalog=catalog,
                 probe=stream_ok,
+                state_dir=state_dir,
+                # Ranged fetches past googlevideo's throttle (see ytm.py).
+                stream_dir=(Path(state_dir) / STREAM_DIR if state_dir is not None
+                            else Path(tempfile.gettempdir()) / "haslerd-ytm-stream"),
             )
             if catalog is not None:
                 from .sources.ytm_playlists import PlaylistSync
@@ -194,11 +217,38 @@ class MoodePlayer:
         )
         self.current_preset: Preset | None = None
         self._clock = clock
+        self._pair_acceptor = None   # player/btaccept.PairAcceptor, on first pairing
         self._source_cache: tuple[float, str] | None = None
         self._muted = False
         self._volume: float | None = None   # mixer percent, post-ceiling
         self._knob: float | None = None     # knob scale 0-100, as last set
         self._renderer_cache: tuple[float, dict] | None = None
+        self.moode_db = MOODE_DB            # read-only, for the renderer flags
+        # moOde's casting targets (AirPlay, Bluetooth, UPnP): on/off, names.
+        self.renderers = MoodeRenderers(db=MOODE_DB)
+        # The phones themselves: paired list, reconnect, AVRCP, codec (BlueZ/BlueALSA).
+        self.bluetooth = Bluetooth(state_dir)
+        # The swell's bookkeeping. Every write the knob (or standby) makes
+        # bumps _mixer_gen, which stops a swell in its tracks: the knob wins.
+        self._mixer_lock = threading.RLock()
+        self._mixer_gen = 0
+        self._hold: int | None = None      # mixer percent a swell will rise to
+        self._swelling = False
+        # Starting and stopping, off the caller's thread (start_preset /
+        # stop_soon). MPD blocks *every* client for 0.5-4 s while it stops a
+        # stream (its output closes through moOde's CamillaDSP plugin; measured
+        # on the bench 2026-10-21), so a key press must not wait for it. One
+        # worker, one slot: a newer request replaces a pending one, and a
+        # request already talking to MPD is told it has been superseded
+        # (``_gen``). ``_route_lock`` keeps two arbitrations from interleaving.
+        self._route_lock = threading.RLock()
+        self._want_cv = threading.Condition()
+        # (gen, preset or None for "stop", on_error, previous preset, cached source)
+        self._want: tuple | None = None
+        self._gen = 0
+        self._starting: Preset | None = None      # asked to start, not yet started
+        self._worker: threading.Thread | None = None
+        self._busy = False
         self._warm_up()
 
     def _warm_up(self) -> None:
@@ -219,27 +269,192 @@ class MoodePlayer:
     # -- routing ----------------------------------------------------------
 
     def play_preset(self, preset: Preset) -> None:
-        """Stop every other source, then start this one.
+        """Stop every other source, then start this one - and wait for it.
 
         ALSA arbitration: the DAC has one hardware device and only one process
         may hold it. Stopping the others *first* is what lets go-librespot and
         MPD hand the device back and forth without "device busy". Raises if the
         source is unknown or its ``play`` raises, so the caller can flash the
-        lamp; ``current()`` is only set once play has succeeded.
+        lamp. Supersedes any pending ``start_preset``. Key presses use
+        ``start_preset`` instead; this is for callers that need the outcome
+        (the boot resume, a group handover, the page's Test button).
         """
+        self._source_for(preset)
+        gen, previous, cached = self._supersede(preset)
+        with self._route_lock:
+            self._play_now(preset, gen, previous, cached)
+
+    def start_preset(
+        self, preset: Preset, on_error: Callable[[Exception], None] | None = None
+    ) -> None:
+        """``play_preset`` without waiting: returns at once, the worker plays it.
+
+        ``current()`` is ``preset`` from now on (so the same key again is
+        "again"), and ``active_source()`` answers its source without asking
+        MPD while the start is under way. A newer start or stop replaces this
+        one if it has not begun; if it has, the worker skips whatever of it is
+        left. ``on_error(exc)`` is called from the worker if it fails and is
+        still the latest request. An unknown source raises here, at once.
+        """
+        self._source_for(preset)
+        self._request(preset, on_error)
+
+    def stop_soon(self) -> None:
+        """``stop`` without waiting (standby): supersedes a pending start."""
+        self._request(None, None)
+
+    @property
+    def starting(self) -> Preset | None:
+        """The preset asked to start that has not started (or failed) yet."""
+        return self._starting
+
+    # -- for the stream watchdog (player/watchdog.py) ------------------------
+
+    @property
+    def route_gen(self) -> int:
+        """Bumped by every start and stop: a hand has routed since ``gen`` if it differs."""
+        return self._gen
+
+    @property
+    def routing(self) -> bool:
+        """A start or stop is pending or under way."""
+        with self._want_cv:
+            return self._want is not None or self._busy or self._starting is not None
+
+    def resume_mpd(self, expect_gen: int) -> bool:
+        """``play`` on MPD's queue as it stands (``mpc play``), unless anyone
+        routed since ``expect_gen`` or is routing now. True if MPD was told."""
+        if not self._route_lock.acquire(timeout=1.0):
+            return False
+        try:
+            with self._want_cv:
+                if self._gen != expect_gen or self._want is not None or self._busy:
+                    return False
+            radio = self.sources.get("radio")
+            if radio is None:
+                return False
+            radio.mpd().play()
+            return True
+        finally:
+            self._route_lock.release()
+
+    def restart(
+        self, preset: Preset, expect_gen: int, on_error: Callable[[Exception], None] | None = None
+    ) -> int | None:
+        """``start_preset(preset)`` again, unless anyone routed since ``expect_gen``,
+        is routing now, or something else is current. The new generation, or None."""
+        self._source_for(preset)
+        with self._want_cv:
+            if (self._gen != expect_gen or self._want is not None or self._busy
+                    or self._starting is not None or self.current_preset not in (None, preset)):
+                return None
+            self._request(preset, on_error)
+            return self._gen
+
+    def _source_for(self, preset: Preset) -> Source:
         source = self.sources.get(preset.source)
         if source is None:
             raise LookupError(f"no {preset.source!r} source available for preset {preset.n}")
-        previous = self.current_preset
-        cached = self._source_cache[1] if self._source_cache else None
-        self.current_preset = None
-        self._source_cache = None
+        return source
+
+    def _supersede(self, preset: Preset | None) -> tuple[int, Preset | None, str | None]:
+        """A new routing request: drop any pending one, record the intent."""
+        with self._want_cv:
+            previous = self.current_preset
+            cached = self._source_cache[1] if self._source_cache else None
+            self._gen += 1
+            self._want = None
+            self.current_preset = preset
+            self._starting = preset
+            self._source_cache = None
+            return self._gen, previous, cached
+
+    def _request(self, preset: Preset | None, on_error) -> None:
+        with self._want_cv:                     # an RLock: _supersede nests
+            gen, previous, cached = self._supersede(preset)
+            self._want = (gen, preset, on_error, previous, cached)
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(target=self._work, name="player-route", daemon=True)
+                self._worker.start()
+            self._want_cv.notify()
+
+    def _work(self) -> None:
+        while True:
+            with self._want_cv:
+                while self._want is None:
+                    self._want_cv.wait()
+                gen, preset, on_error, previous, cached = self._want
+                self._want = None
+                self._busy = True
+            try:
+                self._serve(gen, preset, on_error, previous, cached)
+            finally:
+                with self._want_cv:
+                    self._busy = False
+                    self._want_cv.notify_all()
+
+    def _serve(self, gen, preset, on_error, previous, cached) -> None:
+        with self._route_lock:
+            if gen != self._gen:
+                return                          # superseded while waiting for the lock
+            if preset is None:
+                self._stop_now(gen)
+                return
+            try:
+                self._play_now(preset, gen, previous, cached)
+            except Exception as exc:
+                if gen != self._gen:
+                    log.info("preset %s failed after it was superseded: %s", preset.n, exc)
+                    return
+                log.error("could not start preset %s: %s", preset.n, exc,
+                          exc_info=not isinstance(exc, LookupError))
+                if on_error is not None:
+                    try:
+                        on_error(exc)
+                    except Exception:
+                        log.debug("on_error hook failed", exc_info=True)
+
+    def wait_idle(self, timeout: float | None = None) -> bool:
+        """Block until no background start or stop is pending or running."""
+        with self._want_cv:
+            return self._want_cv.wait_for(lambda: self._want is None and not self._busy, timeout)
+
+    def _stoppable(self, keep: Source | None) -> list[tuple[str, Source]]:
+        """One source per backend, leaving out ``keep``'s backend.
+
+        Radio and YTM share one MPD (``backend = "mpd"``): the source about to
+        play replaces MPD's queue itself, and stopping MPD first would only pay
+        MPD's slow stop twice - and block on it, as ytm did on every radio press.
+        """
+        keep_backend = getattr(keep, "backend", None) or (keep.name if keep is not None else None)
+        seen = {keep_backend} if keep is not None else set()
+        out = []
         for name, other in self.sources.items():
-            if other is not source:
-                self._stop_source(name, other)
+            if other is keep:
+                continue
+            backend = getattr(other, "backend", None) or name
+            if backend in seen:
+                continue
+            seen.add(backend)
+            out.append((name, other))
+        return out
+
+    def _play_now(self, preset: Preset, gen: int, previous: Preset | None, cached: str | None) -> None:
+        source = self._source_for(preset)
+        for name, other in self._stoppable(source):
+            if gen != self._gen:
+                return                          # a newer press: it does its own stopping
+            self._stop_source(name, other)
+        if gen != self._gen:
+            return
         try:
             source.play(preset)
         except Exception:
+            if gen == self._gen:
+                with self._want_cv:
+                    if gen == self._gen:
+                        self.current_preset = None
+                        self._starting = None
             spotify_was_on = cached == "spotify" or (previous is not None and previous.source == "spotify")
             if preset.source != "spotify" and spotify_was_on:
                 # go-librespot is paused, not stopped, to keep its session warm.
@@ -250,7 +465,10 @@ class MoodePlayer:
                     preset.source,
                 )
             raise
-        self.current_preset = preset
+        with self._want_cv:
+            if gen == self._gen:
+                self._starting = None
+                self._source_cache = None
 
     def _stop_source(self, name: str, source: Source) -> None:
         try:
@@ -259,9 +477,15 @@ class MoodePlayer:
             log.exception("could not stop %s", name)
 
     def stop(self) -> None:
-        self.current_preset = None
-        self._source_cache = None
-        for name, source in self.sources.items():
+        """Stop everything and wait for it. Supersedes any pending start."""
+        gen, _, _ = self._supersede(None)
+        with self._route_lock:
+            self._stop_now(gen)
+
+    def _stop_now(self, gen: int) -> None:
+        for name, source in self._stoppable(None):
+            if gen != self._gen:
+                return                          # a press after the stop: it wins
             self._stop_source(name, source)
 
     def next_track(self) -> None:
@@ -286,8 +510,7 @@ class MoodePlayer:
             timeout=5,
         )
 
-    def set_volume(self, value: float) -> None:
-        percent = scale_volume(value, self.config.volume_limit, self.config.volume_floor)
+    def _mixer_level(self, percent: int) -> None:
         if percent > 0:
             # Turning the knob up always un-mutes: the switch may have been
             # left off by moOde, a standby or a restart, and a level on a
@@ -298,18 +521,106 @@ class MoodePlayer:
                 self._amixer(f"{percent}%")   # a mixer without a mute switch
         else:
             self._amixer(f"{percent}%")
+
+    def set_volume(self, value: float) -> None:
+        percent = scale_volume(value, self.config.volume_limit, self.config.volume_floor)
+        with self._mixer_lock:
+            self._mixer_gen += 1
+            self._hold = None
+            self._mixer_level(percent)
         self._volume = float(percent)
         self._knob = max(0.0, min(100.0, float(value)))
         if self._muted and percent > 0:
             self._muted = False
 
-    def get_volume(self) -> float | None:
-        """Current volume on the knob scale, read back from the mixer.
+    # -- the boot resume's swell ------------------------------------------
 
-        Read rather than remembered, because the moOde UI, HA and a phone over
-        AirPlay all move the same hardware mixer behind our back. Falls back to
-        the last value we set if amixer cannot be read.
+    def hold_silent(self) -> None:
+        """Mixer to 0% for a swell to come, remembering the level to rise to.
+
+        That level is the knob's (post-ceiling); with no knob reading yet,
+        the mixer's own, capped at ``volume_limit``. Unknown: left alone.
         """
+        with self._mixer_lock:
+            target = self._volume
+            if target is None:
+                percent = self._read_mixer()
+                if percent is None:
+                    return
+                target = min(percent, max(1, min(100, int(self.config.volume_limit))))
+            self._mixer_gen += 1
+            self._hold = int(target)
+            self._amixer("0%")
+
+    def release_hold(self) -> None:
+        """No swell after all (the start failed): back to the level at once."""
+        with self._mixer_lock:
+            if self._hold is None or self._swelling:
+                return
+            target, self._hold = self._hold, None
+            self._mixer_gen += 1
+            self._mixer_level(target)
+
+    def swell(
+        self,
+        seconds: float = SWELL_S,
+        steps: int = SWELL_STEPS,
+        sleep: Callable[[float], None] = time.sleep,
+        spawn: Callable[[Callable[[], None]], None] | None = None,
+    ) -> None:
+        """Raise the held mixer to its level over ``seconds``, on a thread.
+
+        From the volume floor (the knob's first audible step) up, linear in
+        mixer percent - linear in dB on the Amp4 Pro, so it reads as a fade.
+        Never above the level held (the knob's, under ``volume_limit``); a
+        knob turned, a mute or a release meanwhile ends it where it is.
+        """
+        with self._mixer_lock:
+            target = self._hold
+            if target is None:
+                return
+            gen = self._mixer_gen
+            self._swelling = True
+        start = min(max(0, int(self.config.volume_floor)), target)
+        steps = max(1, int(steps))
+
+        def run() -> None:
+            try:
+                for i in range(1, steps + 1):
+                    with self._mixer_lock:
+                        if self._mixer_gen != gen:
+                            return
+                        self._mixer_level(start + (target - start) * i // steps)
+                    if i < steps:
+                        sleep(seconds / steps)
+            except Exception:
+                log.exception("volume swell failed; setting the level at once")
+                with self._mixer_lock:
+                    if self._mixer_gen == gen:
+                        try:
+                            self._mixer_level(target)
+                        except Exception:
+                            log.debug("could not set the level either", exc_info=True)
+            finally:
+                with self._mixer_lock:
+                    self._swelling = False
+                    if self._mixer_gen == gen:
+                        self._hold = None
+
+        if spawn is None:
+            threading.Thread(target=run, name="swell", daemon=True).start()
+        else:
+            spawn(run)
+
+    def reassert_volume(self) -> None:
+        """moOde's startup may have set its own level (vol.sh): the knob's again."""
+        with self._mixer_lock:
+            if self._swelling or self._hold is not None:
+                return      # the swell ends on the knob's level anyway
+        if self._knob is not None:
+            self.set_volume(self._knob)
+
+    def _read_mixer(self) -> int | None:
         try:
             result = subprocess.run(
                 [self.config.amixer, "-c", str(self.config.card), "sget", self.config.mixer],
@@ -318,10 +629,19 @@ class MoodePlayer:
                 text=True,
                 timeout=5,
             )
-            percent = parse_amixer_percent(result.stdout)
         except Exception:
             log.debug("could not read mixer volume", exc_info=True)
-            percent = None
+            return None
+        return parse_amixer_percent(result.stdout)
+
+    def get_volume(self) -> float | None:
+        """Current volume on the knob scale, read back from the mixer.
+
+        Read rather than remembered, because the moOde UI, HA and a phone over
+        AirPlay all move the same hardware mixer behind our back. Falls back to
+        the last value we set if amixer cannot be read.
+        """
+        percent = self._read_mixer()
         if percent is None:
             return self._knob
         return unscale_volume(percent, self.config.volume_limit, self.config.volume_floor)
@@ -329,10 +649,13 @@ class MoodePlayer:
     def set_mute(self, muted: bool) -> None:
         # Prefer the mixer's own mute switch; fall back to volume 0 on mixers
         # that have no switch (some DACs expose only a volume control).
-        try:
-            self._amixer("mute" if muted else "unmute")
-        except subprocess.CalledProcessError:
-            self._amixer("0%" if muted else f"{int(self._volume or 40)}%")
+        with self._mixer_lock:
+            self._mixer_gen += 1
+            self._hold = None
+            try:
+                self._amixer("mute" if muted else "unmute")
+            except subprocess.CalledProcessError:
+                self._amixer("0%" if muted else f"{int(self._volume or 40)}%")
         self._muted = muted
 
     # -- tone -------------------------------------------------------------
@@ -383,6 +706,11 @@ class MoodePlayer:
         decide, and "radio" is the resting answer. Cached for SOURCE_CACHE_S
         and dropped whenever we change what is playing.
         """
+        starting = self._starting
+        if starting is not None:
+            # A start under way: MPD may be busy stopping the last stream (and
+            # answers nobody meanwhile); we know what we asked for.
+            return starting.source
         now = self._clock()
         if self._source_cache is not None and now - self._source_cache[0] < SOURCE_CACHE_S:
             return self._source_cache[1]
@@ -400,17 +728,103 @@ class MoodePlayer:
                     return name
             except Exception:
                 log.debug("%s is_active failed", name, exc_info=True)
-        for source, flag in self.config.source_flags.items():
-            try:
-                value = self._moodeutl(
-                    f"select value from cfg_system where param='{flag}'"
-                )
-            except Exception:
-                log.debug("could not read moOde flag %s", flag, exc_info=True)
-                continue
+        flags = self.config.source_flags
+        if not flags:
+            return "radio"
+        values = self._moode_flags(list(flags.values()))
+        for source, flag in flags.items():
+            if values is not None:
+                value = values.get(flag, "")
+            else:
+                try:
+                    value = self._moodeutl(
+                        f"select value from cfg_system where param='{flag}'"
+                    )
+                except Exception:
+                    log.debug("could not read moOde flag %s", flag, exc_info=True)
+                    continue
             if value not in ("", "0", "off", "None"):
                 return source
         return "radio"
+
+    def _moode_flags(self, params: list[str]) -> dict[str, str] | None:
+        """``cfg_system`` values for ``params``, read straight from moOde's db.
+
+        One read-only sqlite query (~2 ms) instead of a moodeutl per flag:
+        moodeutl is a PHP script, ~120 ms of CPU each, and active_source()
+        is asked every second or two. A missing row is simply absent; None
+        when the db cannot be read (no moOde, locked mid-write), and the
+        caller falls back to moodeutl.
+        """
+        try:
+            con = sqlite3.connect(f"file:{self.moode_db}?mode=ro", uri=True, timeout=0.5)
+            try:
+                marks = ",".join("?" * len(params))
+                rows = con.execute(
+                    f"select param, value from cfg_system where param in ({marks})", params
+                ).fetchall()
+            finally:
+                con.close()
+        except sqlite3.Error:
+            log.debug("moOde db unreadable; asking moodeutl", exc_info=True)
+            return None
+        return {str(param): "" if value is None else str(value) for param, value in rows}
+
+    # -- for the boot resume (bootresume.py), asked off the main loop ------
+
+    def answering(self, source: str) -> bool:
+        """Is the process behind ``source`` up and talking yet?"""
+        if source in ("radio", "ytm"):
+            return mpd_answers(self.config.mpd_host, self.config.mpd_port)
+        if source == "spotify":
+            return http_answers(self.config.spotify.base_url.rstrip("/") + "/status")
+        return True
+
+    def still_playing(self, preset: Preset) -> bool:
+        """``preset`` is what we started and its player still plays it.
+
+        For radio, MPD must be playing this very stream: moOde's worker
+        reloading its own queue counts as "not". Never raises.
+        """
+        if self.current_preset != preset or self._starting is not None:
+            return False
+        source = self.sources.get(preset.source)
+        if source is None:
+            return False
+        try:
+            if preset.source == "radio":
+                client = source.mpd()
+                if client.status().get("state") != "play":
+                    return False
+                return str(client.currentsong().get("file", "")) == preset.uri
+            return bool(source.is_active())
+        except Exception:
+            log.debug("still_playing check failed", exc_info=True)
+            return False
+
+    def wrkready(self, db: Path = MOODE_DB) -> int | None:
+        """moOde's worker sets cfg_system ``wrkready`` to 1 when its startup is done.
+
+        Read-only sqlite first, moodeutl if that is refused; None if neither
+        answers (no moOde, or it is mid-write).
+        """
+        value: str | None = None
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=0.5)
+            try:
+                row = con.execute("select value from cfg_system where param='wrkready'").fetchone()
+            finally:
+                con.close()
+            value = None if row is None else str(row[0])
+        except sqlite3.Error:
+            try:
+                value = self._moodeutl("select value from cfg_system where param='wrkready'")
+            except Exception:
+                return None
+        try:
+            return int(value) if value not in (None, "") else None
+        except ValueError:
+            return None
 
     def select_source(self, source: str) -> None:
         """Hand the audio path to a renderer, or take it back for MPD."""
@@ -445,14 +859,25 @@ class MoodePlayer:
     def renderer_info(self) -> dict:
         """Who is connected over Bluetooth and what they play - for the web page.
 
-        ``{"device": "Pixel 11", "title": ..., "artist": ...}``, empty fields
-        when nobody is connected. Cached briefly: the page polls every second.
+        ``{"device": "Pixel 11", "title", "artist", "codec": "aptX HD", "rate": 48000}``,
+        empty fields when nobody is connected. BlueZ's AVRCP track first, moOde's
+        btmeta.json if the phone sends none. Cached briefly: the page polls every second.
         """
         now = self._clock()
         if self._renderer_cache is not None and now - self._renderer_cache[0] < RENDERER_INFO_S:
             return self._renderer_cache[1]
-        info = {"device": "", "title": "", "artist": ""}
-        if shutil.which(self.config.bluetoothctl) and self._bluetooth_up():
+        info: dict = {"device": "", "title": "", "artist": "", "codec": None, "rate": None}
+        try:
+            playing = self.bluetooth.playing()
+        except Exception:
+            log.debug("bluetooth state unreadable", exc_info=True)
+            playing = None
+        if playing is not None:
+            info.update({"device": playing["name"], "title": playing["title"],
+                         "artist": playing["artist"], "codec": playing["codec"],
+                         "rate": playing["rate"]})
+        elif shutil.which(self.config.bluetoothctl) and self._bluetooth_up() and self.bluetooth.adapter() is None:
+            # BlueZ not answering busctl (older box?): bluetoothctl as before.
             try:
                 out = subprocess.run(
                     [self.config.bluetoothctl, "devices", "Connected"],
@@ -461,7 +886,7 @@ class MoodePlayer:
                 info["device"] = parse_connected_device(out)
             except (OSError, subprocess.TimeoutExpired):
                 log.debug("bluetoothctl devices failed", exc_info=True)
-        if info["device"]:
+        if info["device"] and not info["title"]:
             try:
                 meta = json.loads(Path(BTMETA_FILE).read_text() or "{}")
                 info["title"] = str(meta.get("title") or "")
@@ -470,6 +895,15 @@ class MoodePlayer:
                 pass
         self._renderer_cache = (now, info)
         return info
+
+    def cast_paused(self) -> bool:
+        """A phone on Bluetooth has paused (the lamp's cast-paused look)."""
+        if self.active_source() != "bluetooth":
+            return False
+        try:
+            return self.bluetooth.paused_soon()
+        except Exception:
+            return False
 
     def bluetooth_pair(self, seconds: int) -> None:
         if not shutil.which(self.config.bluetoothctl):
@@ -492,6 +926,12 @@ class MoodePlayer:
                 log.warning("bluetoothctl %s failed: %s", " ".join(args), (result.stdout or "").strip()[-200:])
                 return
         log.info("bluetooth discoverable for %ss", seconds)
+        # moOde's agent asks for a yes nobody can give on a Hasler; answer it
+        # ourselves for as long as the window is open (player/btaccept.py).
+        if self._pair_acceptor is None:
+            from .btaccept import PairAcceptor
+            self._pair_acceptor = PairAcceptor()
+        self._pair_acceptor.open(seconds)
 
     def _bluetooth_up(self) -> bool:
         try:

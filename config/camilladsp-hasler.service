@@ -1,0 +1,24 @@
+[Unit]
+Description=CamillaDSP for the tone knob while this radio is in a multiroom group
+# Shipped in every release; never enabled. hasler-multiroom starts it while
+# grouped with the tone knob's DSP on (.hasler-dsp) and stops it otherwise.
+# Out of grouping, moOde's "camilladsp" ALSA plugin starts a CamillaDSP per
+# stream instead - its pipe makes snapclient's timing jump, so not for this.
+# Reads the Loopback the local snapclient plays into (substream 1, after
+# mono) and plays to the card; same Hasler Tone.yml, same websocket port, so
+# hasler-tone turns it live. No statefile: the per-stream one stays as it is.
+After=sound.target
+# A per-stream CamillaDSP holds the card and port 1234 until its player
+# reopens into the Loopback (haslerd restarts MPD): keep retrying until then.
+StartLimitIntervalSec=0
+
+[Service]
+# '+' = as root: writes /run/hasler-multiroom/tone.yml from Hasler Tone.yml.
+ExecStartPre=+/usr/local/sbin/hasler-multiroom tone-config
+ExecStart=/usr/local/bin/camilladsp -a 127.0.0.1 -p 1234 -l error /run/hasler-multiroom/tone.yml
+# As go-librespot and the per-stream CamillaDSP of most players.
+User=pi
+SupplementaryGroups=audio
+Restart=always
+RestartSec=1
+Nice=-5

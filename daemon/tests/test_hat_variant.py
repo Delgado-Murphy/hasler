@@ -35,3 +35,16 @@ def test_adc_and_lamp_on_the_hats_pins():
     assert io["analog"]["backend"] == "ads1115" and io["analog"]["addr"] == 0x48
     assert io["lamp"]["pins"] == {"red": 17, "green": 22, "blue": 27}
     assert io["lamp"]["common"] == "anode"
+
+
+def test_calibration_and_lamp_follow_the_stripboard_descriptor():
+    # Same cabinet, same pots: only the pins differ. Catches one file being
+    # re-calibrated and the other forgotten.
+    hat, proto = load_variant(HAT), load_variant(VARIANTS / "hasler-hm.yaml")
+
+    def strip(c):
+        return {k: v for k, v in c.items() if k not in ("pin", "pins", "end_switch")}
+
+    assert [strip(c) for c in hat.controls] == [strip(c) for c in proto.controls]
+    assert hat.io["lamp"] == proto.io["lamp"]
+    assert hat.actions == proto.actions

@@ -1,0 +1,242 @@
+#!/bin/sh
+# hasler-multiroom - route this radio's audio for a Snapcast group of Haslers.
+#
+# Run as root by haslerd (sudoers allows exactly this file):
+#     hasler-multiroom lead | follow HOST [PORT] | alone | status
+# Prints one JSON object:
+#     {"ok": true, "mode": "alone|lead|follow", "server": bool, "client": bool,
+#      "leader": "HOST:PORT"|null}
+#     {"ok": false, "error": "...", ...the same fields, as things are now}
+#
+# lead    every local player (MPD, go-librespot, AirPlay, Bluetooth, UPnP via
+#         MPD) plays into moOde's ALSA name "_audioout"; while leading that
+#         name points at the ALSA Loopback (snd-aloop), whose other end
+#         snapserver-hasler captures and sends to the group. A local
+#         snapclient-hasler plays the group stream on this radio's card through
+#         "hasler_local" (mono, then the tone knob - hasler-audio-mono).
+# follow  snapclient-hasler plays HOST's stream into hasler_local. _audioout
+#         still points at the Loopback, which nobody captures: a local player
+#         that starts anyway plays into nothing and never takes the card from
+#         the client. Stopping local players is haslerd's job.
+# alone   both units stopped, the override gone: today's direct path.
+#
+# The switch is one ALSA file in /run (tmpfs), loaded by a hook from a fixed
+# file in /etc/alsa/conf.d that does nothing while /run has no file. So a
+# reboot always comes up "alone", whatever the mode was; haslerd restores the
+# group. moOde's own files are not touched. Players pick the new route up the
+# next time they open the device (alsa.conf is touched, see
+# hasler-audio-mono); haslerd restarts a playing MPD. Volume stays on the
+# card's hardware mixer (snapclient --mixer none), so each knob is local.
+# Any failure in lead/follow goes back to alone, so the radio is never silent.
+#
+# The tone knob while grouped: moOde's "camilladsp" ALSA plugin starts a
+# CamillaDSP per stream behind a pipe, and the delay it reports moves in
+# ~90 ms steps - snapclient, which times every sample by that delay, re-syncs
+# (audible) every few seconds through it. So while grouped (and only if the
+# tone knob's DSP is on, .hasler-dsp) the /run file also points the name
+# "camilladsp" at a second Loopback substream, and camilladsp-hasler runs one
+# CamillaDSP from it to the card: the same Hasler Tone.yml (tone-config makes
+# the copy, capture = Loopback, rate adjusted to the card's clock), the same
+# websocket port 1234, so hasler-tone turns it live.
+#
+#     hasler-multiroom tone-config    (camilladsp-hasler's ExecStartPre)
+set -eu
+
+RUN=/run/hasler-multiroom
+MODE_FILE=$RUN/mode
+ENV_FILE=$RUN/client.env
+ROUTE=$RUN/alsa.conf
+TONE_IN="/usr/share/camilladsp/configs/Hasler Tone.yml"
+TONE=$RUN/tone.yml
+DSP_MARK=/etc/alsa/conf.d/.hasler-dsp
+DSP=camilladsp-hasler.service
+HOOK=/etc/alsa/conf.d/zzz-hasler-multiroom.conf
+ALSA_TOP=/usr/share/alsa/alsa.conf
+MONO=/usr/local/sbin/hasler-audio-mono
+SERVER=snapserver-hasler.service
+CLIENT=snapclient-hasler.service
+CAPTURE=/proc/asound/Loopback/pcm1c/sub0/status
+# libasound2-plugins' speex resampler (bootstrap installs it): far better than
+# ALSA's built-in linear converter for players not at the group's 44.1 kHz.
+SPEEX_LIBS="/usr/lib/*/alsa-lib/libasound_module_rate_speexrate_medium.so"
+MOODE_ALOOP=/etc/alsa/conf.d/_sndaloop.conf
+
+say() { printf '%s\n' "$1"; }
+active() { if systemctl is-active --quiet "$1"; then echo true; else echo false; fi; }
+mode() { m=$(cat "$MODE_FILE" 2>/dev/null || true); case "$m" in lead|follow) echo "$m" ;; *) echo alone ;; esac; }
+leader() {
+    if [ "$(mode)" = follow ] && [ -r "$ENV_FILE" ]; then
+        h=$(sed -n 's/^SNAP_HOST=//p' "$ENV_FILE"); p=$(sed -n 's/^SNAP_PORT=//p' "$ENV_FILE")
+        echo "\"$h:$p\""
+    else
+        echo null
+    fi
+}
+fields() { echo "\"mode\": \"$(mode)\", \"server\": $(active $SERVER), \"client\": $(active $CLIENT), \"leader\": $(leader)"; }
+report() { say "{\"ok\": true, $(fields)}"; }
+fail() { say "{\"ok\": false, \"error\": \"$1\", $(fields)}"; exit 1; }
+
+[ "$(id -u)" -eq 0 ] || { say '{"ok": false, "error": "must run as root"}'; exit 1; }
+
+hook() {   # the fixed include; rewritten only when it differs
+    want='#########################################
+# Written by hasler-multiroom - not by moOde. Does nothing unless the radio
+# is in a multiroom group: then /run/hasler-multiroom/alsa.conf points
+# _audioout at the ALSA Loopback. /run is empty after every boot.
+#########################################
+@hooks [ { func load files [ "/run/hasler-multiroom/alsa.conf" ] errors false } ]'
+    if [ "$(cat "$HOOK" 2>/dev/null || true)" != "$want" ]; then
+        printf '%s\n' "$want" > "$HOOK.tmp"; chmod 0644 "$HOOK.tmp"; mv -f "$HOOK.tmp" "$HOOK"
+    fi
+}
+
+rate_line() {   # the plug's converter: speexrate_medium when it is installed
+    for lib in $SPEEX_LIBS; do
+        if [ -e "$lib" ]; then echo 'rate_converter "speexrate_medium"'; return 0; fi
+    done
+    echo '# libasound2-plugins not installed: the linear rate converter'
+}
+
+reload_alsa() { [ -e "$ALSA_TOP" ] && touch "$ALSA_TOP"; }
+
+route_loopback() {
+    # Fixed rate and format = snapserver's sampleformat; plug converts. The
+    # Loopback's two ends must agree, and this way they always do. Substream
+    # 0 carries the local players (to snapserver), substream 1 the client's
+    # output to camilladsp-hasler.
+    install -d -m 0755 "$RUN"
+    RATE=$(rate_line)
+    cat > "$ROUTE.tmp" <<EOF
+# hasler-multiroom: in a group - every local player into the Loopback.
+pcm.!_audioout {
+type plug
+$RATE
+slave { pcm "hw:Loopback,0,0"; rate 44100; format S16_LE; channels 2 }
+}
+EOF
+    if [ -e "$DSP_MARK" ]; then
+        cat >> "$ROUTE.tmp" <<EOF
+# The group's sound after mono, into camilladsp-hasler (not a CamillaDSP per stream).
+pcm.!camilladsp {
+type plug
+$RATE
+slave { pcm "hw:Loopback,0,1"; rate 44100; format S32_LE; channels 2 }
+}
+EOF
+    fi
+    chmod 0644 "$ROUTE.tmp"
+    if ! cmp -s "$ROUTE.tmp" "$ROUTE" 2>/dev/null; then
+        mv -f "$ROUTE.tmp" "$ROUTE"; reload_alsa; ROUTE_CHANGED=1
+    else
+        rm -f "$ROUTE.tmp"
+    fi
+}
+
+tone_config() {   # Hasler Tone.yml with the Loopback as capture, rate-adjusted
+    install -d -m 0755 "$RUN"
+    [ -r "$TONE_IN" ] || return 1
+    awk '
+        skip && /^    / { next }
+        { skip = 0 }
+        /^devices:/ {
+            print
+            print "  capture:"
+            print "    type: Alsa"
+            print "    channels: 2"
+            print "    device: hw:Loopback,1,1"
+            print "    format: S32_LE"
+            print "  chunksize: 1024"
+            print "  enable_rate_adjust: true"
+            print "  adjust_period: 10"
+            indev = 1; next
+        }
+        indev && /^[^ ]/ { indev = 0 }
+        indev && /^  capture:/ { skip = 1; next }
+        indev && /^  (chunksize|enable_rate_adjust|adjust_period|target_level|capture_samplerate|samplerate):/ { next }
+        indev && /^  playback:/ { print "  samplerate: 44100" }
+        { print }
+    ' "$TONE_IN" > "$TONE.tmp"
+    chmod 0644 "$TONE.tmp"; mv -f "$TONE.tmp" "$TONE"
+}
+
+dsp_on() {   # camilladsp-hasler runs iff grouped with the DSP on
+    if [ -e "$DSP_MARK" ]; then
+        systemctl start "$DSP"
+    else
+        systemctl stop "$DSP" 2>/dev/null || true
+    fi
+}
+
+ROUTE_CHANGED=0
+client_to() {   # HOST PORT - (re)start the client only if its target or route changed
+    install -d -m 0755 "$RUN"
+    printf 'SNAP_HOST=%s\nSNAP_PORT=%s\n' "$1" "$2" > "$ENV_FILE.tmp"
+    if ! cmp -s "$ENV_FILE.tmp" "$ENV_FILE" 2>/dev/null; then
+        mv -f "$ENV_FILE.tmp" "$ENV_FILE"; systemctl restart "$CLIENT"
+    else
+        rm -f "$ENV_FILE.tmp"
+        if [ "$ROUTE_CHANGED" = 1 ] || [ "$(active $CLIENT)" != true ]; then systemctl restart "$CLIENT"; fi
+    fi
+}
+
+go_alone() {
+    rm -f "$MODE_FILE"
+    systemctl stop "$CLIENT" "$DSP" "$SERVER" 2>/dev/null || true
+    if [ -e "$ROUTE" ]; then rm -f "$ROUTE"; reload_alsa; fi
+    rm -f "$ENV_FILE" "$TONE"
+    # Unload the Loopback again unless moOde's own "ALSA loopback" uses it;
+    # it stays if a player still holds it open (it is harmless then).
+    if ! grep -q '^pcm\.!_audioout {' "$MOODE_ALOOP" 2>/dev/null; then
+        modprobe -r snd-aloop 2>/dev/null || true
+    fi
+}
+
+abort() { go_alone; fail "$1"; }
+
+case "${1:-}" in
+lead)
+    [ -x "$MONO" ] && { "$MONO" refresh >/dev/null || abort "hasler-audio-mono refresh failed"; }
+    hook
+    systemctl start "$SERVER" || abort "snapserver did not start (journalctl -u $SERVER)"
+    # The server holds the Loopback's capture end before any player opens it.
+    i=0
+    while [ "$(cat "$CAPTURE" 2>/dev/null || echo closed)" = closed ]; do
+        i=$((i + 1)); [ $i -le 30 ] || abort "snapserver did not open the Loopback"
+        sleep 0.1
+    done
+    route_loopback
+    dsp_on || abort "the tone knob's CamillaDSP did not start (journalctl -u $DSP)"
+    client_to 127.0.0.1 1704 || abort "snapclient did not start (journalctl -u $CLIENT)"
+    echo lead > "$MODE_FILE"
+    ;;
+follow)
+    host="${2:-}"; port="${3:-1704}"
+    case "$host" in
+        ""|-*|*[!A-Za-z0-9.:-]*) fail "follow needs a host name or address" ;;
+    esac
+    [ ${#host} -le 253 ] || fail "follow needs a host name or address"
+    case "$port" in ""|*[!0-9]*) fail "port must be a number" ;; esac
+    { [ "$port" -ge 1 ] && [ "$port" -le 65535 ]; } || fail "port must be 1-65535"
+    [ -x "$MONO" ] && { "$MONO" refresh >/dev/null || abort "hasler-audio-mono refresh failed"; }
+    hook
+    systemctl stop "$SERVER" 2>/dev/null || true
+    modprobe snd-aloop || abort "could not load snd-aloop"
+    route_loopback
+    dsp_on || abort "the tone knob's CamillaDSP did not start (journalctl -u $DSP)"
+    client_to "$host" "$port" || abort "snapclient did not start (journalctl -u $CLIENT)"
+    echo follow > "$MODE_FILE"
+    ;;
+alone)
+    go_alone
+    ;;
+tone-config)
+    tone_config || { say '{"ok": false, "error": "no Hasler Tone.yml"}'; exit 1; }
+    say '{"ok": true}'; exit 0
+    ;;
+status)
+    ;;
+*)
+    say '{"ok": false, "error": "usage: hasler-multiroom lead | follow HOST [PORT] | alone | status | tone-config"}'; exit 1
+    ;;
+esac
+report

@@ -1,0 +1,7 @@
+schema: 1
+variant: hasler-hm
+channel: stable
+update_mode: auto
+box_id: 00000000-0000-4000-8000-000000000000
+checkin: false
+metered: false

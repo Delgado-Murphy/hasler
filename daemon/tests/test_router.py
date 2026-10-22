@@ -475,3 +475,51 @@ class TestKnobUnmutes:
         player, calls = self._player(monkeypatch, switch=False)
         player.set_volume(50)
         assert calls == [["65%", "unmute"], ["65%"]]
+
+
+class TestMoodeFlags:
+    """Renderer flags come from moOde's sqlite db, not a PHP moodeutl per flag."""
+
+    def _db(self, tmp_path, **values):
+        import sqlite3
+
+        db = tmp_path / "moode.db"
+        con = sqlite3.connect(db)
+        con.execute("create table cfg_system (id integer, param text, value text)")
+        for i, (param, value) in enumerate(values.items()):
+            con.execute("insert into cfg_system values (?, ?, ?)", (i, param, value))
+        con.commit()
+        con.close()
+        return db
+
+    def _player(self, monkeypatch, db):
+        calls = []
+
+        def run(cmd, **kwargs):
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "1\n", "")
+
+        monkeypatch.setattr("haslerd.player.moode.subprocess.run", run)
+        player = MoodePlayer(MoodeConfig(), sources={})
+        player.moode_db = db
+        return player, calls
+
+    def test_flags_read_from_the_db_without_shelling_out(self, monkeypatch, tmp_path):
+        player, calls = self._player(monkeypatch, self._db(tmp_path, btactive="0", aplactive="1"))
+        assert player.active_source() == "airplay"
+        assert calls == []
+
+    def test_all_flags_off_is_radio(self, monkeypatch, tmp_path):
+        player, calls = self._player(monkeypatch, self._db(tmp_path, btactive="0", aplactive="0"))
+        assert player.active_source() == "radio"
+        assert calls == []
+
+    def test_a_missing_row_reads_as_off_not_a_moodeutl(self, monkeypatch, tmp_path):
+        player, calls = self._player(monkeypatch, self._db(tmp_path))
+        assert player.active_source() == "radio"
+        assert calls == []
+
+    def test_an_unreadable_db_falls_back_to_moodeutl(self, monkeypatch, tmp_path):
+        player, calls = self._player(monkeypatch, tmp_path / "absent.db")
+        assert player.active_source() == "bluetooth"        # moodeutl said "1"
+        assert calls and calls[0][0] == "moodeutl"

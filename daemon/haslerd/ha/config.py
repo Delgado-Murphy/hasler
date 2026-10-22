@@ -2,7 +2,8 @@
 
 The owner connects HA from the key page (Settings -> Home Assistant), so the
 connection has to live somewhere the daemon can write: next to state.json and
-keys.yaml, normally ``/var/lib/haslerd/ha.json``::
+keys.yaml, normally ``/var/lib/haslerd/secrets/ha.json`` (``/var/lib/haslerd/ha.json``
+on a box from before the secrets directory)::
 
     {"url": "http://192.168.1.10:8123", "token": "eyJ…", "publish": false,
      "instance": {"uuid": "…", "name": "Home", "where": "3f2a…", "time_zone": "Europe/Madrid"}}
@@ -42,6 +43,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from ..boxconfig import secret_file
 
 log = logging.getLogger(__name__)
 
@@ -95,7 +98,9 @@ def normalise_url(raw: Any) -> str:
 
 
 def path_for(state_dir: Path | None) -> Path | None:
-    return None if state_dir is None else Path(state_dir) / FILENAME
+    """``<state>/secrets/ha.json``, or the pre-OTA ``<state>/ha.json`` on a box
+    not yet migrated (boxconfig.secret_file)."""
+    return None if state_dir is None else secret_file(state_dir, FILENAME)
 
 
 def _from_yaml(yaml_conf: dict | None) -> HaSettings | None:
@@ -138,7 +143,7 @@ def load(state_dir: Path | None, yaml_conf: dict | None = None) -> HaSettings | 
 
 
 def _write(path: Path, doc: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     # mkstemp creates the file 0600, so the token is never world-readable,
     # not even for the instant before a chmod.
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".ha-", suffix=".json")

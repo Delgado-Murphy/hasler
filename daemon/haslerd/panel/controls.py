@@ -1,6 +1,6 @@
 """Control primitives.
 
-Five kinds cover every cabinet we have or expect:
+Six kinds cover every cabinet we have or expect:
 
 ``momentary``          spring-back key. Emits ``tap`` on release, ``hold`` at the
                        threshold while still held (and again every ``repeat_ms``
@@ -12,6 +12,8 @@ Five kinds cover every cabinet we have or expect:
 ``pot``                potentiometer on an ADC channel. Emits ``change``.
                        May carry an ``end_switch`` (a pot with a click at the
                        end-stop) which becomes its own control.
+``analog_selector``    N-position switch wired as a divider onto an ADC
+                       channel, decoded by ``thresholds``. Emits ``position``.
 
 Every control is a pure function of (time, input snapshot) -> events, with time
 passed in rather than read from the clock. That is what lets the whole panel be
@@ -29,9 +31,13 @@ commits; a real release (key 0) is longer, so it does.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+from .calibrate import curve_direction, summarize
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +47,9 @@ DEFAULT_BANK_SETTLE_S = 0.06
 DEFAULT_OFF_HOLD_S = 5.0
 DEFAULT_MEDIAN_N = 5
 DEFAULT_HYSTERESIS_COUNTS = 250
+DEFAULT_SELECTOR_BAND = 200      # counts a selector must clear a threshold by to move
+DEFAULT_RANGE = (0, 26400)       # a 3.3 V rail at +/-4.096 V full scale
+RAW_HISTORY = 256                # recent readings kept per analog control (~5 s at 50 Hz)
 
 
 @dataclass(frozen=True)
@@ -209,7 +218,9 @@ class EndSwitch(Control):
         events: list[Event] = []
         raw = digital.get(self.pin, False)
         changed = self._settled.update(now, raw)
-        # arm once the switch has read on for a debounce time (not on one sample)
+        # Arm once the switch has read on for a debounce time, not on one sample:
+        # the settled state starts on (the boot assumption), so a single glitch
+        # would otherwise arm the shutdown on a ribbon that is really unplugged.
         if not raw:
             self._on_since = None
         elif self._on_since is None:
@@ -348,7 +359,65 @@ class RotarySwitch(Control):
         return self._settled.committed
 
 
-class Pot(Control):
+class _RawHistory:
+    """The last RAW_HISTORY readings an analog control saw in normal polling.
+
+    The calibration page reads these instead of the ADC: no extra I2C traffic,
+    and nothing to collide with the panel loop. The panel thread appends, a web
+    thread copies; a copy that races an append is simply taken again.
+
+    The ADS1115 converts one channel per poll, so with two pots each reading
+    repeats about twice - harmless for a median, and why ``sample`` counts
+    polls, not conversions.
+    """
+
+    def _init_history(self) -> None:
+        self._recent: deque[int] = deque(maxlen=RAW_HISTORY)
+
+    def _seen(self, counts: int) -> None:
+        self._recent.append(int(counts))
+
+    def recent(self, n: int | None = None) -> list[int]:
+        for _ in range(5):
+            try:
+                values = list(self._recent)
+                break
+            except RuntimeError:        # deque mutated during the copy
+                continue
+        else:
+            values = []
+        return values if n is None else values[-max(1, int(n)):]
+
+    @property
+    def raw(self) -> int | None:
+        """The latest reading, or None before the first."""
+        values = self.recent(1)
+        return values[0] if values else None
+
+    def sample(self, n: int = 15) -> dict | None:
+        """Median / min / max / noise / stable of the last ``n`` polls (None if
+        none). Not ``stable`` until there are ``n`` readings to judge by."""
+        doc = summarize(self.recent(n))
+        if doc is not None:
+            doc["stable"] = doc["stable"] and doc["count"] >= max(1, int(n))
+        return doc
+
+
+@dataclass(frozen=True)
+class PotSpec:
+    """Everything that turns counts into 0-100. Swapped whole by ``Pot.respec``."""
+
+    curve: tuple[tuple[int, float], ...] | None = None
+    counts_range: tuple[int, int] | None = None
+    taper: str = "linear"
+    hysteresis: int = DEFAULT_HYSTERESIS_COUNTS
+    direction: str = "normal"
+
+
+_RESPEC_FIELDS = {"curve", "range", "counts_range", "taper", "hysteresis_counts", "direction"}
+
+
+class Pot(_RawHistory, Control):
     """Potentiometer on an ADC channel, scaled to 0-100.
 
     Three stages, and all three matter on 60-year-old carbon tracks:
@@ -360,6 +429,11 @@ class Pot(Control):
 
     With ``backend: none`` there are no counts to read, so this emits nothing
     and the daemon runs happily with dead wheels.
+
+    The scaling lives in one frozen ``PotSpec`` that ``respec`` replaces with a
+    single reference swap, so the calibration page can change it from a web
+    thread while the panel loop is mid-poll: an update sees the old spec or the
+    new one, never half of each.
     """
 
     kind = "pot"
@@ -373,26 +447,123 @@ class Pot(Control):
         taper: str = "linear",
         median_n: int = DEFAULT_MEDIAN_N,
         hysteresis_counts: int = DEFAULT_HYSTERESIS_COUNTS,
+        direction: str | None = None,
+        label: str | None = None,
     ) -> None:
         super().__init__(id)
         self.channel = channel
-        self.taper = taper
         self.median_n = max(1, median_n)
-        self.hysteresis = hysteresis_counts
-        self.curve = sorted(curve) if curve else None
-        self.counts_range = counts_range
+        self.label = label
+        self.end_switch_id: str | None = None     # set by build_controls
+        curve_t = tuple(sorted((int(r), float(v)) for r, v in curve)) if curve else None
+        self._spec = PotSpec(
+            curve=curve_t,
+            counts_range=tuple(counts_range) if counts_range else None,
+            taper=taper,
+            hysteresis=int(hysteresis_counts),
+            direction=direction or curve_direction(curve_t),
+        )
         self._samples: list[int] = []
         self._committed_counts: int | None = None
         self._value: float | None = None
+        self._value_spec: PotSpec | None = None     # the spec _value was scaled under
+        self._init_history()
 
-    def _scale(self, counts: int) -> float:
-        if self.curve:
-            return _piecewise(self.curve, counts)
-        lo, hi = self.counts_range or (0, 26400)
+    # Read-only views of the live spec.
+    @property
+    def spec(self) -> PotSpec:
+        return self._spec
+
+    @property
+    def curve(self) -> list[tuple[int, float]] | None:
+        return list(self._spec.curve) if self._spec.curve else None
+
+    @property
+    def counts_range(self) -> tuple[int, int] | None:
+        return self._spec.counts_range
+
+    @property
+    def taper(self) -> str:
+        return self._spec.taper
+
+    @property
+    def hysteresis(self) -> int:
+        return self._spec.hysteresis
+
+    @property
+    def direction(self) -> str:
+        return self._spec.direction
+
+    def respec(self, **fields: Any) -> PotSpec:
+        """Change the scaling live: any of ``curve``, ``range`` (or
+        ``counts_range``), ``taper``, ``hysteresis_counts``, ``direction`` -
+        the variant YAML's names. ``None`` clears ``curve`` / ``range`` and
+        restores the default for the rest.
+
+        The next poll re-reads the knob under the new spec (so a new curve is
+        heard at once, not at the next turn) and emits ``change`` if the value
+        moved. Safe to call from any thread.
+        """
+        unknown = set(fields) - _RESPEC_FIELDS
+        if unknown:
+            raise ValueError(f"{self.id}: can't respec {', '.join(sorted(unknown))}")
+        spec = self._spec
+        changes: dict[str, Any] = {}
+        if "curve" in fields:
+            curve = fields["curve"]
+            changes["curve"] = tuple(sorted((int(r), float(v)) for r, v in curve)) if curve else None
+        for key in ("range", "counts_range"):
+            if key in fields:
+                rng = fields[key]
+                changes["counts_range"] = (int(rng[0]), int(rng[1])) if rng else None
+        if "taper" in fields:
+            changes["taper"] = fields["taper"] or "linear"
+        if "hysteresis_counts" in fields:
+            h = fields["hysteresis_counts"]
+            changes["hysteresis"] = DEFAULT_HYSTERESIS_COUNTS if h is None else max(1, int(h))
+        if "direction" in fields or "curve" in changes:
+            d = fields.get("direction")
+            if d not in (None, "normal", "reversed"):
+                raise ValueError(f"{self.id}: direction must be normal or reversed")
+            changes["direction"] = d or curve_direction(changes.get("curve", spec.curve))
+        new = dataclasses.replace(spec, **changes)
+        if new != spec:
+            self._spec = new
+            log.info("%s: respecced (curve %s, hysteresis %s, %s)", self.id,
+                     "measured" if new.curve else new.taper, new.hysteresis, new.direction)
+        return new
+
+    def respec_from_spec(self, spec: Mapping[str, Any]) -> PotSpec:
+        """Apply a whole variant ``pot`` spec (shipped, or shipped + overlay):
+        every scaling field it leaves out goes back to its default."""
+        return self.respec(
+            curve=spec.get("curve"),
+            range=spec.get("range"),
+            taper=spec.get("taper"),
+            hysteresis_counts=spec.get("hysteresis_counts"),
+            direction=spec.get("direction"),
+        )
+
+    def reconfigure(self, new: "Pot") -> None:
+        """Take ``new``'s scaling (variant.Panel.apply_specs, after an overlay
+        change), keeping this pot's live reading and history."""
+        self.median_n = new.median_n
+        self.label = new.label
+        self._spec = new.spec
+
+    def scale(self, counts: int) -> float:
+        """Counts -> 0-100 under the live spec."""
+        return self._scale(counts, self._spec)
+
+    @staticmethod
+    def _scale(counts: int, spec: PotSpec) -> float:
+        if spec.curve:
+            return _piecewise(spec.curve, counts)
+        lo, hi = spec.counts_range or DEFAULT_RANGE
         if hi == lo:
             return 0.0
         frac = min(1.0, max(0.0, (counts - lo) / (hi - lo)))
-        if self.taper == "log":
+        if spec.taper == "log":
             # Audio-taper pots move slowly at the bottom and fast at the top.
             # Squaring the fraction is a serviceable inverse until Phase 0
             # measurements replace this with a real `curve`.
@@ -402,17 +573,22 @@ class Pot(Control):
     def update(self, now, digital, analog):
         if self.channel not in analog:
             return []
+        spec = self._spec          # one read: old or new, never a mix
+        self._seen(analog[self.channel])
         self._samples.append(analog[self.channel])
         if len(self._samples) > self.median_n:
             self._samples.pop(0)
         if len(self._samples) < self.median_n:
             return []
         counts = sorted(self._samples)[len(self._samples) // 2]
-        if self._committed_counts is not None:
-            if abs(counts - self._committed_counts) < self.hysteresis:
-                return []
+        committed = self._committed_counts
+        # A new spec re-reads the knob at once; only the panel thread touches
+        # _value_spec, so a respec racing this poll is simply seen next poll.
+        if spec is self._value_spec and committed is not None and abs(counts - committed) < spec.hysteresis:
+            return []
         self._committed_counts = counts
-        value = self._scale(counts)
+        self._value_spec = spec
+        value = self._scale(counts, spec)
         if value == self._value:
             return []
         self._value = value
@@ -420,6 +596,92 @@ class Pot(Control):
 
     def state(self):
         return self._value
+
+
+class AnalogSelector(_RawHistory, Control):
+    """N-position switch on one ADC channel (a resistor ladder on the wafer).
+
+    ``thresholds`` are the N-1 counts midway between neighbouring positions,
+    in position order - rising or falling, as the ladder runs (see
+    calibrate.fit_selector). Without them the channel's range is split evenly.
+    A reading must clear the threshold it crosses by ``band`` counts before the
+    position moves, so a wiper resting on a boundary doesn't chatter.
+
+    The Excelsior's ``speaker_sel`` is a ``rotary_switch`` on digital contacts,
+    not this: it has nothing to calibrate.
+    """
+
+    kind = "analog_selector"
+
+    def __init__(
+        self,
+        id: str,
+        channel: int,
+        positions: int | None = None,
+        thresholds: list[int] | None = None,
+        band: int = DEFAULT_SELECTOR_BAND,
+        bounce_s: float = DEFAULT_BOUNCE_S,
+        label: str | None = None,
+    ) -> None:
+        super().__init__(id)
+        self.channel = channel
+        self.label = label
+        self.positions = positions or (len(thresholds) + 1 if thresholds else 2)
+        self._thresholds = self._even(self.positions) if not thresholds else [int(t) for t in thresholds]
+        self.band = band
+        self._settled = _Settled(None, bounce_s)
+        self._init_history()
+
+    @staticmethod
+    def _even(positions: int) -> list[int]:
+        lo, hi = DEFAULT_RANGE
+        step = (hi - lo) / positions
+        return [int(lo + step * (i + 1)) for i in range(positions - 1)]
+
+    @property
+    def thresholds(self) -> list[int]:
+        return list(self._thresholds)
+
+    def respec(self, thresholds: list[int] | None = None) -> None:
+        """New thresholds (None = even split), swapped in whole. Any thread."""
+        new = self._even(self.positions) if not thresholds else [int(t) for t in thresholds]
+        if len(new) != self.positions - 1:
+            raise ValueError(f"{self.id}: {self.positions} positions need {self.positions - 1} thresholds")
+        self._thresholds = new
+
+    def respec_from_spec(self, spec: Mapping[str, Any]) -> None:
+        self.respec(spec.get("thresholds"))
+
+    def reconfigure(self, new: "AnalogSelector") -> None:
+        """Take ``new``'s thresholds and band (variant.Panel.apply_specs)."""
+        if new.positions != self.positions:
+            raise ValueError(f"{self.id}: the number of positions needs a restart")
+        self.band = new.band
+        self.label = new.label
+        self._thresholds = new.thresholds
+
+    def decode(self, counts: int, current: int | None = None) -> int:
+        thresholds = self._thresholds
+        rising = len(thresholds) < 2 or thresholds[-1] > thresholds[0]
+        pos = sum(1 for t in thresholds if (counts > t if rising else counts < t))
+        if current is not None and pos != current and 0 <= current < self.positions:
+            lo, hi = sorted((pos, current))
+            crossed = thresholds[lo:hi]
+            if any(abs(counts - t) < self.band for t in crossed):
+                return current
+        return pos
+
+    def update(self, now, digital, analog):
+        if self.channel not in analog:
+            return []
+        counts = analog[self.channel]
+        self._seen(counts)
+        if self._settled.update(now, self.decode(counts, self._settled.committed)):
+            return [Event(self.id, "position", self._settled.committed)]
+        return []
+
+    def state(self):
+        return self._settled.committed
 
 
 def _piecewise(points: list[tuple[int, float]], x: int) -> float:
@@ -443,6 +705,7 @@ _KINDS = {
     "rotary_switch": RotarySwitch,
     "pot": Pot,
     "end_switch": EndSwitch,
+    "analog_selector": AnalogSelector,
 }
 
 
@@ -476,25 +739,40 @@ def build_controls(specs: list[dict]) -> list[Control]:
 
         if kind == "pot":
             end = spec.pop("end_switch", None)
-            controls.append(
-                Pot(
-                    cid,
-                    channel=spec["channel"],
-                    curve=[tuple(p) for p in spec["curve"]] if spec.get("curve") else None,
-                    counts_range=tuple(spec["range"]) if spec.get("range") else None,
-                    taper=spec.get("taper", "linear"),
-                    median_n=spec.get("median_n", DEFAULT_MEDIAN_N),
-                    hysteresis_counts=spec.get("hysteresis_counts", DEFAULT_HYSTERESIS_COUNTS),
-                )
+            pot = Pot(
+                cid,
+                channel=spec["channel"],
+                curve=[tuple(p) for p in spec["curve"]] if spec.get("curve") else None,
+                counts_range=tuple(spec["range"]) if spec.get("range") else None,
+                taper=spec.get("taper") or "linear",
+                median_n=spec.get("median_n", DEFAULT_MEDIAN_N),
+                hysteresis_counts=spec.get("hysteresis_counts", DEFAULT_HYSTERESIS_COUNTS),
+                direction=spec.get("direction"),
+                label=spec.get("label"),
             )
+            controls.append(pot)
             if end:
+                pot.end_switch_id = end.get("id", f"{cid}_switch")
                 controls.append(
                     EndSwitch(
-                        end.get("id", f"{cid}_switch"),
+                        pot.end_switch_id,
                         pin=end["pin"],
                         off_hold_s=end.get("off_hold_ms", DEFAULT_OFF_HOLD_S * 1000) / 1000,
                     )
                 )
+            continue
+
+        if kind == "analog_selector":
+            controls.append(
+                AnalogSelector(
+                    cid,
+                    channel=spec["channel"],
+                    positions=spec.get("positions"),
+                    thresholds=spec.get("thresholds"),
+                    band=spec.get("band_counts", DEFAULT_SELECTOR_BAND),
+                    label=spec.get("label"),
+                )
+            )
             continue
 
         if kind == "momentary":

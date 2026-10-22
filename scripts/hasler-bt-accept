@@ -1,0 +1,31 @@
+#!/usr/bin/python3 -I
+"""hasler-bt-accept REQ - say yes to one Bluetooth pairing request.
+
+moOde's pairing agent (/var/www/daemon/bt_pairing_agent.py, unit bt-agent)
+shows the phone's 6-digit code in moOde's own web page and waits for a yes on
+a socket only www-data may write. A Hasler has no screen anyone looks at, so
+haslerd answers instead - only while the owner has opened the pairing window
+(a key hold or the key page), never otherwise. Run as root via sudoers.
+
+REQ is the agent's 8-hex-digit request id, as it logs it ("-> req 1a2b3c4d").
+"""
+import os
+import re
+import socket
+import stat
+import sys
+
+SOCK = "/tmp/moode-btagent.sock"
+
+if len(sys.argv) != 2 or not re.fullmatch(r"[0-9a-f]{8}", sys.argv[1]):
+    sys.exit("usage: hasler-bt-accept <8 hex digits>")
+try:
+    st = os.lstat(SOCK)
+except OSError:
+    sys.exit("moOde's pairing agent isn't running (no socket)")
+# /tmp is world-writable: answer only the agent's own socket.
+if not stat.S_ISSOCK(st.st_mode) or st.st_uid != 33:
+    sys.exit("refusing: %s is not the agent's socket" % SOCK)
+with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+    s.sendto(("pairresp,%s,1\n" % sys.argv[1]).encode(), SOCK)
+print("accepted", sys.argv[1])

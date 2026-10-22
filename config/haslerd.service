@@ -1,23 +1,59 @@
 [Unit]
 Description=Hasler panel daemon
-# go-librespot is optional at runtime - haslerd logs and carries on without it.
-After=network-online.target mpd.service go-librespot.service
-Wants=network-online.target
+# Shipped in every release as integration/systemd/haslerd.service and put in
+# place by the updater (docs/ota.md). The legacy rsync install uses
+# config/legacy/haslerd.service instead.
+# Not network-online: haslerd plays local and cached sources offline and
+# copes with the network arriving later, and waiting for it held the boot
+# (docs/build-guide.md "Boot time"). Not After=go-librespot either: it is
+# optional at runtime - haslerd logs and carries on without it. After=mpd only
+# orders: with --early-mpd MPD is in the boot transaction, otherwise moOde's
+# worker starts it later and haslerd retries.
+After=network.target mpd.service
+# Clean-shutdown marker (/var/lib/haslerd/clean-shutdown): written at a clean
+# shutdown or reboot by hasler-clean-shutdown.service, read and deleted by
+# haslerd at start; missing = the power was cut. Wants=, so no `enable` needed.
+Wants=hasler-clean-shutdown.service
+# Boot config guard (docs/build-guide.md "Boot config guard"): the early repair
+# of a config.txt a power cut broke (ordered before rc-local and this unit by
+# its own Before=) and the timer that refreshes the known-good copy after boot.
+Wants=hasler-bootcfg-guard.service hasler-bootcfg-save.timer
+# Wi-Fi from a file on the SD card (only runs when the file is there).
+Wants=hasler-wifi-rescue.service
+# The early boot lamp (hasler-lamp-boot) breathes until haslerd starts.
+# After= so haslerd never starts before it; ExecStartPre= below stops it so
+# only one of them ever writes the LED. Not Conflicts=: both are in the same
+# boot transaction, and systemd would resolve the conflict by dropping the
+# lamp's start job - no boot breath at all.
+After=hasler-lamp-boot.service
+# Update failsafe: a crash loop (5 starts in 120 s) ends in "failed", which
+# starts the updater's rollback - it acts only during an update's trial or
+# probation, and is a no-op otherwise.
+OnFailure=hasler-update-rollback.service
+StartLimitIntervalSec=120
+StartLimitBurst=5
 
 [Service]
 Type=notify
 NotifyAccess=main
 WatchdogSec=30
-ExecStart=/home/pi/hasler/daemon/.venv/bin/python -m haslerd.main \
-    --variant /home/pi/hasler/config/variants/hasler-hm.yaml \
-    --config /home/pi/hasler/config/haslerd.yaml
-WorkingDirectory=/home/pi/hasler/daemon
+# '+' = as root (we are User=pi); '-' = fine if the unit is not installed.
+# SIGTERM leaves the LED at its last duty, so there is no dark gap.
+ExecStartPre=-+/usr/bin/systemctl stop hasler-lamp-boot.service
+# The release's own venv; box settings, calibration and trust in /etc/hasler,
+# web-written config, state and secrets in /var/lib/haslerd.
+ExecStart=/opt/hasler/current/venv/bin/python -m haslerd.main --etc /etc/hasler
+WorkingDirectory=/var/lib/haslerd
+# The release's bin/ first: deno (yt-dlp's JS runtime) and go-librespot.
+Environment=PATH=/opt/hasler/current/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# The release tree is root-owned and read-only; it is precompiled at install.
+Environment=PYTHONDONTWRITEBYTECODE=1
 Restart=always
 RestartSec=3
 User=pi
 # GPIO and I2C access without running as root.
 SupplementaryGroups=gpio i2c audio
-# /var/lib/haslerd, owned by User=. Holds state.json (last preset, resumed on boot).
+# /var/lib/haslerd, owned by User=. state.json, keys.yaml, settings.json, secrets/.
 StateDirectory=haslerd
 
 [Install]

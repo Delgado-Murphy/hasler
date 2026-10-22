@@ -1,0 +1,20 @@
+[Unit]
+Description=Snapcast client for a Hasler multiroom group
+# Shipped in every release; never enabled. hasler-multiroom (run by haslerd)
+# writes the group's server into /run/hasler-multiroom/client.env and starts
+# it, for leading (127.0.0.1) and following (the leader); Debian's own
+# snapclient.service stays masked (scripts/bootstrap.sh).
+# It plays into "hasler_local" - this radio's card after mono and the tone
+# knob's CamillaDSP (hasler-audio-mono). --mixer none: snapclient never
+# touches the volume; each radio's knob drives its own card's "Digital".
+After=sound.target network.target
+
+[Service]
+EnvironmentFile=/run/hasler-multiroom/client.env
+ExecStart=/usr/bin/snapclient --logsink=system --player alsa --soundcard hasler_local --mixer none --hostID %H -h ${SNAP_HOST} -p ${SNAP_PORT}
+# As go-librespot: the CamillaDSP config and its statefile belong to pi.
+User=pi
+SupplementaryGroups=audio
+Restart=always
+RestartSec=2
+Nice=-5
