@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.4 - 2026-10-22
+
+- A brief power dip on the key board can no longer press every key at once:
+  until the board is set up again the radio keeps the keys as they were
+  (before, for up to a second, it could change the station by itself).
+- The tone knob's switch arms the 5-second shutdown only after it has
+  clearly read on, so a loose ribbon can't power the radio off just after
+  it starts.
+- Ships the cabinet description for the Hasler HAT circuit board
+  (`hasler-hm-hat`), used only once a radio is set to it.
+
 ## 1.0.3 - 2026-10-22
 
 - A station that stops by itself comes back by itself: the radio notices
