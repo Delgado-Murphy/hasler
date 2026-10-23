@@ -48,8 +48,11 @@ It takes about **20 minutes**, most of it waiting.
 
 ## 2. Copy the Hasler first-boot files
 
-Download the Hasler first-boot files and copy them **to the top of the bootfs
-drive** (next to `config.txt`, not into a folder):
+1. Download **[hasler-firstboot.zip](https://delgado-murphy.github.io/hasler-releases/install/hasler-firstboot.zip)**
+   from the releases site.
+2. Unzip it. You get six files.
+3. Copy all six **to the top of the bootfs drive** (next to `config.txt`, not
+   into a folder), then eject the drive.
 
 | File | What it is | Edit it? |
 |---|---|---|
@@ -58,8 +61,12 @@ drive** (next to `config.txt`, not into a folder):
 | `vendor-data` | starts the installer at the first start | no |
 | `meta-data`, `user-data`, `network-config` | let it run (cloud-init) | no |
 
-They come from this repository: `scripts/hasler-install` and the files in
-`config/firstboot/` (all but `moodecfg.ini`, which the release brings itself).
+The zip is built from a tagged release (`scripts/hasler-install` and
+`config/firstboot/`, without `moodecfg.ini`, which the release brings itself).
+You don't need to trust the download itself: `hasler-install` checks every
+signature from the root key it carries before it changes anything. Makers can
+also check the installer first with `install/hasler-install.sig` (see "For
+makers" below); `install/SHA256SUMS` lists the hashes.
 
 **If the computer says a file already exists** (`meta-data`, `user-data` or
 `network-config`): **keep the one on the card** (*Skip* / *Don't replace*). It
@@ -280,13 +287,12 @@ The kit files on the boot partition can stay; cloud-init runs them only once
 
 ### Open points
 
-- **Publishing the installer.** The release carries it
-  (`app/setup/scripts/hasler-install`); the SSH one-liner expects
-  `install/hasler-install` and `install/hasler-install.sig` on the releases
-  site, the signature made **offline with the root key** whenever the
-  installer changes:
-  `ssh-keygen -Y sign -f hasler-root-2026.key -n hasler-install hasler-install`.
-  A downloadable kit (the six files in one zip) belongs there too.
+- **Re-publishing the kit when the installer changes** (done for 1.0.5 on
+  2026-10-23): build it from the tag, sign `hasler-install` **offline with the
+  root key** (`ssh-keygen -Y sign -f hasler-root-2026.key -n hasler-install
+  hasler-install`), zip the six files, and put `hasler-firstboot.zip`,
+  `hasler-install`, `hasler-install.sig` and `SHA256SUMS` into `install/` on
+  the gh-pages branch of hasler-releases.
 - Raspberry Pi Imager lists moOde 10.3.6 with `init_format: systemd`
   (firstrun.sh). If a later moOde image switches to cloud-init, Imager writes
   its own `meta-data` / `user-data` / `network-config`: then copy only
