@@ -1,6 +1,9 @@
-// polkit: haslerd (runs as user pi) may start the yt-dlp upgrade ("update
-// yt-dlp now" when YouTube has just broken it) - that one unit, start only.
-// The unit itself runs as the unprivileged ytdlp user.
+// polkit: haslerd (runs as user pi) may start the yt-dlp lane (Update now, Go
+// back, tracks failing, the network back - docs/ota.md "The component lane")
+// - that one unit, start only. What it should do haslerd writes to
+// /var/lib/haslerd/yt-dlp-request.json; the unit runs as the ytdlp user and
+// checks everything itself. (Not widened to instances: OTA does not carry
+// polkit rules to radios already out there.)
 // -> /etc/polkit-1/rules.d/51-hasler-ytdlp.rules (scripts/bootstrap.sh)
 polkit.addRule(function(action, subject) {
     if (action.id == "org.freedesktop.systemd1.manage-units" &&

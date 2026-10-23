@@ -139,6 +139,7 @@ verified keyring, so a key only counts for the role it is listed with.
 | `hasler-keyring` | `keyring.json` | root |
 | `hasler-release` | `release.json` | release |
 | `hasler-channel` | `channels/<channel>.json` | timestamp |
+| `hasler-components` | `components.json` (tested yt-dlp versions for the component lane) | release |
 
 ## Keyring and trust
 

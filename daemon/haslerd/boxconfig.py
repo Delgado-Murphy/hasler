@@ -44,8 +44,10 @@ SCHEMA = 1   # of box.yaml and the overlay files; bumped with a migration
 # channel: bench (the makers' test radio) | stable (everyone; also what a
 # missing or retired value such as "beta" reads as). update_mode: auto (the
 # default for new radios: patch/minor at night in standby, major/migration
-# still ask) | ask | off.
-BOX_KEYS = ("schema", "variant", "channel", "update_mode", "box_id", "checkin", "metered", "migrations", "update_url")
+# still ask) | ask | off. os_updates: on (the default: Debian security
+# updates at night, scripts/hasler-os-update) | off.
+BOX_KEYS = ("schema", "variant", "channel", "update_mode", "box_id", "checkin", "metered", "migrations", "update_url",
+            "os_updates")
 # The haslerd settings box.yaml may override (code defaults otherwise).
 HASLERD_KEYS = ("moode", "web", "connectivity", "home_assistant", "state_file", "keys_file")
 

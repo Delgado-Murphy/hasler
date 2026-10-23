@@ -1,0 +1,221 @@
+# The yt-dlp lane: every 6 hours, the newest yt-dlp stable and nightly from
+# PyPI, hash-locked for the radio (aarch64, CPython 3.13), installed and tried
+# on a native arm64 runner, then listed in components.json on gh-pages, signed
+# with the release key (namespace hasler-components). Radios pick a candidate
+# from it and install exactly those wheels (--require-hashes).
+#
+#   plan     PyPI + the published components.json (signature checked) -> what to build
+#   build    per new version, arm64: lock, install, offline checks, online
+#            check (best effort: runner IPs are often bot-flagged by YouTube;
+#            tested.online true/false/null, never blocks)
+#   publish  environment `sign`: assemble, sign, verify, push gh-pages. An
+#            unchanged list is re-signed once a day so `expires` (14 days)
+#            stays fresh.
+#
+# workflow_dispatch: block / unblock a version (space- or comma-separated).
+# A blocked version leaves components.json and is never offered again until
+# unblocked. The list lives in components.json itself.
+#
+# canary.json (this repo, main) holds the YouTube Music ids the online check
+# plays; edit it without touching code.
+name: components
+
+on:
+  schedule:
+    - cron: "29 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      block:
+        description: yt-dlp version(s) to block, e.g. 2026.10.21 (space or comma separated)
+        type: string
+        default: ""
+      unblock:
+        description: yt-dlp version(s) to unblock
+        type: string
+        default: ""
+      resign:
+        description: Sign and publish even if nothing changed
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: hasler-components
+  cancel-in-progress: false
+
+env:
+  HASLER_INSTALL_SH: https://raw.githubusercontent.com/Delgado-Murphy/hasler/master/scripts/install.sh
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The published components.json, if it verifies
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          mkdir -p cur
+          git show FETCH_HEAD:keyring.json > cur/keyring.json
+          git show FETCH_HEAD:keyring.json.sig > cur/keyring.json.sig
+          roots=(); for r in trust/root*.pub; do roots+=(--root "$r"); done
+          python3 tools/keyring.py verify "${roots[@]}" cur/keyring.json
+          if git cat-file -e FETCH_HEAD:components.json 2>/dev/null; then
+            git show FETCH_HEAD:components.json > cur/components.json
+            git show FETCH_HEAD:components.json.sig > cur/components.json.sig
+            # never carry over a list (or a blocked entry) nobody signed
+            bash tools/verify.sh -n hasler-components -r release -K cur/keyring.json cur/components.json
+          else
+            echo "no components.json yet - starting fresh"
+          fi
+      - name: PyPI and the plan
+        id: plan
+        env:
+          BLOCK: ${{ inputs.block }}
+          UNBLOCK: ${{ inputs.unblock }}
+        run: |
+          args=()
+          for v in ${BLOCK//,/ }; do args+=(--block "$v"); done
+          for v in ${UNBLOCK//,/ }; do args+=(--unblock "$v"); done
+          cur=(); [[ -f cur/components.json ]] && cur=(--current cur/components.json)
+          python3 tools/components.py pypi --out plan/pypi.json
+          python3 tools/components.py plan --pypi plan/pypi.json "${cur[@]}" "${args[@]}" --out plan/plan.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plan
+          path: plan/
+          retention-days: 7
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    # native arm64, like the radio (repo variable ARM_RUNNER=ubuntu-24.04-arm)
+    runs-on: ${{ vars.ARM_RUNNER || 'ubuntu-24.04-arm' }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      VERSION: ${{ matrix.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"     # the radio's python3 (trixie, cp313)
+      - name: deno - the build the radios run (hasler's install.sh pin, sha256-checked)
+        continue-on-error: true      # without it the online check says null
+        run: |
+          curl -fsSL --retry 3 -o install.sh "$HASLER_INSTALL_SH"
+          ver="$(sed -n 's/^DENO_VERSION=//p' install.sh)"; sha="$(sed -n 's/^DENO_SHA256=//p' install.sh)"
+          curl -fsSL --retry 3 -o deno.zip "https://github.com/denoland/deno/releases/download/$ver/deno-aarch64-unknown-linux-gnu.zip"
+          echo "$sha  deno.zip" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/deno" && unzip -q deno.zip -d "$RUNNER_TEMP/deno" && rm -f deno.zip install.sh
+          "$RUNNER_TEMP/deno/deno" --version | head -1
+      - name: Lock (aarch64 cp313 wheels, sha256 each)
+        run: |
+          mkdir -p "out/$VERSION"
+          python tools/components.py lock --version "$VERSION" --out "out/$VERSION/requirements.txt"
+      - name: Install and try it (offline must pass; online is best effort)
+        run: |
+          deno=(); [[ -x "$RUNNER_TEMP/deno/deno" ]] && deno=(--deno "$RUNNER_TEMP/deno/deno")
+          python tools/components.py test --version "$VERSION" --requirements "out/$VERSION/requirements.txt" \
+            --canary canary.json "${deno[@]}" --out "out/$VERSION/tested.json"
+          python3 - "out/$VERSION/tested.json" >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import json, sys
+          r = json.load(open(sys.argv[1]))
+          print(f"### yt-dlp {r['version']} ({r['channel']})\n\n`{json.dumps(r['tested'])}`\n")
+          print("\n".join(f"- {n}" for n in r["notes"]))
+          EOF
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: result-${{ matrix.version }}
+          path: out/${{ matrix.version }}/
+          retention-days: 7
+
+  publish:
+    needs: [plan, build]
+    # also when a build failed (that version is left out) or nothing was built
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: sign
+    permissions:
+      contents: write          # push gh-pages
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: pages
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: in
+      - name: Assemble
+        id: asm
+        env:
+          RESIGN: ${{ inputs.resign }}
+        run: |
+          mkdir -p results
+          shopt -s nullglob
+          for d in in/result-*; do mv "$d" "results/${d#in/result-}"; done
+          roots=(); for r in main/trust/root*.pub; do roots+=(--root "$r"); done
+          python3 main/tools/keyring.py verify "${roots[@]}" pages/keyring.json
+          cur=()
+          if [[ -f pages/components.json ]]; then
+            bash main/tools/verify.sh -n hasler-components -r release -K pages/keyring.json pages/components.json
+            cur=(--current pages/components.json)
+          fi
+          force=(); [[ "$RESIGN" == true ]] && force=(--force)
+          python3 main/tools/components.py assemble --plan in/plan/plan.json --results results \
+            --canary main/canary.json "${cur[@]}" "${force[@]}" --out pages/components.json
+      - name: Sign (release key, hasler-components) and verify
+        if: steps.asm.outputs.write == 'true'
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          python3 main/tools/components.py check pages/components.json
+          printf '%s\n' "$RELEASE_SIGNING_KEY" | (umask 077; cat > "$RUNNER_TEMP/k")
+          pub="$(ssh-keygen -y -f "$RUNNER_TEMP/k")"; rm -f "$RUNNER_TEMP/k"
+          kid="$(python3 main/tools/keyring.py find --pub "$pub" --role release pages/keyring.json)"
+          echo "signing as $kid"
+          bash main/tools/sign.sh -n hasler-components -e RELEASE_SIGNING_KEY -p "$pub" pages/components.json
+          bash main/tools/verify.sh -n hasler-components -r release -K pages/keyring.json pages/components.json
+      - name: Push gh-pages
+        if: steps.asm.outputs.write == 'true'
+        env:
+          CHANGED: ${{ steps.asm.outputs.changed }}
+          SUMMARY: ${{ steps.asm.outputs.summary }}
+        run: |
+          cd pages
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git add components.json components.json.sig
+          if [[ "$CHANGED" == true ]]; then msg="components: yt-dlp $SUMMARY"; else msg="components: re-sign"; fi
+          git commit -q -m "$msg"
+          # sign-publish and auto-promote push gh-pages too (other files): rebase and retry
+          for i in 1 2 3 4 5; do
+            git push -q origin HEAD:gh-pages && exit 0
+            sleep $((i * 5)); git pull -q --rebase origin gh-pages
+          done
+          echo "::error::could not push gh-pages"; exit 1
+      - name: Summary
+        env:
+          SUMMARY: ${{ steps.asm.outputs.summary }}
+          WRITE: ${{ steps.asm.outputs.write }}
+        run: |
+          { echo "### components.json"; echo; echo "- candidates: $SUMMARY"; echo "- published: $WRITE"; } >> "$GITHUB_STEP_SUMMARY"

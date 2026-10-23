@@ -308,6 +308,9 @@ class YtmSource:
         self.cache_ttl_s = cache_ttl_s
         self.playlist_ttl_s = playlist_ttl_s
         self._run = runner
+        # (vid, ok, error) after each yt-dlp resolve - haslerd/ytdlp_lane.py
+        # counts the failures and starts the lane when tracks stop resolving.
+        self.on_resolve: Callable[[str, bool, str], None] | None = None
 
         # id -> (expires_at, url). Guarded by _cache_lock.
         self._urls: dict[str, tuple[float, str]] = {}
@@ -743,19 +746,40 @@ class YtmSource:
         cmd.append(WATCH_URL.format(id=vid))
         try:
             result = self._run(cmd, capture_output=True, text=True, timeout=30, check=False)
-        except Exception:
+        except Exception as exc:
             log.warning("yt-dlp could not be run for %s", vid, exc_info=True)
+            self._resolved(vid, False, f"{type(exc).__name__}: {exc}")
             return None
         if result.returncode != 0:
             gone = any(marker in (result.stderr or "") for marker in GONE_MARKERS)
             self._mark_dead(vid, DEAD_GONE_S if gone else DEAD_OTHER_S)
             log.warning("yt-dlp failed for %s: %s", vid, _tail(result.stderr))
+            if not gone:                  # a removed track is not yt-dlp's fault
+                self._resolved(vid, False, result.stderr or "")
             return None
         for line in (result.stdout or "").splitlines():
             if line.startswith("http"):
+                self._resolved(vid, True, "")
                 return line.strip()
         log.warning("yt-dlp gave no URL for %s", vid)
+        self._resolved(vid, False, "no URL")
         return None
+
+    def _resolved(self, vid: str, ok: bool, error: str) -> None:
+        """Tell the yt-dlp lane (haslerd/ytdlp_lane.py) how a resolve went."""
+        hook = self.on_resolve
+        if hook is not None:
+            try:
+                hook(vid, ok, _tail(error, 2000))
+            except Exception:
+                log.debug("on_resolve hook failed", exc_info=True)
+
+    def canary(self, ytdlp: str, vid: str, min_bytes: int = 65536) -> dict:
+        """The yt-dlp lane's canary: ``ytdlp`` (a slot's binary) resolving
+        ``vid`` exactly as a key press does - same flags, same cookies, same
+        user and PATH (deno) - then its first ``min_bytes`` by Range. Nothing
+        is cached or marked dead."""
+        return canary_with(ytdlp, vid, min_bytes, self._cookie_args(), self._run)
 
     def _mark_dead(self, vid: str, seconds: float) -> None:
         with self._cache_lock:
@@ -1674,6 +1698,45 @@ def _write_atomic(path: Path, data: bytes) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+CANARY_NET = re.compile(r"Temporary failure in name resolution|Name or service not known|Network is unreachable|"
+                        r"No route to host|Connection refused|Connection reset|timed out|getaddrinfo failed", re.I)
+
+
+def looks_like_audio(data: bytes) -> bool:
+    """MP4/M4A (ftyp), WebM/Matroska (EBML), Ogg, MP3 - what bestaudio can be."""
+    return (data[4:8] == b"ftyp" or data[:4] == b"\x1a\x45\xdf\xa3" or data[:4] == b"OggS"
+            or data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0))
+
+
+def canary_with(ytdlp: str, vid: str, min_bytes: int, cookie_args: list[str],
+                runner: Callable[..., Any] = subprocess.run,
+                fetch: Callable[..., tuple[bytes, int | None, str | None]] | None = None) -> dict:
+    """-> {"result": pass|fail|offline, "stage": resolve|fetch|audio, "error", "bytes", "ctype"}."""
+    fetch = fetch or fetch_range
+    cmd = [ytdlp, "-f", AUDIO_FORMAT, "-g", *cookie_args, WATCH_URL.format(id=vid)]
+    try:
+        result = runner(cmd, capture_output=True, text=True, timeout=90, check=False)
+    except Exception as exc:
+        return {"result": "fail", "stage": "resolve", "error": f"{type(exc).__name__}: {exc}",
+                "cookies": bool(cookie_args)}
+    url = next((x.strip() for x in (result.stdout or "").splitlines() if x.startswith("http")), None)
+    if result.returncode != 0 or not url:
+        err = _tail(result.stderr) or "no URL"
+        return {"result": "offline" if CANARY_NET.search(err) else "fail", "stage": "resolve", "error": err,
+                "cookies": bool(cookie_args)}
+    try:
+        body, _total, ctype = fetch(url, 0, min_bytes - 1)
+    except _RangeRefused as exc:
+        return {"result": "fail", "stage": "fetch", "error": f"HTTP {exc.status}, not 206", "cookies": bool(cookie_args)}
+    except Exception as exc:
+        return {"result": "offline" if CANARY_NET.search(str(exc)) else "fail", "stage": "fetch",
+                "error": f"{type(exc).__name__}: {exc}", "cookies": bool(cookie_args)}
+    if len(body) < min_bytes or not looks_like_audio(body):
+        return {"result": "fail", "stage": "audio", "error": f"{len(body)} bytes of {ctype or '?'}, not audio",
+                "cookies": bool(cookie_args)}
+    return {"result": "pass", "bytes": len(body), "ctype": ctype, "cookies": bool(cookie_args)}
 
 
 def _tail(text: str | None, limit: int = 300) -> str:

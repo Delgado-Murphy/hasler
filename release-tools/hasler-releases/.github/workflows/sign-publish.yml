@@ -267,7 +267,12 @@ jobs:
           git add releases.json
           git diff --cached --quiet && exit 0
           git commit -q -m "releases.json: $VERSION"
-          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:gh-pages
+          url="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          for i in 1 2 3 4 5; do
+            git push -q "$url" HEAD:gh-pages && exit 0
+            sleep $((i * 5)); git pull -q --rebase "$url" gh-pages
+          done
+          exit 1
 
   channel:
     needs: publish
@@ -324,7 +329,12 @@ jobs:
           git add channels
           if [[ -f releases.json ]]; then git add releases.json; fi
           git commit -q -m "$CHANNEL -> $VERSION"
-          git push -q origin HEAD:gh-pages
+          # components.yml and auto-promote.yml push other gh-pages files: rebase and retry
+          for i in 1 2 3 4 5; do
+            git push -q origin HEAD:gh-pages && exit 0
+            sleep $((i * 5)); git pull -q --rebase origin gh-pages
+          done
+          echo "::error::could not push gh-pages"; exit 1
 
   halt:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'halt'
@@ -372,7 +382,12 @@ jobs:
           git add channels
           if [[ -f releases.json ]]; then git add releases.json; fi
           git commit -q -m "$CHANNEL: halt $VERSION (seq $HALT_SEQ)"
-          git push -q origin HEAD:gh-pages
+          # components.yml and auto-promote.yml push other gh-pages files: rebase and retry
+          for i in 1 2 3 4 5; do
+            git push -q origin HEAD:gh-pages && exit 0
+            sleep $((i * 5)); git pull -q --rebase origin gh-pages
+          done
+          echo "::error::could not push gh-pages"; exit 1
 
   refresh:
     if: github.event_name == 'schedule'
@@ -412,4 +427,9 @@ jobs:
           git config user.email "hasler-releases@users.noreply.github.com"
           git add channels
           git diff --cached --quiet || git commit -q -m "refresh channel indexes"
-          git push -q origin HEAD:gh-pages
+          # components.yml and auto-promote.yml push other gh-pages files: rebase and retry
+          for i in 1 2 3 4 5; do
+            git push -q origin HEAD:gh-pages && exit 0
+            sleep $((i * 5)); git pull -q --rebase origin gh-pages
+          done
+          echo "::error::could not push gh-pages"; exit 1

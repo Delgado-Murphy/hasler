@@ -291,9 +291,10 @@ Steps:
 - [ ] Nothing new to install: Phase 3a's `scripts/install.sh` already added
       go-librespot (a fixed, checked version), **deno** (the JavaScript runtime
       yt-dlp needs) and `ytmusicapi`. Its `bootstrap.sh` step put yt-dlp in
-      `/opt/yt-dlp` under its own user `ytdlp` (not root). It updates weekly,
-      builds the new version beside the old one, and switches only if a
-      self-check passes (`scripts/hasler-ytdlp-update`; `--rollback` goes back one).
+      `/opt/yt-dlp` under its own user `ytdlp` (not root). It checks every 6 h,
+      builds a signed candidate beside the old one, and switches only if it
+      plays a YouTube Music test track (`scripts/hasler-ytdlp-update`,
+      [ota.md](ota.md#the-component-lane-yt-dlp); `--rollback` goes back one).
 - [ ] `config/haslerd.yaml` needs the `spotify:`, `ytm:` and `state_file:`
       blocks. A file made from the example has them; for an older file, copy
       them from `config/haslerd.yaml.example`. The install script warns while
@@ -335,7 +336,7 @@ Steps:
       deno --version                       # 2.9.x
       yt-dlp --flat-playlist --print id 'https://music.youtube.com/playlist?list=<id>' | head -3
       yt-dlp -f bestaudio -g -- <one of those ids>   # one googlevideo URL, no JS-runtime warning
-      systemctl list-timers yt-dlp-update.timer      # weekly update is set
+      systemctl list-timers yt-dlp-update.timer      # the 6-hourly check is set
       sudo systemctl start yt-dlp-update.service; journalctl -u yt-dlp-update -n 5
       ```
 - [ ] **Check MPD can play the streams** (AAC and Opus over HTTPS). moOde's MPD

@@ -53,6 +53,9 @@ or ``fetch`` can't send that without a CORS preflight, which this server never
 answers), a ``Host`` that is one of the box's own names or addresses (defeats
 DNS rebinding: an attacker's name pointed at the box is refused) and an
 ``Origin`` / ``Referer``, when sent, on that same host. Anything else is a 403.
+``/api/components/yt-dlp/canary`` is the yt-dlp lane's canary, loopback only
+(haslerd/ytdlp_lane.py); ``/api/software/yt-dlp/update|rollback`` are the
+Music services buttons.
 Installing or rolling back a release, changing the Wi-Fi (except from a phone
 on the setup hotspot), resetting the keys and changing the release channel
 also need a press on the radio (web/confirm.py); ``/api/software`` is the
@@ -316,6 +319,8 @@ class WebApp:
         self.software = Software(
             state_dir=settings_file.parent if settings_file is not None else None,
             idle=self._idle, fallback_version=self._release_version)
+        # The yt-dlp lane's reader, canary and trigger (haslerd/ytdlp_lane.py); main.build_web.
+        self.ytdlp_lane: Any = None
         # Extra Host names accepted for state-changing requests (box.yaml web.hostnames).
         self.allowed_hosts: set[str] = set()
         # Local addresses that are the setup hotspot: Wi-Fi changes from a phone
@@ -419,6 +424,31 @@ class WebApp:
         to = str(body.get("to") or "")
         self.confirm.consume(body.get("confirm"), "rollback", {"to": to})
         self.software.rollback(to)
+
+    # -- the yt-dlp lane (haslerd/ytdlp_lane.py) ----------------------------------
+
+    def _lane(self) -> Any:
+        lane = getattr(self, "ytdlp_lane", None)
+        if lane is None or not lane.root.is_dir():
+            raise NotInstalled("the YouTube Music helper's updates are not on this radio")
+        return lane
+
+    def ytdlp_update(self) -> None:
+        """Music services' "Update now": a lane run that also canaries the current one."""
+        self._lane().update_now()
+
+    def ytdlp_rollback(self, body: Any) -> None:
+        """Music services' "Go back" - a press on the radio, like a release rollback."""
+        body = body if isinstance(body, dict) else {}
+        lane = self._lane()
+        self.confirm.consume(body.get("confirm"), "rollback", {"component": "yt-dlp"})
+        lane.rollback()
+
+    def ytdlp_canary(self, body: Any, client: str | None) -> tuple[int, dict]:
+        lane = getattr(self, "ytdlp_lane", None)
+        if lane is None:
+            return 404, {"ok": False, "error": "no yt-dlp lane"}
+        return lane.canary(body, client)
 
     def software_settings(self, body: Any) -> dict:
         body = body if isinstance(body, dict) else {}
@@ -1685,6 +1715,14 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, **app.software_install(self._body())}))
             elif path == "/api/software/rollback":
                 self._guard(lambda: (app.software_rollback(self._body()), self._json(200, {"ok": True})))
+            elif path == "/api/software/yt-dlp/update":
+                self._guard(lambda: (self._body(), app.ytdlp_update(), self._json(200, {"ok": True})))
+            elif path == "/api/software/yt-dlp/rollback":
+                self._guard(lambda: (app.ytdlp_rollback(self._body()), self._json(200, {"ok": True})))
+            elif path == "/api/components/yt-dlp/canary":
+                # The lane's canary (loopback only; ytdlp_lane.py): it takes a while.
+                self._guard(lambda: self._json(*app.ytdlp_canary(
+                    self._body(), self.client_address[0] if self.client_address else None)))
             elif path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_in(self._body())}))
             elif (m := KNOB_ID.match(path)) and m.group(2) == "fit":

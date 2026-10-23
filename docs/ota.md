@@ -39,6 +39,9 @@ second half ("For makers") has the detail. The exact file formats are in
 - **Your things stay yours.** Keys, settings, calibration, Wi-Fi, accounts and
   the Home Assistant token live outside the software and are never replaced.
   moOde and Debian themselves are not updated this way.
+- **Debian's security fixes come by themselves too**, at night in standby,
+  checked the same way, and taken back if anything is worse afterwards. Never
+  the kernel, the firmware or moOde's sound and Bluetooth parts (§6).
 
 ## What is built, and what isn't yet
 
@@ -58,6 +61,8 @@ As of 1.0.1 (October 2026):
 | Lamp breathes ember while an update installs | built (0.4.3) |
 | A new radio from a blank SD card, from a signed release (`hasler-install`, [new-install.md](new-install.md)) | built (1.0.0); the signed installer download is not published yet |
 | Remote help: "Let the makers help (24 h)" ([remote-help.md](remote-help.md)) | built (0.4.6) |
+| yt-dlp in a lane of its own: signed candidates (stable and nightly), three slots, a canary as YouTube Music plays, probation and judge ([below](#the-component-lane-yt-dlp)) | built (after 1.0.3) |
+| Debian security updates at night: Debian-Security and Tailscale only, never kernel/firmware/moOde's packages, health check, the replaced versions put back if it fails ([§6](#6-debian-security-updates)) | built (after 1.0.3) |
 | Staged rollout (rings of radios inside a channel) | the format and the radio support it; our tools still open every ring at once |
 | `config.txt` changes through the Pi's tryboot | planned - today such a release is installed by hand (§4) |
 | Opt-in daily check-in | planned - the `box.yaml` key exists, nothing is sent |
@@ -120,6 +125,7 @@ reaches the radio.
 | `box_id` | A random UUID, made once by migration 001. Places the radio in a ring (and names it in a future check-in). |
 | `checkin` | Reserved for the planned opt-in daily check-in. Nothing is sent today. |
 | `metered` | `true`: never download in the background (phone hotspot, capped plans). |
+| `os_updates` | `on` (the default) or `off`: Debian security updates at night (§6). |
 | `update_url` | Bench only: a local channel (`ota-bootstrap.sh --update-url`). Without it: the public channel. |
 | `migrations` | Written by `python -m haslerd.migrations --apply`: the ids applied here. Don't edit. |
 
@@ -333,6 +339,181 @@ leaves is marked bad, so auto mode won't reinstall it.
 - **Remote help** ("Let the makers help (24 h)" on the key page): separate
   from updates; see [remote-help.md](remote-help.md).
 
+## The component lane (yt-dlp)
+
+YouTube breaks old yt-dlp within weeks, and the fixes land in yt-dlp's
+nightlies days before a stable release. A whole Hasler release for each of
+those would be too slow, so yt-dlp has a lane of its own, **outside the
+release**: newest from PyPI, no hand-made version bumps, checked every 6 h,
+automatic, and failsafe. The code is `scripts/hasler-ytdlp-update` (run as the
+unprivileged `ytdlp` user by `yt-dlp-update.service`) and haslerd's side,
+`daemon/haslerd/ytdlp_lane.py`.
+
+**What it trusts.** The releases site publishes a signed
+`components.json` (+ `.sig`, OpenSSH, namespace `hasler-components`, by a key
+with role `release` in the radio's verified keyring - the same check as a
+release; expires after 14 days):
+
+```json
+{"schema": 1, "issued": "…Z", "expires": "…Z",
+ "components": {"yt-dlp": {
+   "candidates": [{"version": "2026.10.22", "channel": "stable",
+                   "requirements": "<pip --require-hashes lock for yt-dlp[default], cp313 aarch64>",
+                   "tested": {"install": true, "offline": true, "online": true}},
+                  {"version": "2026.10.23.235959.dev0", "channel": "nightly", "requirements": "…", "tested": {…}}],
+   "blocked": ["2026.10.01"],
+   "canary": {"ytm_ids": ["<stable YouTube Music tracks>"], "min_bytes": 65536}}}}
+```
+
+The radio takes a candidate's lock only if it is nothing but `name==version`
+lines with `--hash=sha256:` (no index URLs, paths, includes) and pins yt-dlp at
+the candidate's version; pip installs it with `--require-hashes
+--only-binary :all:`. Order: tested online before untested before failed,
+stable before nightly, newer before older. A version in `blocked`, or one this
+radio has judged bad, is never installed.
+
+**Three slots.** `/opt/yt-dlp/venv-a|b|c`, with `current` and `previous`
+symlinks (`/usr/local/bin/yt-dlp` -> `current`). A venv can't be moved, so a
+new version is built in the slot that is neither current nor previous: the
+previous good one is never deleted to make room (1.0.3 and earlier deleted the
+spare slot before building, which could leave `--rollback` nothing).
+
+**The canary.** Before a switch the new slot must pass `--version`, the
+imports (yt_dlp, yt_dlp_ejs, the YouTube extractor), an offline `file://`
+extraction - and the canary: a canary track resolved **exactly as a key press
+does** (`music.youtube.com/watch?v=…`, `-f bestaudio[ext=m4a]/bestaudio`, the
+owner's cookies, deno from the release), then `Range: bytes=0-65535`
+expecting 206 and audio bytes. The old probe (`--print id` of a youtube.com
+video, default formats, no cookies) passed while YouTube Music failed.
+
+*Whose cookies, which user.* The cookies (the key page's sign-in, in
+`/var/lib/haslerd`) belong to haslerd's user and stay there: the script asks
+haslerd, `POST /api/components/yt-dlp/canary {"slot": "venv-b"}` on loopback,
+and haslerd runs that slot's yt-dlp through `YtmSource.canary` - same flags,
+same cookies, same PATH. The request names a slot, never a path; haslerd
+checks the binary really is inside that slot, refuses other clients than
+loopback, runs one canary at a time and at most 12 a day. This is no new
+trust: haslerd already runs whatever `current` points at. Copying the cookies
+to the `ytdlp` user (or a root-made copy) would hand the owner's Google
+session to every candidate before it is checked. With haslerd not answering
+the canary runs as `ytdlp` **without** cookies and says so (`via: local`).
+
+**When it switches.** An upgrade while the current one works, or a repair when
+the current one fails its canary - and only to a slot that passed. At most one
+upgrade a day; at most 4 online canaries a day; never while music plays
+(`/api/health` `playing`; it waits up to 20 min, then keeps the build for the
+next run) unless the current one is failing or the owner pressed Update now.
+A blocked current version is left at once, playing or not. After a switch:
+**72 h probation**.
+
+**Without components.json** (missing, expired, unreachable, no keyring yet)
+nothing changes - unless the current one fails its canary, or there is none
+(a new radio): then the newest **stable** yt-dlp from PyPI, hash-unchecked,
+logged as a warning (`fallback`). A components.json with a bad signature is
+never a reason to fall back.
+
+**When it runs.**
+
+| Trigger | Run |
+|---|---|
+| `yt-dlp-update.timer`, every 6 h (RandomizedDelaySec 1 h, Persistent) | check: one signed fetch; builds only when there is something better |
+| the network back (or the first time after boot) with no good check for 24 h - this also covers a boot after days switched off | check |
+| 2 different YouTube Music tracks failing to resolve within 10 min (not removed tracks, not network errors, not offline) | `urgent`: canary the current one; repair if it fails |
+| during probation: 3 different tracks failing within an hour (or the rule above) | `judge`: canary current and previous; go back only if the old one passes and the new one fails, and mark the new one bad here |
+| key page, Maker tools: **Update now** / **Go back** (a press on the radio) | `now` / `rollback` |
+
+At most one urgent/judge run every 30 min. haslerd can start only
+`yt-dlp-update.service` (polkit `51-hasler-ytdlp.rules`, unchanged - OTA
+doesn't carry polkit rules to radios already out there); it says which run it
+wants in `/var/lib/haslerd/yt-dlp-request.json`, which the script honours once
+if it is under 15 minutes old. A request made while a run is busy is taken at
+its end. By hand: `hasler-ytdlp-update [--now|--urgent|--judge|--rollback]`,
+`--check` (what a check would do, changing nothing), `--status`.
+
+**Visible.** `/opt/yt-dlp/state.json` (slots, last check/result/error,
+canary, probation, bad versions) and `/opt/yt-dlp/events.jsonl` (the last 200
+events, 64 KB, on the card). `/api/health` has
+`components: {"yt-dlp": {version, previous, channel, last_check, last_ok,
+last_result, last_error, canary, probation_until, events_recent, working}}` -
+never part of `ok` (an OTA trial must not roll back because YouTube broke
+yt-dlp). The key page shows it under Settings -> This radio -> Updates ->
+**Music services**: "YouTube Music helper 2026.10.22 (nightly) · checked
+2 hours ago · working". Exit codes: 0 fine (including deferred), 1 failed
+(in state.json and events; the unit shows failed), 75 another run busy.
+
+## 6. Debian security updates
+
+Releases carry Hasler's code; Debian's own packages under it get their
+security fixes from a separate lane, `scripts/hasler-os-update` (root, stdlib
+Python), started by `hasler-os-update.timer` at about 03:35 and 04:15. The
+timer is pulled in by `haslerd.service` (`Wants=`), like the boot-config
+timer, so a release can bring it without `systemctl enable`. Owner decision
+(October 2026): **on by default**, `os_updates: off` in box.yaml turns it off.
+
+**When.** Once a night, inside 02:00-05:00, holding the release updater's
+apply lock (so never during an apply; an apply that starts meanwhile waits),
+never while a release is in trial or its 24 h probation (a crash then would
+roll back a good release), and only while haslerd says `idle`. Asked again
+right before anything changes. Otherwise exit 75 and the next slot or night.
+No network, or less than 400 MB free: nothing happens.
+
+**From where.** apt runs on a private view - its own sources list, lists
+(`/var/lib/hasler-os/lists`) and .deb cache (`/var/cache/hasler-os`): only
+`<codename>-security` from deb.debian.org, plus `pkgs.tailscale.com` when
+Tailscale is installed (remote help is a network service; its repo being down
+never holds Debian's fixes back). **Not** Raspberry Pi's archive, not moOde's,
+not trixie-updates or point releases: those come with a new image or a
+release, tested on the bench. The system's own apt state is left alone.
+
+**What.** Installed packages for which that view has a newer version, minus:
+
+| Never | Why |
+|---|---|
+| `apt-mark hold` packages | moOde holds its own (~34: moode-player, mpd, alsa, camilladsp, ...) |
+| `linux-*`, `raspi-firmware`, `firmware-*`, `rpi-*`, `raspberrypi-*`, `initramfs-tools`, bootloaders | the boot chain: only a reboot would tell, and a bad one doesn't boot |
+| `mpd*`, `camilladsp*`, `moode*`, `alsa-*`, `libasound2*` | moOde's audio stack; the night check can't hear a glitch |
+| `bluez*`, `bluealsa*`, `libbluetooth*` | moOde's Bluetooth speaker set-up and pairings; the check can't exercise it, and the radio is discoverable only in the owner's pairing window |
+| versions with `rpt`, `rpi` or `moode` in them | Raspberry Pi's or moOde's own builds: Debian's would drop their patches |
+| a version that failed here before | |
+
+`libc6`, `openssl`/`libssl3t64`, `systemd` and `python3.13` **are** taken:
+they are where the security fixes matter most, Debian's stable security
+updates are minimal backports, and the health check covers haslerd (restarted
+onto the new libraries) and the radio around it. `apt-get -s` must show that
+the set touches nothing else - no removal, no held or denied dependency; a
+package that can't go alone is held back and listed in `held_back`.
+
+**How.** `pre-<date>.list` (`dpkg-query -W`, the last 10 kept); a .deb of
+every version about to be replaced, from apt's cache or rebuilt from the
+installed files the way dpkg-repack does (`/var/lib/hasler-os/rollback/`,
+root only, kept until the next run); download first, then `apt-get install
+--only-upgrade` of exactly the set, confold, no recommends. Never a
+dist-upgrade, never a reboot. Units of those packages that aren't running are
+masked `--runtime` for the install, so a postinst can't start what must stay
+off (Tailscale's own `tailscaled`, Debian's Snapcast units). Afterwards
+haslerd and go-librespot are restarted if they still map a replaced file;
+anything else that does (MPD, moOde's PHP, systemd itself) sets
+`reboot_advisable` - the next power-on finishes the job.
+
+**Checked, with a way back.** The release updater's health probe (§4 step 9:
+haslerd running, `/api/health` checks, MPD, sound cards, go-librespot, moOde
+UI), against a baseline taken just before, healthy within 90 s and for 60 s.
+Fail: `dpkg -i` puts the saved versions back, the failed versions are never
+tried again on this radio, and the lane pauses for 14 days
+(`hasler-os-update resume` ends it). `apt-get clean` after every run (SD
+wear). A power cut mid-install: the next run does `dpkg --configure -a`
+first. By hand: `sudo hasler-os-update run --now [--dry-run]`,
+`... rollback` (the last run's versions back), `hasler-os-update status`.
+
+**Seen from outside.** `/var/lib/hasler-os/status.json` (0644) and
+`events.jsonl` (last 200 lines / 64 KB). haslerd shows it as `os_updates` in
+`/api/health` and `/api/software`: `{enabled, last_run, last_result (ok, none,
+rolled_back, error, off), reason, upgraded, held_back, reboot_advisable,
+paused, last_upgrade {at, count}, deferred {at, why}, active}`; the key page
+has one line under Updates ("Security updates: 3 on 21 Oct"). While packages
+change, `/run/hasler-os-update/active` exists and the lamp breathes ember
+(`Software.installing`), as for a release.
+
 ## Drills for each release
 
 On the bench radio (both variants where it matters): fresh install; upgrade
@@ -340,6 +521,8 @@ from the previous release; config carried over untouched; a migration on an
 old sample config; **rollback drill** (a deliberately failing health check ->
 automatic revert; manual "go back"); **power-cut drill** (pull the power
 during download, stage, switch and first boot); halt drill; an update deferred
-while playing; offline and metered skip quietly. How to run them with dev keys
+while playing; offline and metered skip quietly. yt-dlp lane: `sudo -u ytdlp
+hasler-ytdlp-update --check`, a blocked version going back, `--judge` with a
+failing canary. How to run them with dev keys
 and a local channel:
 [release.md](release.md#bench-box-from-the-rsync-tree-to-releases-dev-keys-local-channel).

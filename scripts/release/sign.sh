@@ -9,17 +9,18 @@
 #          "ssh-ed25519 AAAA..." string) - catches signing with the wrong key.
 # Every signature is verified against the key's public half before exit.
 # Namespaces: hasler-release (release.json), hasler-keyring (keyring.json, root
-# keys), hasler-channel (channel indexes, timestamp key).
+# keys), hasler-channel (channel indexes, timestamp key), hasler-components
+# (components.json, the release key).
 set -euo pipefail
 
 NS=""; KEY=""; ENVVAR=""; EXPECT=""
-usage() { sed -n '2,13p' "$0" >&2; exit 2; }
+usage() { sed -n '2,14p' "$0" >&2; exit 2; }
 while getopts "n:k:e:p:h" o; do
   case "$o" in n) NS="$OPTARG";; k) KEY="$OPTARG";; e) ENVVAR="$OPTARG";; p) EXPECT="$OPTARG";; *) usage;; esac
 done
 shift $((OPTIND - 1))
 [[ -n "$NS" && $# -ge 1 ]] || usage
-case "$NS" in hasler-release|hasler-keyring|hasler-channel) ;; *) echo "sign: unknown namespace $NS" >&2; exit 2;; esac
+case "$NS" in hasler-release|hasler-keyring|hasler-channel|hasler-components) ;; *) echo "sign: unknown namespace $NS" >&2; exit 2;; esac
 if [[ -n "$KEY" && -n "$ENVVAR" ]] || [[ -z "$KEY" && -z "$ENVVAR" ]]; then usage; fi
 
 TMP="$(umask 077; mktemp -d)"

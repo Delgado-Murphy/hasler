@@ -1,0 +1,54 @@
+# Weekly: does every stream URL the radio ships still play? Probes
+# config/stations/*.json and config/catalog/catalog.json (scripts/ci/stations_check.py)
+# and keeps ONE open issue (label stations-check) listing the dead ones; it is
+# closed again when all of them answer. Refused (401/403/451) streams are listed
+# apart - the runners are in the US, the radios mostly in Spain.
+name: stations-check
+
+on:
+  schedule:
+    - cron: "37 6 * * 3"     # Wednesdays
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: stations-check
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Probe every stream
+        run: |
+          python3 -I scripts/ci/stations_check.py --json "$RUNNER_TEMP/report.json" --markdown "$RUNNER_TEMP/report.md" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          cat "$RUNNER_TEMP/report.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LABEL: stations-check
+        run: |
+          dead="$(jq '.counts.dead' "$RUNNER_TEMP/report.json")"
+          blocked="$(jq '.counts.blocked' "$RUNNER_TEMP/report.json")"
+          gh label create "$LABEL" --repo "$GITHUB_REPOSITORY" --color d93f0b \
+            --description "Weekly stream check (stations-check.yml)" 2>/dev/null || true
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --label "$LABEL" --state open --json number --jq '.[0].number // empty')"
+          title="Stations: $dead dead, $blocked refused from GitHub ($(date -u +%Y-%m-%d))"
+          if [ "$dead" -gt 0 ] || [ "$blocked" -gt 0 ]; then
+            if [ -n "$issue" ]; then
+              gh issue edit "$issue" --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/report.md"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --label "$LABEL" --body-file "$RUNNER_TEMP/report.md"
+            fi
+          elif [ -n "$issue" ]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "All streams answered on $(date -u +%Y-%m-%d)."
+          fi

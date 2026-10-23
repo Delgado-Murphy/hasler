@@ -1,0 +1,10 @@
+{
+  "_comment": "YouTube Music tracks the yt-dlp lane plays a few seconds of (components.yml, and radios after an upgrade). Each one is an official 'Provided to YouTube by <label>' art track on the artist's Topic channel: catalogue recordings decades old, from three different major labels, so one takedown or licence change can't fail them all. Edit freely; ytm_ids are 11-character video ids, min_bytes is how much audio must arrive (64 KiB = a few seconds).",
+  "ytm_ids": ["KJEzFvXx3Xw", "kMJCKP-ETZ4", "6cbFlkRu54I"],
+  "min_bytes": 65536,
+  "titles": {
+    "KJEzFvXx3Xw": "Miles Davis - So What (Kind of Blue, Columbia/Legacy)",
+    "kMJCKP-ETZ4": "Glenn Gould - Goldberg Variations, BWV 988: Aria (Sony Classical)",
+    "6cbFlkRu54I": "Berliner Philharmoniker, Karajan - Beethoven: Symphony No. 5, I. Allegro con brio (Deutsche Grammophon / Universal)"
+  }
+}

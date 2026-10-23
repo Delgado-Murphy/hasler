@@ -120,6 +120,25 @@ def _recent_events(watch: Any) -> list:
         return []
 
 
+def _os_updates(app: Any) -> dict | None:
+    fn = getattr(getattr(app, "software", None), "os_updates", None)
+    try:
+        return fn() if callable(fn) else None
+    except Exception:
+        return None
+
+
+def _components(app: Any) -> dict:
+    """Parts updated in their own lane (haslerd/ytdlp_lane.py): ``{"yt-dlp": {...}}``.
+    Never part of ``ok``: an OTA trial must not roll back because YouTube broke yt-dlp."""
+    fn = getattr(getattr(app, "ytdlp_lane", None), "doc", None)
+    try:
+        doc = fn() if callable(fn) else None
+    except Exception:
+        doc = None
+    return {"yt-dlp": doc} if isinstance(doc, dict) else {}
+
+
 def health_report(app: Any, now: float | None = None) -> dict:
     """The /api/health document for ``app`` (a WebApp, or anything shaped like one)."""
     now = time.monotonic() if now is None else now
@@ -172,4 +191,8 @@ def health_report(app: Any, now: float | None = None) -> dict:
         # The last few MPD stops/errors and recovery attempts (stream-events.jsonl).
         "stream_events_recent": _recent_events(watch),
         "last_play_s": int(last_play_s),
+        # The yt-dlp lane: version, previous, channel, last check, canary, probation, events.
+        "components": _components(app),
+        # Debian security updates (web/software.py Software.os_updates; None = not on this radio).
+        "os_updates": _os_updates(app),
     }

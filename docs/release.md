@@ -25,6 +25,189 @@ Tools: `scripts/release/`. Workflows: `.github/workflows/ci.yml` and
 the public `hasler-releases` repository). Published releases:
 <https://delgado-murphy.github.io/hasler-releases/>.
 
+Most of this now runs by itself - see *Automated lanes* next. A person is
+needed for features and fixes (steps 1-2 of the checklist), the very first
+stable promotion, a `major` release's promotion, and anything a lane refuses.
+
+## Automated lanes
+
+Four scheduled lanes keep the radios current with no version bumped by hand.
+Times UTC.
+
+| Lane | Workflow (repo) | When | What it does |
+|---|---|---|---|
+| yt-dlp | `components.yml` (hasler-releases) | every 6 h (:29) | newest yt-dlp stable + nightly from PyPI -> signed `components.json` on gh-pages |
+| binaries | `deps-bump.yml` -> `auto-release.yml` (hasler) | Tuesdays 05:11 | newer go-librespot / deno -> PR -> auto-merge -> tag `vX.Y.Z+1` -> build -> bench |
+| promotion | `auto-promote.yml` (hasler-releases) | daily 06:41 | bench's release -> stable after 7 days on bench |
+| stations | `stations-check.yml` (hasler) | Wednesdays 06:37 | one issue listing dead stream URLs |
+| (as before) | `sign-publish.yml` refresh (hasler-releases) | daily 03:17 | re-signs the channel indexes |
+
+GitHub turns schedules off in a repository with no activity for 60 days;
+Actions then says so - re-enable them.
+
+### The yt-dlp lane (components.json)
+
+yt-dlp is not part of a release - YouTube breaks old versions within weeks,
+so it moves on its own. `components.yml`:
+
+1. **plan**: reads PyPI's JSON for yt-dlp. The two newest non-yanked,
+   unblocked versions of each channel - *stable* (`2026.10.21`) and
+   *nightly* (PyPI's pre-releases, `2026.10.21.233146.dev0`) - that the
+   published `components.json` doesn't list yet are built. That file's
+   signature is checked first; its candidates and `blocked` list carry over.
+2. **build**, one job per version on native arm64 (`vars.ARM_RUNNER`),
+   Python 3.13 = the radio's cp313: `pip download --only-binary :all:` of
+   `yt-dlp[default]==V` for aarch64/cp313 (manylinux up to glibc 2.39), the
+   sha256 of every wheel -> a `--require-hashes` requirements text. A fresh
+   venv installs exactly that (`--no-deps`), then the radio's own offline
+   checks run (`--version`, importing `yt_dlp`, `yt_dlp_ejs` and `YoutubeIE`,
+   a `file://` extraction). Online, best effort, with the radio's deno
+   (hasler's `install.sh` pin, sha256-checked): 64 KiB of `bestaudio` of a
+   canary track through yt-dlp's own downloader. `tested.online` is `true`,
+   `false` (YouTube answered, nothing played) or `null` (runner IP
+   bot-flagged, no deno); it never blocks.
+3. **publish**, environment `sign`: keeps the newest two of each channel
+   that passed install + offline (the second is the radios' way back, by
+   hash), signs `components.json` with the **release** key, namespace
+   `hasler-components`, verifies it against the keyring (role release) and
+   pushes `components.json` + `.sig` to gh-pages. A failed build only leaves
+   that version out (a warning in the run; it is tried again next time). An
+   unchanged file is re-signed once a day, so `expires` (14 days) stays
+   fresh while the schedule runs.
+
+```json
+{"schema": 1, "issued": "2026-10-23T18:19:29Z", "expires": "2026-11-06T18:19:29Z",
+ "components": {"yt-dlp": {
+   "candidates": [{"version": "2026.10.21", "channel": "stable",
+                   "requirements": "yt-dlp[default]==2026.10.21 \\\n    --hash=sha256:...\nbrotli==1.2.1 \\\n    --hash=sha256:...\n...",
+                   "tested": {"install": true, "offline": true, "online": true}}],
+   "blocked": [],
+   "canary": {"ytm_ids": ["KJEzFvXx3Xw", "kMJCKP-ETZ4", "6cbFlkRu54I"], "min_bytes": 65536}}}}
+```
+
+`requirements` is pip's `--require-hashes` format and nothing else: the
+first package is `yt-dlp[default]==<version>`, every package a
+`name==version \` line followed by its `    --hash=sha256:<hex>` line (one
+wheel each); no options, URLs, markers or `-e`. `version` is exactly as PyPI
+lists it (`2026.10.21.233146.dev0`, though the wheel's metadata says
+`...233146dev`). The radio (`scripts/hasler-ytdlp-update`) refuses anything
+else, and ranks candidates online-tested, then untested (`null`), then
+failed; stable before nightly; newest first. The release key may sign namespaces `hasler-release` and
+`hasler-components` only (`keyring.py` `ROLE_NAMESPACES`); a radio checks
+`components.json(.sig)` with the keyring's release keys in that namespace.
+
+**Block a bad yt-dlp version** - it leaves the list within minutes; radios
+that haven't taken it never will:
+
+```sh
+gh workflow run components.yml -R Delgado-Murphy/hasler-releases -f block=2026.10.21
+gh workflow run components.yml -R Delgado-Murphy/hasler-releases -f unblock=2026.10.21
+```
+
+Several at once: `-f block="2026.10.21 2026.10.21.233146.dev0"`. With the
+newest stable blocked, the newest unblocked ones are offered instead.
+
+**Canary tracks**: `canary.json` in hasler-releases (edit it on `main`, no
+code). Today: Miles Davis, "So What" (Kind of Blue, Columbia/Legacy); Glenn
+Gould, Goldberg Variations Aria (Sony Classical); Karajan and the Berlin
+Philharmonic, Beethoven 5, first movement (Deutsche Grammophon/Universal).
+Each is an official "Provided to YouTube by <label>" art track on the
+artist's Topic channel - what YouTube Music itself plays - from catalogue
+decades old that labels don't pull, and from three different labels so that
+one licence change can't fail them all.
+
+### The binaries lane (go-librespot, deno)
+
+`deps-bump.yml` (Tuesdays, or by hand, `-f dry_run=true` to only look):
+
+1. Asks GitHub for the latest release of `devgianlu/go-librespot` and
+   `denoland/deno`, downloads each newer arm64 asset and hashes it (GitHub's
+   own asset digest must agree) and rewrites the pins in `scripts/install.sh`
+   and the versions in `THIRD_PARTY_NOTICES.md` (`scripts/ci/deps_bump.py`).
+2. If master is exactly the last release plus earlier deps bumps **and** that
+   release has reached stable (bench = stable, so a bump never stacks on a
+   release still soaking), the PR also carries the next patch version
+   (`daemon/pyproject.toml`, `__init__.py`) and a CHANGELOG entry. Otherwise
+   it pins only and the change rides on the next release.
+3. Pushes `deps/bump`, opens or updates the PR, and turns on auto-merge
+   (squash) when every bump is inside the policy: go-librespot patch
+   releases, deno within its major. Anything bigger waits for a person (a
+   go-librespot minor can change its config file).
+
+After the merge, `auto-release.yml`:
+
+- on the push to master: checks again that only deps files changed since
+  the last tag and the version is the next patch, then tags `vX.Y.Z`
+  (annotated, with the line `auto-publish: bench`) with `AUTOMATION_TOKEN` -
+  a tag pushed with the Actions token starts no workflow;
+- `release.yml` tests, builds and attests it, as for any tag;
+- when that run is green (`workflow_run`) and the tag says `auto-publish:
+  bench`: downloads the artifact, takes its sha256 and dispatches
+  `sign-publish` mode `publish`, channel `bench`, with the run id.
+  `sign-publish` re-checks everything as always. A hand-made tag opts in the
+  same way: `git tag -a vX.Y.Z -m X.Y.Z -m "auto-publish: bench"`.
+
+**Python packages** (ytmusicapi, paho-mqtt, ...) are not pinned in the repo:
+there is no committed `daemon/requirements-pi.lock`, so `build_wheels.sh`
+compiles a fresh hash-locked lock at every release build and each release
+carries the newest ones. Nothing to bump. (Committing a lock would pin them;
+deps-bump would then have to refresh it.)
+
+### Auto-promotion (bench -> stable)
+
+`auto-promote.yml` runs daily and promotes bench's current release to stable
+when **all** of these hold (`tools/autopromote.py`):
+
+- it has been bench's current release for 7 days, counted from when bench
+  was pointed at it (the index's `ring_open`). A newer bench release restarts
+  the clock: what soaks is what the bench radio runs now;
+- it is not halted on bench or stable, is a final (no `-rc`) and not `major`;
+- stable exists and has an older release - the **first** stable promotion and
+  every `major` stay a person's decision (see *1.0.0* below);
+- its signed `release.json` is valid for 2 more days;
+- auto-promotion isn't paused.
+
+It verifies the keyring, both indexes and bench's `release.json` first, then
+dispatches `sign-publish` mode `promote` - the same job as by hand, with all
+its checks. State and history: `auto-promote.json` on gh-pages; the website
+shows the channels. **Halt beats promote**: halting a release on bench stops
+its promotion for good.
+
+```sh
+gh workflow run auto-promote.yml -R Delgado-Murphy/hasler-releases -f action=pause -f reason="1.0.6 sounds odd"
+gh workflow run auto-promote.yml -R Delgado-Murphy/hasler-releases -f action=resume
+gh workflow run auto-promote.yml -R Delgado-Murphy/hasler-releases -f action=check -f dry_run=true   # what would it do?
+```
+
+Emergency stop without a run: `gh workflow disable auto-promote.yml -R
+Delgado-Murphy/hasler-releases`.
+
+### Stations check
+
+`stations-check.yml` (Wednesdays) fetches the first bytes of every stream URL
+in `config/stations/*.json` and the `radio` items of
+`config/catalog/catalog.json` with curl - the stack mpd plays them with -
+(redirects followed, 20 s, twice; an HLS playlist's first entry must answer
+too). It keeps **one** open issue, label `stations-check`: *dead* (DNS,
+refused, timeout, 404/5xx, a web page instead of audio) and, apart, *refused
+from GitHub* (401/403/451 - the runners are in the US, so often
+geo-blocking: check from the radio first). The issue closes itself when
+everything answers. Locally: `python3 scripts/ci/stations_check.py`.
+
+### Settings and secrets the lanes need
+
+| What | Where | For |
+|---|---|---|
+| `AUTOMATION_TOKEN` | `hasler`, environment `deps` (deployment branch `master`, no reviewer) | fine-grained PAT of the owner, resource owner Delgado-Murphy, repos `hasler` + `hasler-releases`; permissions Contents RW, Pull requests RW, Actions RW (Metadata R). Pushes `deps/bump`, opens the PR, enables auto-merge, pushes the tag, dispatches sign-publish. Renew it before it expires, like `BUILD_READ_TOKEN`. A GitHub App with the same permissions (`actions/create-github-app-token`) would do too. |
+| "Allow auto-merge" | `hasler` Settings -> General | `gh pr merge --auto` |
+| ruleset on `master`: require status check `test` (`ci / test`) | `hasler` Settings -> Rules | what auto-merge waits for; without it the PR waits for a person |
+| `ARM_RUNNER=ubuntu-24.04-arm` | `hasler-releases` repo variable | the yt-dlp builds (they fall back to `ubuntu-24.04-arm` anyway) |
+| `RELEASE_SIGNING_KEY` | `hasler-releases`, environment `sign` (exists) | now also signs `components.json` |
+
+The Actions token needs nothing new: it never opens PRs or pushes tags here.
+If the planned `v*` tag ruleset is added (only the owner creates them), the
+PAT acts as its owner and passes.
+
 ## Release checklist
 
 1. `master` green in CI; the bench radio on the previous release.
@@ -238,12 +421,14 @@ Done once, in October 2026. Kept here so it can be checked or redone.
    on `master`, and a tag ruleset for `v*` (only the owner creates them,
    nobody updates or deletes them).
 3. `hasler-releases`:
-   - `release-tools/hasler-releases/.github/` copied to the repo root, and
+   - `release-tools/hasler-releases/` (`.github/`, `tools/components.py`,
+     `tools/autopromote.py`, `canary.json`) copied to the repo root, and
      `scripts/release/{make_manifest.py,keyring.py,channel.py,sign.sh,verify.sh}`
      to `tools/` - **re-copy them when they change**. `trust/root.pub` from
      the key ceremony.
    - branch `gh-pages` with `keyring.json`, `keyring.json.sig`, `channels/`,
-     `releases.json` and `index.html` (the website); Settings -> Pages ->
+     `releases.json` and `index.html` (the website), plus `components.json(.sig)`
+     and `auto-promote.json` written by the lanes; Settings -> Pages ->
      deploy from branch `gh-pages` /.
    - environment `sign`: no reviewer, deployment branches = `main` only;
      secrets `RELEASE_SIGNING_KEY` (the release private key, OpenSSH format)
@@ -269,7 +454,7 @@ kinds of key:
 | Key | Where | Signs | Namespace |
 |---|---|---|---|
 | root (one today; a second can be added) | offline only, with a paper backup | `keyring.json` | `hasler-keyring` |
-| release | GitHub secret in `sign` | `release.json` | `hasler-release` |
+| release | GitHub secret in `sign` | `release.json`; `components.json` | `hasler-release`; `hasler-components` |
 | timestamp | GitHub secret in `timestamp` | channel indexes | `hasler-channel` |
 
 ```sh

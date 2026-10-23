@@ -2919,7 +2919,7 @@ function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
   loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp();
 }
-function loadUpdates(){ loadSoftware(); }
+function loadUpdates(){ loadSoftware(); loadMusic(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
 
 /* ---- This radio → Help from the makers: remote help for 24 h (web/help_api.py, docs/remote-help.md) ---- */
@@ -4661,7 +4661,68 @@ function roomList(){
   setTimeout(roomSchedule, 0);
   return box;
 }
-function renderUpdates(panel){
+/* ---- Updates → Music services: the yt-dlp lane (haslerd/ytdlp_lane.py, docs/ota.md "The component lane") ---- */
+// music: null = loading, {missing} = not on this radio, or /api/health components["yt-dlp"].
+let music = null, musicBusy = false;
+async function loadMusic(){
+  try {
+    const r = await api('GET', '/api/health');
+    const c = r.ok && r.json && r.json.components && r.json.components['yt-dlp'];
+    music = c ? c : {missing:true};
+  } catch (_) { music = {err:NET_ERR}; }
+  if (onPage('radio/updates')) rerender();
+}
+async function musicAction(fn){
+  if (musicBusy) return; musicBusy = true; rerender();
+  try { await fn(); } catch (_) { toast(NET_ERR, true); }
+  musicBusy = false; rerender();
+}
+function musicUpdate(){
+  musicAction(async () => {
+    const r = await api('POST', '/api/software/yt-dlp/update');
+    if (r.ok){ toast('Checking the YouTube Music helper…'); setTimeout(loadMusic, 20000); setTimeout(loadMusic, 90000); }
+    else toast((r.json && r.json.error) || 'Couldn’t start it.', true);
+  });
+}
+function musicBack(v){
+  musicAction(async () => {
+    const token = await pressToConfirm('rollback', {component:'yt-dlp'}, 'Go back to ' + v,
+      'YouTube Music goes back to the helper it had before. Nothing else changes, and music keeps playing.');
+    if (!token) return;
+    const r = await api('POST', '/api/software/yt-dlp/rollback', {confirm:token});
+    if (r.ok){ toast('Going back to ' + v); setTimeout(loadMusic, 15000); }
+    else toast((r.json && r.json.error) || 'Couldn’t go back.', true);
+  });
+}
+function renderMusic(panel){
+  if (!music || music.missing) return;
+  const m = music, rows = [];
+  if (m.err){ rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'YouTube Music helper'), h('span', {class:'li-sub'}, m.err)))); }
+  else {
+    const state = m.working === true ? 'working' : m.working === false ? 'not working right now' : 'not checked yet';
+    rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'},
+      h('span', {class:'li-title'}, 'YouTube Music helper ' + (m.version || '') + (m.channel === 'nightly' ? ' (nightly)' : '')),
+      h('span', {class:'li-sub'}, (m.last_check ? 'checked ' + ago(m.last_check) + ' · ' : '') + state
+        + (m.probation_until ? ' · settling in' : '')),
+      m.working === false || m.last_result === 'error'
+        ? h('span', {class:'note-warn'}, m.last_error ? 'Last check: ' + m.last_error : 'The radio is looking for a version that works.') : null)));
+    if (makerOn()){
+      const ev = (m.events_recent || []).slice().reverse().map(e => (e.at ? ago(e.at) + ': ' : '') + e.event
+        + (e.version ? ' ' + e.version : '') + (e.to ? ' → ' + e.to : '') + (e.result ? ' ' + e.result : '') + (e.why ? ' (' + e.why + ')' : ''));
+      rows.push(h('div', {class:'li col', style:'gap:10px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Maker tools'),
+          h('span', {class:'li-sub'}, (m.previous ? 'The one before: ' + m.previous : 'Nothing to go back to')
+            + (m.canary && m.canary.result ? ' · last canary ' + m.canary.result + (m.canary.via === 'local' ? ' (without cookies)' : '') : '')),
+          ev.length ? h('span', {class:'li-sub', style:'white-space:pre-line'}, ev.join('\n')) : null),
+        h('div', {class:'acts'},
+          h('button', {type:'button', class:'btn small', disabled: musicBusy || !m.previous, onclick: () => musicBack(m.previous)}, 'Go back'),
+          h('button', {type:'button', class:'btn small primary', disabled: musicBusy, onclick: musicUpdate}, 'Update now'))));
+    }
+  }
+  panel.append(setGroup('music', 'Music services', h('div', {class:'list'}, rows),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'YouTube changes often. The radio checks for a newer helper every few hours and only switches when the new one plays a test track.')));
+}
+function renderUpdates(panel){ renderSoftwareUpdates(panel); renderMusic(panel); }
+function renderSoftwareUpdates(panel){
   const wrap = (...kids) => panel.append(setGroup('version', 'This radio’s software', ...kids));
   const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
   if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
@@ -4701,6 +4762,7 @@ function renderUpdates(panel){
         : res.version + ' didn’t work here, so the radio went back to ' + (res.back_to || 'the version before') + (res.at ? ' (' + day(res.at) + ')' : '') + '.'),
       !res.ok && res.reason ? h('span', {class:'li-sub sw-why'}, 'Why: ' + res.reason) : null)));
   }
+  const os = s.os_updates; if (os && os.enabled && (os.last_upgrade || os.paused)) rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Security updates'), h('span', {class:'li-sub'}, (os.last_upgrade ? os.last_upgrade.count + ' on ' + day(os.last_upgrade.at) : 'None yet') + (os.paused ? ' · paused after a problem' : '') + (os.reboot_advisable ? ' · finished at the next power-on' : '')))));
   const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Updates'});
   for (const [k, l] of [['auto','Automatic'], ['ask','Ask'], ['off','Off']])
     seg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.update_mode === k), tabindex: s.update_mode === k ? '0' : '-1', disabled: swBusy,

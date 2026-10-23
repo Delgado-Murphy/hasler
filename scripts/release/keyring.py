@@ -18,6 +18,7 @@ tool runs there for `new` and `sign`, and anywhere for `verify` and
 
     # what the box (and verify.sh) feeds to ssh-keygen -Y verify
     keyring.py allowed-signers --role release keyring.json
+    keyring.py allowed-signers --role release --namespace hasler-components keyring.json
     keyring.py find --pub release.pub --role release keyring.json      # prints the key id
 """
 
@@ -33,6 +34,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROLES = {"release": "hasler-release", "timestamp": "hasler-channel"}
+# What else a role's key may sign. The release key also signs components.json
+# (the yt-dlp builds radios may install, hasler-releases components.yml).
+ROLE_NAMESPACES = {"release": ("hasler-release", "hasler-components"), "timestamp": ("hasler-channel",)}
 KEYRING_NS = "hasler-keyring"
 ROOT_ID = "hasler-root"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
@@ -157,14 +161,17 @@ def cmd_verify(a: argparse.Namespace) -> None:
     print(f"ok: keyring_seq {doc['keyring_seq']}, keys {[k['id'] for k in doc['keys']]}")
 
 
-def allowed_signers(doc: dict, role: str, at: datetime | None = None) -> str:
+def allowed_signers(doc: dict, role: str, at: datetime | None = None, namespace: str | None = None) -> str:
     at = at or now()
+    ns = namespace or ROLES[role]
+    if ns not in ROLE_NAMESPACES[role]:
+        raise KeyringError(f"a {role} key never signs namespace {ns}")
     lines = []
     for k in doc["keys"]:
         na = parse_when(k["not_after"])
         if k["role"] != role or na <= at:
             continue
-        lines.append(f'{k["id"]} namespaces="{ROLES[role]}",valid-before="{na.strftime("%Y%m%d%H%M%SZ")}" '
+        lines.append(f'{k["id"]} namespaces="{ns}",valid-before="{na.strftime("%Y%m%d%H%M%SZ")}" '
                      f'{k["pub"]}\n')
     return "".join(lines)
 
@@ -172,7 +179,7 @@ def allowed_signers(doc: dict, role: str, at: datetime | None = None) -> str:
 def cmd_allowed(a: argparse.Namespace) -> None:
     doc = json.loads(Path(a.keyring).read_text())
     validate(doc)
-    sys.stdout.write(allowed_signers(doc, a.role))
+    sys.stdout.write(allowed_signers(doc, a.role, namespace=a.namespace))
 
 
 def cmd_find(a: argparse.Namespace) -> None:
@@ -208,6 +215,7 @@ def main(argv: list[str] | None = None) -> int:
     v.set_defaults(fn=cmd_verify)
     al = sub.add_parser("allowed-signers")
     al.add_argument("--role", choices=sorted(ROLES), required=True)
+    al.add_argument("--namespace", help="default: the role's own (release: hasler-release)")
     al.add_argument("keyring")
     al.set_defaults(fn=cmd_allowed)
     f = sub.add_parser("find")

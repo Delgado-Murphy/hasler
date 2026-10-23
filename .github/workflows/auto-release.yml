@@ -1,0 +1,136 @@
+# The unattended half of a release (docs/release.md "Automated lanes").
+#
+# push to master (a merged deps-bump PR): if master is exactly the last
+#   release plus deps bumps and its version is the next patch, tag vX.Y.Z
+#   (annotated, with the line "auto-publish: bench"). The tag is pushed with
+#   AUTOMATION_TOKEN so that release.yml starts - a tag pushed with the
+#   GITHUB_TOKEN starts no workflow.
+# workflow_run of release.yml (any green tag build): if the tag says
+#   "auto-publish: bench", fetch the artifact, take its sha256 and dispatch
+#   sign-publish mode=publish channel=bench in hasler-releases, which re-checks
+#   everything itself. A person can opt a hand-made tag in the same way:
+#     git tag -a vX.Y.Z -m X.Y.Z -m "auto-publish: bench"
+#
+# Needs: environment `deps` (deployment branch master) with AUTOMATION_TOKEN:
+# fine-grained PAT, owner Delgado-Murphy, repos hasler + hasler-releases;
+# hasler: Contents read/write, Pull requests read/write; hasler-releases:
+# Actions read/write. (Or a GitHub App with the same permissions.)
+name: auto-release
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - scripts/install.sh
+      - daemon/pyproject.toml
+  workflow_run:
+    workflows: [release]
+    types: [completed]
+
+permissions: {}
+
+env:
+  RELEASES_REPO: Delgado-Murphy/hasler-releases
+  ALLOWED: '^(scripts/install\.sh|THIRD_PARTY_NOTICES\.md|CHANGELOG\.md|daemon/pyproject\.toml|daemon/haslerd/__init__\.py)$'
+
+jobs:
+  tag:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: deps
+    permissions:
+      contents: read
+    concurrency:
+      group: auto-release-tag
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Only a deps-bump merge on top of the last release
+        id: gate
+        run: |
+          subject="$(git log -1 --format=%s HEAD)"
+          last="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          have="$(sed -n 's/^version *= *"\(.*\)"/\1/p' daemon/pyproject.toml)"
+          next="$(python3 -I scripts/ci/deps_bump.py next-version)"
+          ok=true; why=""
+          case "$subject" in "deps: "*) ;; *) ok=false; why="HEAD is not a deps-bump merge ($subject)";; esac
+          if [ "$ok" = true ] && [ "$have" != "$next" ]; then ok=false; why="version $have is not the next patch $next"; fi
+          if [ "$ok" = true ] && ! git merge-base --is-ancestor "$last" HEAD; then ok=false; why="$last is not on master"; fi
+          if [ "$ok" = true ]; then
+            other="$(git diff --name-only "$last" HEAD | grep -Ev "$ALLOWED" || true)"
+            [ -z "$other" ] || { ok=false; why="unreleased changes besides deps: $(echo "$other" | head -5 | tr '\n' ' ')"; }
+          fi
+          if [ "$ok" = true ]; then
+            grep -q "^## $have - " CHANGELOG.md || { ok=false; why="CHANGELOG.md has no $have section"; }
+            grep -q "^__version__ = \"$have\"" daemon/haslerd/__init__.py || { ok=false; why="__init__.py is not $have"; }
+          fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"; echo "version=$have" >> "$GITHUB_OUTPUT"
+          echo "tag v$have: $ok ${why:+($why)}"
+      - name: Tag v<version> (starts release.yml)
+        if: steps.gate.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::error::secret AUTOMATION_TOKEN is not set (environment deps)"; exit 1; }
+          git config user.name "hasler-deps-bump"
+          git config user.email "hasler-deps-bump@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "$VERSION" -m "Automatic dependency update ($(git log -1 --format=%s HEAD))." \
+            -m "auto-publish: bench"
+          git push -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/v$VERSION"
+          echo "pushed v$VERSION" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    if: >-
+      github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: deps
+    permissions:
+      contents: read
+      actions: read            # the build artifact
+    env:
+      TAG: ${{ github.event.workflow_run.head_branch }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Does the tag ask for it?
+        id: ask
+        run: |
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' || { echo "::error::odd tag $TAG"; exit 1; }
+          git fetch -q origin "refs/tags/$TAG:refs/tags/$TAG"
+          [ "$(git cat-file -t "$TAG")" = tag ] || { echo "$TAG is a lightweight tag - not auto-published"; echo "go=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          [ "$(git rev-parse "$TAG^{commit}")" = "$HEAD_SHA" ] || { echo "::error::$TAG moved since the build"; exit 1; }
+          if git cat-file -p "$TAG" | grep -qx 'auto-publish: bench'; then go=true; else go=false; fi
+          echo "go=$go" >> "$GITHUB_OUTPUT"; echo "auto-publish $TAG: $go"
+      - name: Artifact sha256
+        if: steps.ask.outputs.go == 'true'
+        id: art
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v="${TAG#v}"
+          gh run download "$RUN_ID" --repo "$GITHUB_REPOSITORY" -n "hasler-release-$v" -D "$RUNNER_TEMP/art"
+          sha="$(sha256sum "$RUNNER_TEMP/art/hasler-$v-arm64.tar.zst" | cut -d' ' -f1)"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"; echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "hasler-$v-arm64.tar.zst sha256 $sha (run $RUN_ID)"
+      - name: Dispatch sign-publish (bench)
+        if: steps.ask.outputs.go == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          VERSION: ${{ steps.art.outputs.version }}
+          SHA: ${{ steps.art.outputs.sha256 }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::error::secret AUTOMATION_TOKEN is not set (environment deps)"; exit 1; }
+          gh workflow run sign-publish.yml --repo "$RELEASES_REPO" -f mode=publish -f version="$VERSION" \
+            -f artifact_sha256="$SHA" -f run_id="$RUN_ID" -f channel=bench
+          echo "dispatched sign-publish publish $VERSION -> bench (run $RUN_ID, sha256 $SHA)" >> "$GITHUB_STEP_SUMMARY"

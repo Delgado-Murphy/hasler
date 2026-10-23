@@ -10,6 +10,9 @@ start --no-block``, which a polkit rule allows for exactly these names
     hasler-update-check.service                 "Check now"
     hasler-update-apply@<seq>.service           install a staged release
     hasler-update-apply@rollback-X.Y.Z.service  "Go back to X.Y.Z"
+    yt-dlp-update.service                       the yt-dlp lane's "Update now" / "Go back"
+                                                (polkit rule 51; which one is in
+                                                <state>/yt-dlp-request.json, haslerd/ytdlp_lane.py)
 
 Paths sit under ``HASLER_ROOT`` like the updater's (tests point it at a tmp
 dir). ``box.yaml``'s ``update_mode`` and ``channel`` are written through
@@ -44,8 +47,9 @@ MODES = ("auto", "ask", "off")
 VERSION = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?$")
 # The same names the polkit rule allows (plus the check), checked again here.
 UNIT = re.compile(r"^(hasler-update-check\.service|hasler-update-apply@([0-9]{1,9}|rollback|"
-                  r"rollback-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)\.service)$")
+                  r"rollback-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?)\.service|yt-dlp-update\.service)$")
 CHECK_UNIT = "hasler-update-check.service"
+YTDLP_UNIT = "yt-dlp-update.service"     # exactly this one: no instances, no timer
 COMPLETE = ".complete"
 STALE_S = 3 * 24 * 3600          # no successful check for this long: "no fresh update info"
 WINDOW = (2, 5)                   # the updater's night window, local hours
@@ -59,6 +63,10 @@ class SoftwareError(RuntimeError):
 
 class NotInstalled(Exception):
     """The updater isn't on this radio (an rsync-installed bench box) - 404."""
+
+
+OS_STATUS = "/var/lib/hasler-os/status.json"
+OS_ACTIVE = "/run/hasler-os-update/active"
 
 
 def _iso(ts: float) -> str:
@@ -216,6 +224,7 @@ class Software:
             "stale": bool(stale),
             "approved": self._approval(),
             "busy": state.get("phase") == "trial",
+            "os_updates": self.os_updates(),
         }
 
     def installing(self) -> bool:
@@ -228,10 +237,47 @@ class Software:
         yet and a power cut is harmless, so that stays the standby ember.
         """
         try:
+            # Debian security updates (scripts/hasler-os-update) while packages change.
+            if self._p(OS_ACTIVE).exists():
+                return True
             state = _read_json(self.state_file)
         except Exception:
             return False
         return isinstance(state, dict) and state.get("phase") == "trial"
+
+    def os_updates(self) -> dict | None:
+        """The Debian security lane (scripts/hasler-os-update, docs/ota.md §6)
+        for /api/health and the key page; None on a radio without it."""
+        try:
+            if not self._p("/usr/local/sbin/hasler-os-update").exists():
+                return None
+            doc = _read_json(self._p(OS_STATUS))
+            doc = doc if isinstance(doc, dict) else {}
+            box = self._box().get("os_updates", True)
+            enabled = box not in (False, "off", "no", "false", "0", 0)
+            advisable = bool(doc.get("reboot_advisable"))
+            if advisable and doc.get("boot_id"):
+                try:
+                    now_boot = self._p("/proc/sys/kernel/random/boot_id").read_text().strip()
+                except OSError:
+                    now_boot = None
+                advisable = now_boot in (None, doc.get("boot_id"))   # a power-on since finished it
+            return {
+                "enabled": bool(enabled),
+                "last_run": doc.get("last_run"),
+                "last_result": doc.get("last_result"),
+                "reason": doc.get("reason"),
+                "upgraded": list(doc.get("upgraded") or []),
+                "held_back": list(doc.get("held_back") or []),
+                "reboot_advisable": advisable,
+                "paused": doc.get("paused"),
+                "last_upgrade": doc.get("last_upgrade"),
+                "deferred": doc.get("deferred"),
+                "active": self._p(OS_ACTIVE).exists(),
+            }
+        except Exception:
+            log.debug("could not read the OS update status", exc_info=True)
+            return None
 
     def _fallback(self) -> str:
         if self.fallback_version is not None:
@@ -303,7 +349,13 @@ class Software:
             raise ValueError(f"not an updater unit: {unit}")
         if not self.installed:
             raise NotInstalled("updates are not installed on this radio yet")
-        log.info("starting %s from the key page", unit)
+        self.start_unit(unit)
+
+    def start_unit(self, unit: str) -> None:
+        """An allowlisted unit; also the yt-dlp lane's, which needs no OTA updater."""
+        if not UNIT.match(unit):
+            raise ValueError(f"not an updater unit: {unit}")
+        log.info("starting %s", unit)
         try:
             self.systemctl(unit)
         except (OSError, RuntimeError, subprocess.SubprocessError) as exc:

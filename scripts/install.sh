@@ -24,12 +24,14 @@ DRY=0
 [[ "${1:-}" == "--dry-run" ]] && DRY=1
 
 # --- pins --------------------------------------------------------------------
-# Bump deliberately. SHA-256 is GitHub's own asset digest for the arm64 build.
+# Bumped by .github/workflows/deps-bump.yml (weekly PR; patch-level go-librespot
+# and same-major deno merge by themselves). SHA-256 of the arm64 asset, hashed by
+# the workflow and checked against GitHub's own asset digest.
 # (scripts/release/build_release.py reads these too, for the release's bin/.)
-GLR_VERSION=v0.10.3
-GLR_SHA256=fdab3c06f3a776a3f696afb26aa59fbdea63557e24d3c39f2df2830ab1851a42
-DENO_VERSION=v2.9.7
-DENO_SHA256=c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf
+GLR_VERSION=v0.10.5
+GLR_SHA256=35274c1d3576090096d3459ecf76ee9c025258d19dc76f0bf724f95c525467e1
+DENO_VERSION=v2.9.8
+DENO_SHA256=d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361d51905
 # yt-dlp is deliberately NOT pinned: YouTube breaks old versions within weeks.
 # scripts/bootstrap.sh sets it up (user ytdlp, scripts/hasler-ytdlp-update).
 

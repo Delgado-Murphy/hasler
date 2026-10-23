@@ -19,11 +19,11 @@ linked into Hasler's code.
 
 | Program | Version | Licence | Source | Licence text |
 |---|---|---|---|---|
-| [go-librespot](https://github.com/devgianlu/go-librespot) | v0.10.3 (`go-librespot_linux_arm64.tar.gz`) | GPL-3.0 | [tag v0.10.3](https://github.com/devgianlu/go-librespot/tree/v0.10.3), [source archive](https://github.com/devgianlu/go-librespot/archive/refs/tags/v0.10.3.tar.gz) | [licenses/GPL-3.0.txt](licenses/GPL-3.0.txt) |
-| [Deno](https://github.com/denoland/deno) | v2.9.7 (`deno-aarch64-unknown-linux-gnu.zip`) | MIT, Copyright 2018-2026 the Deno authors | [tag v2.9.7](https://github.com/denoland/deno/tree/v2.9.7) | [licenses/MIT-deno.txt](licenses/MIT-deno.txt) |
+| [go-librespot](https://github.com/devgianlu/go-librespot) | v0.10.5 (`go-librespot_linux_arm64.tar.gz`) | GPL-3.0 | [tag v0.10.5](https://github.com/devgianlu/go-librespot/tree/v0.10.5), [source archive](https://github.com/devgianlu/go-librespot/archive/refs/tags/v0.10.5.tar.gz) | [licenses/GPL-3.0.txt](licenses/GPL-3.0.txt) |
+| [Deno](https://github.com/denoland/deno) | v2.9.8 (`deno-aarch64-unknown-linux-gnu.zip`) | MIT, Copyright 2018-2026 the Deno authors | [tag v2.9.8](https://github.com/denoland/deno/tree/v2.9.8) | [licenses/MIT-deno.txt](licenses/MIT-deno.txt) |
 
 **go-librespot (GPL-3.0).** The binary is the upstream release asset for
-v0.10.3, byte for byte (its SHA-256 is pinned in `scripts/install.sh`); its
+v0.10.5, byte for byte (its SHA-256 is pinned in `scripts/install.sh`); its
 Corresponding Source is the upstream tag above. If that source ever stops
 being available there, ask for it by opening an issue at
 <https://github.com/Delgado-Murphy/hasler> and we will provide it, for as long

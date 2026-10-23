@@ -86,6 +86,7 @@ except ImportError:
     night_mode_active = None
 from .net import Connectivity, tcp_probe
 from .wifiwatch import HotspotWatchdog
+from .ytdlp_lane import YtdlpLane
 from .player.base import FakePlayer, Preset
 from .player.moode import MoodeConfig, MoodePlayer
 from .player.watchdog import EVENTS_FILE, StreamEvents, StreamWatchdog
@@ -767,6 +768,12 @@ def build_web(
     app.confirm.allow_unconfirmed = bool(spec.get("allow_unconfirmed", False))
     app.allowed_hosts.update(str(h).lower() for h in (spec.get("hostnames") or []))
     app.software.box_paths = paths
+    # The yt-dlp lane (haslerd/ytdlp_lane.py): health, its canary, starting it
+    # when YouTube Music tracks stop resolving.
+    ytm = (sources or {}).get("ytm")
+    app.ytdlp_lane = YtdlpLane(state_dir=state_dir, ytm=ytm, systemctl=app.software.start_unit)
+    if ytm is not None and hasattr(ytm, "on_resolve"):
+        ytm.on_resolve = app.ytdlp_lane.resolve_result
     # For the knob page: where the overlay lives, and how to apply a new one.
     app.box_paths = paths
     app.reload_variant = (
@@ -1040,6 +1047,7 @@ def main(argv=None) -> int:
     publisher = HaPublisher(app)
     confirm = getattr(app, "confirm", None)
     software = getattr(app, "software", None)
+    ytdlp_lane = None if args.fake else getattr(app, "ytdlp_lane", None)
     connectivity = build_connectivity(config)
     wifiwatch = build_wifiwatch(app, connectivity, args.fake)
     phone_volume = build_phone_volume(actions)
@@ -1102,6 +1110,8 @@ def main(argv=None) -> int:
                 actions.last_active_at = now        # awake = in use (health.py's idle)
 
             connectivity.poll(now)
+            if ytdlp_lane is not None:             # the network back after a long time: check yt-dlp
+                ytdlp_lane.tick(bool(getattr(connectivity, "seen_up", False) and connectivity.online))
             if wifiwatch is not None:
                 wifiwatch.poll(now)                # out of setup mode when the Wi-Fi is back
             if not net_announced and getattr(connectivity, "seen_up", False):

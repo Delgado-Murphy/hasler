@@ -1,0 +1,140 @@
+# Daily: move bench's release to stable once it has been bench's current for
+# 7 days (tools/autopromote.py has every rule: not halted, not -rc, not major,
+# stable exists and is older, not paused). The promotion itself is
+# sign-publish.yml mode=promote, dispatched here with the Actions token - the
+# same job a person runs, with all its checks.
+#
+# workflow_dispatch:
+#   action=check   decide now (dry_run: only say what it would do)
+#   action=pause   stop auto-promotion until resumed (reason recorded)
+#   action=resume
+# The state and a promotion history are in auto-promote.json on gh-pages
+# (informational; radios never read it). Emergency stop without a run:
+# `gh workflow disable auto-promote.yml -R Delgado-Murphy/hasler-releases`.
+name: auto-promote
+
+on:
+  schedule:
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: check (decide now), pause or resume auto-promotion
+        type: choice
+        options: [check, pause, resume]
+        default: check
+      reason:
+        description: why (pause only)
+        type: string
+        default: ""
+      dry_run:
+        description: check only - say what it would do, promote nothing
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: hasler-auto-promote
+  cancel-in-progress: false
+
+jobs:
+  auto-promote:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write          # auto-promote.json on gh-pages
+      actions: write           # dispatch sign-publish.yml
+    env:
+      ACTION: ${{ inputs.action || 'check' }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
+      MIN_DAYS: "7"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: gh-pages
+          path: pages
+
+      - name: Pause or resume
+        if: env.ACTION != 'check'
+        env:
+          REASON: ${{ inputs.reason }}
+          BY: ${{ github.actor }}
+        run: |
+          if [[ "$ACTION" == pause ]]; then
+            python3 main/tools/autopromote.py pause --state pages/auto-promote.json --by "$BY" --reason "$REASON"
+          else
+            python3 main/tools/autopromote.py resume --state pages/auto-promote.json --by "$BY"
+          fi
+          echo "auto-promotion: $ACTION by $BY ${REASON:+($REASON)}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the channels and bench's release.json
+        if: env.ACTION == 'check'
+        run: |
+          roots=(); for r in main/trust/root*.pub; do roots+=(--root "$r"); done
+          python3 main/tools/keyring.py verify "${roots[@]}" pages/keyring.json
+          bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json pages/channels/bench.json
+          if [[ -f pages/channels/stable.json ]]; then
+            bash main/tools/verify.sh -n hasler-channel -r timestamp -K pages/keyring.json pages/channels/stable.json
+          fi
+          v="$(jq -r .current.version pages/channels/bench.json)"
+          echo "$v" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$' || { echo "::error::bench current is '$v'"; exit 1; }
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/v$v"
+          curl -fsSL --retry 3 -o release.json "$base/release.json"
+          curl -fsSL --retry 3 -o release.json.sig "$base/release.json.sig"
+          bash main/tools/verify.sh -n hasler-release -r release -K pages/keyring.json release.json
+          want="$(jq -r .current.release_sha256 pages/channels/bench.json)"
+          echo "$want  release.json" | sha256sum -c -
+
+      - name: Decide
+        id: d
+        if: env.ACTION == 'check'
+        run: |
+          python3 main/tools/autopromote.py decide --bench pages/channels/bench.json \
+            --stable pages/channels/stable.json --release release.json \
+            --state pages/auto-promote.json --min-days "$MIN_DAYS"
+
+      - name: Promote (sign-publish mode=promote)
+        if: env.ACTION == 'check' && steps.d.outputs.promote == 'true' && env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.d.outputs.version }}
+          SINCE: ${{ steps.d.outputs.bench_since }}
+        run: |
+          gh workflow run sign-publish.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f mode=promote -f version="$VERSION" -f channel=stable
+          python3 main/tools/autopromote.py record --state pages/auto-promote.json --version "$VERSION" \
+            --bench-since "$SINCE" --run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Summary
+        if: env.ACTION == 'check'
+        env:
+          PROMOTE: ${{ steps.d.outputs.promote }}
+          VERSION: ${{ steps.d.outputs.version }}
+          WHY: ${{ steps.d.outputs.why }}
+        run: |
+          { echo "### auto-promote"; echo
+            echo "- bench: $VERSION"
+            echo "- promote to stable: $PROMOTE${DRY_RUN:+ (dry run: $DRY_RUN)}"
+            echo "- why: $WHY"; } >> "$GITHUB_STEP_SUMMARY"
+          echo "promote=$PROMOTE: $WHY"
+
+      - name: Push gh-pages
+        if: always()
+        run: |
+          cd pages
+          [[ -f auto-promote.json ]] || exit 0
+          git add auto-promote.json
+          git diff --cached --quiet && exit 0
+          git config user.name "hasler-releases"
+          git config user.email "hasler-releases@users.noreply.github.com"
+          git commit -q -m "auto-promote: $ACTION"
+          for i in 1 2 3 4 5; do
+            git push -q origin HEAD:gh-pages && exit 0
+            sleep $((i * 5)); git pull -q --rebase origin gh-pages
+          done
+          echo "::error::could not push gh-pages"; exit 1

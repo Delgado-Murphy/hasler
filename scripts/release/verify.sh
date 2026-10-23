@@ -9,11 +9,12 @@
 # -a FILE an allowed_signers file (e.g. from `keyring.py allowed-signers`)
 # -K FILE a keyring.json (NOT itself verified here - use keyring.py verify) +
 #         -r ROLE (release|timestamp); tries each key of that role, honouring not_after.
+#         The namespace must be one the role may sign (keyring.py ROLE_NAMESPACES).
 # Exit 0 = good signature.
 set -euo pipefail
 
 NS=""; ID=""; PUB=""; ALLOWED=""; KEYRING=""; ROLE=""
-usage() { sed -n '2,12p' "$0" >&2; exit 2; }
+usage() { sed -n '2,13p' "$0" >&2; exit 2; }
 while getopts "n:I:k:a:K:r:h" o; do
   case "$o" in n) NS="$OPTARG";; I) ID="$OPTARG";; k) PUB="$OPTARG";; a) ALLOWED="$OPTARG";;
     K) KEYRING="$OPTARG";; r) ROLE="$OPTARG";; *) usage;; esac
@@ -26,7 +27,7 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 if [[ -n "$KEYRING" ]]; then
   [[ -n "$ROLE" ]] || usage
-  python3 "$(dirname "$0")/keyring.py" allowed-signers --role "$ROLE" "$KEYRING" > "$TMP/allowed"
+  python3 "$(dirname "$0")/keyring.py" allowed-signers --role "$ROLE" --namespace "$NS" "$KEYRING" > "$TMP/allowed"
   while read -r kid _; do
     if ssh-keygen -q -Y verify -f "$TMP/allowed" -I "$kid" -n "$NS" -s "$SIG" < "$FILE" >/dev/null 2>&1; then
       echo "verify: good $NS signature on $FILE by $kid"; exit 0

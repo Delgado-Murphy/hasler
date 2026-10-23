@@ -1,0 +1,25 @@
+[Unit]
+Description=Hasler: Debian security updates (night, standby, health-checked, a way back)
+Documentation=file:///opt/hasler/current/docs/ota.md
+# Started by hasler-os-update.timer. Decides itself whether now is the time
+# (02:00-05:00, once a night, haslerd idle, no release apply or trial or
+# probation, os_updates on in box.yaml); exit 75 = not now.
+After=network-online.target haslerd.service
+ConditionPathExists=/usr/local/sbin/hasler-os-update
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-os-update run --auto
+SuccessExitStatus=75
+# /run/hasler-os-update/active is the lamp's "busy" signal (haslerd reads it):
+# a runtime directory, so it is gone the moment this unit stops, however.
+RuntimeDirectory=hasler-os-update
+RuntimeDirectoryMode=0755
+StateDirectory=hasler-os
+StateDirectoryMode=0755
+CacheDirectory=hasler-os
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=60min
+# Never kill a running dpkg: stopping this unit stops only the script.
+KillMode=process

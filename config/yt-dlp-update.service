@@ -1,7 +1,10 @@
 [Unit]
-Description=Upgrade yt-dlp in a second venv; switch only if it passes (YouTube breaks old versions)
-# Weekly from yt-dlp-update.timer; haslerd can also start it ("update yt-dlp
-# now" - polkit allows pi exactly this unit, config/update/51-hasler-ytdlp.rules).
+Description=yt-dlp lane: signed candidate into a spare venv, switched only if it plays (YouTube breaks old versions)
+# docs/ota.md "The component lane (yt-dlp)", scripts/hasler-ytdlp-update.
+# Every 6 h from yt-dlp-update.timer; haslerd also starts it (polkit allows pi
+# exactly this unit, config/update/51-hasler-ytdlp.rules): Update now, Go back,
+# the network back after a day, tracks failing. It says which in
+# /var/lib/haslerd/yt-dlp-request.json, read here (never written).
 After=network-online.target
 Wants=network-online.target
 
@@ -11,17 +14,21 @@ Type=oneshot
 User=ytdlp
 Group=ytdlp
 ExecStart=/usr/local/sbin/hasler-ytdlp-update
+# 75: another run holds the lock (a timer run while haslerd asked) - not a failure.
+SuccessExitStatus=75
 Environment=HOME=/opt/yt-dlp
 Environment=XDG_CACHE_HOME=/opt/yt-dlp/.cache
 Environment=PIP_NO_CACHE_DIR=1
 Environment=PIP_DISABLE_PIP_VERSION_CHECK=1
 Environment=PIP_NO_INPUT=1
-# deno (yt-dlp's JS runtime) for the online self-check: the release's, else /usr/local/bin's.
+# deno (yt-dlp's JS runtime) for a canary run here (haslerd's own canary is the
+# usual one, with its PATH): the release's, else /usr/local/bin's.
 Environment=PATH=/opt/hasler/current/bin:/usr/local/bin:/usr/bin:/bin
 Nice=10
 IOSchedulingClass=idle
 TimeoutStartSec=30min
-# Only /opt/yt-dlp is writable.
+# Only /opt/yt-dlp is writable. Read: /etc/hasler/trust (the keyring that
+# vouches for components.json), /opt/hasler/updater (its verify code), box.yaml.
 ProtectSystem=strict
 ReadWritePaths=/opt/yt-dlp
 ProtectHome=yes

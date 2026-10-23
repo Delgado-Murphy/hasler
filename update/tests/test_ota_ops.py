@@ -1,4 +1,4 @@
-"""Box-side ops: integration sources, polkit, yt-dlp upgrade, ota-bootstrap, dev channel.
+"""Box-side ops: integration sources, polkit, ota-bootstrap, dev channel.
 
 The end-to-end test builds a real (--no-wheels) release with build_release.py,
 publishes it with the dev tools (dev-keys.sh + dev-channel.py, file:// base URL)
@@ -94,7 +94,8 @@ def test_strict_release_integration(built):
               "systemd/hasler-update-check.service", "systemd/hasler-update-rollback.service",
               "sudoers/haslerd", "configtxt/hasler.block", "udev/99-hasler-pwm.rules",
               "sbin/hasler-audio-mono", "sbin/hasler-wifi-join", "sbin/hasler-lamp-boot",
-              "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-bootcfg-guard", "sbin/hasler-help",
+              "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-os-update",
+              "systemd/hasler-os-update.service", "systemd/hasler-os-update.timer", "sbin/hasler-bootcfg-guard", "sbin/hasler-help",
               "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "bin/hasler-dsp", "shutdown/hasler-lamp-halt",
               "avahi/hasler.service", "systemd/bluetooth.service.d/hasler-speaker.conf",
               "systemd/bluealsa-aplay@.service.d/hasler-buffer.conf",
@@ -248,90 +249,7 @@ def test_polkit_rules(file, cases):
     assert json.loads(out) == [want for _, want in cases]
 
 
-# --- yt-dlp upgrade ------------------------------------------------------------------------
-
-FAKE_PY = r"""#!/bin/bash
-# base python: -m venv DIR; venv python: -m pip (writes a fake yt-dlp), -c (import check)
-if [ "$1" = -m ] && [ "$2" = venv ]; then mkdir -p "$3/bin"; cp "$0" "$3/bin/python"; exit 0; fi
-here="$(cd "$(dirname "$0")" && pwd)"
-if [ "$1" = -m ] && [ "$2" = pip ]; then
-  [ "${FAKE_PIP_FAIL:-0}" = 1 ] && exit 1
-  cat > "$here/yt-dlp" <<EOF
-#!/bin/bash
-[ "\$1" = --version ] && { echo ${FAKE_VERSION:-1.0}; exit 0; }
-for a in "\$@"; do case "\$a" in file://*) [ ${FAKE_OFFLINE_RC:-0} = 0 ] && echo "hasler selftest (1)"; exit ${FAKE_OFFLINE_RC:-0};; esac; done
-exit ${FAKE_NET_RC:-0}
-EOF
-  chmod +x "$here/yt-dlp"; exit 0
-fi
-[ "$1" = -c ] && exit "${FAKE_IMPORT_RC:-0}"
-exec python3 "$@"
-"""
-
-
-@pytest.fixture
-def ytdlp(tmp_path):
-    py = tmp_path / "fakepy"
-    py.write_text(FAKE_PY)
-    py.chmod(0o755)
-    root = tmp_path / "opt-yt-dlp"
-    root.mkdir()
-
-    def run(*args, **env):
-        e = dict(os.environ, HASLER_YTDLP_ROOT=str(root), HASLER_YTDLP_PYTHON=str(py),
-                 HASLER_YTDLP_PROBE_URL="https://example.invalid/v", **{k: str(v) for k, v in env.items()})
-        return subprocess.run(["bash", str(ROOT / "scripts/hasler-ytdlp-update"), *args],
-                              capture_output=True, text=True, env=e)
-
-    def current():
-        link = root / "current"
-        return (os.readlink(link), subprocess.run([str(link / "bin/yt-dlp"), "--version"],
-                                                  capture_output=True, text=True).stdout.strip())
-    return run, current, root
-
-
-def test_ytdlp_first_install_and_upgrade(ytdlp):
-    run, current, root = ytdlp
-    r = run(FAKE_VERSION="1.0")
-    assert r.returncode == 0, r.stderr
-    assert current() == ("venv-a", "1.0")
-    assert run(FAKE_VERSION="1.0").returncode == 0           # same version: no switch
-    assert current() == ("venv-a", "1.0") and not (root / "venv-b").exists()
-    assert run(FAKE_VERSION="2.0").returncode == 0
-    assert current() == ("venv-b", "2.0")
-    assert json.loads(run("--status").stdout) == {"current": "2.0", "previous": "1.0"}
-    assert run("--rollback").returncode == 0
-    assert current() == ("venv-a", "1.0")
-
-
-@pytest.mark.parametrize("env,why", [
-    ({"FAKE_PIP_FAIL": 1}, "pip install"),
-    ({"FAKE_IMPORT_RC": 1}, "importing"),
-    ({"FAKE_OFFLINE_RC": 1}, "offline extraction"),
-])
-def test_ytdlp_broken_upgrade_keeps_the_old_one(ytdlp, env, why):
-    run, current, root = ytdlp
-    assert run(FAKE_VERSION="1.0").returncode == 0
-    r = run(FAKE_VERSION="2.0", **env)
-    assert r.returncode == 1 and why in r.stderr
-    assert current() == ("venv-a", "1.0")
-    assert not (root / "venv-b").exists()
-
-
-def test_ytdlp_online_check_is_soft(ytdlp):
-    run, current, _ = ytdlp
-    assert run(FAKE_VERSION="1.0").returncode == 0                  # old one resolves YouTube
-    r = run(FAKE_VERSION="2.0", FAKE_NET_RC=1)                      # new one cannot: refused
-    assert r.returncode == 1 and "keeping 1.0" in r.stderr
-    assert current() == ("venv-a", "1.0")
-
-
-def test_ytdlp_offline_box_goes_by_offline_checks(ytdlp):
-    run, current, _ = ytdlp
-    assert run(FAKE_VERSION="1.0", FAKE_NET_RC=1).returncode == 0   # old one: offline too
-    r = run(FAKE_VERSION="2.0", FAKE_NET_RC=1)
-    assert r.returncode == 0 and "offline?" in r.stderr
-    assert current() == ("venv-b", "2.0")
+# (the yt-dlp lane: test_ytdlp_lane.py)
 
 
 # --- dev keys, dev channel, ota-bootstrap, Checker ------------------------------------------

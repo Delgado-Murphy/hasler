@@ -270,11 +270,12 @@ if command -v mpd >/dev/null 2>&1; then
 fi
 
 # --- yt-dlp, off root ------------------------------------------------------------------
-# /opt/yt-dlp belongs to the ytdlp user; two venv slots and a `current` link
-# (scripts/hasler-ytdlp-update). The weekly unit runs as ytdlp, sandboxed to
+# /opt/yt-dlp belongs to the ytdlp user; three venv slots, `current` and `previous`
+# (scripts/hasler-ytdlp-update, docs/ota.md "The component lane"). The unit
+# (every 6 h) runs as ytdlp, sandboxed to
 # /opt/yt-dlp; haslerd ($DUSER) may start it via polkit. A box that had the
 # old root venv directly in /opt/yt-dlp keeps it until the first new build works.
-say "yt-dlp: user ytdlp, /opt/yt-dlp, weekly checked upgrade"
+say "yt-dlp: user ytdlp, /opt/yt-dlp, checked upgrades every 6 h"
 if [[ ! -d /opt/yt-dlp ]]; then
   run install -d -o ytdlp -g ytdlp -m 0755 /opt/yt-dlp
 elif [[ "$(stat -c %U /opt/yt-dlp 2>/dev/null)" != ytdlp ]]; then

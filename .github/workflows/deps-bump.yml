@@ -1,0 +1,131 @@
+# Weekly: newer go-librespot / deno upstream? Pin their arm64 builds (sha256
+# hashed here), open one PR, and let it merge itself once CI is green.
+#
+# Lane (docs/release.md "Automated lanes"):
+#   deps-bump (this) -> PR deps/bump -> ci -> auto-merge (squash)
+#   -> auto-release.yml tags vX.Y.Z+1 -> release.yml builds it
+#   -> auto-release.yml dispatches sign-publish (bench) in hasler-releases
+#   -> auto-promote.yml there moves it to stable after 7 days on bench.
+#
+# The PR carries the next patch version (pyproject, __init__, CHANGELOG) only
+# when master has nothing unreleased but earlier deps bumps and the last
+# release has reached stable; otherwise it pins only and the change rides on
+# the next release.
+#
+# Needs: environment `deps` (deployment branch master) with secret
+# AUTOMATION_TOKEN - a fine-grained PAT (or GitHub App token) that can push
+# branches and open PRs here. The GITHUB_TOKEN can't: a PR it opens never starts
+# CI, so it could never merge.
+name: deps-bump
+
+on:
+  schedule:
+    - cron: "11 5 * * 2"     # Tuesdays
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only report what would change (no branch, no PR)
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: deps-bump
+  cancel-in-progress: false
+
+env:
+  BRANCH: deps/bump
+  CHANNELS_URL: https://delgado-murphy.github.io/hasler-releases/channels
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: deps
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0          # tags: the last release, the next version
+          persist-credentials: false
+
+      - name: Newer upstream releases (download + sha256 the arm64 assets)
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}      # public API reads only, for the rate limit
+        run: python3 -I scripts/ci/deps_bump.py check --out "$RUNNER_TEMP/bump.json"
+
+      - name: Can this be released by itself?
+        id: gate
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          # Only if master holds nothing unreleased but earlier deps bumps, and
+          # the last release reached stable (no stacking onto an unsoaked one).
+          last="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
+          have="$(sed -n 's/^version *= *"\(.*\)"/\1/p' daemon/pyproject.toml)"
+          release=true; why=""
+          if ! git merge-base --is-ancestor "$last" HEAD; then release=false; why="$last is not on master"
+          elif [ "v$have" != "$last" ]; then release=false; why="master says $have, the last tag is $last"
+          else
+            other="$(git diff --name-only "$last" HEAD | grep -Ev '^(scripts/install\.sh|THIRD_PARTY_NOTICES\.md|CHANGELOG\.md|daemon/pyproject\.toml|daemon/haslerd/__init__\.py)$' || true)"
+            if [ -n "$other" ]; then release=false; why="master has unreleased changes: $(echo "$other" | head -5 | tr '\n' ' ')"; fi
+          fi
+          if [ "$release" = true ]; then
+            bench="$(curl -fsSL --retry 3 "$CHANNELS_URL/bench.json" | jq -r '.current.version // empty')" || bench=""
+            stable="$(curl -fsSL --retry 3 "$CHANNELS_URL/stable.json" 2>/dev/null | jq -r '.current.version // empty')" || stable=""
+            if [ -z "$bench" ] || [ "$bench" != "$stable" ]; then
+              release=false; why="bench ($bench) has not reached stable (${stable:-none}) yet"
+            fi
+          fi
+          next=""; [ "$release" = true ] && next="$(python3 -I scripts/ci/deps_bump.py next-version)"
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+          echo "release: $release ${why:+($why)} ${next:+-> $next}"
+          { echo "### deps-bump"; echo; echo "- release by itself: $release ${why:+- $why}"; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Edit pins (and the version)
+        if: steps.check.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          python3 -I scripts/ci/deps_bump.py apply --plan "$RUNNER_TEMP/bump.json" ${VERSION:+--version "$VERSION"}
+          python3 -I scripts/ci/deps_bump.py body --plan "$RUNNER_TEMP/bump.json" ${VERSION:+--version "$VERSION"} \
+            --out "$RUNNER_TEMP/body.md"
+          git diff --stat
+          cat "$RUNNER_TEMP/body.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push the branch, open or update the PR, auto-merge
+        if: steps.check.outputs.changed == 'true' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
+          TITLE: ${{ steps.check.outputs.title }}
+          AUTO: ${{ steps.check.outputs.auto }}
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::error::secret AUTOMATION_TOKEN is not set (environment deps)"; exit 1; }
+          title="$TITLE${VERSION:+ (v$VERSION)}"
+          git config user.name "hasler-deps-bump"
+          git config user.email "hasler-deps-bump@users.noreply.github.com"
+          git switch -q -C "$BRANCH"
+          git commit -q -am "$title" -m "$(cat "$RUNNER_TEMP/body.md")"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$BRANCH"
+          pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base master --head "$BRANCH" --title "$title" \
+              --body-file "$RUNNER_TEMP/body.md"
+            pr="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number')"
+          fi
+          echo "PR #$pr: $title"
+          if [ "$AUTO" = true ]; then
+            # Merges once the required check (ci / test) is green. Needs the repo
+            # setting "Allow auto-merge" and a ruleset requiring that check;
+            # without them the PR just waits for a person.
+            gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --auto --squash \
+              || echo "::warning::auto-merge not enabled on PR #$pr (repo setting / ruleset?) - merge it by hand"
+          else
+            echo "::warning::PR #$pr is outside the auto policy - review and merge it by hand"
+          fi

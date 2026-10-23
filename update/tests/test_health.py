@@ -81,7 +81,7 @@ def test_health_report_shape_and_idle():
     a = app()
     doc = health_report(a, now=10_000.0)
     assert set(doc) == {"version", "ok", "uptime_s", "checks", "idle", "standby", "playing", "last_play_s",
-                        "recovering", "stalled_s", "stream_events_recent"}
+                        "recovering", "stalled_s", "stream_events_recent", "os_updates", "components"}
     assert set(doc["checks"]) == {"mpd", "audio_card", "panel", "lamp", "web"}
     assert doc["standby"] is True and doc["playing"] is False
     # it saw activity now -> not idle for the next 10 minutes

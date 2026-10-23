@@ -1,9 +1,12 @@
 [Unit]
-Description=Weekly yt-dlp upgrade (as user ytdlp, switched only if the new one works)
+Description=yt-dlp lane check every 6 h (as user ytdlp; switched only if the new one plays)
 
 [Timer]
-OnCalendar=weekly
-RandomizedDelaySec=6h
+# docs/ota.md "The component lane (yt-dlp)". Cheap when nothing is new: one
+# signed components.json fetch. haslerd also starts the service when the
+# network comes back after a long time, and when YouTube Music tracks fail.
+OnCalendar=*-*-* 00/6:00:00
+RandomizedDelaySec=1h
 # Catch up after the box has been switched off over the scheduled time.
 Persistent=true
 

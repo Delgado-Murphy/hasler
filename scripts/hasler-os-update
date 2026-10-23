@@ -1,0 +1,1045 @@
+#!/usr/bin/python3 -I
+"""Debian security updates for the radio: at night, in standby, checked after.
+
+    hasler-os-update run [--auto] [--now] [--force] [--dry-run]
+    hasler-os-update status            # JSON (anyone)
+    hasler-os-update resume            # end a pause after a failed night
+    hasler-os-update rollback          # put back the versions the last run replaced
+
+docs/ota.md §6 "Debian security updates". Owner decision (2026-10-23): on by
+default (box.yaml ``os_updates: on|off``), never the kernel, the firmware or
+moOde's audio stack, at night in standby, health-checked afterwards, with a
+way back. In short:
+
+* ``hasler-os-update.timer`` (pulled in by haslerd.service's Wants=) starts
+  ``run --auto`` at about 03:35 and 04:15. A run works only inside 02:00-05:00,
+  once a night, with the updater's apply lock held (never during an apply),
+  never during a release's trial or 24 h probation (a crash then would be
+  blamed on the release), and only while haslerd says ``idle`` (standby,
+  nothing played for 10 minutes). Otherwise it defers (exit 75).
+* apt runs on a private view: its own sources (Debian-Security for this
+  codename, plus pkgs.tailscale.com when Tailscale is installed - nothing
+  from Raspberry Pi's or moOde's archives), its own lists and its own .deb
+  cache. Nothing the system's apt sees is changed, except the packages.
+* The set: installed packages for which that view has a newer version, minus
+  packages held with ``apt-mark hold`` (moOde holds its own), the DENY list,
+  versions built by Raspberry Pi or moOde (``+rpt``, ``+rpi``, ``moode``) and
+  versions that failed here before. ``apt-get -s`` must show that nothing
+  else (no removals, no held or denied dependency) is touched; a package that
+  can't go alone is held back and reported.
+* Before: a ``dpkg-query -W`` snapshot (``pre-<date>.list``) and a .deb of
+  every version about to be replaced, rebuilt from the installed files (as
+  dpkg-repack does) unless apt's cache still has it. Units of those packages
+  that are not running are masked for the install (``--runtime``: gone at the
+  next boot anyway) so a postinst can't start what must stay off.
+* ``apt-get install --only-upgrade`` of exactly that set; confold; never a
+  dist-upgrade, never a reboot. haslerd and go-librespot are restarted when
+  they still map a replaced library; anything else that does (MPD, systemd,
+  ...) only sets ``reboot_advisable`` - the next power-on finishes the job.
+* The updater's health probe, judged against a baseline taken before: only
+  regressions count. Fail: the saved .debs go back with ``dpkg -i``, the
+  failed versions are never tried again here, and the lane pauses for 14 days
+  (or until ``resume``).
+* ``/run/hasler-os-update/active`` exists while packages change: haslerd's
+  lamp breathes ember (web/software.py Software.installing).
+
+Status for haslerd's /api/health: /var/lib/hasler-os/status.json (0644).
+Events: /var/lib/hasler-os/events.jsonl (last 200 lines / 64 KB).
+Stdlib only, run as root. HASLER_ROOT prefixes every path (tests).
+"""
+
+from __future__ import annotations
+
+import argparse
+import fcntl
+import fnmatch
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+EX_DEFERRED = 75
+WINDOW = (2, 5)                     # local hours, as the updater's apply
+PAUSE_S = 14 * 24 * 3600            # after a failed night
+MIN_FREE = 400 << 20                # bytes free on / before anything is fetched
+EVENTS_MAX_LINES = 200
+EVENTS_MAX_BYTES = 64 << 10
+KEEP_SNAPSHOTS = 10
+BAD_KEEP = 100
+HEALTH_URL = "http://127.0.0.1:8080/api/health"
+APPEAR_S, HOLD_S, INTERVAL_S = 90.0, 60.0, 5.0
+
+# Never upgraded by this lane, whatever Debian-Security offers. Globs on the
+# package name. Why each group: docs/ota.md §6.
+DENY = (
+    # the boot chain: kernel, firmware, bootloader, initramfs - a bad one
+    # doesn't boot, and only a reboot would tell
+    "linux-*", "raspi-firmware", "firmware-*", "*-firmware", "rpi-*", "raspi-*", "raspberrypi-*",
+    "libraspberrypi*", "initramfs-tools*", "dracut*", "u-boot*", "grub*", "flash-kernel",
+    # moOde's audio stack (moOde pins most of it with holds anyway): the
+    # night health check can't hear a glitch
+    "moode*", "mpd", "mpd-*", "camilladsp*", "alsa-*", "libasound2*", "libasound2-plugin*",
+    # Bluetooth: moOde's speaker set-up, pairings and bluealsa; the health
+    # check can't exercise it, and it is discoverable only in the owner's
+    # pairing window
+    "bluez*", "bluealsa*", "libbluetooth*",
+)
+# Versions built by Raspberry Pi or moOde: replacing one with Debian's build
+# drops their patches (hardware decoders, moOde's fixes).
+FOREIGN_VERSION = re.compile(r"(rpt|rpi|moode)", re.IGNORECASE)
+# Restarted after the upgrade if they still map a replaced file: ours, and
+# restarted by the release updater every night anyway.
+RESTART_OK = ("haslerd.service", "go-librespot.service")
+
+ENV = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LC_ALL": "C.UTF-8",
+       "DEBIAN_FRONTEND": "noninteractive", "APT_LISTCHANGES_FRONTEND": "none", "NEEDRESTART_MODE": "l",
+       "HOME": "/root"}
+
+
+# --- small helpers -----------------------------------------------------------------------
+
+
+def iso(ts: float | None = None) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() if ts is None else ts))
+
+
+def parse_iso(s: str) -> float:
+    import calendar
+
+    return float(calendar.timegm(time.strptime(str(s).rstrip("Z").split(".")[0], "%Y-%m-%dT%H:%M:%S")))
+
+
+def fsync_dir(path: Path) -> None:
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def write_atomic(path: Path, data: bytes, mode: int = 0o644) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f".{path.name}.tmp{os.getpid()}")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    try:
+        os.write(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+    fsync_dir(path.parent)
+
+
+def read_json(path: Path, default=None):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return default
+
+
+# Debian version comparison (deb-version(7)), so the candidate set needs no
+# dpkg call per package.
+
+def _order(c: str) -> int:
+    if c == "~":
+        return -1
+    if c.isdigit():
+        return 0
+    if c.isalpha():
+        return ord(c)
+    return ord(c) + 256
+
+
+def _cmp_part(a: str, b: str) -> int:
+    i = j = 0
+    while i < len(a) or j < len(b):
+        diff = 0
+        while (i < len(a) and not a[i].isdigit()) or (j < len(b) and not b[j].isdigit()):
+            ac = _order(a[i]) if i < len(a) and not a[i].isdigit() else 0
+            bc = _order(b[j]) if j < len(b) and not b[j].isdigit() else 0
+            if ac != bc:
+                return -1 if ac < bc else 1
+            i += 1
+            j += 1
+        while i < len(a) and a[i] == "0":
+            i += 1
+        while j < len(b) and b[j] == "0":
+            j += 1
+        while i < len(a) and a[i].isdigit() and j < len(b) and b[j].isdigit():
+            if not diff:
+                diff = (a[i] > b[j]) - (a[i] < b[j])
+            i += 1
+            j += 1
+        if i < len(a) and a[i].isdigit():
+            return 1
+        if j < len(b) and b[j].isdigit():
+            return -1
+        if diff:
+            return diff
+    return 0
+
+
+def vercmp(a: str, b: str) -> int:
+    def split(v: str) -> tuple[int, str, str]:
+        epoch, _, rest = v.partition(":") if ":" in v else ("0", "", v)
+        up, _, rev = rest.rpartition("-") if "-" in rest else (rest, "", "0")
+        return int(epoch or 0), up, rev
+
+    ea, ua, ra = split(a)
+    eb, ub, rb = split(b)
+    if ea != eb:
+        return -1 if ea < eb else 1
+    return _cmp_part(ua, ub) or _cmp_part(ra, rb)
+
+
+def denied(name: str) -> bool:
+    return any(fnmatch.fnmatchcase(name, pat) for pat in DENY)
+
+
+def parse_packages(text: str) -> dict[tuple[str, str], str]:
+    """A Packages file -> {(name, arch): highest version}."""
+    out: dict[tuple[str, str], str] = {}
+    for stanza in text.split("\n\n"):
+        fields: dict[str, str] = {}
+        for line in stanza.splitlines():
+            if line and not line[0].isspace() and ":" in line:
+                k, _, v = line.partition(":")
+                fields[k] = v.strip()
+        name, ver, arch = fields.get("Package"), fields.get("Version"), fields.get("Architecture")
+        if name and ver and arch:
+            old = out.get((name, arch))
+            if old is None or vercmp(ver, old) > 0:
+                out[(name, arch)] = ver
+    return out
+
+
+SIM_INST = re.compile(r"^Inst (\S+) (?:\[([^\]]+)\] )?\((\S+)")
+SIM_REMV = re.compile(r"^Remv (\S+)")
+
+
+def parse_simulation(text: str) -> tuple[list[dict], list[str]]:
+    """``apt-get -s`` output -> ([{name, old, new}], [removed names])."""
+    inst, remv = [], []
+    for line in text.splitlines():
+        m = SIM_INST.match(line)
+        if m:
+            inst.append({"name": m.group(1).split(":")[0], "old": m.group(2), "new": m.group(3)})
+            continue
+        m = SIM_REMV.match(line)
+        if m:
+            remv.append(m.group(1).split(":")[0])
+    return inst, remv
+
+
+def night_key(ts: float) -> str:
+    """The local date of the night a time belongs to (noon to noon)."""
+    return time.strftime("%Y-%m-%d", time.localtime(ts - 12 * 3600))
+
+
+# --- the box -------------------------------------------------------------------------------
+
+
+class Box:
+    """Every contact with the system. Tests replace methods of this class."""
+
+    def __init__(self, root: str | None = None) -> None:
+        self.root = Path(root if root is not None else (os.environ.get("HASLER_ROOT") or "/"))
+        self.state = self.p("/var/lib/hasler-os")
+        self.lists = self.state / "lists"
+        self.srcdir = self.state / "sources"
+        self.cache = self.p("/var/cache/hasler-os")
+        self.saved = self.state / "rollback"      # the replaced versions' .debs, until the next run
+        self.run_dir = self.p("/run/hasler-os-update")
+        self.status_file = self.state / "status.json"
+        self.events_file = self.state / "events.jsonl"
+
+    def p(self, rel: str) -> Path:
+        return self.root / rel.lstrip("/")
+
+    # -- clock, box.yaml, the updater's state ------------------------------------------------
+
+    def now(self) -> float:
+        return time.time()
+
+    def local_hour(self) -> int:
+        return time.localtime(self.now()).tm_hour
+
+    def enabled(self) -> bool:
+        try:
+            text = self.p("/etc/hasler/box.yaml").read_text(encoding="utf-8")
+        except OSError:
+            return True
+        for line in text.splitlines():
+            if line.startswith("os_updates:"):
+                val = line.partition(":")[2].split(" #", 1)[0].strip().strip("'\"").lower()
+                return val not in ("off", "false", "no", "0")
+        return True
+
+    def updater_phase(self) -> str:
+        doc = read_json(self.p("/var/lib/hasler-apply/state.json"), {}) or {}
+        return str(doc.get("phase") or "idle")
+
+    def apply_lock(self):
+        """The updater's own apply lock (non-blocking): never during an apply. fd or None."""
+        d = self.p("/var/lib/hasler-apply")
+        d.mkdir(parents=True, exist_ok=True)
+        fd = os.open(d / "lock", os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            os.close(fd)
+            return None
+        return fd
+
+    def free_bytes(self) -> int:
+        st = os.statvfs(self.root)
+        return st.f_bavail * st.f_frsize
+
+    def codename(self) -> str:
+        try:
+            for line in self.p("/etc/os-release").read_text().splitlines():
+                if line.startswith("VERSION_CODENAME="):
+                    return line.split("=", 1)[1].strip().strip('"')
+        except OSError:
+            pass
+        return "trixie"
+
+    # -- haslerd -------------------------------------------------------------------------
+
+    def idle(self) -> tuple[bool, str]:
+        try:
+            with urllib.request.urlopen(HEALTH_URL, timeout=5) as r:
+                doc = json.loads(r.read(1 << 16))
+        except (urllib.error.URLError, OSError, ValueError) as e:
+            return False, f"haslerd health not answering ({e})"
+        if doc.get("idle") is True and doc.get("standby") is not False:
+            return True, "idle"
+        return False, "radio in use (playing=%s, standby=%s)" % (doc.get("playing"), doc.get("standby"))
+
+    def _checker(self):
+        updater = self.p("/opt/hasler/updater")
+        if str(updater) not in sys.path:
+            sys.path.insert(0, str(updater))
+        from hasler_update.health import HealthChecker      # the release updater's probe
+
+        return HealthChecker(cards_file=self.p("/proc/asound/cards"), health_url=HEALTH_URL)
+
+    def baseline(self) -> dict:
+        return self._checker().probe()
+
+    def health_wait(self, baseline: dict, appear_s: float = APPEAR_S, hold_s: float = HOLD_S) -> tuple[bool, str]:
+        """The updater's probe and rules, but only what was fine before has to
+        stay fine (a radio without a panel or MPD running at night still
+        passes): healthy within ``appear_s``, then for ``hold_s``."""
+        hc = self._checker()
+        version = str((baseline.get("api") or {}).get("version"))
+        before = set(hc.problems(baseline, baseline, version, 1 << 30))
+        start, restarts0, passed_at = time.monotonic(), None, None
+        while True:
+            sample = hc.probe()
+            if restarts0 is None and sample.get("haslerd"):
+                restarts0 = sample.get("restarts", 0)
+            probs = [p for p in hc.problems(sample, baseline, version,
+                                            restarts0 if restarts0 is not None else 1 << 30) if p not in before]
+            now = time.monotonic()
+            if probs:
+                if passed_at is not None:
+                    return False, "health regressed: " + "; ".join(probs)
+                if now - start >= appear_s:
+                    return False, "not healthy within %ds: %s" % (appear_s, "; ".join(probs))
+            else:
+                passed_at = passed_at if passed_at is not None else now
+                if now - passed_at >= hold_s:
+                    return True, "healthy"
+            time.sleep(INTERVAL_S)
+
+    # -- running things --------------------------------------------------------------------
+
+    def run(self, argv: list[str], timeout: float = 1800, check: bool = False) -> subprocess.CompletedProcess:
+        try:
+            cp = subprocess.run(argv, capture_output=True, text=True, timeout=timeout, env=ENV)
+        except subprocess.TimeoutExpired as e:
+            cp = subprocess.CompletedProcess(argv, 124, e.stdout or "", f"timed out after {timeout}s")
+        except OSError as e:
+            cp = subprocess.CompletedProcess(argv, 127, "", str(e))
+        if check and cp.returncode != 0:
+            raise OSUpdateError(f"{' '.join(argv[:3])} failed ({cp.returncode}): {tail(cp)}")
+        return cp
+
+    def apt_opts(self, sources: Path | None = None) -> list[str]:
+        return [
+            "-q", "-o", f"Dir::State::Lists={self.lists}",
+            "-o", f"Dir::Etc::SourceList={sources or self.srcdir / 'all.list'}",
+            "-o", f"Dir::Etc::SourceParts={self.srcdir / 'none.d'}",
+            "-o", "Dir::Cache::pkgcache=", "-o", "Dir::Cache::srcpkgcache=",
+            "-o", f"Dir::Cache::Archives={self.cache / 'archives'}/",
+            "-o", "Acquire::Languages=none", "-o", "APT::Install-Recommends=false",
+            "-o", "APT::Install-Suggests=false", "-o", "APT::Get::AutomaticRemove=false",
+            "-o", "DPkg::Lock::Timeout=120",
+            "-o", "Dpkg::Options::=--force-confdef", "-o", "Dpkg::Options::=--force-confold",
+        ]
+
+    def _keyring(self, *names: str) -> Path | None:
+        for n in names:
+            k = self.p(n)
+            if k.is_file() and k.stat().st_size:
+                return k
+        return None
+
+    def write_sources(self, tailscale: bool) -> tuple[Path, Path | None]:
+        """Our private sources: Debian-Security always, Tailscale when installed."""
+        code = self.codename()
+        key = self._keyring("/usr/share/keyrings/debian-archive-keyring.pgp",
+                            "/usr/share/keyrings/debian-archive-keyring.gpg")
+        if key is None:
+            raise OSUpdateError("no Debian archive keyring")
+        (self.srcdir / "none.d").mkdir(parents=True, exist_ok=True)
+        for d in (self.lists / "partial", self.cache / "archives" / "partial"):
+            d.mkdir(parents=True, exist_ok=True)
+        sec = (f"deb [signed-by={key}] http://deb.debian.org/debian-security {code}-security "
+               "main contrib non-free non-free-firmware\n")
+        ts = None
+        tkey = self._keyring("/usr/share/keyrings/tailscale-archive-keyring.gpg") if tailscale else None
+        if tkey is not None:
+            ts = f"deb [signed-by={tkey}] https://pkgs.tailscale.com/stable/debian {code} main\n"
+        write_atomic(self.srcdir / "security.list", sec.encode())
+        write_atomic(self.srcdir / "all.list", (sec + (ts or "")).encode())
+        if ts:
+            write_atomic(self.srcdir / "tailscale.list", ts.encode())
+            return self.srcdir / "security.list", self.srcdir / "tailscale.list"
+        return self.srcdir / "security.list", None
+
+    def apt_update(self, tailscale: bool) -> tuple[bool, str]:
+        sec, ts = self.write_sources(tailscale)
+        cp = self.run(["apt-get", *self.apt_opts(sec), "-o", "APT::Get::List-Cleanup=1", "update"], timeout=900)
+        if cp.returncode != 0 or re.search(r"^(Err|E):", cp.stdout + cp.stderr, re.M):
+            return False, "Debian-Security not reachable: " + tail(cp)
+        if ts is not None:
+            cp = self.run(["apt-get", *self.apt_opts(ts), "-o", "APT::Get::List-Cleanup=0", "update"], timeout=600)
+            if cp.returncode != 0 or re.search(r"^(Err|E):", cp.stdout + cp.stderr, re.M):
+                # Debian's fixes don't wait for Tailscale's repo: drop its (stale) lists.
+                for f in self.lists.glob("pkgs.tailscale.com_*"):
+                    f.unlink(missing_ok=True)
+                return True, "tailscale repo not reachable"
+        return True, "ok"
+
+    def available(self) -> dict[tuple[str, str], str]:
+        """What our view offers: {(name, arch): highest version}."""
+        out: dict[tuple[str, str], str] = {}
+        for f in sorted(self.lists.glob("*_Packages*")):
+            if "diff" in f.name:
+                continue
+            cp = self.run(["/usr/lib/apt/apt-helper", "cat-file", str(f)], timeout=120)
+            if cp.returncode != 0:
+                continue
+            for k, v in parse_packages(cp.stdout).items():
+                if k not in out or vercmp(v, out[k]) > 0:
+                    out[k] = v
+        return out
+
+    def installed(self) -> dict[tuple[str, str], str]:
+        cp = self.run(["dpkg-query", "-W", "-f", "${Package}\t${Architecture}\t${Version}\t${db:Status-Abbrev}\n"],
+                      timeout=120, check=True)
+        out = {}
+        for line in cp.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) == 4 and parts[3][1:2] == "i":
+                out[(parts[0], parts[1])] = parts[2]
+        return out
+
+    def holds(self) -> set[str]:
+        cp = self.run(["dpkg-query", "-W", "-f", "${Package}\t${db:Status-Want}\n"], timeout=120, check=True)
+        return {ln.split("\t")[0] for ln in cp.stdout.splitlines() if ln.endswith("\thold")}
+
+    def snapshot(self) -> str:
+        return self.run(["dpkg-query", "-W"], timeout=120, check=True).stdout
+
+    def simulate(self, names: list[str]) -> tuple[bool, str]:
+        cp = self.run(["apt-get", *self.apt_opts(), "-s", "install", "--only-upgrade", *names], timeout=300)
+        return cp.returncode == 0, cp.stdout + cp.stderr
+
+    def download(self, names: list[str]) -> tuple[bool, str]:
+        cp = self.run(["apt-get", *self.apt_opts(), "-y", "-d", "install", "--only-upgrade", *names], timeout=1800)
+        return cp.returncode == 0, tail(cp)
+
+    def install(self, names: list[str]) -> tuple[bool, str]:
+        cp = self.run(["apt-get", *self.apt_opts(), "-y", "install", "--only-upgrade", *names], timeout=2700)
+        return cp.returncode == 0, tail(cp)
+
+    def apt_clean(self) -> None:
+        self.run(["apt-get", *self.apt_opts(), "clean"], timeout=120)
+
+    def dpkg_audit(self) -> str:
+        return self.run(["dpkg", "--audit"], timeout=120).stdout.strip()
+
+    def dpkg_configure_pending(self) -> tuple[bool, str]:
+        cp = self.run(["dpkg", "--force-confdef", "--force-confold", "--configure", "-a"], timeout=1800)
+        return cp.returncode == 0, tail(cp)
+
+    def dpkg_install(self, debs: list[Path]) -> tuple[bool, str]:
+        """Back to the saved versions (their conffiles are the ones that were on disk)."""
+        cp = self.run(["dpkg", "--force-confnew", "--force-downgrade", "-i", *map(str, debs)], timeout=2700)
+        return cp.returncode == 0, tail(cp)
+
+    # -- saving the replaced versions ---------------------------------------------------------
+
+    def save_deb(self, name: str, version: str, arch: str, out: Path) -> Path:
+        """A .deb of the installed ``name`` at ``version``: apt's cache if it
+        still has it, else rebuilt from the files on disk (dpkg-repack's way)."""
+        fname = f"{name}_{version.replace(':', '%3a')}_{arch}.deb"
+        for d in (self.p("/var/cache/apt/archives"), self.cache / "archives"):
+            cand = d / fname
+            if cand.is_file():
+                cp = self.run(["dpkg-deb", "-f", str(cand), "Version"], timeout=60)
+                if cp.returncode == 0 and cp.stdout.strip() == version:
+                    shutil.copy2(cand, out / fname)
+                    return out / fname
+        return self.repack(name, version, arch, out / fname)
+
+    def repack(self, name: str, version: str, arch: str, dest: Path) -> Path:
+        q = name if arch == "all" else f"{name}:{arch}"
+        tree = dest.parent / f".tree-{name}"
+        shutil.rmtree(tree, ignore_errors=True)
+        (tree / "DEBIAN").mkdir(parents=True)
+        try:
+            status = self.run(["dpkg-query", "-s", q], timeout=60, check=True).stdout
+            if f"\nVersion: {version}\n" not in "\n" + status:
+                raise OSUpdateError(f"{name} is not at {version} any more")
+            control, skip = [], False
+            for line in status.splitlines():
+                if line and not line[0].isspace():
+                    skip = line.split(":", 1)[0] in ("Status", "Config-Version", "Conffiles")
+                if not skip and line.strip():
+                    control.append(line)
+            (tree / "DEBIAN" / "control").write_text("\n".join(control) + "\n")
+            diverted = self._diversions(name)
+            files = self.run(["dpkg-query", "-L", q], timeout=60, check=True).stdout.splitlines()
+            for path in files:
+                if not path.startswith("/") or path == "/.":
+                    continue
+                real = diverted.get(path, path)
+                src = self.p(real)
+                dst = tree / path.lstrip("/")
+                try:
+                    st = os.lstat(src)
+                except OSError:
+                    continue
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                if os.path.islink(src):
+                    os.symlink(os.readlink(src), dst)
+                elif src.is_dir():
+                    dst.mkdir(exist_ok=True)
+                    os.chmod(dst, st.st_mode & 0o7777)
+                elif src.is_file():
+                    shutil.copy2(src, dst)
+                else:
+                    continue
+                try:
+                    os.lchown(dst, st.st_uid, st.st_gid)
+                except OSError:
+                    pass
+            names = self.run(["dpkg-query", "--control-list", q], timeout=60).stdout.split()
+            for cf in names:
+                if cf in ("preinst", "postinst", "prerm", "postrm", "config", "templates", "triggers",
+                          "shlibs", "symbols", "conffiles", "md5sums"):
+                    path = self.run(["dpkg-query", "--control-path", q, cf], timeout=60).stdout.strip()
+                    if path and self.p(path).is_file():
+                        shutil.copy2(self.p(path), tree / "DEBIAN" / cf)
+            conff = tree / "DEBIAN" / "conffiles"
+            if conff.exists():
+                keep = [ln for ln in conff.read_text().splitlines()
+                        if ln.strip() and (ln.startswith("remove-on-upgrade") or
+                                           (tree / ln.split()[-1].lstrip("/")).exists())]
+                conff.write_text("".join(k + "\n" for k in keep))
+            for cf in ("preinst", "postinst", "prerm", "postrm", "config"):
+                if (tree / "DEBIAN" / cf).exists():
+                    os.chmod(tree / "DEBIAN" / cf, 0o755)
+            os.chmod(tree / "DEBIAN", 0o755)
+            self.run(["dpkg-deb", "--nocheck", "-Zgzip", "-z1", "--build", str(tree), str(dest)],
+                     timeout=900, check=True)
+        finally:
+            shutil.rmtree(tree, ignore_errors=True)
+        return dest
+
+    def _diversions(self, name: str) -> dict[str, str]:
+        """Paths of ``name`` that another package diverted: where ours really is."""
+        out = {}
+        cp = self.run(["dpkg-divert", "--list"], timeout=60)
+        for line in cp.stdout.splitlines():
+            m = re.match(r"^(?:local )?diversion of (\S+) to (\S+)(?: by (\S+))?$", line)
+            if m and m.group(3) != name:
+                out[m.group(1)] = m.group(2)
+        return out
+
+    # -- services ---------------------------------------------------------------------------
+
+    def unit_files(self, names: list[str]) -> list[str]:
+        out = set()
+        for n in names:
+            cp = self.run(["dpkg-query", "-L", n], timeout=60)
+            for path in cp.stdout.splitlines():
+                if re.match(r"^/(usr/)?lib/systemd/system/[^/]+\.(service|socket|timer|path)$", path):
+                    out.add(path.rsplit("/", 1)[1])
+        return sorted(out)
+
+    def mask_inactive(self, units: list[str]) -> list[str]:
+        """Runtime-mask the units that aren't running, so no postinst starts them."""
+        masked = []
+        for u in units:
+            if "@" in u:
+                continue
+            state = self.run(["systemctl", "is-active", u], timeout=30).stdout.strip()
+            enabled = self.run(["systemctl", "is-enabled", u], timeout=30).stdout.strip()
+            if state in ("active", "activating", "reloading") or enabled.startswith("masked"):
+                continue
+            if self.run(["systemctl", "mask", "--runtime", "--quiet", u], timeout=30).returncode == 0:
+                masked.append(u)
+        return masked
+
+    def unmask(self, units: list[str]) -> None:
+        for u in units:
+            self.run(["systemctl", "unmask", "--runtime", "--quiet", u], timeout=30)
+
+    def main_pid(self, unit: str) -> int:
+        cp = self.run(["systemctl", "show", unit, "-p", "MainPID", "--value"], timeout=30)
+        try:
+            return int(cp.stdout.strip() or 0)
+        except ValueError:
+            return 0
+
+    def restart(self, unit: str) -> None:
+        self.run(["systemctl", "restart", unit], timeout=120)
+
+    @staticmethod
+    def _maps_deleted(pid: int, proc: Path) -> bool:
+        try:
+            text = (proc / str(pid) / "maps").read_text(errors="replace")
+        except OSError:
+            return False
+        for line in text.splitlines():
+            if line.endswith(" (deleted)"):
+                path = line.split(None, 5)[-1]
+                if path.startswith(("/usr/", "/lib/", "/bin/", "/sbin/")):
+                    return True
+        return False
+
+    def stale(self) -> list[str]:
+        """Units (or ``pid <n>``) still running a replaced library or program."""
+        proc = self.p("/proc")
+        me = os.getpid()
+        out = set()
+        try:
+            pids = [int(p.name) for p in proc.iterdir() if p.name.isdigit()]
+        except OSError:
+            return []
+        for pid in pids:
+            if pid == me or not self._maps_deleted(pid, proc):
+                continue
+            unit = "systemd" if pid == 1 else None
+            try:
+                for line in (proc / str(pid) / "cgroup").read_text().splitlines():
+                    for part in reversed(line.split(":", 2)[-1].split("/")):
+                        if part.endswith((".service", ".scope")):
+                            unit = unit or part
+                            break
+            except OSError:
+                pass
+            if unit is None or unit == "hasler-os-update.service":
+                continue
+            out.add(unit)
+        return sorted(out)
+
+    def boot_id(self) -> str | None:
+        try:
+            return self.p("/proc/sys/kernel/random/boot_id").read_text().strip()
+        except OSError:
+            return None
+
+    # -- the lamp ---------------------------------------------------------------------------
+
+    def busy(self, on: bool) -> None:
+        f = self.run_dir / "active"
+        if on:
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(self.run_dir, 0o755)
+            f.write_text(f"{os.getpid()}\n")
+            os.chmod(f, 0o644)
+        else:
+            f.unlink(missing_ok=True)
+
+
+class OSUpdateError(Exception):
+    pass
+
+
+class Deferred(Exception):
+    pass
+
+
+class AlreadyDone(Deferred):
+    pass
+
+
+def tail(cp: subprocess.CompletedProcess, n: int = 3) -> str:
+    lines = [ln for ln in ((cp.stderr or "") + "\n" + (cp.stdout or "")).splitlines() if ln.strip()]
+    errs = [ln for ln in lines if ln.startswith(("E:", "Err", "dpkg:", "W:"))]
+    return " | ".join((errs or lines)[-n:])[:400]
+
+
+# --- the lane -------------------------------------------------------------------------------
+
+
+DEFAULT_STATUS = {
+    "enabled": True, "last_run": None, "last_result": None, "reason": None, "upgraded": [],
+    "held_back": [], "reboot_advisable": False, "reboot_for": [], "boot_id": None, "paused": None,
+    "last_upgrade": None, "last_night": None, "bad": [], "in_progress": None, "deferred": None,
+}
+
+
+class Lane:
+    def __init__(self, box: Box | None = None) -> None:
+        self.box = box or Box()
+        self.st = dict(DEFAULT_STATUS)
+        self.st.update(read_json(self.box.status_file, {}) or {})
+
+    # -- records ----------------------------------------------------------------------------
+
+    def save(self) -> None:
+        self.box.state.mkdir(parents=True, exist_ok=True)
+        os.chmod(self.box.state, 0o755)
+        self.st["bad"] = list(self.st.get("bad") or [])[-BAD_KEEP:]
+        write_atomic(self.box.status_file, (json.dumps(self.st, indent=2, sort_keys=True) + "\n").encode(), 0o644)
+
+    def event(self, name: str, **fields) -> None:
+        f = self.box.events_file
+        f.parent.mkdir(parents=True, exist_ok=True)
+        line = json.dumps({"at": iso(self.box.now()), "event": name, **fields}, sort_keys=True)
+        try:
+            old = f.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            old = []
+        lines = (old + [line])[-EVENTS_MAX_LINES:]
+        while len(lines) > 1 and sum(len(x) + 1 for x in lines) > EVENTS_MAX_BYTES:
+            lines.pop(0)
+        write_atomic(f, ("\n".join(lines) + "\n").encode(), 0o644)
+
+    def result(self, result: str, reason: str | None = None, night: bool = False, **fields) -> None:
+        self.st.update(last_run=iso(self.box.now()), last_result=result, reason=reason, deferred=None, **fields)
+        if night:
+            self.st["last_night"] = night_key(self.box.now())
+        self.save()
+
+    # -- gates ------------------------------------------------------------------------------
+
+    def gate(self, auto: bool, now_: bool, force: bool) -> None:
+        b = self.box
+        paused = self.st.get("paused")
+        if paused:
+            try:
+                expired = b.now() >= parse_iso(paused.get("until"))
+            except (ValueError, TypeError, AttributeError):
+                expired = True
+            if not expired and not force:
+                raise Deferred(f"paused until {paused.get('until')}: {paused.get('reason')}")
+            self.event("resumed", why="pause over" if expired else "forced")
+            self.st["paused"] = None
+        if not now_ and not force and not WINDOW[0] <= b.local_hour() < WINDOW[1]:
+            raise Deferred("outside the 02:00-05:00 window")
+        if auto and self.st.get("last_night") == night_key(b.now()):
+            raise AlreadyDone("already ran tonight")
+        phase = b.updater_phase()
+        if phase in ("trial", "probation") and not force:
+            raise Deferred(f"a Hasler release is in {phase}")
+
+    def idle_or_defer(self, force: bool) -> None:
+        if force:
+            return
+        ok, why = self.box.idle()
+        if not ok:
+            raise Deferred(why)
+
+    # -- planning ----------------------------------------------------------------------------
+
+    def plan(self) -> tuple[list[dict], list[str], list[str]]:
+        """(changes [{name, arch, old, new}], requested names, held back ["name (why)"])."""
+        b = self.box
+        inst, avail = b.installed(), b.available()
+        holds = b.holds()
+        bad = set(self.st.get("bad") or [])
+        held: list[str] = []
+        want: dict[str, dict] = {}
+        for (name, arch), ver in sorted(inst.items()):
+            new = avail.get((name, arch))
+            if new is None or vercmp(new, ver) <= 0:
+                continue
+            why = None
+            if name in holds:
+                why = "held"
+            elif denied(name):
+                why = "never by this lane"
+            elif FOREIGN_VERSION.search(ver):
+                why = "Raspberry Pi / moOde build"
+            elif f"{name}={new}" in bad:
+                why = "failed here before"
+            if why:
+                held.append(f"{name} ({why})")
+            else:
+                want[name] = {"name": name, "arch": arch, "old": ver, "new": new}
+        if not want:
+            return [], [], held
+
+        def clean(names: list[str]) -> tuple[bool, list[dict], str]:
+            ok, out = b.simulate(names)
+            if not ok:
+                return False, [], tail(subprocess.CompletedProcess([], 1, out, ""), 1)
+            changes, removed = parse_simulation(out)
+            if removed:
+                return False, [], "would remove " + ", ".join(removed)
+            for c in changes:
+                arch = next((a for (n, a) in inst if n == c["name"]), None)
+                old = inst.get((c["name"], arch)) if arch else None
+                if c["name"] in holds or denied(c["name"]) or (old and FOREIGN_VERSION.search(old)) \
+                        or f"{c['name']}={c['new']}" in bad:
+                    return False, [], f"would also change {c['name']}"
+            return True, changes, ""
+
+        names = sorted(want)
+        ok, changes, _ = clean(names)
+        if not ok:
+            good = []
+            for n in names:
+                ok1, _, why = clean([n])
+                if ok1:
+                    good.append(n)
+                else:
+                    held.append(f"{n} ({why or 'cannot go alone'})")
+            names = good
+            ok, changes, why = clean(names) if names else (True, [], "")
+            if not ok:
+                held.extend(f"{n} ({why})" for n in names)
+                return [], [], held
+        out = []
+        for c in changes:
+            arch = next((a for (n, a) in inst if n == c["name"]), None) or \
+                next((a for (n, a) in avail if n == c["name"]), "all")
+            out.append({"name": c["name"], "arch": arch, "old": c["old"], "new": c["new"]})
+        return out, names, held
+
+    # -- the run ------------------------------------------------------------------------------
+
+    def run(self, auto: bool = False, now_: bool = False, force: bool = False, dry: bool = False) -> int:
+        b = self.box
+        if not b.enabled():
+            self.st["enabled"] = False
+            self.result("off", "os_updates: off in box.yaml")
+            return 0
+        self.st["enabled"] = True
+        fd = None
+        try:
+            self.gate(auto, now_, force)
+            fd = b.apply_lock()
+            if fd is None:
+                raise Deferred("the release updater is busy")
+            return self._locked(force, dry)
+        except AlreadyDone:
+            return 0
+        except Deferred as e:
+            # Not now: the last result stays what it was; why it waited is beside it.
+            self.st["deferred"] = {"at": iso(b.now()), "why": str(e)}
+            self.save()
+            return EX_DEFERRED
+        except OSUpdateError as e:
+            self.event("error", reason=str(e))
+            self.result("error", str(e), night=True)
+            return 1
+        finally:
+            b.busy(False)
+            if fd is not None:
+                os.close(fd)
+
+    def _locked(self, force: bool, dry: bool) -> int:
+        b = self.box
+        self.idle_or_defer(force)
+        if self.st.get("in_progress") or b.dpkg_audit():
+            # A power cut (or a kill) in the middle of an earlier run.
+            ok, why = b.dpkg_configure_pending()
+            self.event("interrupted-run-finished", ok=ok, detail=why, was=self.st.get("in_progress"))
+            self.st["in_progress"] = None
+            self.save()
+            if not ok:
+                raise OSUpdateError(f"dpkg --configure -a failed: {why}")
+        if b.free_bytes() < MIN_FREE:
+            raise Deferred("less than 400 MB free")
+        inst = b.installed()
+        ok, why = b.apt_update(tailscale=any(n == "tailscale" for (n, _a) in inst))
+        if not ok:
+            raise Deferred(f"no network: {why}")
+        changes, names, held = self.plan()
+        self.st["held_back"] = held
+        if not changes:
+            b.apt_clean()
+            self.result("none", "nothing to install" + (f" ({why})" if why != "ok" else ""), night=True, upgraded=[])
+            return 0
+        if dry:
+            print(json.dumps({"would_upgrade": changes, "held_back": held}, indent=2))
+            self.save()
+            return 0
+        ok, why = b.download(names)
+        if not ok:
+            raise Deferred(f"no network: download failed: {why}")
+        self.idle_or_defer(force)          # haslerd's veto, right before anything changes
+        try:
+            baseline = b.baseline()
+        except Exception as e:             # no health probe: no judging, so no upgrade
+            raise OSUpdateError(f"no health probe ({e})")
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(b.now()))
+        write_atomic(b.state / f"pre-{stamp}.list", b.snapshot().encode(), 0o644)
+        for old in sorted(b.state.glob("pre-*.list"))[:-KEEP_SNAPSHOTS]:
+            old.unlink(missing_ok=True)
+        shutil.rmtree(b.saved, ignore_errors=True)
+        b.saved.mkdir(parents=True, mode=0o700)     # copies of conffiles: root only
+        os.chmod(b.saved, 0o700)
+        saved = []
+        for c in changes:
+            if c["old"]:
+                try:
+                    saved.append(str(b.save_deb(c["name"], c["old"], c["arch"], b.saved)))
+                except (OSError, OSUpdateError) as e:
+                    raise OSUpdateError(f"could not keep {c['name']} {c['old']} to go back to: {e}")
+        write_atomic(b.saved / "plan.json", json.dumps({"at": iso(b.now()), "changes": changes,
+                                                          "debs": saved}, indent=2).encode(), 0o644)
+        b.busy(True)
+        self.st["in_progress"] = {"at": iso(b.now()), "changes": changes}
+        self.save()
+        self.event("upgrading", packages=[f"{c['name']} {c['old'] or '-'} -> {c['new']}" for c in changes])
+        masked = b.mask_inactive(b.unit_files([c["name"] for c in changes]))
+        try:
+            ok, why = b.install(names)
+        finally:
+            b.unmask(masked)
+        if ok:
+            for unit in RESTART_OK:
+                pid = b.main_pid(unit)
+                if pid and b._maps_deleted(pid, b.p("/proc")):
+                    b.restart(unit)
+            ok, why = b.health_wait(baseline)
+        if ok:
+            return self._done(changes)
+        return self._back(changes, saved, baseline, why)
+
+    def _done(self, changes: list[dict]) -> int:
+        b = self.box
+        stale = b.stale()
+        self.st["in_progress"] = None
+        b.apt_clean()
+        up = [f"{c['name']} {c['old'] or '-'} -> {c['new']}" for c in changes]
+        self.event("upgraded", packages=up, reboot_for=stale)
+        self.result("ok", None, night=True, upgraded=up, reboot_advisable=bool(stale), reboot_for=stale,
+                    boot_id=b.boot_id(), last_upgrade={"at": iso(b.now()), "count": len(changes)})
+        return 0
+
+    def _back(self, changes: list[dict], saved: list[str], baseline: dict, why: str) -> int:
+        b = self.box
+        ok, detail = b.dpkg_install([Path(p) for p in saved]) if saved else (True, "")
+        for unit in RESTART_OK:
+            pid = b.main_pid(unit)
+            if pid and b._maps_deleted(pid, b.p("/proc")):
+                b.restart(unit)
+        healthy, after = b.health_wait(baseline, hold_s=30.0)
+        bad = list(self.st.get("bad") or []) + [f"{c['name']}={c['new']}" for c in changes]
+        self.st["bad"] = sorted(set(bad), key=bad.index)
+        until = iso(b.now() + PAUSE_S)
+        self.st["paused"] = {"since": iso(b.now()), "until": until, "reason": why}
+        self.st["in_progress"] = None
+        b.apt_clean()
+        stale = b.stale()
+        self.event("rolled-back", reason=why, packages=[c["name"] for c in changes], downgrade_ok=ok,
+                   downgrade_detail=detail, healthy_after=healthy, after=after, paused_until=until)
+        self.result("rolled_back", why + ("" if ok else f"; going back failed: {detail}")
+                    + ("" if healthy else f"; still unhealthy: {after}"), night=True, upgraded=[],
+                    reboot_advisable=bool(stale) or not healthy, reboot_for=stale, boot_id=b.boot_id())
+        return 1
+
+    # -- by hand ------------------------------------------------------------------------------
+
+    def resume(self) -> str:
+        if not self.st.get("paused"):
+            return "not paused"
+        self.st["paused"] = None
+        self.event("resumed", why="by hand")
+        self.save()
+        return "resumed"
+
+    def rollback(self) -> int:
+        b = self.box
+        plan = read_json(b.saved / "plan.json", {}) or {}
+        debs = [Path(p) for p in plan.get("debs") or [] if Path(p).is_file()]
+        if not debs:
+            print("nothing saved to go back to", file=sys.stderr)
+            return 1
+        b.busy(True)
+        try:
+            ok, detail = b.dpkg_install(debs)
+        finally:
+            b.busy(False)
+        changes = plan.get("changes") or []
+        bad = list(self.st.get("bad") or []) + [f"{c['name']}={c['new']}" for c in changes]
+        self.st["bad"] = sorted(set(bad), key=bad.index)
+        self.event("rolled-back-by-hand", ok=ok, detail=detail, packages=[c["name"] for c in changes])
+        self.result("rolled_back" if ok else "error", "went back by hand" if ok else detail, upgraded=[])
+        return 0 if ok else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="hasler-os-update", description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run")
+    r.add_argument("--auto", action="store_true", help="the timer: once a night")
+    r.add_argument("--now", action="store_true", help="skip the night window (still needs idle)")
+    r.add_argument("--force", action="store_true", help="skip window, idle, pause and release-trial checks (bench)")
+    r.add_argument("--dry-run", action="store_true", help="show what would be upgraded, change nothing")
+    sub.add_parser("status")
+    sub.add_parser("resume")
+    sub.add_parser("rollback")
+    args = ap.parse_args(argv)
+    box = Box()
+    if args.cmd == "status":
+        print(json.dumps(Lane(box).st, indent=2, sort_keys=True))
+        return 0
+    if os.geteuid() != 0 and not os.environ.get("HASLER_ROOT"):
+        print("hasler-os-update: needs root", file=sys.stderr)
+        return 1
+    lane = Lane(box)
+    if args.cmd == "resume":
+        print(lane.resume())
+        return 0
+    if args.cmd == "rollback":
+        rc = lane.rollback()
+        print(f"hasler-os-update: {lane.st.get('reason')}")
+        return rc
+    rc = lane.run(auto=args.auto, now_=args.now, force=args.force, dry=args.dry_run)
+    st = lane.st
+    if args.dry_run and rc == 0:
+        return rc
+    if rc == EX_DEFERRED:
+        print(f"hasler-os-update: not now: {(st.get('deferred') or {}).get('why')}")
+    else:
+        print(f"hasler-os-update: {st.get('last_result')}{': ' + str(st['reason']) if st.get('reason') else ''}"
+              f"{' (' + ', '.join(st.get('upgraded') or []) + ')' if rc == 0 and st.get('upgraded') else ''}")
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

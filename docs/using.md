@@ -466,6 +466,9 @@ Good to know:
   "Didn't work here" and why.
 - **To go back by hand:** under Updates, find the older version, press **Go
   back**, then press a key on the radio. The radio restarts on that version.
+- Debian's **security updates** install the same way, at night in standby,
+  and are taken back if anything is worse afterwards (Updates shows "Security
+  updates: 3 on 21 Oct"; `os_updates: off` in box.yaml turns them off).
 
 **Update channel.** Radios follow **Stable**: each version is tried on the
 makers' own radio first. The other channel, **Test versions** (*Bench*), is
@@ -517,6 +520,9 @@ Bluetooth from a phone still works.
 
 - YouTube Music: if you signed in, the sign-in may have expired after some
   months. Sign in again in **Settings → This radio → YouTube Music**.
+  When YouTube changes something, the radio fetches a newer YouTube Music
+  helper by itself, usually within hours; **Settings → This radio → Updates →
+  Music services** says whether it is working.
 - Spotify on a key needs the radio signed in to a Premium account: see
   **Settings → Phones & casting → Spotify Connect**. If it says *Signed in*
   but keys still don't play (the password was changed, or the radio was

@@ -1,163 +1,930 @@
-#!/bin/bash
-# hasler-ytdlp-update - upgrade yt-dlp without ever breaking the working one.
-#
-#   hasler-ytdlp-update             build the newest yt-dlp into the spare venv,
-#                                   self-check it, then switch to it
-#   hasler-ytdlp-update --force     switch even if the version is unchanged
-#   hasler-ytdlp-update --rollback  switch back to the previous venv (if it passes)
-#   hasler-ytdlp-update --status    {"current": "...", "previous": "..."}
-#
-# Runs as the unprivileged ytdlp user (yt-dlp-update.service, weekly timer, or
-# haslerd's "update yt-dlp now"), which owns /opt/yt-dlp and nothing else.
-# YouTube breaks old yt-dlp releases within weeks, so it is deliberately not
-# pinned - which is why it is not root, and why a bad upgrade cannot replace a
-# working one:
-#
-#   /opt/yt-dlp/venv-a, venv-b   two venv slots
-#   /opt/yt-dlp/current          -> the slot in use (switched atomically)
-#   /usr/local/bin/yt-dlp        -> /opt/yt-dlp/current/bin/yt-dlp (made once, by root)
-#
-# The upgrade goes into the slot not in use (pip, wheels only), then must pass:
-#   1. `yt-dlp --version`, and importing yt_dlp, yt_dlp_ejs and the YouTube extractor;
-#   2. an offline extraction: the generic extractor on a local HTML page (file://);
-#   3. online, soft: one YouTube video's id (`--print id`). If the new one fails
-#      here but the current one passes, the new one is refused; if both fail the
-#      box is just offline and 1+2 decide.
-# Only then does `current` move. The old slot stays as it is until the next
-# upgrade, so --rollback has something to go back to.
-#
-# Exit: 0 switched or already current, 1 failed (nothing changed).
-# Env (tests): HASLER_YTDLP_ROOT, HASLER_YTDLP_PYTHON, HASLER_YTDLP_SPEC,
-# HASLER_YTDLP_PROBE_URL ("" skips the online check).
-set -u
-umask 022
+#!/usr/bin/python3 -I
+"""hasler-ytdlp-update - the yt-dlp "fast lane": keep YouTube Music working.
 
-ROOT="${HASLER_YTDLP_ROOT:-/opt/yt-dlp}"
-PY="${HASLER_YTDLP_PYTHON:-/usr/bin/python3}"
-SPEC="${HASLER_YTDLP_SPEC:-yt-dlp[default]}"
-PROBE="${HASLER_YTDLP_PROBE_URL-https://www.youtube.com/watch?v=jNQXAC9IVRw}"
-CUR="$ROOT/current"
+    hasler-ytdlp-update             a check: signed candidates -> spare slot -> canary -> switch
+    hasler-ytdlp-update --now       the key page's "Update now" (also canaries the current one)
+    hasler-ytdlp-update --urgent    haslerd saw YouTube Music tracks fail: is it yt-dlp? repair
+    hasler-ytdlp-update --judge     after a switch, tracks fail: canary both, go back if only old works
+    hasler-ytdlp-update --rollback  back to the previous slot (the key page's "Go back")
+    hasler-ytdlp-update --check     say what a check would do; change nothing
+    hasler-ytdlp-update --status    the lane's state as JSON
 
-log() { echo "hasler-ytdlp-update: $*" >&2; }
+docs/ota.md "The component lane (yt-dlp)". Runs as the unprivileged ytdlp
+user (yt-dlp-update.service: every 6 h from yt-dlp-update.timer, and when
+haslerd starts it), which owns /opt/yt-dlp and nothing else. YouTube breaks
+old yt-dlp within weeks and fixes land in nightlies first, so the version is
+never pinned by hand: a signed ``components.json`` from the releases site
+names the candidates (stable and nightly, each with a pip --require-hashes
+lock), a ``blocked`` list and the canary tracks.
 
-current_slot() {   # venv-a | venv-b | "" (none yet)
-  local t
-  t="$(readlink "$CUR" 2>/dev/null)" || return 0
-  t="$(basename "$t")"
-  case "$t" in venv-a|venv-b) [ -x "$ROOT/$t/bin/yt-dlp" ] && echo "$t" ;; esac
-  return 0
-}
+  /opt/yt-dlp/venv-a|b|c   three venv slots. A venv can't be moved, so a new
+                           one is built in the slot that is neither current
+                           nor previous - the previous good one is never
+                           deleted to make room (it is what --rollback needs)
+  /opt/yt-dlp/current      -> the slot in use     (switched atomically)
+  /opt/yt-dlp/previous     -> the one before it   (--rollback and --judge go back to it)
+  /opt/yt-dlp/state.json   the lane's state: slots, last check, canary, probation, bad versions
+  /opt/yt-dlp/events.jsonl the last 200 events (64 KB), on the card; haslerd shows them
 
-other_slot() { if [ "$1" = venv-a ]; then echo venv-b; else echo venv-a; fi; }
+A new slot must pass, in order: ``yt-dlp --version``; importing yt_dlp,
+yt_dlp_ejs and the YouTube extractor; an offline extraction (file://); and
+the canary - a canary track resolved exactly as haslerd plays it
+(music.youtube.com, ``-f bestaudio[ext=m4a]/bestaudio``, the owner's
+cookies, deno from the release) and its first 64 KB fetched with a Range
+request (206 + audio bytes). The canary runs *inside haslerd*
+(``POST /api/components/yt-dlp/canary`` on loopback, naming only a slot):
+the cookies stay with haslerd's user and never reach this one. With haslerd
+not answering it runs here, without cookies, and says so (``via: local``).
 
-version_of() { "$ROOT/$1/bin/yt-dlp" --version 2>/dev/null | head -n 1; }
+Only then does ``current`` move: an upgrade while the current one works, or a
+repair when it fails. At most one upgrade a day, at most 4 online canaries a
+day, never while music plays unless the current one is failing (or the owner
+pressed Update now), and a version in ``blocked`` is left at once. After a
+switch: 72 h probation, in which haslerd starts ``--judge`` if tracks fail.
 
-switch_to() {      # atomic: a new symlink renamed over the old one, then fsync the dir
-  "$PY" - "$1" "$CUR" <<'EOF'
-import os, sys
-target, link = sys.argv[1], sys.argv[2]
-tmp = link + ".new"
-try:
-    os.unlink(tmp)
-except FileNotFoundError:
-    pass
-os.symlink(target, tmp)
-os.replace(tmp, link)
-fd = os.open(os.path.dirname(link) or ".", os.O_RDONLY)
-try:
-    os.fsync(fd)
-finally:
-    os.close(fd)
-EOF
-}
+Without a valid components.json (missing, expired, unreachable) nothing
+changes - unless the current yt-dlp fails its canary, or there is none: then
+the newest *stable* yt-dlp from PyPI, hash-unchecked, logged as such.
 
-offline_check() {  # SLOT -> 0 if it works without the network
-  local v="$ROOT/$1" work out
-  "$v/bin/yt-dlp" --version >/dev/null 2>&1 || { log "$1: yt-dlp --version failed"; return 1; }
-  "$v/bin/python" -c 'import yt_dlp, yt_dlp_ejs; from yt_dlp.extractor.youtube import YoutubeIE' \
-    >/dev/null 2>&1 || { log "$1: importing yt_dlp / yt_dlp_ejs / the YouTube extractor failed"; return 1; }
-  work="$(mktemp -d "${TMPDIR:-/tmp}/ytdlp-check.XXXXXX")" || return 1
-  printf '<html><head><title>hasler selftest</title></head><body><video src="file://%s/tone.mp3"></video></body></html>\n' \
-    "$work" > "$work/index.html"
-  out="$("$v/bin/yt-dlp" --ignore-config --no-cache-dir --enable-file-urls --simulate --no-warnings \
-          --print title "file://$work/index.html" 2>/dev/null)"
-  rm -rf "$work"
-  case "$out" in *"hasler selftest"*) return 0 ;; esac
-  log "$1: offline extraction failed"
-  return 1
-}
+haslerd can only start yt-dlp-update.service (polkit,
+config/update/51-hasler-ytdlp.rules). It asks for --now/--urgent/--judge/
+--rollback by writing /var/lib/haslerd/yt-dlp-request.json first; a run with
+no argument honours a fresh request once. This script still checks
+everything itself.
 
-online_check() {   # SLOT -> 0 pass, 1 fail, 2 skipped
-  [ -n "$PROBE" ] || return 2
-  local t=""
-  command -v timeout >/dev/null 2>&1 && t="timeout 120"
-  $t "$ROOT/$1/bin/yt-dlp" --ignore-config --no-cache-dir --no-playlist --skip-download \
-     --socket-timeout 20 --no-warnings --print id "$PROBE" >/dev/null 2>&1 && return 0
-  return 1
-}
+Exit: 0 fine (current works, switched, nothing to do, deferred), 1 failed
+(recorded in state.json and events), 2 usage, 75 another run is busy.
+Env (tests): HASLER_YTDLP_ROOT, HASLER_YTDLP_PYTHON, HASLER_YTDLP_TRUST,
+HASLER_COMPONENTS_URL, HASLER_BOX_YAML, HASLER_YTDLP_API ("" = no haslerd),
+HASLER_YTDLP_REQUEST, HASLER_YTDLP_SPEC, HASLER_YTDLP_PLAY_WAIT_S,
+HASLER_UPDATER_PATH.
+"""
 
-status() {
-  local c p
-  c="$(current_slot)"
-  p=""
-  [ -n "$c" ] && [ -x "$ROOT/$(other_slot "$c")/bin/yt-dlp" ] && p="$(version_of "$(other_slot "$c")")"
-  printf '{"current": "%s", "previous": "%s"}\n' "$([ -n "$c" ] && version_of "$c")" "$p"
-}
+from __future__ import annotations
 
-lock() {
-  exec 9>"$ROOT/.lock" || { log "cannot write $ROOT (run as the ytdlp user)"; exit 1; }
-  if command -v flock >/dev/null 2>&1 && ! flock -n 9; then
-    log "another upgrade is running"; exit 1
-  fi
-}
+import calendar
+import fcntl
+import glob
+import json
+import os
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
-rollback() {
-  lock
-  local c o
-  c="$(current_slot)"
-  [ -n "$c" ] || { log "nothing installed"; exit 1; }
-  o="$(other_slot "$c")"
-  [ -x "$ROOT/$o/bin/yt-dlp" ] || { log "no previous yt-dlp to go back to"; exit 1; }
-  offline_check "$o" || { log "the previous yt-dlp does not pass either - staying"; exit 1; }
-  switch_to "$o" || exit 1
-  log "back to yt-dlp $(version_of "$o") (was $(version_of "$c"))"
-}
+SLOTS = ("venv-a", "venv-b", "venv-c")
+NAMESPACE = "hasler-components"
+DEFAULT_BASE = "https://delgado-murphy.github.io/hasler-releases"
+COMPONENT = "yt-dlp"
+AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio"           # haslerd's (player/sources/ytm.py)
+WATCH_URL = "https://music.youtube.com/watch?v={id}"
+VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+VERSION_RE = re.compile(r"^[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}(\.[0-9]+)*(\.dev[0-9]+)?$")
+# Only when components.json names no canary track and haslerd can't pick one it played.
+FALLBACK_IDS = ("jNQXAC9IVRw",)
+MIN_BYTES = 65536
+DAY = 86400.0
+PROBATION_S = 72 * 3600.0
+MAX_SWITCHES_PER_DAY = 1            # upgrades; a repair (current failing) is not held back
+MAX_CANARIES_PER_DAY = 4
+CANARY_IDS_PER_RUN = 2              # tracks tried per canary (one pass is enough)
+MAX_INSTALLS_PER_RUN = 2
+EVENTS_MAX_LINES = 200
+EVENTS_MAX_BYTES = 64 * 1024
+REQUEST_FRESH_S = 15 * 60
+CLOCK_SKEW_S = 3600
+MODES = ("check", "now", "urgent", "judge", "rollback")
+FALLBACK_OK = ("missing", "expired", "offline", "unverified")   # not "bad": a refused signature is no reason
+# Network trouble (not yt-dlp's fault) in yt-dlp's or urllib's words.
+NET_ERR = re.compile(r"Temporary failure in name resolution|Name or service not known|Network is unreachable|"
+                     r"No route to host|Connection refused|Connection reset|timed out|getaddrinfo failed|"
+                     r"nodename nor servname", re.I)
+# One line of a pip --require-hashes lock: "name[extras]==version [; marker] [\]" or "--hash=sha256:<hex> [\]".
+REQ_PKG = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(\[[A-Za-z0-9,._-]+\])?==[A-Za-z0-9.+!_-]+(\s*;[^\\#]*)?\s*\\?$")
+REQ_HASH = re.compile(r"^--hash=sha256:[0-9a-f]{64}\s*\\?$")
 
-update() {
-  local force="$1" cur new oldv="" newv rc
-  lock
-  cur="$(current_slot)"
-  new="$(other_slot "$cur")"
-  [ -n "$cur" ] && oldv="$(version_of "$cur")"
-  rm -rf "${ROOT:?}/$new"
-  if ! "$PY" -m venv "$ROOT/$new" >&2; then
-    log "could not create $ROOT/$new"; rm -rf "${ROOT:?}/$new"; exit 1
-  fi
-  if ! "$ROOT/$new/bin/python" -m pip install --quiet --disable-pip-version-check --no-cache-dir \
-         --only-binary :all: --upgrade "$SPEC" >&2; then
-    log "pip install $SPEC failed - keeping ${oldv:-nothing}"; rm -rf "${ROOT:?}/$new"; exit 1
-  fi
-  newv="$(version_of "$new")"
-  if ! offline_check "$new"; then
-    log "yt-dlp ${newv:-?} failed its self-check - keeping ${oldv:-nothing}"; rm -rf "${ROOT:?}/$new"; exit 1
-  fi
-  if [ -n "$cur" ] && [ "$newv" = "$oldv" ] && [ "$force" != 1 ]; then
-    log "already yt-dlp $oldv"; rm -rf "${ROOT:?}/$new"; exit 0
-  fi
-  online_check "$new"; rc=$?
-  if [ "$rc" = 1 ] && [ -n "$cur" ] && online_check "$cur"; then
-    log "yt-dlp $newv cannot resolve a YouTube video but $oldv can - keeping $oldv"
-    rm -rf "${ROOT:?}/$new"; exit 1
-  fi
-  [ "$rc" = 1 ] && log "online check failed for old and new alike (offline?) - going by the offline checks"
-  switch_to "$new" || { log "could not switch $CUR"; exit 1; }
-  log "yt-dlp ${oldv:-none} -> $newv"
-}
 
-case "${1:-}" in
-  "")          update 0 ;;
-  --force)     update 1 ;;
-  --rollback)  rollback ;;
-  --status)    status ;;
-  *)           sed -n '3,8p' "$0" >&2; exit 2 ;;
-esac
+def env(name: str, default: str) -> str:
+    v = os.environ.get(name)
+    return default if v is None else v
+
+
+def iso(ts: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(ts))
+
+
+def parse_iso(s) -> float | None:
+    if not isinstance(s, str) or not s:
+        return None
+    try:
+        s = s.strip().rstrip("Z").split(".")[0].split("+")[0]
+        return float(calendar.timegm(time.strptime(s, "%Y-%m-%dT%H:%M:%S")))
+    except ValueError:
+        return None
+
+
+def vkey(v) -> tuple:
+    """Order yt-dlp versions: 2026.10.22 < 2026.10.23.235959.dev0 < 2026.10.23.235959.
+    PyPI drops leading zeros (2026.10.02 = 2026.10.2); this compares the numbers."""
+    s = str(v or "").strip().lower()
+    m = re.search(r"[.-]?dev\d*$", s)          # .dev0, and the wheel's own METADATA spelling "dev"
+    dev = m is not None
+    nums = tuple(int(n) for n in re.findall(r"\d+", s[:m.start()] if m else s))
+    while len(nums) > 3 and nums[-1] == 0:
+        nums = nums[:-1]
+    return nums + ((0,) if dev else (1,))
+
+
+def same_version(a, b) -> bool:
+    return bool(a) and bool(b) and vkey(a) == vkey(b)
+
+
+def looks_like_audio(data: bytes) -> bool:
+    return (data[4:8] == b"ftyp" or data[:4] == b"\x1a\x45\xdf\xa3" or data[:4] == b"OggS"
+            or data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0))
+
+
+def validate_requirements(text, version: str) -> str:
+    """A pip --require-hashes lock and nothing else: no options, URLs, paths or
+    includes; every package pinned and hashed; yt-dlp at ``version``. Returns
+    the text; raises ValueError."""
+    if not isinstance(text, str) or not text.strip() or len(text) > 256 * 1024:
+        raise ValueError("no requirements")
+    pkgs, ytdlp, hashed = 0, None, True
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if REQ_HASH.match(line):
+            if not pkgs:
+                raise ValueError("a hash before any package")
+            hashed = True
+            continue
+        if REQ_PKG.match(line):
+            if not hashed:
+                raise ValueError("a package without --hash")
+            pkgs += 1
+            hashed = False
+            name = re.split(r"[\[=]", line, maxsplit=1)[0].lower().replace("_", "-")
+            if name == "yt-dlp":
+                ytdlp = line.split("==", 1)[1].split(";")[0].split("\\")[0].strip()
+            continue
+        raise ValueError(f"not allowed in a lock: {line[:60]!r}")
+    if not hashed:
+        raise ValueError("a package without --hash")
+    if not pkgs or ytdlp is None:
+        raise ValueError("no yt-dlp in the lock")
+    if not same_version(ytdlp, version):
+        raise ValueError(f"the lock has yt-dlp {ytdlp}, not {version}")
+    return text
+
+
+class Lane:
+    """Everything one run does. What reaches outside (HTTP, pip, yt-dlp, the
+    clock) is a method, so tests replace it."""
+
+    def __init__(self) -> None:
+        self.root = env("HASLER_YTDLP_ROOT", "/opt/yt-dlp")
+        self.python = env("HASLER_YTDLP_PYTHON", "/usr/bin/python3")
+        self.trust = env("HASLER_YTDLP_TRUST", "/etc/hasler/trust")
+        self.box_yaml = env("HASLER_BOX_YAML", "/etc/hasler/box.yaml")
+        self.api = env("HASLER_YTDLP_API", "http://127.0.0.1:8080").rstrip("/")
+        self.request_file = env("HASLER_YTDLP_REQUEST", "/var/lib/haslerd/yt-dlp-request.json")
+        self.spec = env("HASLER_YTDLP_SPEC", "yt-dlp[default]")
+        self.play_wait_s = float(env("HASLER_YTDLP_PLAY_WAIT_S", "1200"))
+        self.url = os.environ.get("HASLER_COMPONENTS_URL") or self._components_url()
+        self.state: dict = {}
+        self.dry = False
+
+    # -- outside world (tests replace these) ---------------------------------
+
+    def now(self) -> float:
+        return time.time()
+
+    def sleep(self, s: float) -> None:
+        time.sleep(s)
+
+    def run(self, cmd, timeout=120):
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
+
+    def http_get(self, url: str, headers: dict | None = None, timeout: float = 60, limit: int = 1 << 20):
+        """-> (status, body, headers). An HTTP error is a status; no connection raises OSError."""
+        scheme = urllib.parse.urlparse(url).scheme
+        if scheme not in ("https", "http", "file"):
+            raise OSError(f"refusing URL scheme {scheme!r}")
+        req = urllib.request.Request(url, headers={"User-Agent": "hasler-ytdlp-update/2", **(headers or {})})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return getattr(r, "status", None) or 200, r.read(limit), dict(r.headers or {})
+        except urllib.error.HTTPError as e:
+            return e.code, b"", {}
+        except urllib.error.URLError as e:
+            if scheme == "file" and isinstance(e.reason, (FileNotFoundError, NotADirectoryError)):
+                return 404, b"", {}
+            raise OSError(str(e.reason)) from e
+        except ValueError as e:
+            raise OSError(str(e)) from e
+
+    def http_post_json(self, url: str, doc: dict, timeout: float = 150):
+        """-> (status, json or None). No connection raises OSError."""
+        req = urllib.request.Request(url, data=json.dumps(doc).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                status, body = getattr(r, "status", None) or 200, r.read(1 << 16)
+        except urllib.error.HTTPError as e:
+            status, body = e.code, (e.read(1 << 16) if e.fp else b"")
+        except (urllib.error.URLError, ValueError) as e:
+            raise OSError(str(e)) from e
+        try:
+            return status, json.loads(body or b"null")
+        except ValueError:
+            return status, None
+
+    # -- paths, slots, versions ---------------------------------------------
+
+    def p(self, *parts: str) -> str:
+        return os.path.join(self.root, *parts)
+
+    def _usable(self, slot: str) -> bool:
+        return os.access(self.p(slot, "bin", "yt-dlp"), os.X_OK)
+
+    def _link(self, name: str) -> str | None:
+        try:
+            t = os.path.basename(os.readlink(self.p(name)))
+        except OSError:
+            return None
+        return t if t in SLOTS and self._usable(t) else None
+
+    def current_slot(self) -> str | None:
+        return self._link("current")
+
+    def previous_slot(self) -> str | None:
+        prev = self._link("previous")
+        return prev if prev and prev != self.current_slot() else None
+
+    def migrate(self) -> None:
+        """A radio from before the lane has venv-a/venv-b and only `current`:
+        the other one is the previous. Once (`previous` -> current = none)."""
+        cur = self.current_slot()
+        if cur is None or os.path.lexists(self.p("previous")):
+            return
+        old = next((s for s in ("venv-a", "venv-b") if s != cur and self._usable(s)), cur)
+        self.switch_link("previous", old)
+
+    def spare_slot(self) -> str:
+        used = {self.current_slot(), self.previous_slot()}
+        return next(s for s in SLOTS if s not in used)
+
+    def version_of(self, slot: str | None) -> str | None:
+        """The installed distribution's version (a file read, no process)."""
+        if not slot:
+            return None
+        for d in sorted(glob.glob(self.p(slot, "lib", "python3*", "site-packages", "yt_dlp-*.dist-info"))):
+            try:
+                with open(os.path.join(d, "METADATA"), encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("Version:"):
+                            return line.split(":", 1)[1].strip()
+                        if not line.strip():
+                            break
+            except OSError:
+                pass
+            return os.path.basename(d)[len("yt_dlp-"):-len(".dist-info")]
+        try:
+            out = self.run([self.p(slot, "bin", "yt-dlp"), "--version"], timeout=60).stdout.strip()
+            return out.splitlines()[0] if out else None
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    def slot_meta(self, slot: str | None) -> dict:
+        return dict((self.state.get("slots") or {}).get(slot or "", {}) or {})
+
+    def switch_link(self, name: str, slot: str) -> None:
+        """Atomic: a new symlink renamed over the old one, then fsync the dir."""
+        link = self.p(name)
+        tmp = link + ".new"
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        os.symlink(self.p(slot), tmp)
+        os.replace(tmp, link)
+        fd = os.open(self.root, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    # -- state and events ------------------------------------------------------
+
+    def load_state(self) -> dict:
+        try:
+            with open(self.p("state.json"), encoding="utf-8") as f:
+                doc = json.load(f)
+            self.state = doc if isinstance(doc, dict) else {}
+        except (OSError, ValueError):
+            self.state = {}
+        self.state["schema"] = 1
+        return self.state
+
+    def save_state(self) -> None:
+        if self.dry:
+            return
+        for name, slot in (("current", self.current_slot()), ("previous", self.previous_slot())):
+            self.state[name] = ({"slot": slot, "channel": "stable", **self.slot_meta(slot),
+                                 "version": self.version_of(slot)} if slot else None)
+        tmp = self.p(".state.json.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self.state, f, indent=1, sort_keys=True)
+            f.write("\n")
+        os.replace(tmp, self.p("state.json"))
+
+    def event(self, name: str, level: str = "info", **fields) -> None:
+        doc = {"at": iso(self.now()), "event": name, "level": level,
+               **{k: v for k, v in fields.items() if v is not None}}
+        detail = " ".join(f"{k}={v}" for k, v in doc.items() if k not in ("at", "event", "level"))
+        tag = "" if level == "info" else level.upper() + " "
+        print(f"hasler-ytdlp-update: {tag}{name} {detail}".rstrip(), file=sys.stderr)
+        if self.dry:
+            return
+        path = self.p("events.jsonl")
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(doc, sort_keys=True)[:2000] + "\n")
+            with open(path, encoding="utf-8") as f:
+                lines = f.read().splitlines()
+            if len(lines) > EVENTS_MAX_LINES or sum(len(x) + 1 for x in lines) > EVENTS_MAX_BYTES:
+                lines = lines[-EVENTS_MAX_LINES:]
+                while lines and sum(len(x) + 1 for x in lines) > EVENTS_MAX_BYTES:
+                    lines.pop(0)
+                tmp = path + ".tmp"
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.write("".join(x + "\n" for x in lines))
+                os.replace(tmp, path)
+        except OSError as e:
+            print(f"hasler-ytdlp-update: could not write {path}: {e}", file=sys.stderr)
+
+    def _recent(self, key: str, within: float = DAY) -> list[float]:
+        now = self.now()
+        out = [t for t in (parse_iso(x) for x in self.state.get(key) or []) if t is not None and now - t < within]
+        self.state[key] = [iso(t) for t in out]
+        return out
+
+    def bad_versions(self) -> dict:
+        bad = self.state.get("bad")
+        return bad if isinstance(bad, dict) else {}
+
+    def is_bad(self, version) -> bool:
+        return any(same_version(version, b) for b in self.bad_versions())
+
+    def mark_bad(self, version: str | None, why: str) -> None:
+        if version:
+            bad = self.bad_versions()
+            bad[version] = {"why": why, "at": iso(self.now())}
+            self.state["bad"] = dict(list(bad.items())[-20:])
+
+    # -- components.json -----------------------------------------------------------
+
+    def _components_url(self) -> str:
+        base = DEFAULT_BASE
+        try:
+            with open(self.box_yaml, encoding="utf-8") as f:
+                for line in f:
+                    m = re.match(r"^update_url:\s*['\"]?([^'\"\s#]+)", line)
+                    if m:
+                        base = m.group(1)
+        except OSError:
+            pass
+        return base.rstrip("/") + "/components.json"
+
+    @staticmethod
+    def _verify_module():
+        here = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+        for p in (os.environ.get("HASLER_UPDATER_PATH"), os.path.join(here, "update"),
+                  "/opt/hasler/updater", "/opt/hasler/current/app"):
+            if p and os.path.isfile(os.path.join(p, "hasler_update", "verify.py")):
+                if p not in sys.path:
+                    sys.path.insert(0, p)
+                break
+        from hasler_update import verify  # noqa: PLC0415 - the updater's, found at run time
+        return verify
+
+    def fetch_components(self) -> tuple[dict | None, str, str]:
+        """-> (the yt-dlp block or None, status, message). Status: ok, missing,
+        expired, offline, unverified (no keyring/updater here), bad (refused)."""
+        try:
+            st, data, _ = self.http_get(self.url)
+            if st == 404:
+                return None, "missing", f"{self.url}: not published"
+            if st != 200:
+                return None, "offline", f"{self.url}: HTTP {st}"
+            st, sig, _ = self.http_get(self.url + ".sig", limit=1 << 16)
+            if st != 200:
+                return None, "missing" if st == 404 else "offline", f"{self.url}.sig: HTTP {st}"
+        except OSError as e:
+            return None, "offline", f"{self.url}: {e}"
+        try:
+            verify = self._verify_module()
+        except ImportError as e:
+            return None, "unverified", f"no updater to check the signature with ({e})"
+        now = self.now()
+        try:
+            ring = verify.load_keyring(pathlib.Path(self.trust), now)
+        except verify.VerifyError as e:
+            return None, "unverified", f"no keyring: {e}"
+        try:
+            verify.ssh_verify(data, sig, ring.signers("release", now), NAMESPACE)
+        except verify.VerifyError as e:
+            return None, "bad", str(e)
+        try:
+            doc = json.loads(data)
+        except ValueError:
+            return None, "bad", "components.json is not JSON"
+        if not isinstance(doc, dict) or doc.get("schema") != 1:
+            return None, "bad", "components.json: unknown schema"
+        issued, expires = parse_iso(doc.get("issued")), parse_iso(doc.get("expires"))
+        if issued is None or expires is None:
+            return None, "bad", "components.json: no valid issued/expires"
+        if issued > now + CLOCK_SKEW_S:
+            return None, "bad", "components.json issued in the future (is the clock right?)"
+        if now >= expires:
+            return None, "expired", f"components.json expired at {doc.get('expires')}"
+        block = (doc.get("components") or {}).get(COMPONENT)
+        if not isinstance(block, dict):
+            return None, "missing", "components.json has no yt-dlp"
+        self.state["components"] = {"issued": doc.get("issued"), "expires": doc.get("expires"),
+                                    "fetched": iso(now), "url": self.url}
+        return block, "ok", "verified"
+
+    def candidates(self, block: dict | None) -> list[dict]:
+        """Usable candidates, best first: tested online before untested before
+        failed, stable before nightly, newer before older."""
+        if not block:
+            return []
+        blocked = [v for v in block.get("blocked") or [] if isinstance(v, str)]
+        out = []
+        for c in block.get("candidates") or []:
+            if not isinstance(c, dict):
+                continue
+            v, ch = str(c.get("version") or ""), c.get("channel")
+            tested = c.get("tested") if isinstance(c.get("tested"), dict) else {}
+            if not VERSION_RE.match(v) or ch not in ("stable", "nightly"):
+                self.event("candidate_refused", "warn", version=v or None, why="bad version or channel")
+                continue
+            if any(same_version(v, b) for b in blocked) or self.is_bad(v):
+                continue
+            if tested.get("install") is False or tested.get("offline") is False:
+                continue
+            try:
+                req = validate_requirements(c.get("requirements"), v)
+            except ValueError as e:
+                self.event("candidate_refused", "warn", version=v, why=str(e))
+                continue
+            out.append({"version": v, "channel": ch, "requirements": req, "tested": tested, "source": "components"})
+        online_rank = {True: 0, None: 1, False: 2}
+        out.sort(key=lambda c: (online_rank.get(c["tested"].get("online"), 1),
+                                0 if c["channel"] == "stable" else 1,
+                                tuple(-n for n in vkey(c["version"]))))
+        return out
+
+    # -- building and checking a slot ---------------------------------------------------
+
+    def build(self, slot: str, cand: dict) -> str | None:
+        """A fresh venv in ``slot`` with ``cand``. None on success, else why not."""
+        if slot in (self.current_slot(), self.previous_slot()):
+            return f"refusing to build over {slot} (in use)"
+        path = self.p(slot)
+        shutil.rmtree(path, ignore_errors=True)
+        try:
+            r = self.run([self.python, "-m", "venv", path], timeout=300)
+            if r.returncode != 0:
+                return f"venv: {(r.stderr or '').strip()[-300:]}"
+            pip = [self.p(slot, "bin", "python"), "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+                   "--no-cache-dir", "--only-binary", ":all:"]
+            if cand.get("requirements"):
+                fd, req = tempfile.mkstemp(prefix=".req-", suffix=".txt", dir=self.root)
+                with os.fdopen(fd, "w") as f:
+                    f.write(cand["requirements"])
+                try:
+                    r = self.run(pip + ["--require-hashes", "-r", req], timeout=1500)
+                finally:
+                    os.unlink(req)
+            else:
+                r = self.run(pip + ["--upgrade", self.spec], timeout=1500)
+            if r.returncode != 0:
+                return f"pip: {(r.stderr or r.stdout or '').strip()[-300:]}"
+        except (OSError, subprocess.SubprocessError) as e:
+            return f"{type(e).__name__}: {e}"
+        return None
+
+    def offline_check(self, slot: str) -> str | None:
+        """None if ``slot`` works without the network, else what failed."""
+        v = self.p(slot)
+        try:
+            if self.run([os.path.join(v, "bin", "yt-dlp"), "--version"], timeout=60).returncode != 0:
+                return "yt-dlp --version failed"
+            if self.run([os.path.join(v, "bin", "python"), "-c",
+                         "import yt_dlp, yt_dlp_ejs; from yt_dlp.extractor.youtube import YoutubeIE"],
+                        timeout=120).returncode != 0:
+                return "importing yt_dlp / yt_dlp_ejs / the YouTube extractor failed"
+            with tempfile.TemporaryDirectory(prefix="ytdlp-check.") as work:
+                page = os.path.join(work, "index.html")
+                with open(page, "w", encoding="utf-8") as f:
+                    f.write('<html><head><title>hasler selftest</title></head><body>'
+                            f'<video src="file://{work}/tone.mp3"></video></body></html>\n')
+                out = self.run([os.path.join(v, "bin", "yt-dlp"), "--ignore-config", "--no-cache-dir",
+                                "--enable-file-urls", "--simulate", "--no-warnings", "--print", "title",
+                                "file://" + page], timeout=120).stdout or ""
+            if "hasler selftest" not in out:
+                return "offline extraction failed"
+        except (OSError, subprocess.SubprocessError) as e:
+            return f"{type(e).__name__}: {e}"
+        return None
+
+    # -- the canary --------------------------------------------------------------------
+
+    def canary(self, slot: str, cfg: dict, why: str) -> dict:
+        """One canary of ``slot``: pass | fail | offline | skipped (budget, haslerd busy)."""
+        version = self.version_of(slot)
+        if len(self._recent("canaries")) >= MAX_CANARIES_PER_DAY:
+            res = {"result": "skipped", "error": f"{MAX_CANARIES_PER_DAY} canaries today already"}
+        else:
+            self.state.setdefault("canaries", []).append(iso(self.now()))
+            ids = [i for i in cfg.get("ytm_ids") or [] if isinstance(i, str) and VIDEO_ID.match(i)]
+            try:
+                min_bytes = max(1024, min(int(cfg.get("min_bytes") or MIN_BYTES), 1 << 20))
+            except (TypeError, ValueError):
+                min_bytes = MIN_BYTES
+            res = {}
+            for vid in ids[:CANARY_IDS_PER_RUN] or [None]:
+                res = self._canary_one(slot, vid, min_bytes)
+                if res["result"] != "fail":
+                    break
+        res.update(slot=slot, version=version, at=iso(self.now()), why=why)
+        self.event("canary", "info" if res["result"] in ("pass", "skipped") else "warn",
+                   **{k: res.get(k) for k in ("slot", "version", "result", "via", "id", "stage", "error", "why")})
+        self.state["canary"] = {k: res.get(k) for k in ("result", "at", "version", "slot", "via", "id", "stage", "error")}
+        return res
+
+    def _canary_one(self, slot: str, vid: str | None, min_bytes: int) -> dict:
+        if self.api:
+            try:
+                st, doc = self.http_post_json(self.api + "/api/components/yt-dlp/canary",
+                                              {"slot": slot, "id": vid, "min_bytes": min_bytes})
+            except OSError:
+                st, doc = None, None              # haslerd not answering: do it here
+            if st == 200 and isinstance(doc, dict) and doc.get("result") in ("pass", "fail", "offline"):
+                return {"result": doc["result"], "via": "haslerd", "id": doc.get("id") or vid,
+                        "stage": doc.get("stage"), "error": str(doc.get("error") or "")[:300] or None}
+            if st is not None and st not in (404, 405):
+                err = doc.get("error") if isinstance(doc, dict) else None
+                return {"result": "skipped", "via": "haslerd", "id": vid, "error": err or f"HTTP {st}"}
+        return self._canary_local(slot, vid or FALLBACK_IDS[0], min_bytes)
+
+    def _canary_local(self, slot: str, vid: str, min_bytes: int) -> dict:
+        """As the ytdlp user, without the owner's cookies (not ours to read)."""
+        out = {"via": "local", "id": vid}
+        try:
+            r = self.run([self.p(slot, "bin", "yt-dlp"), "-f", AUDIO_FORMAT, "-g", "--no-playlist",
+                          WATCH_URL.format(id=vid)], timeout=120)
+        except (OSError, subprocess.SubprocessError) as e:
+            return {**out, "result": "fail", "stage": "resolve", "error": f"{type(e).__name__}: {e}"}
+        url = next((x.strip() for x in (r.stdout or "").splitlines() if x.startswith("http")), None)
+        if r.returncode != 0 or not url:
+            err = (r.stderr or "").strip()[-300:] or "no URL"
+            return {**out, "result": "offline" if NET_ERR.search(err) else "fail", "stage": "resolve", "error": err}
+        try:
+            st, body, _ = self.http_get(url, {"Range": f"bytes=0-{min_bytes - 1}", "User-Agent": "Music Player Daemon"},
+                                        timeout=30, limit=min_bytes)
+        except OSError as e:
+            return {**out, "result": "offline" if NET_ERR.search(str(e)) else "fail", "stage": "fetch",
+                    "error": str(e)}
+        if st != 206:
+            return {**out, "result": "fail", "stage": "fetch", "error": f"HTTP {st}, not 206"}
+        if len(body) < min_bytes or not looks_like_audio(body):
+            return {**out, "result": "fail", "stage": "audio", "error": f"{len(body)} bytes, not audio"}
+        return {**out, "result": "pass"}
+
+    # -- haslerd -----------------------------------------------------------------------
+
+    def playing(self) -> bool:
+        if not self.api:
+            return False
+        try:
+            st, body, _ = self.http_get(self.api + "/api/health", timeout=10)
+            return st == 200 and bool(json.loads(body or b"{}").get("playing"))
+        except (OSError, ValueError, AttributeError):
+            return False
+
+    def wait_quiet(self) -> bool:
+        """True once nothing plays (waits up to play_wait_s)."""
+        end = self.now() + self.play_wait_s
+        while self.playing():
+            if self.now() >= end:
+                return False
+            self.sleep(60)
+        return True
+
+    def take_request(self) -> str | None:
+        """haslerd's request (yt-dlp-request.json): once, and only if fresh."""
+        try:
+            with open(self.request_file, encoding="utf-8") as f:
+                doc = json.load(f)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(doc, dict) or doc.get("mode") not in MODES or doc.get("mode") == "check":
+            return None
+        at = parse_iso(doc.get("at"))
+        rid = f"{doc.get('at')}/{doc.get('mode')}"
+        if at is None or abs(self.now() - at) > REQUEST_FRESH_S or self.state.get("request_done") == rid:
+            return None
+        self.state["request_done"] = rid
+        self.event("request", mode=doc["mode"], why=str(doc.get("why") or "")[:120] or None)
+        return str(doc["mode"])
+
+    # -- switching -----------------------------------------------------------------------
+
+    def switch_to(self, slot: str, why: str) -> None:
+        cur = self.current_slot()
+        oldv, newv = self.version_of(cur), self.version_of(slot)
+        self.switch_link("previous", cur or slot)        # first install: previous = itself = none
+        self.switch_link("current", slot)
+        now = self.now()
+        self.state.setdefault("switches", []).append(iso(now))
+        self.state["probation_until"] = iso(now + PROBATION_S)
+        self.state["switched"] = iso(now)
+        self.state.pop("staged", None)
+        self.event("switched", frm=oldv, to=newv, channel=self.slot_meta(slot).get("channel"), why=why)
+
+    def go_back(self, why: str, mark: str | None) -> str | None:
+        """current <-> previous. None on success, else why not."""
+        cur, prev = self.current_slot(), self.previous_slot()
+        if not cur:
+            return "nothing installed"
+        if not prev:
+            return "no previous yt-dlp to go back to"
+        bad = self.offline_check(prev)
+        if bad:
+            return f"the previous yt-dlp does not pass either ({bad})"
+        curv, prevv = self.version_of(cur), self.version_of(prev)
+        if self.dry:
+            self.event("would_go_back", frm=curv, to=prevv, why=why)
+            return None
+        self.switch_link("previous", cur)
+        self.switch_link("current", prev)
+        if mark:
+            self.mark_bad(curv, mark)
+        self.state["probation_until"] = None
+        self.event("rolled_back", "warn", frm=curv, to=prevv, why=why)
+        return None
+
+    # -- a run ----------------------------------------------------------------------------
+
+    def finish(self, result: str, msg: str | None = None, online: bool = False) -> int:
+        """Record the run. ``result``: ok | deferred | offline | error."""
+        now = iso(self.now())
+        self.state["last_check"] = now
+        self.state["last_result"] = result
+        self.state["last_error"] = msg if result in ("error", "offline", "deferred") else None
+        if result in ("ok", "deferred") and online:
+            self.state["last_ok"] = now
+        if result == "error":
+            self.event("failed", "error", error=msg)
+        self.save_state()
+        return 1 if result == "error" else 0
+
+    def rollback(self) -> int:
+        why = self.go_back("asked for (Go back)", "went back from it by hand")
+        if why:
+            self.event("rollback_refused", "warn", why=why)
+            return self.finish("error", why)
+        return self.finish("ok")
+
+    def update(self, mode: str) -> int:  # noqa: C901, PLR0911, PLR0912 - one decision, read top to bottom
+        if mode == "rollback":
+            return self.rollback()
+        cur = self.current_slot()
+        curv = self.version_of(cur)
+        block, cstat, cmsg = self.fetch_components()
+        self.event("check", "info" if cstat == "ok" else "warn", mode=mode, current=curv, components=cstat,
+                   detail=None if cstat == "ok" else cmsg)
+        online = cstat == "ok"
+        block = block or {}
+        cfg = block.get("canary") if isinstance(block.get("canary"), dict) else {}
+        blocked = [v for v in block.get("blocked") or [] if isinstance(v, str)]
+        failing, urgent_switch = cur is None, False
+        reason = "nothing installed" if cur is None else None
+
+        # 1. A blocked (or locally judged bad) current version is left at once.
+        cur_blocked = bool(cur) and any(same_version(curv, b) for b in blocked)
+        if cur and (cur_blocked or self.is_bad(curv)):
+            self.event("blocked" if cur_blocked else "bad_current", "warn", version=curv)
+            prev = self.previous_slot()
+            prevv = self.version_of(prev)
+            why = "no previous yt-dlp"
+            if prev and not any(same_version(prevv, b) for b in blocked) and not self.is_bad(prevv):
+                why = self.go_back(f"{curv} is {'blocked by the makers' if cur_blocked else 'marked bad here'}",
+                                   "blocked by the makers" if cur_blocked else None)
+            if why is None:
+                cur = self.current_slot()
+                curv = self.version_of(cur)
+                if mode == "check":
+                    return self.finish("ok", online=online)
+            else:
+                if cur_blocked:
+                    self.mark_bad(curv, "blocked by the makers")
+                failing, urgent_switch, reason = True, cur_blocked, f"{curv} is blocked ({why})"
+
+        # 2. The judge: since a switch, tracks fail. Is it the new yt-dlp?
+        if mode == "judge" and cur and not failing:
+            prev = self.previous_slot()
+            c = self.canary(cur, cfg, "judge: tracks fail since the switch")
+            if c["result"] == "pass":
+                self.event("judged", version=curv, verdict="current works - not yt-dlp")
+                return self.finish("ok", online=True)
+            if c["result"] != "fail":
+                return self.finish("offline" if c["result"] == "offline" else "deferred",
+                                   f"judge: canary {c['result']} ({c.get('error') or ''})", online=online)
+            p = self.canary(prev, cfg, "judge: does the previous one work?") if prev else {"result": "none"}
+            if p["result"] == "pass":
+                why = self.go_back(f"{curv} fails its canary, {self.version_of(prev)} passes", "failed in probation")
+                self.event("judged", "warn", version=curv, verdict="new one fails, old one works - went back")
+                return self.finish("error" if why else "ok", why, online=True)
+            failing, reason = True, f"{curv} fails its canary (judge)"
+
+        # 3. Urgent / Update now: does the current one work?
+        if mode in ("urgent", "now") and cur and not failing:
+            c = self.canary(cur, cfg, "tracks fail to resolve" if mode == "urgent" else "Update now")
+            if c["result"] == "fail":
+                failing, reason = True, f"{curv} fails its canary"
+            elif c["result"] == "offline":
+                return self.finish("offline", "could not reach YouTube")
+            elif c["result"] == "pass":
+                online = True
+                if mode == "urgent":
+                    self.event("urgent", version=curv, verdict="current works - not yt-dlp")
+
+        # 4. What to try.
+        cands = self.candidates(block)
+        targets: list[dict] = []
+        if failing:
+            targets = [c for c in cands if not same_version(c["version"], curv)][:MAX_INSTALLS_PER_RUN]
+            if not targets and cstat in FALLBACK_OK:
+                self.event("fallback", "warn", why=f"components.json {cstat}; {reason}",
+                           note="the newest STABLE yt-dlp from PyPI, hash-unchecked")
+                targets = [{"version": None, "channel": "stable", "requirements": None, "source": "pypi-fallback"}]
+            elif not targets:
+                return self.finish("error", f"{reason}, and nothing else to try (components.json {cstat}: {cmsg})",
+                                   online=online)
+        elif cands:
+            best, cur_channel = cands[0], self.slot_meta(cur).get("channel") or "stable"
+            if not same_version(best["version"], curv) and (
+                    vkey(best["version"]) > vkey(curv)
+                    or (best["channel"] == "stable" and cur_channel == "nightly" and best["tested"].get("online") is True)):
+                targets = [best]
+        if not targets:
+            self.event("up_to_date", version=curv, channel=self.slot_meta(cur).get("channel"))
+            return self.finish("ok", online=online)
+
+        # 5. Holds for an upgrade (never for a repair).
+        if not failing and mode != "now" and len(self._recent("switches")) >= MAX_SWITCHES_PER_DAY:
+            self.event("deferred", why="switched once today already", to=targets[0]["version"])
+            return self.finish("deferred", "switched once today already", online=online)
+        if self.dry:
+            self.event("would_try", versions=[t["version"] or "pypi-stable" for t in targets], failing=failing)
+            return 0
+
+        # 6. Build, check, canary, switch.
+        install_errors, other = [], []
+        for cand in targets:
+            label = cand["version"] or "pypi-stable"
+            slot = self.spare_slot()
+            staged = self.state.get("staged") or {}
+            reuse = bool(cand["version"]) and staged.get("slot") == slot \
+                and same_version(staged.get("version"), cand["version"]) \
+                and same_version(self.version_of(slot), cand["version"]) and self.offline_check(slot) is None
+            if reuse:
+                self.event("reusing", slot=slot, version=label)
+            else:
+                self.state.pop("staged", None)
+                why = self.build(slot, cand)
+                newv = self.version_of(slot) if why is None else None
+                if why is None:
+                    why = self.offline_check(slot)
+                    if why:
+                        why = f"self-check: {why}"
+                if why is None and cand["version"] and not same_version(newv, cand["version"]):
+                    why = f"installed {newv}, expected {cand['version']}"
+                if why:
+                    self.event("install_failed", "error", version=label, slot=slot, why=why)
+                    install_errors.append(f"{label}: {why}")
+                    shutil.rmtree(self.p(slot), ignore_errors=True)
+                    continue
+                if cand["version"] is None and cur and same_version(newv, curv):
+                    self.event("fallback_nothing_newer", "warn", version=newv)
+                    shutil.rmtree(self.p(slot), ignore_errors=True)
+                    other.append(f"PyPI has nothing newer than {curv}")
+                    continue
+                self.state.setdefault("slots", {})[slot] = {"version": newv, "channel": cand["channel"],
+                                                            "source": cand["source"], "installed": iso(self.now())}
+                self.state["staged"] = {"slot": slot, "version": newv}
+                self.save_state()
+            newv = self.version_of(slot)
+            res = self.canary(slot, cfg, "repair" if failing else "upgrade")
+            # Nothing installed: anything that passed the offline checks beats nothing.
+            if res["result"] == "pass" or cur is None or (res["result"] != "fail" and urgent_switch):
+                if not failing and mode != "now" and not self.wait_quiet():
+                    self.event("deferred", why="music is playing", to=newv)
+                    return self.finish("deferred", "music is playing", online=True)
+                self.switch_to(slot, reason or ("Update now" if mode == "now" else "newer")
+                               + ("" if res["result"] == "pass" else f" (canary {res['result']})"))
+                return self.finish("ok", online=online or res["result"] == "pass")
+            if res["result"] == "fail":
+                other.append(f"{newv} fails its canary ({res.get('stage')}: {res.get('error')})")
+                continue
+            self.event("deferred", why=f"canary {res['result']}: {res.get('error') or ''}".strip(), to=newv)
+            return self.finish("deferred", f"canary {res['result']}", online=online)
+        msgs = "; ".join(install_errors + other)
+        if failing:
+            return self.finish("error", f"{reason}; {msgs}", online=online)
+        if install_errors:
+            return self.finish("error", msgs, online=online)
+        self.event("kept", version=curv, why=msgs)
+        return self.finish("ok", online=online)
+
+    def status(self) -> dict:
+        self.load_state()
+        cur, prev = self.current_slot(), self.previous_slot()
+        return {"current": self.version_of(cur) or "", "previous": self.version_of(prev) or "",
+                "current_slot": cur, "previous_slot": prev, "channel": self.slot_meta(cur).get("channel"),
+                **{k: self.state.get(k) for k in ("last_check", "last_ok", "last_result", "last_error",
+                                                   "probation_until", "canary", "components")}}
+
+
+def lock(root: str):
+    try:
+        f = open(os.path.join(root, ".lock"), "w")  # noqa: SIM115 - held for the run
+    except OSError as e:
+        print(f"hasler-ytdlp-update: cannot write {root} (run as the ytdlp user): {e}", file=sys.stderr)
+        raise SystemExit(1) from e
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        print("hasler-ytdlp-update: another run is busy", file=sys.stderr)
+        raise SystemExit(75) from None
+    return f
+
+
+FLAGS = {"": "check", "--now": "now", "--force": "now", "--urgent": "urgent", "--judge": "judge",
+         "--rollback": "rollback", "--check": "dry", "--status": "status"}
+
+
+def main(argv: list[str] | None = None, lane: Lane | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    arg = argv[0] if argv else ""
+    if len(argv) > 1 or arg not in FLAGS:
+        print(__doc__.split("\n\n")[1], file=sys.stderr)
+        return 2
+    os.umask(0o022)
+    lane = lane or Lane()
+    mode = FLAGS[arg]
+    if mode == "status":
+        print(json.dumps(lane.status()))
+        return 0
+    os.makedirs(lane.root, exist_ok=True)
+    held = lock(lane.root)
+    try:
+        lane.load_state()
+        if mode == "dry":
+            lane.dry, mode = True, "check"
+        else:
+            lane.migrate()
+        if mode == "check" and not lane.dry:
+            mode = lane.take_request() or "check"
+        rc = 0
+        for _ in range(2):
+            try:
+                rc = lane.update(mode)
+            except Exception as e:  # noqa: BLE001 - every failure must reach state.json and the events
+                lane.dry = False
+                rc = lane.finish("error", f"{type(e).__name__}: {e}")
+            # haslerd asked while this run was busy: `systemctl start` joined
+            # this run instead of starting another, so take it now.
+            mode = None if lane.dry else lane.take_request()
+            if mode is None:
+                break
+        return rc
+    finally:
+        held.close()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.5 - 2026-10-23
+
+- YouTube Music keeps working by itself: the radio checks for a newer
+  yt-dlp every 6 hours (and right after coming back online, or as soon as
+  tracks start failing), takes the newest from PyPI - stable, or the nightly
+  when stable can't play - from a signed, hash-checked list, tests it on a
+  real YouTube Music track before switching, and switches back by itself if
+  tracks fail in the next three days. This radio -> Updates shows it; Maker
+  tools can update or go back by hand.
+- Security updates for the system install at night in standby (Debian
+  security only; never the kernel, firmware, moOde's audio or Bluetooth),
+  with a health check afterwards and the old packages put back if anything
+  broke. Off with `os_updates: off` in box.yaml.
+- Spotify engine go-librespot 0.10.5 and Deno 2.9.8 (what the current
+  yt-dlp asks for).
+
 ## 1.0.4 - 2026-10-22
 
 - A brief power dip on the key board can no longer press every key at once:

@@ -121,7 +121,8 @@ def test_licences_ship_with_every_release(built):
     _, _, _, files = built
     assert files["LICENSE"][0].startswith(b"MIT License")
     notices = files["THIRD_PARTY_NOTICES.md"][0].decode()
-    assert "go-librespot" in notices and "v0.10.3" in notices
+    pins = br.pins_from_install_sh({"scripts/install.sh": (ROOT / "scripts" / "install.sh").read_bytes()})
+    assert "go-librespot" in notices and pins["GLR_VERSION"] in notices   # deps-bump moves the pin
     for name in ("GPL-3.0", "LGPL-3.0", "MPL-2.0", "EPL-2.0", "Apache-2.0", "MIT-deno",
                  "OFL-1.1-Fraunces", "OFL-1.1-JetBrains-Mono"):
         assert f"licenses/{name}.txt" in files, name
@@ -364,6 +365,14 @@ def test_keyring_and_release_signature_round_trip(keys, built, tmp_path):
     # wrong role / namespace / key / content all fail
     assert sh("verify.sh", "-n", "hasler-release", "-r", "timestamp", "-K", ring, rel).returncode != 0
     assert sh("verify.sh", "-n", "hasler-channel", "-r", "release", "-K", ring, rel).returncode != 0
+    # components.json (hasler-releases components.yml): the release key, its own namespace
+    comp = tmp_path / "components.json"
+    comp.write_text('{"schema": 1}\n')
+    assert sh("sign.sh", "-n", "hasler-components", "-k", keys / "release", "-p", keys / "release.pub",
+              comp).returncode == 0
+    assert sh("verify.sh", "-n", "hasler-components", "-r", "release", "-K", ring, comp).returncode == 0
+    assert sh("verify.sh", "-n", "hasler-components", "-r", "timestamp", "-K", ring, comp).returncode != 0
+    assert sh("verify.sh", "-n", "hasler-release", "-r", "release", "-K", ring, comp).returncode != 0
     assert sh("verify.sh", "-n", "hasler-release", "-I", "x", "-k", keys / "other.pub", rel).returncode != 0
     assert sh("sign.sh", "-n", "hasler-release", "-k", keys / "other", "-p", keys / "release.pub",
               rel).returncode != 0          # -p catches the wrong key

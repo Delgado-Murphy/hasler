@@ -1,0 +1,14 @@
+[Unit]
+Description=Hasler: try Debian security updates in the night window
+# Pulled in by haslerd.service (Wants=): no `systemctl enable` needed, which a
+# release can't do. Two tries a night, after the release updater's 02:00-03:30
+# slots; the script runs at most once a night and only inside 02:00-05:00.
+# Not Persistent: a catch-up at a daytime boot would only be refused.
+
+[Timer]
+OnCalendar=*-*-* 03:35,04:15
+RandomizedDelaySec=10min
+Persistent=false
+
+[Install]
+WantedBy=timers.target
