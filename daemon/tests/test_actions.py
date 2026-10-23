@@ -635,3 +635,38 @@ def test_a_bounced_second_tap_does_not_stop_the_station(monkeypatch):
     t[0] += 1.0
     actions.dispatch(Event("k3", "tap"))          # a real second press still stops it
     assert actions.standby
+
+
+def test_a_bounced_tap_after_a_stop_does_not_start_it_again(monkeypatch):
+    """2026-10-23: key 2 again (stop) arrived as two taps 0.12 s apart; the
+    second, now on a stopped radio, started the station again."""
+    import haslerd.actions as actions_mod
+
+    monkeypatch.setattr(actions_mod, "AGAIN_GUARD_S", 0.8)
+    monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", 0.35)
+    t = [100.0]
+    player = FakePlayer()
+    actions = Actions(load_variant(VARIANTS / "hasler-hm.yaml"), player, clock=lambda: t[0])
+    actions.dispatch(Event("k2", "tap"))
+    t[0] += 5.0
+    actions.dispatch(Event("k2", "tap"))          # again: standby
+    assert actions.standby
+    t[0] += 0.12
+    actions.dispatch(Event("k2", "tap"))          # bounce of that same press: ignored
+    assert actions.standby
+    t[0] += 1.0
+    actions.dispatch(Event("k2", "tap"))          # a real press plays again
+    assert not actions.standby and player.playing.n == 2
+
+
+def test_the_bounce_guard_is_per_key(monkeypatch):
+    import haslerd.actions as actions_mod
+
+    monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", 0.35)
+    t = [100.0]
+    player = FakePlayer()
+    actions = Actions(load_variant(VARIANTS / "hasler-hm.yaml"), player, clock=lambda: t[0])
+    actions.dispatch(Event("k2", "tap"))
+    t[0] += 0.1
+    actions.dispatch(Event("k3", "tap"))          # another key that fast is a real press
+    assert player.playing.n == 3

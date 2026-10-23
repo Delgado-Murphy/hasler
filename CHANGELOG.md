@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.6 - 2026-10-23
+
+- Keys: a station key pressed again stops the radio for good. An old key's
+  contacts can send one press as two taps a fifth of a second apart; the
+  second used to start the station again. A second tap of the same key
+  within 0.35 s is now ignored.
+
 ## 1.0.5 - 2026-10-23
 
 - YouTube Music keeps working by itself: the radio checks for a newer

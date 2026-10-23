@@ -18,3 +18,4 @@ def _no_bounce_guard(monkeypatch):
     import haslerd.actions as actions_mod
 
     monkeypatch.setattr(actions_mod, "AGAIN_GUARD_S", 0.0)
+    monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", 0.0)

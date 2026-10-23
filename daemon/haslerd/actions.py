@@ -50,6 +50,11 @@ log = logging.getLogger(__name__)
 
 # A repeat tap this soon after starting a preset is contact bounce, not "again".
 AGAIN_GUARD_S = 0.8
+# A second tap of the SAME key this soon after the first is contact bounce,
+# whatever the first did (2026-10-23: key 2 arrived as two taps 0.12-0.2 s
+# apart - the first stopped the station, the second started it again). No
+# hand presses one key twice in a third of a second.
+TAP_BOUNCE_S = 0.35
 
 # Order the PU key cycles through by default (``Actions.source_cycle``; the
 # owner's own lives in settings.json ``sources.cycle``). "radio" is our MPD
@@ -208,6 +213,7 @@ class Actions:
         self.stalled: Callable[[Preset], bool] | None = None
         self.clock = clock
         self._started_at = float("-inf")   # clock() when a preset last started
+        self._last_tap: dict[str, float] = {}  # control id -> clock() of its last tap
         # Wall clock (time.time) of the last start: which Hasler started most
         # recently, for another radio's join_group (multiroom/group.py).
         self.started_wall: float | None = None
@@ -315,6 +321,13 @@ class Actions:
     # -- dispatch ---------------------------------------------------------
 
     def dispatch(self, event: Event) -> None:
+        if event.kind == "tap":
+            now = self.clock()
+            last = self._last_tap.get(event.control)
+            self._last_tap[event.control] = now
+            if last is not None and now - last < TAP_BOUNCE_S:
+                log.info("%s.tap %.2f s after the last one: ignored (bounce)", event.control, now - last)
+                return
         if event.kind == "hold" and self._bt_hold(event):
             return
         spec = self.variant.actions.get(f"{event.control}.{event.kind}")
