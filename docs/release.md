@@ -294,11 +294,11 @@ night (03:17 UTC), so nothing needs doing - unless that job stops running.
 
 ## 1.0.0: the first stable release
 
-**Where it stands (2026-10-21):** steps 1-5 are done for 1.0.0, and 1.0.1
-(a patch) followed it to bench; the bench radio runs 1.0.1. Nothing is on
-stable yet. The soak (step 6) and the promote (step 7) are next; which
-version to promote is an owner decision (*Promoting 1.0.1 instead of 1.0.0*,
-below).
+**Where it stands (2026-10-23):** done. 1.0.0-1.0.5 went to bench; the
+owner promoted **1.0.5** to stable on 2026-10-23 (the bench radio had run it
+a few hours; no radio followed stable yet, so the first stable radios are new
+installs). From now on auto-promote moves bench's current release to stable
+after 7 days on bench (see "Automated lanes").
 
 What is special: `stable.json` doesn't exist until the first promote (radios
 on Stable report "no update info" until then; the promote creates it - the

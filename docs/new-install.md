@@ -70,7 +70,7 @@ them for moOde, so this should not happen.
 
 | Setting | Default | Other choices |
 |---|---|---|
-| `channel` | `stable` | `bench` for the makers' test radio. **For now, set `bench`:** no release has been promoted to Stable yet, and the installer stops with "there is no 'stable' channel yet" |
+| `channel` | `stable` | `bench` only for the makers' test radio. Stable has been live since 1.0.5 (2026-10-23). |
 | `update_mode` | `auto` (small updates at night, big ones ask) | `ask`, `off` |
 | `variant` | `hasler-hm` | `excelsior` |
 | `user` | `pi` | the username you gave Imager |
@@ -142,7 +142,7 @@ curl -fsSLO https://delgado-murphy.github.io/hasler-releases/install/hasler-inst
 curl -fsSLO https://delgado-murphy.github.io/hasler-releases/install/hasler-install.sig
 echo 'hasler-root namespaces="hasler-install" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF9gmAm746rpYzKa24jKiAZyiAiMw0bEuj30vRw38Cv7' > hasler-root.allowed
 ssh-keygen -Y verify -f hasler-root.allowed -I hasler-root -n hasler-install -s hasler-install.sig < hasler-install \
-  && sudo python3 -I hasler-install install --channel bench   # stable once 1.0 is promoted
+  && sudo python3 -I hasler-install install          # stable; --channel bench for a test radio
 ```
 
 `ssh-keygen` prints `Good "hasler-install" signature for hasler-root` and only
@@ -254,7 +254,7 @@ The kit files on the boot partition can stay; cloud-init runs them only once
   ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)).
   The installer waits for the network and carries on by itself.
 - **"there is no 'stable' channel yet"**: no release has been promoted to
-  stable yet (1.0.0 and 1.0.1 are on bench); use `channel = bench`.
+  stable yet; that was the case before 1.0.5 was promoted on 2026-10-23.
 - **"this release cannot set up a new radio"**: releases before 1.0 do not
   carry `app/setup/`; wait for one that does.
 - **"bad signature"** or **"does not match"**: something between the release
