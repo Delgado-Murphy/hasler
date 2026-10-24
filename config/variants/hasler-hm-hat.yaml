@@ -108,6 +108,13 @@ actions:
   volume.change: {do: set_volume}
   tone.change: {do: set_tone}
 
+# Key combinations: two keys held down together for hold_s (0.5-3 s) do one
+# more thing (haslerd/panel/combos.py). Once the second key goes down, neither
+# key's own tap or hold happens for that press - let go early and nothing does.
+# Any verb a key can do; the key page edits these (Edit keys).
+combos:
+  - {keys: [k1, k2], hold_s: 1.0, do: bt_pair, seconds: 120}
+
 # One key, one source. Each preset names exactly one of:
 #   radio:    an HTTP stream URL, played by MPD
 #   spotify:  a spotify:playlist:/album:/track: URI, played by go-librespot

@@ -24,6 +24,7 @@ import yaml
 from ..actions import Actions, build_presets
 from ..boxconfig import SCHEMA as KEYS_SCHEMA, atomic_write_text
 from ..ha import behaviour
+from ..panel.combos import COMBO_HOLD_RANGE, DEFAULT_COMBO_HOLD_S, MAX_COMBOS, combo_id
 from ..panel.controls import Momentary
 from ..player.base import Preset
 
@@ -136,6 +137,24 @@ def ha_connected(ha: Any) -> bool:
         return False
 
 
+def combo_keys(actions: Actions) -> list[str]:
+    """Keys that may be half of a combination: every key of the cabinet (its
+    momentary controls). Interlocked banks, their release key and end switches
+    are never keys here."""
+    return key_ids(actions)
+
+
+def combo_to_page(combo: dict) -> dict:
+    """A stored combination -> the page's: ``{"keys", "hold_s", "do", ...params}``."""
+    spec = {k: v for k, v in combo.items() if k not in ("keys", "hold_s")}
+    action = to_page(spec) or {"do": "none"}
+    return {
+        "keys": list(combo.get("keys") or []),
+        "hold_s": float(combo.get("hold_s", DEFAULT_COMBO_HOLD_S)),
+        **action,
+    }
+
+
 def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
     table = actions.variant.actions
     keys = []
@@ -153,6 +172,10 @@ def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
         "verbs": VERBS,
         "sources": sources,
         "ha": ha_connected(ha),
+        "combos": [combo_to_page(c) for c in actions.variant.combos or [] if isinstance(c, dict)],
+        "combo_keys": combo_keys(actions),
+        "combo_limits": {"hold_s": list(COMBO_HOLD_RANGE), "default_hold_s": DEFAULT_COMBO_HOLD_S,
+                         "max": MAX_COMBOS},
     }
 
 
@@ -262,8 +285,74 @@ def action_from_page(raw: Any, where: str, preset_ns: set[int], current: dict | 
     return {"do": verb}         # cycle_source, standby_toggle, join_group, bluetooth
 
 
+def combos_from_page(
+    raw: Any, actions: Actions, preset_ns: set[int], errors: list, current: list[dict] | None = None
+) -> list[dict]:
+    """The page's ``combos`` -> stored combinations, in descriptor key order:
+    ``[{"keys": [a, b], "hold_s": s, "do": verb, ...params}]``. Each problem is
+    appended to ``errors`` as ``combos[i]``, ``combos[i].keys``,
+    ``combos[i].hold_s`` or ``combos[i].do`` (the action)."""
+    if not isinstance(raw, list):
+        errors.append({"where": "combos", "message": "expected a list of key combinations"})
+        return []
+    if len(raw) > MAX_COMBOS:
+        errors.append({"where": "combos", "message": f"at most {MAX_COMBOS} key combinations"})
+        return []
+    order = {cid: i for i, cid in enumerate(combo_keys(actions))}
+    existing = {frozenset(c.get("keys") or ()): c for c in (current or []) if isinstance(c, dict)}
+    out: list[dict] = []
+    seen: set[frozenset] = set()
+    for i, item in enumerate(raw):
+        where = f"combos[{i}]"
+        if not isinstance(item, dict):
+            errors.append({"where": where, "message": "not a key combination"})
+            continue
+        keys = item.get("keys")
+        if not isinstance(keys, list) or len(keys) != 2 or not all(isinstance(k, str) for k in keys):
+            errors.append({"where": f"{where}.keys", "message": "pick two keys"})
+            continue
+        unknown = [k for k in keys if k not in order]
+        if unknown:
+            errors.append({"where": f"{where}.keys", "message": f"no key called {unknown[0]!r}"})
+            continue
+        if keys[0] == keys[1]:
+            errors.append({"where": f"{where}.keys", "message": "pick two different keys"})
+            continue
+        keys = sorted(keys, key=order.__getitem__)
+        pair = frozenset(keys)
+        if pair in seen:
+            errors.append({"where": f"{where}.keys", "message":
+                           f"{label_for(keys[0])} + {label_for(keys[1])} is already a combination"})
+            continue
+        seen.add(pair)
+        hold = item.get("hold_s", DEFAULT_COMBO_HOLD_S)
+        lo, hi = COMBO_HOLD_RANGE
+        if isinstance(hold, bool) or not isinstance(hold, (int, float)) or not lo <= hold <= hi:
+            errors.append({"where": f"{where}.hold_s", "message": f"hold together for {lo:g}–{hi:g} seconds"})
+            continue
+        action = {k: v for k, v in item.items() if k not in ("keys", "hold_s")}
+        cur = existing.get(pair)
+        cur_spec = {k: v for k, v in cur.items() if k not in ("keys", "hold_s")} if cur else None
+        before = len(errors)
+        entry = action_from_page(action, f"{where}.do", preset_ns, cur_spec, errors)
+        if len(errors) > before:
+            continue
+        if entry is None:
+            errors.append({"where": f"{where}.do", "message": "pick what the combination does"})
+            continue
+        out.append({"keys": keys, "hold_s": round(float(hold), 2), **entry})
+    return out
+
+
 def parse(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict | None]]:
     """A PUT body -> (preset specs, {"k1.tap": entry-or-None, …}). Raises Invalid."""
+    specs, table, _ = parse_layout(doc, actions)
+    return specs, table
+
+
+def parse_layout(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict | None], list[dict] | None]:
+    """A PUT body -> (preset specs, key table, combinations - None when the body
+    has no ``combos``, which keeps the current ones). Raises Invalid."""
     errors: list[dict[str, str]] = []
     if not isinstance(doc, dict):
         raise Invalid([{"where": "", "message": "expected a JSON object"}])
@@ -298,16 +387,23 @@ def parse(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict | None
             table[name] = action_from_page(
                 raw.get(event), f"keys[{i}].{event}", seen, actions.variant.actions.get(name), errors
             )
+    combos = None
+    if "combos" in doc:
+        combos = combos_from_page(doc.get("combos") or [], actions, seen, errors, actions.variant.combos)
     if errors:
         raise Invalid(errors)
-    return specs, table
+    return specs, table, combos
 
 
 # -- applying and persisting ------------------------------------------------
 
 
-def apply(actions: Actions, panel: Any, specs: list[dict], table: dict[str, dict | None]) -> None:
-    """Swap in the new layout. Safe against a panel loop running alongside."""
+def apply(
+    actions: Actions, panel: Any, specs: list[dict], table: dict[str, dict | None],
+    combos: list[dict] | None = None,
+) -> None:
+    """Swap in the new layout (``combos`` None = keep the current ones). Safe
+    against a panel loop running alongside."""
     merged = dict(actions.variant.actions)
     for name, entry in table.items():
         if entry is None:
@@ -318,7 +414,28 @@ def apply(actions: Actions, panel: Any, specs: list[dict], table: dict[str, dict
     actions.variant.presets = specs
     actions.presets = presets           # reference swaps: atomic for the loop
     actions.variant.actions = merged
+    if combos is not None:
+        actions.variant.combos = combos
     tune_repeat(actions, panel)
+    tune_combos(actions, panel)
+
+
+def tune_combos(actions: Actions, panel: Any) -> None:
+    """Tell the panel which key combinations to watch for."""
+    set_combos = getattr(panel, "set_combos", None)
+    if callable(set_combos):
+        set_combos(list(actions.variant.combos or []))
+
+
+def find_combo(actions: Actions, keys: Any) -> str | None:
+    """``["k2", "k1"]`` -> ``"k1+k2"`` if that is a configured combination."""
+    if not isinstance(keys, list) or len(keys) != 2:
+        return None
+    for combo in actions.variant.combos or []:
+        if isinstance(combo, dict) and set(combo.get("keys") or ()) == set(keys) and keys[0] != keys[1]:
+            order = {cid: i for i, cid in enumerate(key_ids(actions))}
+            return combo_id(sorted(combo["keys"], key=lambda k: order.get(k, len(order))))
+    return None
 
 
 def ha_entries(actions: Actions) -> list[tuple[str, str, dict]]:
@@ -332,17 +449,23 @@ def ha_entries(actions: Actions) -> list[tuple[str, str, dict]]:
             spec = table.get(f"{cid}.{event}")
             if spec and spec.get("do") in HA_VERBS and behaviour.entity_ids(spec):
                 out.append((cid, event, dict(spec)))
+    for combo in actions.variant.combos or []:
+        spec = {k: v for k, v in combo.items() if k not in ("keys", "hold_s")}
+        if spec.get("do") in HA_VERBS and behaviour.entity_ids(spec):
+            out.append((combo_id(combo["keys"]), "combo", spec))
     return out
 
 
 def remove_entries(actions: Actions, panel: Any, keys_file: Path | None, names: list[str]) -> None:
-    """Clear some key actions ("k2.hold", …) through the normal save/apply path.
+    """Clear some key actions ("k2.hold", …, "k1+k2.combo") through the normal
+    save/apply path.
 
     The overlay holds every key's tap and hold, so the whole current key table
     is written with the named entries set to None - other keys keep whatever
-    the owner chose. Presets are untouched.
+    the owner chose. A named combination is removed; presets are untouched.
     """
     gone = set(names)
+    combos = [c for c in actions.variant.combos or [] if f"{combo_id(c['keys'])}.combo" not in gone]
     table = {
         f"{cid}.{e}": (None if f"{cid}.{e}" in gone else actions.variant.actions.get(f"{cid}.{e}"))
         for cid in key_ids(actions)
@@ -350,8 +473,8 @@ def remove_entries(actions: Actions, panel: Any, keys_file: Path | None, names: 
     }
     specs = list(actions.variant.presets)
     if keys_file is not None:
-        save(keys_file, specs, table)
-    apply(actions, panel, specs, table)
+        save(keys_file, specs, table, combos)
+    apply(actions, panel, specs, table, combos)
 
 
 def tune_repeat(actions: Actions, panel: Any) -> None:
@@ -365,18 +488,37 @@ def tune_repeat(actions: Actions, panel: Any) -> None:
             control.repeat_s = VOLUME_REPEAT_S if hold.get("do") == "volume_step" else None
 
 
-def save(path: Path, specs: list[dict], table: dict[str, dict | None]) -> None:
+_KEEP: Any = object()
+
+
+def save(path: Path, specs: list[dict], table: dict[str, dict | None], combos: Any = _KEEP) -> None:
     """Write the overlay atomically (tmp + fsync + rename): the box is switched
-    off at the wall, and a power cut mid-save must leave the old file."""
+    off at the wall, and a power cut mid-save must leave the old file.
+
+    ``combos``: the key combinations to write; left out, the file keeps the
+    ones it had (none written = the descriptor's apply)."""
+    if combos is _KEEP:
+        saved = load_layout(path)
+        combos = saved[2] if saved is not None else None
     # schema as boxconfig writes it, so a migration knows what it is reading.
-    doc = {"schema": KEYS_SCHEMA, "presets": specs, "actions": table}
+    doc: dict[str, Any] = {"schema": KEYS_SCHEMA, "presets": specs, "actions": table}
+    if combos is not None:
+        doc["combos"] = combos
     text = "# Written by the haslerd web page. Delete to go back to the descriptor.\n" + \
         yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
     atomic_write_text(path, text, mode=0o600)
 
 
 def load(path: Path | None) -> tuple[list[dict], dict[str, dict | None]] | None:
+    """The saved (presets, key table), or None - see load_layout."""
+    saved = load_layout(path)
+    return None if saved is None else (saved[0], saved[1])
+
+
+def load_layout(path: Path | None) -> tuple[list[dict], dict[str, dict | None], list | None] | None:
     """The saved layout, or None (descriptor's keys) if absent or not a layout.
+    Its third part is the key combinations, None when the file has none (the
+    descriptor's then apply).
 
     A hand-edited or half-understood file must cost the saved keys, never the
     daemon: anything that isn't ``{presets: [...], actions: {...}}`` is logged
@@ -397,17 +539,39 @@ def load(path: Path | None) -> tuple[list[dict], dict[str, dict | None]] | None:
     if not isinstance(schema, int) or schema > KEYS_SCHEMA:
         log.warning("%s has schema %r, newer than this release's %d; reading what it can",
                     path, schema, KEYS_SCHEMA)
-    return list(presets or []), dict(actions or {})
+    combos = doc.get("combos")
+    if combos is not None and not isinstance(combos, list):
+        log.error("%s: combos is not a list; using the descriptor's key combinations", path)
+        combos = None
+    return list(presets or []), dict(actions or {}), combos
 
 
 def apply_saved(path: Path | None, actions: Actions, panel: Any) -> bool:
     """At startup: lay the saved overlay over the descriptor. True if there was one."""
-    saved = load(path)
+    saved = load_layout(path)
     if saved is None:
         tune_repeat(actions, panel)
+        tune_combos(actions, panel)
         return False
-    specs, table = saved
+    specs, table, raw_combos = saved
     known = {f"{cid}.{e}" for cid in key_ids(actions) for e in EVENTS}
-    apply(actions, panel, specs, {k: v for k, v in table.items() if k in known})
+    combos = None
+    if raw_combos is not None:
+        # A hand-edited combination that doesn't check out costs that one only.
+        preset_ns = {s.get("n") for s in specs if isinstance(s, dict)}
+        combos = []
+        for i, raw in enumerate(raw_combos):
+            errors: list = []
+            ok = isinstance(raw, dict) and isinstance(raw.get("keys"), list)
+            got = combos_from_page([combo_to_page(raw) if ok else raw], actions, preset_ns, errors,
+                                   [raw] if ok else None)
+            if errors:
+                log.error("%s: ignoring key combination %d: %s", path, i, "; ".join(e["message"] for e in errors))
+                continue
+            if got and frozenset(got[0]["keys"]) in {frozenset(c["keys"]) for c in combos}:
+                log.error("%s: ignoring key combination %d: that pair is there twice", path, i)
+                continue
+            combos.extend(got)
+    apply(actions, panel, specs, {k: v for k, v in table.items() if k in known}, combos)
     log.info("keys from %s", path)
     return True

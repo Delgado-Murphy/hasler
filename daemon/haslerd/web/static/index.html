@@ -271,6 +271,30 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .kl-name{color:var(--cream);font:600 15px/20px var(--serif);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kl-sub{color:var(--muted);font:10px/13px var(--mono);letter-spacing:.08em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chev{flex:none;color:var(--muted)}
+/* key combinations (Edit keys) */
+.combos{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.combo-h{margin:0;color:var(--title);font:600 18px/24px var(--serif)}
+.combo-h:focus{outline:none}
+.combo-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.combo-row{display:flex;align-items:center;gap:12px;min-height:56px;padding:6px 4px;border-bottom:1px solid var(--line)}
+.combo-row:first-child{border-top:1px solid var(--line)}
+.cc-keys{flex:none;display:flex;align-items:center;gap:4px}
+.cc-keys .kl-n{width:28px;height:32px;font-size:14px;line-height:32px}
+.cc-keys .kl-n.pu{font-size:11px}
+.cc-plus{color:var(--muted);font:700 13px/16px var(--sans)}
+.cc-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.cc-what{color:var(--cream);font:600 15px/20px var(--serif);overflow-wrap:anywhere}
+.cc-sub{color:var(--muted);font:10px/13px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.cc-sub.bad{color:#F07A62}
+.cc-btns{flex:none;display:flex;gap:14px}
+.combo-caps{display:flex;gap:5px;padding:6px;border-radius:10px;background:#1F140D}
+.ccap{flex:1 1 0;min-width:0;height:52px;padding:0;border:0;border-radius:5px 5px 7px 7px;background:#E8DCC2;color:var(--ink);font:900 17px/22px var(--sans);transition:background .12s,box-shadow .12s}
+.ccap.pu{flex-grow:1.15;margin-left:5px;background:#4A3726;color:var(--cream);font-size:14px}
+.ccap[aria-pressed="true"]{background:#FFF3D9;box-shadow:0 0 0 2px var(--amber),0 0 12px rgba(255,178,56,.45)}
+.ccap.pu[aria-pressed="true"]{background:#6A5038}
+.ccap:disabled{opacity:.32;cursor:default}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.combo-note{padding:8px 12px;border:1px dashed var(--line2);border-radius:10px}
 
 /* ---------- browse ---------- */
 .shelf{display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -819,7 +843,7 @@ let settings = null, haState = null, haEnts = null, haEntsErr = '', browseData =
 let ytm = {available:null, signed_in:false, name:''}, ytmLib = null;
 const acctUi = {open:false, text:'', err:'', busy:false};
 const ytmUi = {}, ytmPicked = new Map(), stationMeta = new Map(), autoName = {}, srcMemo = {}, linkMode = {};
-const ed = {key:null, pick:null, ent:null, rename:false, entQ:'', lp:null, lpQ:''};
+const ed = {key:null, pick:null, ent:null, rename:false, entQ:'', lp:null, lpQ:'', combo:null};
 const tryRes = {};          // "k1.hold" -> what the last "Try it" said
 let view = 'remote';
 
@@ -899,13 +923,56 @@ function refCount(d, n){
   return c;
 }
 function payload(d){
-  return {
+  const out = {
     keys: d.keys.map(k => ({id:k.id, tap:normAct(k.tap), hold:normAct(k.hold)})),
     presets: d.presets
       .filter(p => refCount(d, p.n) || (p.uri || '').trim())
       .map(p => ({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(),
         shuffle: p.source === 'radio' || isRadioUri(p.uri) ? false : !!p.shuffle})),
   };
+  // Only on a radio that has combinations; one still missing a key or an action isn't sent.
+  if (Array.isArray(d.combos)) out.combos = d.combos.filter(comboReady).map(comboOut);
+  return out;
+}
+/* ---------- key combinations: two keys held together ----------
+   In the draft each one is {id, keys, hold_s, combo: <action>}, so the tap/hold editors
+   work on it as they do on a key (slot "combo"). The radio stores the action flat. */
+const comboLim = () => Object.assign({hold_s:[0.5, 3], default_hold_s:1, max:8}, (cfg && cfg.combo_limits) || {});
+let baseCombos = {}, comboSeq = 0;
+const combosOn = () => !!(draft && Array.isArray(draft.combos));
+// "k1+k2" in key order: the radio's own name for it (Home Assistant checks report it as "k1+k2", event "combo").
+const comboPairId = keys => comboOrder(keys).join('+');
+function comboIn(c){
+  const {keys, hold_s, ...act} = c || {};
+  const ks = Array.isArray(keys) ? keys.slice(0, 2) : [];
+  return {id: comboPairId(ks), keys: ks, hold_s: +hold_s || comboLim().default_hold_s, combo: act.do && act.do !== 'none' ? act : null};
+}
+function comboOrder(keys){
+  const ord = (cfg && cfg.combo_keys) || [], at = id => { const i = ord.indexOf(id); return i < 0 ? 99 : i; };
+  return keys.slice().sort((a, b) => at(a) - at(b));
+}
+const comboReady = c => c.keys.length === 2 && verbOf(c.combo) !== 'none';
+const comboOut = c => Object.assign({keys: comboOrder(c.keys), hold_s: Math.round((+c.hold_s || comboLim().default_hold_s) * 10) / 10}, normAct(c.combo));
+const comboDirty = c => c.id in baseCombos ? baseCombos[c.id] !== JSON.stringify(comboReady(c) ? comboOut(c) : null) : comboReady(c);
+const comboById = id => (draft && draft.combos || []).find(c => c.id === id) || null;
+const comboKey = id => (cfg && cfg.keys.find(k => k.id === id)) || {id, label:id};
+const comboName = c => comboOrder(c.keys).map(id => comboKey(id).label).join(' + ');
+const comboErr = c => errs[c.id + '._'] || errs[c.id + '.combo'] || '';
+const holdWords = x => (Math.round((+x || 1) * 10) / 10) + '\u00a0s';
+function durWords(s){
+  s = +s;
+  if (!s || s < 60) return (s || 0) + '\u00a0s';
+  return Math.floor(s / 60) + '\u00a0min' + (s % 60 ? '\u00a0' + (s % 60) + '\u00a0s' : '');
+}
+// "Pair a phone (2 min)", "Scene · Evening"; `lower` for inside a sentence: "pair a phone".
+function comboWhat(a, lower){
+  const v = verbOf(a);
+  let t;
+  if (v === 'bt_pair') t = lower ? 'Pair a phone' : 'Pair a phone\u00a0(' + durWords(a.seconds || 120) + ')';
+  else if (isHa(v)){ const n = haTarget(a); t = verbShort(v) + (n ? ' · ' + n : ''); }
+  else if (v === 'custom') t = a.label || 'Custom';
+  else t = verbShort(v);
+  return lower && !/^[A-Z]{2}/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t;
 }
 function keySig(d, k){
   const ps = ['tap','hold'].map(s => k[s] && k[s].do === 'preset' ? presetIn(d, k[s].n) : null)
@@ -916,10 +983,12 @@ const isDirty = () => !!draft && JSON.stringify(payload(draft)) !== baseline;
 const keyDirty = k => !!draft && baseSig[k.id] !== keySig(draft, k);
 function adopt(newCfg){
   cfg = newCfg;
-  draft = {keys: clone(cfg.keys || []), presets: clone(cfg.presets || [])};
+  draft = {keys: clone(cfg.keys || []), presets: clone(cfg.presets || []),
+    combos: Array.isArray(cfg.combos) ? cfg.combos.map(c => comboIn(clone(c))) : null};
   baseline = JSON.stringify(payload(draft));
-  baseSig = {};
+  baseSig = {}; baseCombos = {};
   for (const k of draft.keys) baseSig[k.id] = keySig(draft, k);
+  for (const c of draft.combos || []) baseCombos[c.id] = JSON.stringify(comboReady(c) ? comboOut(c) : null);
 }
 const nextFreeN = d => d.presets.reduce((m, p) => Math.max(m, +p.n || 0), 0) + 1;
 
@@ -950,6 +1019,10 @@ function applyServerErrors(list){
     } else if ((m = /^keys\[(\d+)\](?:\.(tap|hold))?/.exec(where))){
       const k = lastSent && lastSent.keys[+m[1]];
       if (k){ const kk = k.id + '.' + (m[2] || '_'); errs[kk] = errs[kk] ? errs[kk] + ' ' + msg : msg; continue; }
+    } else if ((m = /^combos\[(\d+)\](?:\.(\w+))?/.exec(where))){
+      // The combinations sent are the draft's finished ones, in the same order.
+      const c = (draft.combos || []).filter(comboReady)[+m[1]];
+      if (c){ const kk = c.id + '.' + (!m[2] || m[2] === 'keys' || m[2] === 'hold_s' ? '_' : 'combo'); errs[kk] = errs[kk] ? errs[kk] + ' ' + msg : msg; continue; }
     }
     general.push(where ? where + ': ' + msg : msg);
   }
@@ -1389,8 +1462,8 @@ function onRoute(){
   setUi.wantSec = toKey && next.arg2 && !(SET_SUBS[next.arg] || []).includes(next.arg2) ? next.arg2 : null;
   $('app').dataset.view = view;
   if (view === 'edit'){
-    ed.key = next.arg === 'reset' ? null : next.arg && cfg && cfg.keys.some(k => k.id === next.arg) ? next.arg : (changed ? null : ed.key);
-    ed.pick = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null; ed.ent = null; ed.lp = null; ed.rename = false;
+    ed.key = next.arg === 'reset' || next.arg === 'combos' ? null : next.arg && cfg && cfg.keys.some(k => k.id === next.arg) ? next.arg : (changed ? null : ed.key);
+    ed.pick = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null; ed.ent = null; ed.lp = null; ed.rename = false; ed.combo = null;
   }
   renderPanel();
   if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); }
@@ -1399,6 +1472,7 @@ function onRoute(){
   if (pageChanged && view === 'settings'){ const pg = SET_PAGE[curPage()]; if (pg && pg.load) pg.load(); }
   if (changed && view === 'edit'){ if (cfg && !isDirty()) refreshConfig(); if (!btDoc) loadBt().then(() => { if (view === 'edit') rerender(); }); }
   if (view === 'edit' && next.arg === 'reset'){ const b = $('resetKeys'); if (b){ b.scrollIntoView({block:'center'}); b.focus({preventScroll:true}); } }
+  else if (view === 'edit' && next.arg === 'combos' && $('comboH')){ const t = $('comboH'); t.scrollIntoView({block:'start'}); t.focus({preventScroll:true}); }
   else if (pageChanged){
     window.scrollTo(0, 0);
     const back = curPage() === 'home' && setUi.backTo ? $('setrow-' + setUi.backTo) : null;
@@ -1469,19 +1543,21 @@ function renderEdit(){
   const sheet = h('section', {class:'sheet', 'aria-label': ed.key ? 'Key settings' : 'Keys'}, h('div', {class:'grab', 'aria-hidden':'true'}));
   if (general.length) sheet.append(h('div', {class:'alert', role:'alert'}, h('strong', null, 'The radio didn’t accept these settings:'), h('ul', null, general.map(g => h('li', null, g)))));
   const k = ed.key && draft.keys.find(x => x.id === ed.key);
-  if (!k) sheet.append(keyList());
+  const cb = !k && ed.combo && comboById(ed.combo);
+  if (cb){ sheet.setAttribute('aria-label', 'Key combination'); comboSheet(sheet, cb); }
+  else if (!k) sheet.append(keyList());
   else keySheet(sheet, k);
   panel.append(sheet);
 }
 function selectKey(id){
-  ed.key = id; ed.pick = null; ed.ent = null; ed.lp = null; ed.rename = false; saveMsg = {text:'', bad:false};
+  ed.key = id; ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; ed.rename = false; saveMsg = {text:'', bad:false};
   history.replaceState(null, '', '#edit/' + id); prevHash = location.hash;
   renderEdit();
   const t = $('keyTitle'); if (t) t.focus({preventScroll:true});
 }
 function done(){
   if (isDirty() && !confirm('Discard the changes you haven’t saved?')) return;
-  errs = {}; hints = {}; general = []; adopt(cfg);
+  errs = {}; hints = {}; general = []; ed.combo = null; adopt(cfg);
   go('');
 }
 function slotSummary(k, s){
@@ -1501,6 +1577,7 @@ function keyList(){
       h('span', {class:'chev'}, IC.chev()))));
   }
   return h('div', {class:'field'}, h('p', {class:'hint'}, 'Pick a key to change what it plays, and what it does when you hold it.'), ul,
+    combosOn() ? comboSection() : null,
     h('div', {class:'danger-row', id:'sec-reset'},
       h('span', {class:'li-sub'}, 'Every key back to the built-in stations. The radio asks for a key press to be sure.'),
       h('div', null, h('button', {type:'button', class:'li-danger', id:'resetKeys', style:'width:auto', onclick: resetDefaults}, 'Reset keys to defaults'))));
@@ -1518,6 +1595,7 @@ function keySheet(sheet, k){
   sheet.append(h('div', {class:'sheet-head'},
     h('h2', {id:'keyTitle', tabindex:'-1'}, keyLabel(k)),
     h('span', {class:'mono'}, tapV === 'preset' ? 'Tap plays' : 'Tap does')));
+  const cNote = comboNote(k); if (cNote) sheet.append(cNote);
   const kErr = errText(k.id + '._'); if (kErr) sheet.append(h('p', {class:'err', role:'alert'}, kErr));
   if (tapV === 'preset' && ed.pick !== 'tap') presetSection(sheet, k);
   else actionSection(sheet, k, 'tap');
@@ -1873,11 +1951,12 @@ function holdRow(sheet, k){
 }
 function verbPicker(k, slot){
   const cur = verbOf(k[slot]);
-  const all = ((cfg && cfg.verbs) || []).filter(x => slot === 'tap' || x.do !== 'preset' || cur === 'preset');
+  // A combination does one thing, once: not "Nothing" (that's Remove), music or a volume step (a key's job).
+  const all = ((cfg && cfg.verbs) || []).filter(x => slot === 'combo' ? !['preset', 'none', 'volume_up', 'volume_down'].includes(x.do) || (cur === x.do && /^volume_/.test(cur)) : slot === 'tap' || x.do !== 'preset' || cur === 'preset');
   const rank = v => { const i = HA_ORDER.indexOf(v); return i < 0 ? 99 : i; };
   const verbs = all.filter(x => !isHa(x.do)).concat(all.filter(x => isHa(x.do)).sort((a, b) => rank(a.do) - rank(b.do)));
   if (cur === 'custom') verbs.push({do:'custom', label: k[slot].label || 'Custom'});
-  const ul = h('div', {class:'picker', role:'radiogroup', 'aria-label': slot === 'tap' ? 'What a tap does' : 'What holding does'});
+  const ul = h('div', {class:'picker', role:'radiogroup', 'aria-label': slot === 'tap' ? 'What a tap does' : slot === 'combo' ? 'What the combination does' : 'What holding does'});
   let haHead = false;
   for (const vb of verbs){
     const needsHa = isHa(vb.do) && !(haState && haState.connected), needsMr = vb.do === 'join_group' && !mrOn();
@@ -1895,7 +1974,7 @@ function verbPicker(k, slot){
         const f = $(ed.ent ? 'entq' : ed.lp ? 'lpq' : 'chg-' + slot); if (f) f.focus();
       }}, h('span', {class:'radio-dot', 'aria-hidden':'true'}), h('span', null, label, desc ? h('small', null, desc) : null)));
   }
-  const box = h('div', {class:'field'}, h('label', null, slot === 'tap' ? 'A tap…' : 'Holding the key…'), ul,
+  const box = h('div', {class:'field'}, h('label', null, slot === 'tap' ? 'A tap…' : slot === 'combo' ? 'Holding both keys…' : 'Holding the key…'), ul,
     h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { ed.pick = null; rerender(); const f = $('chg-' + slot); if (f) f.focus(); }}, 'Cancel')));
   return box;
 }
@@ -1904,10 +1983,11 @@ function paramsFor(k, slot){
   if (v === 'bt_pair'){
     wrap.append(h('label', {for:'sec-' + slot}, 'Pairing window, seconds'),
       h('input', {type:'number', id:'sec-' + slot, inputmode:'numeric', min:'10', max:'900', step:'10', value:String(a.seconds ?? 120),
-        oninput: e => { const n = parseInt(e.target.value, 10); a.seconds = isNaN(n) ? e.target.value : n; clearErr(k.id + '.' + slot); }}),
+        oninput: e => { const n = parseInt(e.target.value, 10); a.seconds = isNaN(n) ? e.target.value : n; clearErr(k.id + '.' + slot); paintSave(); }}),
       h('p', {class:'hint'}, 'How long the radio stays discoverable for a new phone.'));
   } else if (v === 'volume_up' || v === 'volume_down'){
     if (slot === 'hold') wrap.append(h('p', {class:'hint'}, 'Ramps while you hold the key.'));
+    else if (slot === 'combo') wrap.append(h('p', {class:'hint'}, 'Moves the volume one step.'));
     else wrap.append(h('p', {class:'hint'}, 'A tap nudges the volume one step.'));
   } else if (v === 'cycle_source'){
     wrap.append(h('p', {class:'hint'}, 'Each press moves the radio on to the next source.'),
@@ -2332,21 +2412,30 @@ async function save(){
   if (saving || !isDirty()) return;
   saving = true; saveMsg = {text:'', bad:false}; rerender();
   const body = payload(draft); lastSent = body;
-  const label = ed.key ? keyLabel(draft.keys.find(k => k.id === ed.key)) : 'Keys';
+  const cbWas = !ed.key && ed.combo ? comboById(ed.combo) : null;
+  const label = cbWas ? comboName(cbWas) : ed.key ? keyLabel(draft.keys.find(k => k.id === ed.key)) : 'Keys';
+  let focusAfter = null;
   try {
     const r = await api('PUT', '/api/config', body);
     if (r.ok && r.json && r.json.ok){
       errs = {}; hints = {}; general = [];
       adopt(r.json.config || Object.assign({}, cfg, body));
       saveMsg = {text: label + ' saved to the radio.', bad:false};
+      // A saved combination closes its editor, back to its row.
+      if (cbWas){ ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; saveMsg = {text:'', bad:false}; focusAfter = 'cedit-' + comboPairId(cbWas.keys); }
       toast(label + ' saved');
       buildBank();
       refreshHa();
     } else if (r.json && Array.isArray(r.json.errors) && r.json.errors.length){
       applyServerErrors(r.json.errors);
-      const cur = draft.keys.find(k => k.id === ed.key);
-      if (!cur || !keyErrCount(cur)){ const first = draft.keys.find(k => keyErrCount(k) > 0); if (first){ ed.key = first.id; history.replaceState(null, '', '#edit/' + first.id); } }
-      const bad = draft.keys.filter(k => keyErrCount(k)).map(keyLabel);
+      const cur = draft.keys.find(k => k.id === ed.key), curC = !ed.key && ed.combo ? comboById(ed.combo) : null;
+      const badC = (draft.combos || []).filter(c => comboErr(c));
+      if (!(cur && keyErrCount(cur)) && !(curC && comboErr(curC))){
+        const first = draft.keys.find(k => keyErrCount(k) > 0);
+        if (first){ ed.key = first.id; ed.combo = null; history.replaceState(null, '', '#edit/' + first.id); }
+        else if (badC.length){ ed.key = null; ed.combo = badC[0].id; ed.pick = null; history.replaceState(null, '', '#edit/combos'); }
+      }
+      const bad = draft.keys.filter(k => keyErrCount(k)).map(keyLabel).concat(badC.map(comboName));
       saveMsg = {text:'Not saved — ' + (bad.length ? 'check ' + bad.join(', ') : 'see the message above') + '.', bad:true};
     } else {
       general = [(r.json && (r.json.error || r.json.message)) || 'Saving failed (error ' + r.status + ').'];
@@ -2354,6 +2443,7 @@ async function save(){
     }
   } catch (_) { saveMsg = {text:'Couldn’t reach the radio. Check you’re on the same Wi-Fi and try again.', bad:true}; }
   saving = false; rerender();
+  const fa = focusAfter && $(focusAfter); if (fa){ fa.scrollIntoView({block:'center'}); fa.focus({preventScroll:true}); }
   const el = $('panel').querySelector('.err, .alert'); if (el && saveMsg.bad) el.scrollIntoView({block:'center', behavior: reduced.matches ? 'auto' : 'smooth'});
 }
 
@@ -2389,6 +2479,162 @@ function putItemOnKey(item, keyId){
     if (p) Object.assign(p, fields);
     else { p = Object.assign({n: nextFreeN(d)}, fields); d.presets.push(p); k.tap = {do:'preset', n:p.n}; }
   }, name + ' is on ' + (k0 ? keyLabel(k0).replace(/^Key/, 'key') : keyId));
+}
+
+/* ================= key combinations (Edit keys) ================= */
+// Keys that may be part of a combination (never an interlocked key or an end switch: the radio leaves those out).
+const comboKeyIds = () => ((cfg && cfg.combo_keys) || []).filter(id => cfg.keys.some(k => k.id === id));
+function comboCapsView(c){
+  return h('span', {class:'cc-keys', 'aria-hidden':'true'}, comboOrder(c.keys).flatMap((id, i) => [
+    i ? h('span', {class:'cc-plus'}, '+') : null,
+    h('span', {class:'kl-n' + (id === 'pu' ? ' pu' : '')}, comboKey(id).label)]));
+}
+function comboSection(){
+  const list = draft.combos.filter(comboReady);
+  const max = comboLim().max, n = comboKeyIds().length, full = list.length >= max || list.length >= n * (n - 1) / 2;
+  const ul = h('ul', {class:'combo-list', 'aria-label':'Key combinations'});
+  for (const c of list){
+    const bad = !!comboErr(c), dirty = comboDirty(c), name = comboName(c);
+    ul.append(h('li', {class:'combo-row'}, comboCapsView(c),
+      h('span', {class:'cc-txt'},
+        h('span', {class:'cc-what'}, h('span', {class:'sr-only'}, name + ': '), comboWhat(c.combo)),
+        h('span', {class:'cc-sub' + (bad ? ' bad' : '')}, 'Hold ' + holdWords(c.hold_s) + (bad ? ' · has a problem' : dirty ? ' · not saved yet' : ''))),
+      h('span', {class:'cc-btns'},
+        h('button', {type:'button', class:'link', id:'cedit-' + c.id, 'aria-label':'Edit ' + name, onclick: () => openCombo(c.id)}, 'Edit'),
+        h('button', {type:'button', class:'link danger', 'aria-label':'Remove ' + name, onclick: () => removeCombo(c)}, 'Remove'))));
+  }
+  return h('section', {class:'combos', id:'sec-combos', 'aria-labelledby':'comboH'},
+    h('h3', {class:'combo-h', id:'comboH', tabindex:'-1'}, 'Key combinations'),
+    h('p', {class:'hint'}, 'Hold two keys together for about a second to do something extra.'),
+    list.length ? ul : h('p', {class:'hint'}, 'None yet.'),
+    h('div', null, h('button', {type:'button', class:'btn small inline', id:'comboAdd', disabled: full, 'aria-describedby': full ? 'comboFull' : null, onclick: addCombo},
+      IC.plus(), 'Add a combination')),
+    full ? h('p', {class:'hint', id:'comboFull'}, list.length >= max ? 'That’s the most there can be: ' + max + '. Remove one to add another.' : 'Every pair of keys is already a combination.') : null);
+}
+// On a key's own page: the combinations it's part of.
+function comboNote(k){
+  if (!combosOn()) return null;
+  const mine = draft.combos.filter(c => comboReady(c) && c.keys.includes(k.id));
+  if (!mine.length) return null;
+  return h('p', {class:'hint combo-note'}, 'Also part of ' + mine.map(c => comboName(c) + ' (' + comboWhat(c.combo, true) + ')').join(' and '));
+}
+function openCombo(id, isNew){
+  ed.key = null; ed.combo = id; ed.pick = isNew ? 'combo' : null; ed.ent = null; ed.lp = null; ed.rename = false;
+  saveMsg = {text:'', bad:false};
+  history.replaceState(null, '', '#edit/combos'); prevHash = location.hash;
+  renderEdit(); window.scrollTo(0, 0);
+  const t = $('comboTitle'); if (t) t.focus({preventScroll:true});
+}
+function addCombo(){
+  // A new one left half-made earlier goes; this starts afresh.
+  draft.combos = draft.combos.filter(c => comboReady(c) || c.id in baseCombos);
+  const c = {id: 'n' + (++comboSeq), keys: [], hold_s: comboLim().default_hold_s, combo: null};
+  draft.combos.push(c);
+  openCombo(c.id, true);
+}
+// Back to how the radio has it (or gone, if it was never saved).
+function cancelCombo(c){
+  const i = draft.combos.indexOf(c);
+  const saved = (cfg.combos || []).find(e => comboPairId(e.keys || []) === c.id);
+  if (i >= 0){ if (saved && c.id in baseCombos) draft.combos[i] = comboIn(clone(saved)); else draft.combos.splice(i, 1); }
+  clearErr(c.id + '._', c.id + '.combo'); delete tryRes[c.id + '.combo'];
+  ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; saveMsg = {text:'', bad:false};
+  renderEdit();
+  const f = $('cedit-' + c.id) || $('comboAdd'); if (f){ f.scrollIntoView({block:'center'}); f.focus({preventScroll:true}); }
+}
+function comboCaps(c){
+  const used = new Map();
+  for (const o of draft.combos) if (o !== c && comboReady(o)) used.set(comboPairId(o.keys), o);
+  const grp = h('div', {class:'combo-caps', role:'group', 'aria-label':'The two keys', 'aria-describedby':'capsHint'});
+  const taken = [];
+  for (const id of comboKeyIds()){
+    const k = comboKey(id), on = c.keys.includes(id);
+    let why = '';
+    if (!on && c.keys.length >= 2) why = 'two keys are chosen';
+    else if (!on && c.keys.length === 1){ const o = used.get(comboPairId([c.keys[0], id])); if (o){ why = comboName(o) + ' is already a combination'; taken.push(comboName(o)); } }
+    grp.append(h('button', {type:'button', class:'ccap' + (id === 'pu' ? ' pu' : ''), id:'cap-' + id, 'aria-pressed': String(on), disabled: !!why,
+      'aria-label': keyLabel(k) + (why ? ' (' + why + ')' : ''),
+      onclick: () => {
+        c.keys = on ? c.keys.filter(x => x !== id) : comboOrder(c.keys.concat(id));
+        clearErr(c.id + '._'); saveMsg = {text:'', bad:false};
+        rerender(); const b = $('cap-' + id); if (b) b.focus();
+      }}, k.label));
+  }
+  const hint = c.keys.length === 0 ? 'Pick two keys.' : c.keys.length === 1 ? 'Pick one more.' + (taken.length ? ' Already ' + (taken.length > 1 ? 'combinations' : 'a combination') + ': ' + taken.join(', ') + '.' : '') : 'To change one, tap it to let it go, then pick another.';
+  return h('div', {class:'field'}, h('label', null, 'Keys'), grp, h('p', {class:'hint', id:'capsHint', 'aria-live':'polite'}, hint));
+}
+function comboSheet(sheet, c){
+  const two = c.keys.length === 2, name = two ? comboName(c) : '';
+  sheet.append(h('div', {class:'sheet-head'},
+    h('h2', {id:'comboTitle', tabindex:'-1'}, two ? name : 'Key combination'),
+    h('button', {type:'button', class:'link quiet', id:'comboCancel', onclick: () => cancelCombo(c)}, 'Cancel')));
+  const kErr = errText(c.id + '._'); if (kErr) sheet.append(h('p', {class:'err', role:'alert'}, kErr));
+  sheet.append(comboCaps(c));
+  const [lo, hi] = comboLim().hold_s, hs = Math.min(hi, Math.max(lo, +c.hold_s || comboLim().default_hold_s));
+  sheet.append(h('div', {class:'field'},
+    h('div', {class:'sub-lbl'}, h('label', {for:'holdS'}, 'Hold for'), h('span', {class:'li-val', id:'holdSVal'}, holdWords(hs))),
+    rangeInput({id:'holdS', step:'0.1', 'aria-valuetext': holdWords(hs)}, lo, hi, hs, x => {
+      c.hold_s = x; $('holdSVal').textContent = holdWords(x); $('holdS').setAttribute('aria-valuetext', holdWords(x));
+      clearErr(c.id + '._'); paintSave();
+    }),
+    h('p', {class:'hint'}, 'Hold both keys together this long. Then neither key does its own tap or hold; let go sooner and nothing happens.')));
+  if (ed.pick !== 'combo') sheet.append(h('div', {class:'sub-lbl'}, h('span', null, 'Then it does')));
+  actionSection(sheet, c, 'combo');
+  const dirty = isDirty(), ready = comboReady(c), lbl = two ? name : 'combination';
+  sheet.append(h('p', {class:'save-msg' + (saveMsg.bad ? ' bad' : ''), role:'status', 'aria-live':'polite'}, saveMsg.text));
+  sheet.append(h('div', {class:'actions'},
+    h('button', {type:'button', class:'btn', id:'comboTry', disabled: !ready, onclick: () => tryCombo(c)}, 'Try it on the radio'),
+    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': lbl, disabled: saving || !dirty || !ready, onclick: () => saveCombo(c)},
+      saving ? 'Saving…' : dirty || !ready ? 'Save ' + lbl : 'Saved ✓')));
+}
+function saveCombo(c){
+  if (!comboReady(c)){ saveMsg = {text: c.keys.length < 2 ? 'Pick two keys first.' : 'Choose what it does first.', bad:true}; rerender(); return; }
+  save();
+}
+// The radio does what it has saved for these two keys, as if they were held.
+async function tryCombo(c){
+  if (!(c.id in baseCombos) || comboDirty(c)){ saveMsg = {text:'Save it first: the radio tries what it has saved.', bad:true}; rerender(); return; }
+  const btn = $('comboTry'); if (btn){ btn.disabled = true; btn.textContent = 'Trying…'; }
+  try {
+    const r = await api('POST', '/api/press', {combo: comboOrder(c.keys)});
+    if (r.ok && (!r.json || r.json.ok !== false)) saveMsg = {text:'The radio did it: ' + comboWhat(c.combo, true) + '.', bad:false};
+    else saveMsg = {text: ((r.json && r.json.error) ? capFirst(r.json.error) : 'The radio didn’t do it (error ' + r.status + ')') + '. Try again.', bad:true};
+  } catch (_) { saveMsg = {text:NET_ERR, bad:true}; }
+  if (view === 'edit') rerender();
+  const b = $('comboTry'); if (b) b.focus();
+  pollSoon();
+}
+// Change the radio's combinations alone (Remove, and its Undo), leaving other unsaved key changes as they are.
+async function applyCombos(mutate, okMsg, undo){
+  try {
+    const g = await api('GET', '/api/config');
+    if (!g.ok || !g.json || !Array.isArray(g.json.keys) || !Array.isArray(g.json.combos)) throw new Error('config');
+    const base = {keys: clone(g.json.keys), presets: clone(g.json.presets || []), combos: g.json.combos.map(e => comboIn(clone(e)))};
+    mutate(base.combos);
+    const body = payload(base);
+    const r = await api('PUT', '/api/config', body);
+    if (r.ok && r.json && r.json.ok){
+      const wasDirty = isDirty(), keep = draft;
+      adopt(r.json.config || Object.assign({}, g.json, body));
+      if (wasDirty && keep){ if (keep.combos) mutate(keep.combos); draft = keep; }
+      buildBank();
+      if (view === 'edit') rerender();
+      toast(okMsg, undo ? {undo} : null);
+      return true;
+    }
+    const e = r.json && ((r.json.errors && r.json.errors[0] && r.json.errors[0].message) || r.json.error);
+    toast('Not saved — ' + (e || 'error ' + r.status) + '. Try again.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  return false;
+}
+async function removeCombo(c){
+  const name = comboName(c), id = c.id;
+  const focusNext = () => { const f = $('comboAdd'); if (f) f.focus({preventScroll:true}); };
+  if (!(id in baseCombos)){ draft.combos = draft.combos.filter(x => x !== c); rerender(); focusNext(); return; }
+  const saved = clone((cfg.combos || []).find(e => comboPairId(e.keys || []) === id) || comboOut(c));
+  const at = (cfg.combos || []).findIndex(e => comboPairId(e.keys || []) === id);
+  const back = () => applyCombos(cs => { if (!cs.some(x => x.id === id)) cs.splice(at < 0 ? cs.length : Math.min(at, cs.length), 0, comboIn(clone(saved))); }, name + ' is back');
+  if (await applyCombos(cs => { const i = cs.findIndex(x => x.id === id); if (i >= 0) cs.splice(i, 1); }, name + ' removed', back)) focusNext();
 }
 
 /* ================= key chooser dialog ================= */

@@ -161,6 +161,11 @@ class Momentary(Control):
     def state(self):
         return self._settled.committed
 
+    @property
+    def hold_fired(self) -> bool:
+        """Down, and this press already fired its hold (panel/combos.py)."""
+        return bool(self._settled.committed and self._hold_fired)
+
 
 class LatchingToggle(Control):
     """Independent stay-put switch. Emits ``on`` / ``off`` on settled change."""

@@ -85,8 +85,9 @@ CAST_END_GRACE_S = 20.0
 RENDERERS = ("bluetooth", "airplay", "dlna")
 
 # Event kinds that are a hand on a key: they get the lamp's dip. Wheels and the
-# power knob get nothing - the ear is the feedback.
-ACK_KINDS = ("tap", "select")
+# power knob get nothing - the ear is the feedback. A key combination
+# (panel/combos.py, "k1+k2.combo") is a hand on two keys: one dip too.
+ACK_KINDS = ("tap", "select", "combo")
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
 SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source", "bluetooth")
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation", "ha_light", "ha_service")
@@ -331,7 +332,10 @@ class Actions:
                 return
         if event.kind == "hold" and self._bt_hold(event):
             return
-        spec = self.variant.actions.get(f"{event.control}.{event.kind}")
+        if event.kind == "combo":
+            spec = self.combo_spec(event.control)
+        else:
+            spec = self.variant.actions.get(f"{event.control}.{event.kind}")
         if not spec:
             # A pot the descriptor gives an effect but no binding: its knob
             # still plays the effect (dsp/knobs.py), no code per cabinet.
@@ -360,6 +364,14 @@ class Actions:
             log.exception("action %r failed for %s", verb, event)
             if event.kind != "change":
                 self._reply("fail")
+
+    def combo_spec(self, control: str) -> dict | None:
+        """The action of the key combination ``k1+k2`` (either order), or None."""
+        keys = set(control.split("+"))
+        for combo in self.variant.combos or ():
+            if isinstance(combo, dict) and set(combo.get("keys") or ()) == keys and len(keys) == 2:
+                return {k: v for k, v in combo.items() if k not in ("keys", "hold_s")}
+        return None
 
     def touch(self) -> None:
         """Someone is using the radio now (health.py's idle clock)."""

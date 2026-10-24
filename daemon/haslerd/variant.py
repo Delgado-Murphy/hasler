@@ -15,6 +15,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from .panel.combos import ComboWatch
 from .panel.controls import Control, Event, build_controls
 from .panel.io_base import (
     AbsentDigital,
@@ -35,6 +36,9 @@ class Variant:
     controls: list[dict]
     actions: dict[str, Any] = field(default_factory=dict)
     presets: list[dict] = field(default_factory=list)
+    # Key combinations: [{"keys": [k1, k2], "hold_s": 1.0, "do": verb, ...}]
+    # (panel/combos.py; the key page's keys.yaml may replace them).
+    combos: list[dict] = field(default_factory=list)
     path: Path | None = None
     # The box's calibration overlay (/etc/hasler/variant.d/<name>.yaml) when
     # one was laid over this descriptor - see boxconfig.load_effective_variant.
@@ -78,6 +82,7 @@ def load_variant(path: str | Path) -> Variant:
         controls=data["controls"],
         actions=data.get("actions", {}),
         presets=data.get("presets", []),
+        combos=list(data.get("combos") or []),
         path=path,
     )
 
@@ -175,16 +180,25 @@ class Panel:
         self.digital = digital
         self.analog = analog
         self._bus_failing = False
+        # Two keys held together (panel/combos.py). Idle - and never called -
+        # until set_combos gives it a combination.
+        self.combos = ComboWatch(controls)
 
     @classmethod
     def from_variant(cls, variant: Variant, fake: bool = False) -> "Panel":
         digital, analog = open_backends(variant, fake=fake)
-        return cls(build_controls(variant.controls), digital, analog)
+        panel = cls(build_controls(variant.controls), digital, analog)
+        panel.set_combos(variant.combos)
+        return panel
 
     @property
     def absent(self) -> bool:
         """True when the panel board was missing at start (see AbsentDigital)."""
         return getattr(self.digital, "absent", False)
+
+    def set_combos(self, combos: list[dict]) -> None:
+        """The key combinations to watch for (web/keymap.tune_combos)."""
+        self.combos.configure(combos)
 
     def poll(self, now: float) -> list[Event]:
         if self.absent:
@@ -207,6 +221,8 @@ class Panel:
         events: list[Event] = []
         for control in self.controls:
             events.extend(control.update(now, digital, analog))
+        if self.combos.active:
+            events = self.combos.filter(now, events)
         return events
 
     def states(self) -> dict[str, Any]:

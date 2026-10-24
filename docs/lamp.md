@@ -70,6 +70,7 @@ dark, because dark must only mean "safe to unplug" (see History).
 | Ready (on, silent) | Amber | 35% | solid | until changed |
 | Playing a preset | Amber (pale for playlists) | 100% | 1.5 s fade up, then solid | while playing |
 | Key pressed | current | dip to 30% and back | 120 ms down, 200 ms up | 0.3 s |
+| Key combination fires (two keys held together, e.g. 1 + 2 = pairing) | current | one dip, as a key press, then the job's own look (pairing: blue breath); nothing while the keys are held before it fires | as key press | 0.3 s |
 | PU key (next source) | **signature** of where it went: amber for the radio, pale amber for a playlist, blue for a phone's stop (blue 30% while no phone is there yet) | the Look's, at least 35% | signature (below) | 1.6 s, then loading/ready/blue as usual |
 | Volume key (hold) reaches the floor or ceiling | current | one **nudge** | as a key dip | once per press, not per repeat |
 | Loading / buffering | Amber | 25-70% | breath, 1.2 s | until sound; after 20 s -> failure |
@@ -123,7 +124,7 @@ event the owner caused (a phone pairing, a radio joining).
 
 | Reply | Shape | Used for |
 |---|---|---|
-| dip (`ack`, `next`) | to 30% and back, 120 ms down, 200 ms up | a key heard; same playlist key again |
+| dip (`ack`, `next`) | to 30% and back, 120 ms down, 200 ms up | a key heard (or a key combination); same playlist key again |
 | nudge | one dip, as a key press | a volume key at the floor or ceiling |
 | stop | 0.8 s fade 100 -> 35% | same radio key again |
 | two dips (`ha`) | 2 x 150 ms | Home Assistant action sent |

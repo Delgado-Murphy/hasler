@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.8 - 2026-10-24
+
+- Key combinations: hold two keys together for about a second to do
+  something extra. Out of the box, 1 + 2 opens Bluetooth pairing for two
+  minutes. Neither key then does its own tap or hold, and letting go early
+  does nothing. Edit keys -> Key combinations: add up to 8, each with its
+  own keys, hold time and action, and try it on the radio.
+
 ## 1.0.7 - 2026-10-24
 
 - Keys: the bounce window is half a second (was 0.35 s). Keys 2 and 3 were

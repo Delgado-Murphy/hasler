@@ -303,6 +303,7 @@ class WebApp:
         # The descriptor's own layout, for "reset to defaults". Taken before any
         # saved overlay is laid on top.
         self.defaults = (copy.deepcopy(actions.variant.presets), copy.deepcopy(actions.variant.actions))
+        self.default_combos = copy.deepcopy(list(actions.variant.combos or []))
         # Knob calibration. ``box_paths`` (boxconfig.Paths) says where the
         # overlay lives - None and calibrations can be previewed but not saved.
         # ``reload_variant()`` (main.apply_overlay) - or ``on_overlay_saved(
@@ -478,10 +479,13 @@ class WebApp:
 
     def save(self, doc: Any) -> dict:
         with self.lock:
-            specs, table = keymap.parse(doc, self.actions)   # raises keymap.Invalid
+            specs, table, combos = keymap.parse_layout(doc, self.actions)   # raises keymap.Invalid
             if self.keys_file is not None:
-                keymap.save(self.keys_file, specs, table)
-            keymap.apply(self.actions, self.panel, specs, table)
+                if combos is None:
+                    keymap.save(self.keys_file, specs, table)           # keeps the file's combos
+                else:
+                    keymap.save(self.keys_file, specs, table, combos)
+            keymap.apply(self.actions, self.panel, specs, table, combos)
             self._rewarm()
         log.info("key layout saved from the web page")
         return self.config()
@@ -493,7 +497,7 @@ class WebApp:
             specs, actions_table = copy.deepcopy(self.defaults)
             known = {f"{cid}.{e}" for cid in keymap.key_ids(self.actions) for e in keymap.EVENTS}
             table = {k: actions_table.get(k) for k in known}
-            keymap.apply(self.actions, self.panel, specs, table)
+            keymap.apply(self.actions, self.panel, specs, table, copy.deepcopy(self.default_combos))
             self._rewarm()
         log.info("key layout reset to the descriptor's defaults")
         return self.config()
@@ -680,8 +684,16 @@ class WebApp:
     # -- remote control ---------------------------------------------------
 
     def press(self, body: Any) -> None:
-        """A cabinet key pressed from the phone: the very Event the panel would send."""
+        """A cabinet key pressed from the phone: the very Event the panel would send.
+        ``{"combo": ["k1", "k2"]}`` fires that key combination ("Try it")."""
         body = body if isinstance(body, dict) else {}
+        if "combo" in body:
+            cid = keymap.find_combo(self.actions, body.get("combo"))
+            if cid is None:
+                raise ValueError(f"no key combination {body.get('combo')!r}")
+            with self.lock:
+                self.actions.dispatch(Event(cid, "combo"))
+            return
         key, event = body.get("key"), body.get("event", "tap")
         if key not in keymap.key_ids(self.actions):
             raise ValueError(f"no key called {key!r}")

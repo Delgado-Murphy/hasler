@@ -71,6 +71,24 @@ You choose what each key plays, and what holding it does, in
 [Edit keys](#edit-keys). What **PU** steps through, and in what order, is in
 **Settings → Keys & knobs**.
 
+#### Key combinations
+
+Hold **two keys down together** for about a second and the radio does one
+more thing. Out of the box, **keys 1 and 2 held together** open Bluetooth
+pairing for 2 minutes (the same as holding PU), and the lamp dips once, then
+breathes blue.
+
+- Press the second key soon after the first, before the first key's own hold
+  starts (well under a second). Then neither key does its usual job: no
+  music starts, no volume ramps.
+- Let go too early and nothing happens at all. Try again.
+- A third key pressed meanwhile is ignored if it belongs to a combination too.
+
+You can change the pairing combination, or add up to 8 of your own (any job a
+key can do, and how long to hold: half a second to 3 seconds), in
+[Edit keys](#edit-keys). Keys that are in no combination work exactly as
+before.
+
 ### The two knobs
 
 **Volume** works for everything the radio plays: stations, playlists and your
@@ -305,8 +323,12 @@ scene, lights (which ones, on or off, how bright, what colour, how slowly to
 fade), or **Join another Hasler**. A key can also be a
 [Bluetooth key](#bluetooth).
 
-**Reset keys to defaults** (the factory stations back on every key) is at the
-bottom of Edit keys.
+**Key combinations** (two keys held together, see
+[Key combinations](#key-combinations)) are in Edit keys too: pick the two
+keys, how long to hold them and what they do, and **Try it** to hear it.
+
+**Reset keys to defaults** (the factory stations back on every key, and keys
+1 + 2 for pairing) is at the bottom of Edit keys.
 
 ### Settings
 
