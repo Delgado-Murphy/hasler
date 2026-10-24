@@ -3729,8 +3729,20 @@ function verifiedWords(d){
   return 'verified ' + (+m[3]) + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2] - 1];
 }
 
+// The radio sends regions as {key: {en, es, countries}}; the page works with
+// {English name: [countries]} (and adds "Internet" for internet-only stations).
+function normRegions(doc){
+  const src = doc.regions || {}, out = {};
+  for (const [k, v] of Object.entries(src)){
+    if (Array.isArray(v)) out[k] = v;
+    else if (v && Array.isArray(v.countries)) out[v.en || k] = v.countries;
+  }
+  if (!out.Internet && doc.stations.some(s => s.country === 'ZZ')) out.Internet = ['ZZ'];
+  doc.regions = out;
+}
 function useCol(doc){
   if (!doc || !Array.isArray(doc.stations)) return false;
+  normRegions(doc);
   stn.col = doc; stn.err = ''; stn.byId.clear(); stn.byUrl.clear();
   const counts = {};
   for (const s of doc.stations){
@@ -4049,11 +4061,11 @@ function paintHome(body, st, opts, refresh){
   const langs = Object.entries(lc).sort((a, b) => b[1] - a[1]).slice(0, 14);
   const ll = h('div', {class:'chips'});
   for (const [code, n] of langs) ll.append(h('button', {type:'button', class:'chip', 'aria-pressed':'false', 'aria-label': langName(code) + ', ' + n + ' stations',
-    onclick: () => apply(() => st.lang.add(code), true)}, langName(code), h('span', {class:'chip-n', 'aria-hidden':'true'}, String(n))));
+    onclick: () => apply(() => st.lang.add(code), true)}, h('bdi', null, langName(code)), h('span', {class:'chip-n', 'aria-hidden':'true'}, String(n))));
   body.append(shelf('brh-lang-' + mode, 'Languages', null, ll));
 }
 // Around the world: six regions as buttons on a light map, then that region's countries with counts.
-const WORLD_SPOTS = {'North America':[70, 52], 'Latin America':[112, 122], 'Europe':[196, 42], 'Africa & Middle East':[214, 104], 'Asia & Oceania':[300, 76], 'Internet':[316, 140]};
+const WORLD_SPOTS = {'North America':[70, 52], 'Latin America':[112, 122], 'Latin America & Caribbean':[112, 122], 'Europe':[196, 42], 'Africa & Middle East':[214, 104], 'Africa':[200, 112], 'Middle East':[236, 78], 'Asia & Oceania':[300, 76], 'Internet':[316, 140]};
 function worldSection(st, mode, apply, refresh){
   const regs = stn.col.regions || {}, names = Object.keys(regs);
   const count = r => stn.col.stations.filter(s => (regs[r] || []).includes(s.country)).length;
@@ -4168,7 +4180,7 @@ function filterSheet(mode, which){
   const live = () => { const n = stSearch(st).length; showBtn.textContent = n ? 'Show ' + n + (n === 1 ? ' station' : ' stations') : 'No stations — try fewer'; };
   const toggleChip = (label, n, pressed, onToggle, extraCls) => {
     const b = h('button', {type:'button', class:'chip' + (extraCls ? ' ' + extraCls : ''), 'aria-pressed': String(!!pressed), 'aria-label': label + (n != null ? ', ' + n + ' stations' : '')},
-      label, n != null ? h('span', {class:'chip-n', 'aria-hidden':'true'}, String(n)) : null);
+      h('bdi', null, label), n != null ? h('span', {class:'chip-n', 'aria-hidden':'true'}, String(n)) : null);
     b.addEventListener('click', () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on)); onToggle(on); st.shown = 30; live(); });
     return b;
   };

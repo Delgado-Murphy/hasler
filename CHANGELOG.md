@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 - 2026-10-24
+
+- Browse: the Radio tab opened empty on a real radio (the world regions
+  arrived in a different shape than the page expected). Fixed; Arabic and
+  other right-to-left language names no longer swallow their counts.
+
 ## 1.1.0 - 2026-10-24
 
 - A world of radio: 585 hand-picked stations from 118 countries - public
