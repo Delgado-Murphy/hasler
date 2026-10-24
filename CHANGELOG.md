@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.7 - 2026-10-24
+
+- Keys: the bounce window is half a second (was 0.35 s). Keys 2 and 3 were
+  seen bouncing up to 0.34 s after a press.
+
 ## 1.0.6 - 2026-10-23
 
 - Keys: a station key pressed again stops the radio for good. An old key's

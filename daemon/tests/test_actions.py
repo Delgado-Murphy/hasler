@@ -643,7 +643,7 @@ def test_a_bounced_tap_after_a_stop_does_not_start_it_again(monkeypatch):
     import haslerd.actions as actions_mod
 
     monkeypatch.setattr(actions_mod, "AGAIN_GUARD_S", 0.8)
-    monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", 0.35)
+    monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", actions_mod.TAP_BOUNCE_S if actions_mod.TAP_BOUNCE_S else 0.5)
     t = [100.0]
     player = FakePlayer()
     actions = Actions(load_variant(VARIANTS / "hasler-hm.yaml"), player, clock=lambda: t[0])
@@ -651,8 +651,8 @@ def test_a_bounced_tap_after_a_stop_does_not_start_it_again(monkeypatch):
     t[0] += 5.0
     actions.dispatch(Event("k2", "tap"))          # again: standby
     assert actions.standby
-    t[0] += 0.12
-    actions.dispatch(Event("k2", "tap"))          # bounce of that same press: ignored
+    t[0] += 0.34
+    actions.dispatch(Event("k2", "tap"))          # bounce of that same press (0.34 s seen): ignored
     assert actions.standby
     t[0] += 1.0
     actions.dispatch(Event("k2", "tap"))          # a real press plays again
@@ -662,7 +662,7 @@ def test_a_bounced_tap_after_a_stop_does_not_start_it_again(monkeypatch):
 def test_the_bounce_guard_is_per_key(monkeypatch):
     import haslerd.actions as actions_mod
 
-    monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", 0.35)
+    monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", actions_mod.TAP_BOUNCE_S if actions_mod.TAP_BOUNCE_S else 0.5)
     t = [100.0]
     player = FakePlayer()
     actions = Actions(load_variant(VARIANTS / "hasler-hm.yaml"), player, clock=lambda: t[0])

@@ -52,9 +52,10 @@ log = logging.getLogger(__name__)
 AGAIN_GUARD_S = 0.8
 # A second tap of the SAME key this soon after the first is contact bounce,
 # whatever the first did (2026-10-23: key 2 arrived as two taps 0.12-0.2 s
-# apart - the first stopped the station, the second started it again). No
-# hand presses one key twice in a third of a second.
-TAP_BOUNCE_S = 0.35
+# apart - the first stopped the station, the second started it again; on
+# 2026-10-24 keys 2 and 3 bounced up to 0.34 s). No hand presses one key
+# twice in half a second.
+TAP_BOUNCE_S = 0.5
 
 # Order the PU key cycles through by default (``Actions.source_cycle``; the
 # owner's own lives in settings.json ``sources.cycle``). "radio" is our MPD
