@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.2 - 2026-10-24
+
+- The key page rides out a lost request: lookups and saves quietly try
+  again (key presses, Next and Play are never sent twice), and a short gap
+  shows "Reconnecting..." over the last-known state instead of "Can't reach
+  the radio", which now waits for several misses. Coming back to the page
+  after the phone sleeps no longer flashes "No connection".
+- Saving a key says Saving, Still trying, Saved or "Couldn't save - your
+  changes are still here" with Try again; if the answer was lost but the
+  radio saved, the page sees that. Put on a key, Settings and My stations
+  keep a Try again instead of a fading message.
+- The key page answers on IPv6 as well as IPv4 (phones that try IPv6 first
+  no longer get refused); IPv6 clients must be on the home network.
+- Every change made from the page is one line in the radio's log, so a save
+  that never arrived can be told from one that failed.
+
 ## 1.1.1 - 2026-10-24
 
 - Browse: the Radio tab opened empty on a real radio (the world regions

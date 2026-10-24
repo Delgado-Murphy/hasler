@@ -869,7 +869,7 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
 
     <div class="bezel">
       <div class="glass" id="glass">
-        <div class="dial-head"><span id="dialHead">Tuning…</span><span aria-hidden="true">Hasler · D&amp;M</span></div>
+        <div class="dial-head"><span id="dialHead">Tuning…</span><span id="dialMark" aria-hidden="true">Hasler · D&amp;M</span></div>
         <h2 class="dial-name" id="dialName">Hasler</h2>
         <div class="song" id="song">
           <span class="cover radio" id="cover" aria-hidden="true"></span>
@@ -979,18 +979,45 @@ const IC = {
   down: () => icon('<path d="M2 5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>', 14, 14),
   dots: () => icon('<circle cx="5" cy="11" r="1.6" fill="currentColor"/><circle cx="11" cy="11" r="1.6" fill="currentColor"/><circle cx="17" cy="11" r="1.6" fill="currentColor"/>', 22, 22),
 };
+// A phone on Wi-Fi loses the odd request. Each try has a time limit, and one that
+// never got an answer goes again where that is harmless: reads and whole-value
+// writes (GET/PUT/DELETE), never a POST unless asked, never a one-time confirm token.
+// An HTTP answer, good or bad, is never retried. opts: timeout, retry, onRetry(n), signal.
+let netFails = 0;          // changes (not reads) that never got an answer
 async function api(method, url, body, opts = {}){
   // Every change goes as JSON: the radio refuses anything else (its CSRF guard).
   const send = method !== 'GET' && method !== 'HEAD';
-  const r = await fetch(url, {
-    method, cache:'no-store', signal: opts.signal,
-    headers: send ? {'Content-Type':'application/json'} : undefined,
-    body: send ? JSON.stringify(body === undefined ? {} : body) : undefined,
-  });
-  let j = null;
-  try { j = await r.json(); } catch (_) {}
-  return {status:r.status, ok:r.ok, json:j};
+  const once = !!(send && body && body.confirm);
+  const tries = once ? 0 : opts.retry != null ? opts.retry : /^(GET|HEAD|PUT|DELETE)$/.test(method) ? 2 : 0;
+  const ms = opts.timeout || (send ? 12000 : 6000), up = opts.signal;
+  for (let n = 0; ; n++){
+    if (up && up.aborted) throw up.reason || new DOMException('Aborted', 'AbortError');
+    // Its own controller per try: a late reply to a try given up on is never read.
+    const ctl = new AbortController(), follow = () => ctl.abort(up.reason);
+    const timer = setTimeout(() => ctl.abort(new DOMException('The radio took too long', 'TimeoutError')), ms);
+    if (up) up.addEventListener('abort', follow);
+    try {
+      const r = await fetch(url, {
+        method, cache:'no-store', signal: ctl.signal,
+        headers: send ? {'Content-Type':'application/json'} : undefined,
+        body: send ? JSON.stringify(body === undefined ? {} : body) : undefined,
+      });
+      const txt = await r.text();
+      let j = null;
+      try { j = JSON.parse(txt); } catch (_) {}
+      return {status:r.status, ok:r.ok, json:j};
+    } catch (e) {
+      if (n >= tries || (up && up.aborted)){ if (send && !(up && up.aborted)) netFails++; throw e; }
+    } finally {
+      clearTimeout(timer);
+      if (up) up.removeEventListener('abort', follow);
+    }
+    await new Promise(res => setTimeout(res, n ? 1500 : 500));
+    if (opts.onRetry) opts.onRetry(n + 1);
+  }
 }
+// Reads that go out past the radio (YouTube Music, the internet, the home network): more time, one more try.
+const SLOW = {timeout:20000, retry:1};
 function imgInto(el, src){
   el.querySelectorAll('img').forEach(i => i.remove());
   if (!src) return;
@@ -998,7 +1025,8 @@ function imgInto(el, src){
   img.addEventListener('error', () => img.remove());
   el.append(img);
 }
-// toast(msg) · toast(msg, true) for a problem · toast(msg, {undo: fn}) offers Undo for 6 s.
+// toast(msg) · toast(msg, true) for a problem · toast(msg, {undo: fn}) offers Undo for 6 s ·
+// toast(msg, {bad:true, action:'Try again', run: fn}) offers that instead.
 let toastTimer = null, toastUndo = null, toastMs = 0;
 function hideToast(){ clearTimeout(toastTimer); toastUndo = null; const t = $('toast'); t.classList.remove('show', 'act'); }
 function toast(msg, opts){
@@ -1006,8 +1034,8 @@ function toast(msg, opts){
   const t = $('toast');
   t.textContent = '';
   t.append(h('span', null, msg));
-  toastUndo = typeof o.undo === 'function' ? o.undo : null;
-  if (toastUndo) t.append(h('button', {type:'button', class:'toast-undo', onclick: () => { const f = toastUndo; hideToast(); if (f) f(); }}, 'Undo'));
+  toastUndo = typeof o.undo === 'function' ? o.undo : typeof o.run === 'function' ? o.run : null;
+  if (toastUndo) t.append(h('button', {type:'button', class:'toast-undo', onclick: () => { const f = toastUndo; hideToast(); if (f) f(); }}, o.undo ? 'Undo' : o.action || 'Try again'));
   t.classList.toggle('bad', !!o.bad); t.classList.toggle('act', !!toastUndo); t.classList.add('show');
   toastMs = toastUndo ? 6000 : o.bad ? 4200 : 2400;
   clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, toastMs);
@@ -1018,13 +1046,13 @@ $('toast').addEventListener('mouseenter', () => clearTimeout(toastTimer));
 $('toast').addEventListener('focusout', () => { clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 3000); });
 $('toast').addEventListener('mouseleave', () => { if (toastUndo){ clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 3000); } });
 // The one thing every network error says: what happened, then what to do.
-const NET_ERR = 'Couldn’t reach the radio. Check it’s switched on, then try again.';
+const NET_ERR = 'That didn’t reach the radio. Try again in a moment.';
 const wide = matchMedia('(min-width:960px)');
 const reduced = matchMedia('(prefers-reduced-motion: reduce)');
 
 /* ================= state ================= */
 let cfg = null, draft = null, baseline = '', baseSig = {};
-let status = null, online = true;
+let status = null, online = true, failStreak = 0;
 let errs = {}, hints = {}, general = [], lastSent = null, saving = false, saveMsg = {text:'', bad:false};
 let settings = null, haState = null, haEnts = null, haEntsErr = '', browseData = null, browseErr = '';
 let ytm = {available:null, signed_in:false, name:''};
@@ -1465,7 +1493,7 @@ function renderDial(){
   glass.classList.toggle('offline', !online);
   let head = '', name = '', live = '';
   if (!online){
-    head = 'No connection'; name = 'Can’t reach the radio'; setSong('Check you’re on the same Wi-Fi', '', '', 'none');
+    head = 'Can’t reach the radio'; name = 'Hasler'; setSong('Is your phone on the home Wi-Fi? Trying again…', '', '', 'none');
   } else if (!status){
     head = 'Tuning…'; name = 'Hasler'; setSong('', '', '', 'none');
   } else if (status.standby){
@@ -1502,6 +1530,7 @@ function renderDial(){
     head = 'Ready'; name = 'Quiet'; setSong('', 'Tap a key to play', '', 'none');
   }
   $('dialHead').textContent = head;
+  $('dialMark').textContent = online && failStreak ? 'Reconnecting…' : 'Hasler · D&M';
   setDialName(name);
   renderScale(status && !status.standby && status.playing ? cur : (optimistic ? cur : null));
   if (live !== lastLive){ lastLive = live; if (live) $('nowLive').textContent = live; }
@@ -1510,7 +1539,7 @@ function renderDial(){
 new ResizeObserver(() => { renderDial(); }).observe($('scale'));
 
 /* ================= remote: volume knob ================= */
-const K = {v:0, limit:100, drag:false, lastUser:0, ang:0, timer:null, sent:null};
+const K = {v:0, limit:100, drag:false, lastUser:0, ang:0, timer:null, sent:null, ctl:null};
 const ang = v => -135 + 270 * v / 100;
 function pt(r, a){ const t = a * Math.PI / 180; return [(66 + r * Math.sin(t)).toFixed(2), (66 - r * Math.cos(t)).toFixed(2)]; }
 function arcPath(r, a0, a1){ const [x0, y0] = pt(r, a0), [x1, y1] = pt(r, a1); return 'M' + x0 + ' ' + y0 + 'A' + r + ' ' + r + ' 0 ' + (a1 - a0 > 180 ? 1 : 0) + ' 1 ' + x1 + ' ' + y1; }
@@ -1536,10 +1565,13 @@ async function flushVol(){
   K.timer = null;
   if (K.sent === K.v) return;
   K.sent = K.v;
+  // A newer value replaces one still on its way (or waiting to go again).
+  if (K.ctl) K.ctl.abort();
+  const ctl = K.ctl = new AbortController();
   try {
-    const r = await api('POST', '/api/volume', {value:K.v});
+    const r = await api('POST', '/api/volume', {value:K.v}, {retry:1, signal: ctl.signal});
     if (!r.ok) toast((r.json && r.json.error) || 'Volume didn’t change.', true);
-  } catch (_) { toast(NET_ERR, true); }
+  } catch (_) { if (!ctl.signal.aborted) toast(NET_ERR, true); }
 }
 (function bindKnob(){
   const knob = $('knob');
@@ -1586,7 +1618,7 @@ $('standbyBtn').addEventListener('click', async () => {
   const want = !(status && status.standby);
   b.setAttribute('aria-pressed', String(want));
   try {
-    const r = await api('POST', '/api/standby', {on: want});
+    const r = await api('POST', '/api/standby', {on: want}, {retry:1});
     if (r.ok && r.json){ if (status) status.standby = !!r.json.standby; toast(r.json.standby ? 'Standby' : 'Awake'); }
     else toast((r.json && r.json.error) || 'Standby didn’t work.', true);
   } catch (_) { toast(NET_ERR, true); }
@@ -1820,7 +1852,7 @@ function keySheet(sheet, k){
   sheet.append(h('div', {class:'actions'},
     h('button', {type:'button', class:'btn', id:'testBtn', disabled: !p, onclick: () => testPreset(p)}, 'Test on the radio'),
     h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': keyLabel(k).replace(/^Key/, 'key'), disabled: saving || !dirty, onclick: save},
-      saving ? 'Saving…' : dirty ? 'Save ' + keyLabel(k).replace(/^Key/, 'key') : 'Saved ✓')));
+      saveLbl(dirty, keyLabel(k).replace(/^Key/, 'key')))));
 }
 function presetSection(sheet, k){
   const p0 = presetIn(draft, k.tap.n) || {n:k.tap.n, name:'', source:'radio', uri:'', shuffle:false};
@@ -1938,7 +1970,7 @@ function spotifySection(body, k, p){
     oninput: e => {
       const pp = ownPreset(k); pp.uri = e.target.value; clearErr('p' + pp.n + '.uri');
       if (!(pp.name || '').trim() && pp.uri.trim()){ const m = /(playlist|album|track|artist|show|episode)/i.exec(pp.uri); pp.name = 'Spotify ' + (m ? m[1].toLowerCase() : 'link'); autoName[pp.n] = pp.name; }
-      const btn = $('saveBtn'); if (btn){ btn.disabled = !isDirty(); btn.textContent = isDirty() ? 'Save ' + keyLabel(k).replace(/^Key/, 'key') : 'Saved ✓'; }
+      const btn = $('saveBtn'); if (btn){ btn.disabled = !isDirty(); btn.textContent = saveLbl(isDirty(), keyLabel(k).replace(/^Key/, 'key')); }
     },
     onblur: () => { const i = presetIssues(presetIn(draft, k.tap.n)); if (i.uri && p.uri.trim()) hints['p' + k.tap.n + '.uri'] = i.uri; rerender(); }});
   body.append(h('label', {for:'spuri'}, 'Spotify link'), inp, h('p', {class:'hint', id:'sphint'}, 'A playlist, album or track. In Spotify: Share → Copy link.'));
@@ -2164,14 +2196,16 @@ function paintSave(){
   const b = $('saveBtn'); if (!b) return;
   const dirty = isDirty();
   b.disabled = saving || !dirty;
-  b.textContent = saving ? 'Saving…' : dirty ? 'Save ' + (b.dataset.label || '') : 'Saved ✓';
+  b.textContent = saveLbl(dirty, b.dataset.label || '');
 }
+// After a save that got no answer, the button offers to send the same again.
+const saveLbl = (dirty, lbl) => saving ? 'Saving…' : dirty ? (saveMsg.again ? 'Try again' : 'Save ' + lbl) : 'Saved ✓';
 let lightsLoading = null;
 function loadLights(refresh){
   if (lightsLoading) return lightsLoading;
   lightsLoading = (async () => {
     try {
-      const r = await api('GET', '/api/ha/lights' + (refresh ? '?refresh=1' : ''));
+      const r = await api('GET', '/api/ha/lights' + (refresh ? '?refresh=1' : ''), undefined, SLOW);
       if (r.ok && r.json && Array.isArray(r.json.lights)){ haLights = {areas: r.json.areas || [], lights: r.json.lights}; haLightsErr = ''; }
       else if (r.status === 404){
         // An older radio: the lights from the entity list, without what each can do.
@@ -2190,7 +2224,7 @@ function loadServices(){
   if (svcsLoading) return svcsLoading;
   svcsLoading = (async () => {
     try {
-      const r = await api('GET', '/api/ha/services');
+      const r = await api('GET', '/api/ha/services', undefined, SLOW);
       if (r.ok && r.json && Array.isArray(r.json.services)){ haSvcs = r.json.services; haSvcsErr = ''; }
       else haSvcsErr = (r.json && r.json.error) || 'Couldn’t list the actions.';
     } catch (_) { haSvcsErr = NET_ERR; }
@@ -2482,73 +2516,93 @@ async function testPreset(p){
   const btn = $('testBtn');
   if (!(p.uri || '').trim() && !ytmRef(p).kind){ saveMsg = {text:'Choose something to play first.', bad:true}; rerender(); return; }
   if (btn){ btn.disabled = true; btn.textContent = 'Tuning in…'; }
-  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 30000);
   try {
-    const r = await api('POST', '/api/play', {preset:Object.assign({name:(p.name || '').trim() || 'Test', source:p.source, uri:(p.uri || '').trim(), shuffle: p.source !== 'radio' && !ytmEndless(p) && !!p.shuffle}, ytmRef(p))}, {signal: ctl.signal});
+    const r = await api('POST', '/api/play', {preset:Object.assign({name:(p.name || '').trim() || 'Test', source:p.source, uri:(p.uri || '').trim(), shuffle: p.source !== 'radio' && !ytmEndless(p) && !!p.shuffle}, ytmRef(p))}, {timeout:30000});
     if (r.json && r.json.ok){ saveMsg = {text:'Playing on the radio.', bad:false}; }
     else saveMsg = {text:(r.json && r.json.error) || 'Couldn’t play that (error ' + r.status + ').', bad:true};
-  } catch (e) { saveMsg = {text: e.name === 'AbortError' ? 'The radio took too long to answer.' : NET_ERR, bad:true}; }
-  clearTimeout(t); rerender(); pollSoon();
+  } catch (e) { saveMsg = {text: e.name === 'TimeoutError' ? 'The radio took too long to answer. Try again.' : NET_ERR, bad:true}; }
+  rerender(); pollSoon();
 }
+// What a config holds, as the editor would send it: to tell whether a save the
+// reply got lost for has landed.
+const cfgSig = c => JSON.stringify(payload({keys: clone(c.keys || []), presets: clone(c.presets || []),
+  combos: Array.isArray(c.combos) ? c.combos.map(x => comboIn(clone(x))) : null}));
 async function save(){
   if (saving || !isDirty()) return;
-  saving = true; saveMsg = {text:'', bad:false}; rerender();
+  saving = true; saveMsg = {text:'Saving…', bad:false}; rerender();
   const body = payload(draft); lastSent = body;
   const cbWas = !ed.key && ed.combo ? comboById(ed.combo) : null;
   const label = cbWas ? comboName(cbWas) : ed.key ? keyLabel(draft.keys.find(k => k.id === ed.key)) : 'Keys';
-  let focusAfter = null;
-  try {
-    const r = await api('PUT', '/api/config', body);
-    if (r.ok && r.json && r.json.ok){
-      errs = {}; hints = {}; general = [];
-      adopt(r.json.config || Object.assign({}, cfg, body));
-      saveMsg = {text: label + ' saved to the radio.', bad:false};
-      // A saved combination closes its editor, back to its row.
-      if (cbWas){ ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; saveMsg = {text:'', bad:false}; focusAfter = 'cedit-' + comboPairId(cbWas.keys); }
-      toast(label + ' saved');
-      buildBank();
-      refreshHa();
-    } else if (r.json && Array.isArray(r.json.errors) && r.json.errors.length){
-      applyServerErrors(r.json.errors);
-      const cur = draft.keys.find(k => k.id === ed.key), curC = !ed.key && ed.combo ? comboById(ed.combo) : null;
-      const badC = (draft.combos || []).filter(c => comboErr(c));
-      if (!(cur && keyErrCount(cur)) && !(curC && comboErr(curC))){
-        const first = draft.keys.find(k => keyErrCount(k) > 0);
-        if (first){ ed.key = first.id; ed.combo = null; history.replaceState(null, '', '#edit/' + first.id); }
-        else if (badC.length){ ed.key = null; ed.combo = badC[0].id; ed.pick = null; history.replaceState(null, '', '#edit/combos'); }
-      }
-      const bad = draft.keys.filter(k => keyErrCount(k)).map(keyLabel).concat(badC.map(comboName));
-      saveMsg = {text:'Not saved — ' + (bad.length ? 'check ' + bad.join(', ') : 'see the message above') + '.', bad:true};
-    } else {
-      general = [(r.json && (r.json.error || r.json.message)) || 'Saving failed (error ' + r.status + ').'];
-      saveMsg = {text:'Not saved.', bad:true};
+  let focusAfter = null, r = null;
+  const still = () => { if (saving){ saveMsg = {text:'Still trying…', bad:false}; if (view === 'edit') rerender(); } };
+  const slow = setTimeout(still, 4000);
+  try { r = await api('PUT', '/api/config', body, {onRetry: still}); }
+  catch (_) {
+    // The answer may be what got lost: if the radio has these keys already, it saved.
+    try {
+      const g = await api('GET', '/api/config');
+      if (g.ok && g.json && Array.isArray(g.json.keys) && cfgSig(g.json) === JSON.stringify(body)) r = {ok:true, status:200, json:{ok:true, config:g.json}};
+    } catch (_) {}
+  }
+  clearTimeout(slow); saving = false;
+  if (!r){
+    saveMsg = {text:'Couldn’t save — the radio didn’t answer. Your changes are still here.', bad:true, again:true};
+  } else if (r.ok && r.json && r.json.ok){
+    errs = {}; hints = {}; general = [];
+    adopt(r.json.config || Object.assign({}, cfg, body));
+    saveMsg = {text: label + ' saved to the radio.', bad:false};
+    // A saved combination closes its editor, back to its row.
+    if (cbWas){ ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; saveMsg = {text:'', bad:false}; focusAfter = 'cedit-' + comboPairId(cbWas.keys); }
+    toast(label + ' saved');
+    buildBank();
+    refreshHa();
+  } else if (r.json && Array.isArray(r.json.errors) && r.json.errors.length){
+    applyServerErrors(r.json.errors);
+    const cur = draft.keys.find(k => k.id === ed.key), curC = !ed.key && ed.combo ? comboById(ed.combo) : null;
+    const badC = (draft.combos || []).filter(c => comboErr(c));
+    if (!(cur && keyErrCount(cur)) && !(curC && comboErr(curC))){
+      const first = draft.keys.find(k => keyErrCount(k) > 0);
+      if (first){ ed.key = first.id; ed.combo = null; history.replaceState(null, '', '#edit/' + first.id); }
+      else if (badC.length){ ed.key = null; ed.combo = badC[0].id; ed.pick = null; history.replaceState(null, '', '#edit/combos'); }
     }
-  } catch (_) { saveMsg = {text:'Couldn’t reach the radio. Check you’re on the same Wi-Fi and try again.', bad:true}; }
+    const bad = draft.keys.filter(k => keyErrCount(k)).map(keyLabel).concat(badC.map(comboName));
+    saveMsg = {text:'Not saved — ' + (bad.length ? 'check ' + bad.join(', ') : 'see the message above') + '.', bad:true};
+  } else {
+    general = [(r.json && (r.json.error || r.json.message)) || 'Saving failed (error ' + r.status + ').'];
+    saveMsg = {text:'Not saved — the radio said no.', bad:true};
+  }
   saving = false; rerender();
   const fa = focusAfter && $(focusAfter); if (fa){ fa.scrollIntoView({block:'center'}); fa.focus({preventScroll:true}); }
   const el = $('panel').querySelector('.err, .alert'); if (el && saveMsg.bad) el.scrollIntoView({block:'center', behavior: reduced.matches ? 'auto' : 'smooth'});
 }
 
 /* ================= change a key from elsewhere (Browse, HA) ================= */
+// Read the radio's keys, change them, write them back. With no answer the whole
+// round goes once more (it reads again, so nothing lands twice); then null.
+async function freshConfig(build){
+  for (let n = 0; ; n++){
+    try {
+      const g = await api('GET', '/api/config');
+      if (!g.ok || !g.json || !Array.isArray(g.json.keys)) throw new Error('config');
+      const body = build(g.json);
+      return {g, body, r: await api('PUT', '/api/config', body)};
+    } catch (_) { if (n) return null; await new Promise(res => setTimeout(res, 1500)); }
+  }
+}
 async function applyToKey(mutate, okMsg){
-  try {
-    const g = await api('GET', '/api/config');
-    if (!g.ok || !g.json || !Array.isArray(g.json.keys)) throw new Error('config');
-    const base = {keys: clone(g.json.keys), presets: clone(g.json.presets || [])};
-    mutate(base);
-    const body = payload(base);
-    const r = await api('PUT', '/api/config', body);
-    if (r.ok && r.json && r.json.ok){
-      const wasDirty = isDirty(), keep = draft;
-      adopt(r.json.config || Object.assign({}, g.json, body));
-      if (wasDirty && keep){ mutate(keep); draft = keep; }
-      buildBank(); renderRemote(); refreshHa();
-      toast(okMsg);
-      return true;
-    }
-    const e = r.json && ((r.json.errors && r.json.errors[0] && r.json.errors[0].message) || r.json.error);
-    toast('Not saved — ' + (e || 'error ' + r.status), true);
-  } catch (_) { toast(NET_ERR, true); }
+  const x = await freshConfig(c => { const base = {keys: clone(c.keys), presets: clone(c.presets || [])}; mutate(base); return payload(base); });
+  if (!x){ toast(NET_ERR, {bad:true, action:'Try again', run: () => applyToKey(mutate, okMsg)}); return false; }
+  const {g, body, r} = x;
+  if (r.ok && r.json && r.json.ok){
+    const wasDirty = isDirty(), keep = draft;
+    adopt(r.json.config || Object.assign({}, g.json, body));
+    if (wasDirty && keep){ mutate(keep); draft = keep; }
+    buildBank(); renderRemote(); refreshHa();
+    toast(okMsg);
+    return true;
+  }
+  const e = r.json && ((r.json.errors && r.json.errors[0] && r.json.errors[0].message) || r.json.error);
+  toast('Not saved — ' + (e || 'error ' + r.status), true);
   return false;
 }
 function putItemOnKey(item, keyId){
@@ -2773,7 +2827,7 @@ function comboSheet(sheet, c){
   sheet.append(h('div', {class:'actions'},
     h('button', {type:'button', class:'btn', id:'comboTry', disabled: !ready, onclick: () => tryCombo(c)}, 'Try it on the radio'),
     h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': lbl, disabled: saving || !dirty || !ready, onclick: () => saveCombo(c)},
-      saving ? 'Saving…' : dirty || !ready ? 'Save ' + lbl : 'Saved ✓')));
+      saveLbl(dirty || !ready, lbl))));
 }
 function saveCombo(c){
   if (!comboReady(c)){ saveMsg = {text: c.keys.length < 2 ? 'Pick two keys first.' : 'Choose what it does first.', bad:true}; rerender(); return; }
@@ -2794,25 +2848,25 @@ async function tryCombo(c){
 }
 // Change the radio's combinations alone (Remove, and its Undo), leaving other unsaved key changes as they are.
 async function applyCombos(mutate, okMsg, undo){
-  try {
-    const g = await api('GET', '/api/config');
-    if (!g.ok || !g.json || !Array.isArray(g.json.keys) || !Array.isArray(g.json.combos)) throw new Error('config');
-    const base = {keys: clone(g.json.keys), presets: clone(g.json.presets || []), combos: g.json.combos.map(e => comboIn(clone(e)))};
+  const x = await freshConfig(c => {
+    if (!Array.isArray(c.combos)) throw new Error('config');
+    const base = {keys: clone(c.keys), presets: clone(c.presets || []), combos: c.combos.map(e => comboIn(clone(e)))};
     mutate(base.combos);
-    const body = payload(base);
-    const r = await api('PUT', '/api/config', body);
-    if (r.ok && r.json && r.json.ok){
-      const wasDirty = isDirty(), keep = draft;
-      adopt(r.json.config || Object.assign({}, g.json, body));
-      if (wasDirty && keep){ if (keep.combos) mutate(keep.combos); draft = keep; }
-      buildBank();
-      if (view === 'edit') rerender();
-      toast(okMsg, undo ? {undo} : null);
-      return true;
-    }
-    const e = r.json && ((r.json.errors && r.json.errors[0] && r.json.errors[0].message) || r.json.error);
-    toast('Not saved — ' + (e || 'error ' + r.status) + '. Try again.', true);
-  } catch (_) { toast(NET_ERR, true); }
+    return payload(base);
+  });
+  if (!x){ toast(NET_ERR, {bad:true, action:'Try again', run: () => applyCombos(mutate, okMsg, undo)}); return false; }
+  const {g, body, r} = x;
+  if (r.ok && r.json && r.json.ok){
+    const wasDirty = isDirty(), keep = draft;
+    adopt(r.json.config || Object.assign({}, g.json, body));
+    if (wasDirty && keep){ if (keep.combos) mutate(keep.combos); draft = keep; }
+    buildBank();
+    if (view === 'edit') rerender();
+    toast(okMsg, undo ? {undo} : null);
+    return true;
+  }
+  const e = r.json && ((r.json.errors && r.json.errors[0] && r.json.errors[0].message) || r.json.error);
+  toast('Not saved — ' + (e || 'error ' + r.status) + '. Try again.', true);
   return false;
 }
 async function removeCombo(c){
@@ -2874,7 +2928,7 @@ async function loadBrowse(force){
   if (browseLoading || (browseData && !force)) return;
   browseLoading = true; browseErr = '';
   try {
-    const r = await api('GET', '/api/browse');
+    const r = await api('GET', '/api/browse', undefined, SLOW);
     if (r.ok && r.json) browseData = r.json;
     else browseErr = r.status === 404 ? 'none' : ((r.json && r.json.error) || 'Couldn’t load the catalogue.');
   } catch (_) { browseErr = NET_ERR; }
@@ -2942,7 +2996,7 @@ async function ytGet(key, path){
   if (ytBusy[key]) return;
   ytBusy[key] = true; delete ytErr[key];
   try {
-    const r = await api('GET', path);
+    const r = await api('GET', path, undefined, SLOW);
     if (r.ok && r.json){
       if (r.json.available === false && ytm.available !== false){ ytm.available = false; }
       ytCache.set(key, r.json);
@@ -3135,7 +3189,7 @@ function ytSearchHead(opts, body){
   const suggest = async q => {
     asked = q;
     try {
-      const r = await api('GET', '/api/ytm/suggest?q=' + encodeURIComponent(q));
+      const r = await api('GET', '/api/ytm/suggest?q=' + encodeURIComponent(q), undefined, {retry:0});
       if (asked !== q || inp.value.trim() !== q) return;
       st.sug = r.ok && r.json && Array.isArray(r.json.suggestions) ? r.json.suggestions.slice(0, 8) : [];
       st.sugAt = -1; st.sugOpen = true; paintSug();
@@ -3173,7 +3227,7 @@ async function ytSearch(opts, q, body){
   st.q = q; st.resFor = q; st.res = null; st.err = ''; st.more = {}; st.busy = true;
   ytPaintBody(body, opts);
   try {
-    const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=all');
+    const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=all', undefined, SLOW);
     if (st.resFor !== q) return;
     if (r.json && r.json.available === false){ ytm.available = false; rerender(); return; }
     if (r.ok && r.json && Array.isArray(r.json.items)){
@@ -3189,7 +3243,7 @@ async function ytMore(opts, type, body){
   const st = ytState(opts.mode), q = st.resFor;
   st.more[type] = 'busy'; ytPaintBody(body, opts);
   try {
-    const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=' + type);
+    const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=' + type, undefined, SLOW);
     if (st.resFor !== q) return;
     st.more[type] = r.ok && r.json && Array.isArray(r.json.items) ? r.json.items : 'err';
   } catch (_) { if (st.resFor === q) st.more[type] = 'err'; }
@@ -3556,7 +3610,7 @@ function paintYtmNow(){
 async function ytLyrics(vid){
   ytNow.lyrBusy = true; ytNow.lyrFor = vid;
   let doc = null;
-  try { const r = await api('GET', '/api/ytm/lyrics/' + vid); doc = r.ok && r.json ? r.json : {err:'The lyrics didn’t load. Try again in a minute.'}; }
+  try { const r = await api('GET', '/api/ytm/lyrics/' + vid, undefined, SLOW); doc = r.ok && r.json ? r.json : {err:'The lyrics didn’t load. Try again in a minute.'}; }
   catch (_) { doc = {err:NET_ERR}; }
   if (ytNow.lyrFor !== vid) return;
   ytNow.lyr = doc; ytNow.lyrBusy = false; ytNow.sig = '';
@@ -3569,7 +3623,7 @@ async function ytLike(){
   const want = !ytNow.liked;
   ytNow.busy = true; paintYtmNow();
   try {
-    const r = await api('POST', '/api/ytm/like', {vid, rating: want ? 'LIKE' : 'INDIFFERENT'});
+    const r = await api('POST', '/api/ytm/like', {vid, rating: want ? 'LIKE' : 'INDIFFERENT'}, {retry:1});
     if (r.ok && r.json && r.json.ok){
       if (ytNow.vid === vid) ytNow.liked = want;
       ytForget('lib:liked');
@@ -3669,7 +3723,7 @@ function renderSpotifyTab(pane){
 /* ================= stations: the collection, my stations ================= */
 const COL_KEY = 'hasler.stations.v1', MINE_KEY = 'hasler.mine.v1';
 const HOME_CC = 'ES';
-const stn = {col:null, err:'', loading:null, mine:null, mineLocal:false, mineLoading:null, byId:new Map(), byUrl:new Map(), tiles:[], playing:null, saving:Promise.resolve()};
+const stn = {col:null, err:'', loading:null, mine:null, mineLocal:false, mineLoading:null, mineLost:false, byId:new Map(), byUrl:new Map(), tiles:[], playing:null, saving:Promise.resolve()};
 const fold = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 let dnRegion = null, dnLang = null;
 try { dnRegion = new Intl.DisplayNames(['en'], {type:'region'}); dnLang = new Intl.DisplayNames(['en'], {type:'language'}); } catch (_) {}
@@ -3817,9 +3871,9 @@ function saveMine(){
   stn.saving = stn.saving.then(async () => {
     try {
       const r = await api('PUT', '/api/stations/mine', doc);
-      if (r.ok) return true;
+      if (r.ok){ if (stn.mineLost){ stn.mineLost = false; brRepaint(); } return true; }
       toast((r.json && r.json.error) || 'Couldn’t save your stations. Try again in a moment.', true);
-    } catch (_) { toast(NET_ERR, true); }
+    } catch (_) { toast(NET_ERR, true); stn.mineLost = true; brRepaint(); }
     return false;
   });
   return stn.saving;
@@ -4156,7 +4210,7 @@ function netSection(st, q, opts, auto){
     if (st.netBusy && st.netFor === q) return;
     st.netFor = q; st.netBusy = true; st.net = null; st.netErr = ''; paint();
     try {
-      const r = await api('GET', '/api/stations?q=' + encodeURIComponent(q) + '&scope=internet');
+      const r = await api('GET', '/api/stations?q=' + encodeURIComponent(q) + '&scope=internet', undefined, SLOW);
       if (st.netFor !== q) return;
       if (r.ok && Array.isArray(r.json)) st.net = r.json.filter(s => s && s.url).map(s => Object.assign({}, s, {internet:true, genres:[], country: String(s.country || '').toUpperCase()}));
       else st.netErr = 'The internet search isn’t answering right now. Try again in a minute.';
@@ -4364,6 +4418,8 @@ function renderMine(panel){
   panel.append(screenTop('My stations', 'browse', h('button', {type:'button', class:'btn small mine-add', id:'mineAdd', onclick: () => addLinkSheet()}, IC.plus(), ' Link')));
   panel.append(h('p', {class:'hint'}, 'Your favourites, your own links and the stations on your keys — in the order you like. Drag a row, or use ⋯ to move it.'));
   if (!stn.mine){ panel.append(h('p', {class:'loading'}, 'Loading your stations…')); return; }
+  if (stn.mineLost) panel.append(h('p', {class:'err', role:'alert'}, 'Not saved · The radio didn’t answer ',
+    h('button', {type:'button', class:'btn small', onclick: () => saveMine()}, 'Try again')));
   const items = myItems();
   if (!items.length){
     panel.append(h('div', {class:'empty'}, h('h2', null, 'No stations yet'), h('p', null, 'Tap ☆ on any station in Browse to keep it here, or add your own link.'),
@@ -4641,14 +4697,19 @@ function renderSettings(){
 }
 
 /* shared: the "Not saved · Cancel · Save" bar for pages with several fields */
+let sbLost = null;         // the page whose last Save got no answer: the bar says so until it saves
 function saveBar(pg){
   return h('div', {class:'savebar', id:'saveBar', role:'region', 'aria-label':'Changes not saved', hidden:true},
     h('span', {class:'sb-txt'}, 'Not saved', h('small', {id:'sbWhat'}, '')),
     h('button', {type:'button', class:'btn small', id:'sbCancel', onclick: () => {
-      pg.discard(); rerender(); toast('Changes put back');
+      sbLost = null; pg.discard(); rerender(); toast('Changes put back');
       const f = $('panel').querySelector('[data-focus]'); if (f) f.focus({preventScroll:true});
     }}, 'Cancel'),
-    h('button', {type:'button', class:'btn small primary', id:'sbSave', onclick: () => pg.save()}, 'Save'));
+    h('button', {type:'button', class:'btn small primary', id:'sbSave', onclick: async () => {
+      const was = netFails; sbLost = null;
+      await pg.save();
+      sbLost = netFails > was && pg.dirty() ? pg.id : null; paintSaveBar();
+    }}, 'Save'));
 }
 function paintSaveBar(){
   const bar = $('saveBar'), pg = SET_PAGE[curPage()];
@@ -4656,8 +4717,9 @@ function paintSaveBar(){
   if (bar){
     const busy = !!(pg && pg.busy && pg.busy());
     bar.hidden = !on;
-    $('sbSave').disabled = busy; $('sbCancel').disabled = busy; $('sbSave').textContent = busy ? 'Saving…' : 'Save';
-    $('sbWhat').textContent = on && pg.what ? pg.what() : '';
+    const lost = on && !busy && sbLost === pg.id;
+    $('sbSave').disabled = busy; $('sbCancel').disabled = busy; $('sbSave').textContent = busy ? 'Saving…' : lost ? 'Try again' : 'Save';
+    $('sbWhat').textContent = lost ? 'The radio didn’t answer' : on && pg.what ? pg.what() : '';
   }
   document.documentElement.classList.toggle('has-bar', on);
 }
@@ -5208,7 +5270,7 @@ function saveLocation(){
   const lat = parseFloat(lampUi.lat), lon = parseFloat(lampUi.lon);
   if (!(lat >= -90 && lat <= 90)){ lampUi.err = 'Latitude runs from -90 (south) to 90 (north). Fix it, or pick a city.'; lampUi.coords = true; rerender(); return; }
   if (!(lon >= -180 && lon <= 180)){ lampUi.err = 'Longitude runs from -180 (west) to 180 (east). Fix it, or pick a city.'; lampUi.coords = true; rerender(); return; }
-  saveLamp({location: {name: lampUi.name.trim(), lat, lon}});
+  return saveLamp({location: {name: lampUi.name.trim(), lat, lon}});
 }
 // `undoTo`: the night mode to go back to from the toast (a single control applies at once).
 async function saveLamp(body, undoTo){
@@ -6377,7 +6439,7 @@ function pressToConfirm(action, args, title, sub){
       const left = Math.max(0, Math.ceil((end - Date.now()) / 1000));
       count.textContent = String(left); ring.style.setProperty('--p', (left / total * 100) + '%');
       try {
-        const p = await api('GET', '/api/confirm/' + encodeURIComponent(j.token));
+        const p = await api('GET', '/api/confirm/' + encodeURIComponent(j.token), undefined, {timeout:4000, retry:0});
         const st = p.json && p.json.state;
         if (st === 'confirmed'){ finish(j.token); return; }
         if (st && st !== 'pending'){ toast('No key was pressed, so nothing changed.'); finish(null); return; }
@@ -6452,7 +6514,7 @@ function swInstall(v, when){
   });
 }
 function swPutOff(){
-  swAction(async () => { const r = await api('DELETE', '/api/software/install'); if (r.ok) toast('Update put off'); });
+  swAction(async () => { const r = await api('DELETE', '/api/software/install', undefined, {retry:0}); if (r.ok) toast('Update put off'); });
 }
 function swBack(v){
   swAction(async () => {
@@ -6466,7 +6528,7 @@ function swBack(v){
 }
 function swMode(mode, from){
   swAction(async () => {
-    const r = await api('PUT', '/api/software/settings', {update_mode:mode});
+    const r = await api('PUT', '/api/software/settings', {update_mode:mode}, {retry:0});
     if (r.ok) toast(mode === 'auto' ? 'Small updates install by themselves' : mode === 'ask' ? 'The radio asks before updating' : 'Updates are off',
       from && from !== mode ? {undo: () => swMode(from)} : null);
     else toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that') + '. Try again.', true);
@@ -6493,7 +6555,7 @@ function swChannel(ch){
         : behind ? 'If ' + chName(ch) + ' is behind ' + v + ', the radio keeps ' + v + ' until ' + chName(ch) + ' catches up. It never goes back to an older version on its own.'
         : 'The next check looks at ' + chName(ch) + ' for updates.');
     if (!token) return;
-    const r = await api('PUT', '/api/software/settings', {channel:ch, confirm:token});
+    const r = await api('PUT', '/api/software/settings', {channel:ch, confirm:token}, {retry:0});
     if (r.ok){ swSwitched = {channel:ch, behind, version:v}; toast(ch === 'stable' ? 'Back on Stable updates' : 'Now on ' + chName(ch)); }
     else toast((r.json && r.json.error) || 'Couldn’t switch the channel.', true);
   });
@@ -7457,7 +7519,7 @@ function loadEntities(refresh){
   if (entsLoading) return entsLoading;
   entsLoading = (async () => {
     try {
-      const r = await api('GET', '/api/ha/entities' + (refresh ? '?refresh=1' : ''));
+      const r = await api('GET', '/api/ha/entities' + (refresh ? '?refresh=1' : ''), undefined, SLOW);
       if (r.ok && r.json && Array.isArray(r.json.entities)){ haEnts = {areas: r.json.areas || [], entities: r.json.entities}; haEntsErr = ''; }
       else { haEnts = null; haEntsErr = r.status === 409 ? 'Home Assistant isn’t connected.' : ((r.json && r.json.error) || 'Couldn’t list what Home Assistant has.'); }
     } catch (_) { haEntsErr = NET_ERR; }
@@ -7548,7 +7610,7 @@ function haSetup(panel){
 async function haDiscover(){
   haUi.finding = true; rerender();
   try {
-    const r = await api('GET', '/api/ha/discover');
+    const r = await api('GET', '/api/ha/discover', undefined, SLOW);
     haUi.found = r.ok && r.json && Array.isArray(r.json.instances) ? r.json.instances : [];
     haUi.note = (r.json && r.json.note) || '';
     if (haUi.found.length === 1 && !haUi.url) haUi.url = haUi.found[0].url;
@@ -7643,15 +7705,23 @@ async function haPutOnKey(verb, e){
 }
 
 /* ================= polling ================= */
-let pollTimer = null, polling = false;
+// One lost answer is the phone's Wi-Fi, not the radio: the front keeps what it
+// last knew and says "Reconnecting…". It reads as off only after three misses in
+// a row and 6 s with no answer, and never in the first 8 s back from the background.
+let pollTimer = null, polling = false, lastOk = Date.now(), graceUntil = 0;
 async function poll(){
   if (polling) return; polling = true;
   try {
-    const r = await api('GET', '/api/status');
-    if (r.ok && r.json){ status = r.json; online = true; } else online = false;
-  } catch (_) { online = false; }
+    const r = await api('GET', '/api/status', undefined, {timeout:4000, retry:0});
+    if (r.ok && r.json){ status = r.json; online = true; failStreak = 0; lastOk = Date.now(); } else missed();
+  } catch (_) { missed(); }
   polling = false;
   renderRemote();
+}
+function missed(){
+  const now = Date.now();
+  failStreak++;
+  if (failStreak >= 3 && now - lastOk > 6000 && now > graceUntil) online = false;
 }
 // Every second while the front is on screen; slower behind Settings/Edit on a
 // phone (the front isn't visible) and while the radio can't be reached.
@@ -7662,7 +7732,10 @@ function schedule(){
   pollTimer = setTimeout(async () => { await poll(); schedule(); }, !online ? 3000 : remoteShown() ? 1000 : 4000);
 }
 function pollSoon(){ clearTimeout(pollTimer); pollTimer = setTimeout(async () => { await poll(); schedule(); }, 250); }
-document.addEventListener('visibilitychange', () => { if (document.hidden){ clearTimeout(pollTimer); pollTimer = null; } else { poll().then(schedule); castSchedule(); refreshGroup().then(grpSchedule); } });
+document.addEventListener('visibilitychange', () => { if (document.hidden){ clearTimeout(pollTimer); pollTimer = null; } else { graceUntil = Date.now() + 8000; poll().then(schedule); castSchedule(); refreshGroup().then(grpSchedule); } });
+// The phone is back on a network, or the page came back from the browser's cache: ask at once.
+window.addEventListener('online', () => { poll().then(schedule); });
+window.addEventListener('pageshow', e => { if (e.persisted){ graceUntil = Date.now() + 8000; poll().then(schedule); refreshConfig(); } });
 
 /* ================= boot ================= */
 // Pick up changes made elsewhere (another phone, Browse) before editing.

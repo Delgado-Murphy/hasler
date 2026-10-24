@@ -60,6 +60,9 @@ or ``fetch`` can't send that without a CORS preflight, which this server never
 answers), a ``Host`` that is one of the box's own names or addresses (defeats
 DNS rebinding: an attacker's name pointed at the box is refused) and an
 ``Origin`` / ``Referer``, when sent, on that same host. Anything else is a 403.
+The server listens on IPv6 and IPv4 together (``WebServer._bind``); IPv6 has
+no NAT in front of it, so a native IPv6 client off this network is dropped
+before it is read (``local_peer``). Each change is one INFO line in the journal.
 ``/api/components/yt-dlp/canary`` is the yt-dlp lane's canary, loopback only
 (haslerd/ytdlp_lane.py); ``/api/software/yt-dlp/update|rollback`` are the
 Music services buttons.
@@ -82,6 +85,7 @@ from __future__ import annotations
 
 import collections
 import copy
+import ipaddress
 import json
 import logging
 import re
@@ -394,10 +398,8 @@ class WebApp:
         elif ctype != "application/json":
             return f"{method} needs Content-Type: application/json"
         host_header = (headers.get("Host") or "").strip().lower()
-        host = _host_only(host_header).strip("[]").rstrip(".")
-        local = (local_addr or "").lower()
-        if local.startswith("::ffff:"):
-            local = local[7:]
+        host = plain_addr(_host_only(host_header).strip("[]").rstrip("."))
+        local = plain_addr(local_addr).lower()
         if not host or (host not in self.own_names() and host != local):
             return f"not this radio's address: {host_header or '(no Host)'}"
         for name in ("Origin", "Referer"):
@@ -416,7 +418,7 @@ class WebApp:
     def wifi_join(self, body: Any, local_addr: str | None) -> None:
         body = body if isinstance(body, dict) else {}
         ssid = str(body.get("ssid", ""))
-        if (local_addr or "") not in self.hotspot_addrs:
+        if plain_addr(local_addr) not in self.hotspot_addrs:
             self.confirm.consume(body.get("confirm"), "wifi", {"ssid": ssid})
         self.wifi.join(ssid, str(body.get("password", "")), str(body.get("security", "auto")))
 
@@ -1544,12 +1546,172 @@ def _host_only(host: str | None) -> str:
     return host.rsplit(":", 1)[0] if host.count(":") == 1 else host
 
 
+def plain_addr(addr: str | None) -> str:
+    """An address as the rest of the server compares it: a dual-stack socket's
+    IPv4-mapped form ("::ffff:192.168.88.20") as plain IPv4, IPv6 compressed and
+    lower case, a zone ("%wlan0") dropped. Anything unparsable comes back as given."""
+    addr = (addr or "").strip()
+    try:
+        ip = ipaddress.ip_address(addr.split("%", 1)[0])
+    except ValueError:
+        return addr
+    if ip.version == 6 and ip.ipv4_mapped is not None:
+        return str(ip.ipv4_mapped)
+    return str(ip)
+
+
+_ULA = ipaddress.ip_network("fc00::/7")
+# The box's IPv6 addresses and their on-link prefixes (Linux; elsewhere absent).
+IF_INET6 = Path("/proc/net/if_inet6")
+PREFIXES_TTL_S = 60.0
+_prefixes: dict = {"at": None, "nets": {}}
+_prefixes_lock = threading.Lock()
+
+
+def _prefix_len(n: int) -> int:
+    """A prefix length as an on-link network: a DHCPv6 /128 (or anything longer
+    than /64) is still a /64 LAN; shorter than /48 is not believed, /64 instead."""
+    return 64 if n > 64 or n < 48 else n
+
+
+def onlink_prefixes(path: Path | None = None, now: float | None = None) -> dict:
+    """{address: on-link network} for each global-scope IPv6 address of the box,
+    from /proc/net/if_inet6 (hex address, ifindex, prefix length, scope, flags,
+    name), read at most every PREFIXES_TTL_S. {} where there is no such file."""
+    now = time.monotonic() if now is None else now
+    with _prefixes_lock:
+        if path is None and _prefixes["at"] is not None and now - _prefixes["at"] < PREFIXES_TTL_S:
+            return _prefixes["nets"]
+        nets = {}
+        try:
+            lines = (path or IF_INET6).read_text().splitlines()
+        except OSError:
+            lines = []
+        for line in lines:
+            fields = line.split()
+            try:
+                if len(fields) < 4 or int(fields[3], 16) != 0:      # scope 00: global
+                    continue
+                addr = ipaddress.IPv6Address(int(fields[0], 16))
+                nets[addr] = ipaddress.ip_network(f"{addr}/{_prefix_len(int(fields[2], 16))}", strict=False)
+            except ValueError:
+                continue
+        if path is None:
+            _prefixes.update(at=now, nets=nets)
+        return nets
+
+
+def local_peer(peer: str | None, local: str | None, prefixes: dict | None = None) -> bool:
+    """May this client reach the key page at all? IPv4 is as before (behind the
+    home router's NAT; Host/Origin and the key press guard the rest). IPv6 has
+    no NAT, so a native IPv6 client must be on this network: loopback,
+    link-local (fe80::/10), unique-local (fc00::/7, never routed off the site)
+    or a global address inside one of the box's on-link prefixes
+    (``onlink_prefixes``; the address it connected to counts as a /64 when it
+    is not listed there). A global address from anywhere else is refused, as is
+    anything unparsable."""
+    try:
+        ip = ipaddress.ip_address(plain_addr(peer))
+    except ValueError:
+        return False
+    if ip.version == 4:
+        return True
+    if ip.is_loopback or ip.is_link_local or ip in _ULA:
+        return True
+    if not ip.is_global:
+        return False
+    nets = dict(onlink_prefixes() if prefixes is None else prefixes)
+    try:
+        own = ipaddress.ip_address(plain_addr(local))
+    except ValueError:
+        own = None
+    if own is not None and own.version == 6 and own.is_global and own not in nets:
+        nets[own] = ipaddress.ip_network(f"{own}/64", strict=False)
+    return any(ip in net for net in nets.values())
+
+
+def _log_path(path: str | None) -> str:
+    """The request path for the journal: no query string, and no segment that
+    may be a token (a confirm id is 24 characters: long, or digits in it)."""
+    segments = urlparse(path or "").path.split("/")
+    return "/".join("…" if len(s) >= 16 or (len(s) >= 10 and any(c.isdigit() for c in s)) else s
+                    for s in segments)
+
+
+class _Server(ThreadingHTTPServer):
+    def verify_request(self, request: Any, client_address: Any) -> bool:
+        """Close, unanswered, a connection from outside this network (local_peer)."""
+        try:
+            local = request.getsockname()[0]
+        except (OSError, IndexError):
+            local = None
+        peer = client_address[0] if client_address else None
+        if local_peer(peer, local):
+            return True
+        log.info("web: refused a connection from %s (not on this network)", plain_addr(peer))
+        return False
+
+
+class _DualStackServer(_Server):
+    """IPv6 and IPv4 on one socket ("::", IPV6_V6ONLY off): hasler.local is
+    published with both, and a phone that tries IPv6 first gets an answer."""
+    address_family = socket.AF_INET6
+
+    def server_bind(self) -> None:
+        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        super().server_bind()
+
+
 def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "haslerd"
+        # A half-open connection gives up its thread after this long (per read/write).
+        timeout = 30
 
         def log_message(self, fmt, *args):  # quiet: the journal is for the panel
             log.debug("web %s - " + fmt, self.address_string(), *args)
+
+        def address_string(self) -> str:
+            return self._client() or "?"
+
+        def _client(self) -> str | None:
+            """The client's address, IPv4-mapped shown as plain IPv4 (plain_addr)."""
+            return plain_addr(self.client_address[0]) if self.client_address else None
+
+        def parse_request(self) -> bool:
+            ok = super().parse_request()
+            if ok:
+                self._t0 = time.monotonic()
+            return ok
+
+        def _aborted(self, why: str) -> None:
+            if self._t0 is not None and self.command not in ("GET", "HEAD"):
+                log.info("web: %s %s from %s aborted after %d ms: %s", self.command, _log_path(self.path),
+                         self._client(), (time.monotonic() - self._t0) * 1000, why)
+            else:
+                log.debug("web: connection from %s dropped: %s", self._client(), why)
+
+        def send_response_only(self, code: int, message: str | None = None) -> None:
+            self._status = code
+            super().send_response_only(code, message)
+
+        def handle_one_request(self) -> None:
+            """One request. A change (not a GET: the page polls every second) gets
+            one INFO line - method, path, client, status, time; never a body or a
+            query - so a save that never arrived, or arrived and failed, shows."""
+            self._t0, self._status = None, None
+            try:
+                super().handle_one_request()
+            except (BrokenPipeError, ConnectionResetError, TimeoutError) as exc:
+                self.close_connection = True
+                self._aborted(type(exc).__name__)
+                return
+            if self._t0 is not None and self._status is None:
+                # http.server caught a socket timeout itself (a body that never came)
+                self._aborted("TimeoutError")
+            elif self._t0 is not None and self.command not in ("GET", "HEAD"):
+                log.info("web: %s %s from %s -> %s in %d ms", self.command, _log_path(self.path),
+                         self._client(), self._status, (time.monotonic() - self._t0) * 1000)
 
         def _send(self, status: int, body: bytes, ctype: str, cache: str = "no-store") -> None:
             self.send_response(status)
@@ -1584,13 +1746,15 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._json(409, {"ok": False, "errors": [], "error": str(exc), "confirm_unavailable": True})
             except NotInstalled as exc:
                 self._json(404, {"ok": False, "errors": [], "error": str(exc), "installed": False})
+            except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                raise       # the client went away: handle_one_request logs it, nothing to answer
             except Exception as exc:
                 log.exception("web request failed: %s %s", self.command, self.path)
                 self._json(500, {"ok": False, "errors": [], "error": str(exc) or type(exc).__name__})
 
         def _local_addr(self) -> str | None:
             try:
-                return str(self.connection.getsockname()[0])
+                return plain_addr(str(self.connection.getsockname()[0]))
             except (OSError, AttributeError, IndexError):
                 return None
 
@@ -1599,8 +1763,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             why = app.request_refusal(self.command, self.headers, self._local_addr())
             if why is None:
                 return False
-            log.warning("web: refused %s %s from %s: %s", self.command, urlparse(self.path).path,
-                        self.client_address[0] if self.client_address else "?", why)
+            log.warning("web: refused %s %s from %s: %s", self.command, _log_path(self.path),
+                        self._client() or "?", why)
             # Drain the body so the connection closes cleanly.
             try:
                 length = min(int(self.headers.get("Content-Length") or 0), MAX_BODY)
@@ -1679,7 +1843,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 n = parse_qs(url.query).get("n", ["15"])[0]
                 self._guard(lambda: self._json(200, app.knob_sample(m.group(1), n)))
             elif url.path == "/api/keys/state":
-                client = self.client_address[0] if self.client_address else None
+                client = self._client()
                 self._guard(lambda: self._json(*app.keys_state(client)))
             elif url.path == "/api/info":
                 self._guard(lambda: self._json(200, app.info()))
@@ -1882,7 +2046,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif path == "/api/components/yt-dlp/canary":
                 # The lane's canary (loopback only; ytdlp_lane.py): it takes a while.
                 self._guard(lambda: self._json(*app.ytdlp_canary(
-                    self._body(), self.client_address[0] if self.client_address else None)))
+                    self._body(), self._client())))
             elif path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_in(self._body())}))
             elif path.startswith(YTM_PREFIX):
@@ -1932,14 +2096,28 @@ class WebServer:
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
 
+    def _bind(self) -> tuple[ThreadingHTTPServer, str]:
+        """The listening server and a note for the log. The wildcard host
+        ("0.0.0.0", the default, or "") listens on IPv6 and IPv4 together, or on
+        IPv4 alone where IPv6 is off; a named address listens there only, as it
+        always has."""
+        handler = _handler(self.app)
+        if self.host not in ("0.0.0.0", ""):
+            return _Server((self.host, self.port), handler), ""
+        try:
+            return _DualStackServer(("::", self.port), handler), " (IPv6 and IPv4)"
+        except (OSError, AttributeError) as exc:
+            return _Server(("0.0.0.0", self.port), handler), f" (IPv4 only, no IPv6: {exc})"
+
     def start(self) -> None:
-        server = ThreadingHTTPServer((self.host, self.port), _handler(self.app))
+        server, note = self._bind()
         server.daemon_threads = True
         self.port = server.server_address[1]
         self._thread = threading.Thread(target=server.serve_forever, name="web", daemon=True)
         self._thread.start()
         self._server = server
-        log.info("key page on http://%s:%s/", self.host, self.port)
+        bound = str(server.server_address[0])
+        log.info("key page on http://%s:%s/%s", f"[{bound}]" if ":" in bound else bound, self.port, note)
 
     def close(self) -> None:
         if self._server is not None:
