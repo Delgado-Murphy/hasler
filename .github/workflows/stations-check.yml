@@ -1,5 +1,5 @@
 # Weekly: does every stream URL the radio ships still play? Probes
-# config/stations/*.json and config/catalog/catalog.json (scripts/ci/stations_check.py)
+# config/stations/*.json (the ~600-station collection.json) and config/catalog/catalog.json (scripts/ci/stations_check.py)
 # and keeps ONE open issue (label stations-check) listing the dead ones; it is
 # closed again when all of them answer. Refused (401/403/451) streams are listed
 # apart - the runners are in the US, the radios mostly in Spain.
@@ -19,7 +19,7 @@ concurrency:
 jobs:
   probe:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       issues: write

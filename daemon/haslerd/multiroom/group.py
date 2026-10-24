@@ -837,8 +837,10 @@ class Group:
             leader, gen = self.leader, self._gen
         if leader is None:
             return
+        # A ytm reference (a chart, an artist) travels with it: the leader
+        # looks it up itself; ``uri`` is the link it last resolved to here.
         body = {"from": self.self_id, "preset": {"n": preset.n, "name": preset.name, "source": preset.source,
-                                                 "uri": preset.uri, "shuffle": preset.shuffle}}
+                                                 "uri": preset.uri, "shuffle": preset.shuffle, **preset.ytm_ref}}
 
         def job() -> None:
             try:
@@ -1106,13 +1108,24 @@ class Group:
         source = spec.get("source", "radio")
         if source not in PRESET_SOURCES:
             raise ValueError(f"unknown source {source!r}")
-        uri = _text(spec.get("uri"), "preset.uri", 2048)
+        ref: tuple = ()
+        if source == "ytm" and spec.get("kind"):
+            from ..web.keymap import ytm_ref_from_page  # noqa: PLC0415 - the one validator
+
+            errors: list[dict] = []
+            got = ytm_ref_from_page(spec, "preset", errors)
+            if got is None:
+                raise ValueError("; ".join(e["message"] for e in errors))
+            ref = tuple(sorted(got[0].items()))
+            uri = str(spec.get("uri") or "").strip()[:2048] or got[1]
+        else:
+            uri = _text(spec.get("uri"), "preset.uri", 2048)
         try:
             n = int(spec.get("n") or 0)
         except (TypeError, ValueError):
             raise ValueError("preset.n must be a number") from None
         preset = Preset(n=n, name=str(spec.get("name") or f"Preset {n}")[:60], uri=uri, source=source,
-                        shuffle=bool(spec.get("shuffle")))
+                        shuffle=bool(spec.get("shuffle")), ref=ref)
         with self._lock:
             if self.role != "lead" or sender not in self.members:
                 raise GroupError(f"{self.self_name} doesn't lead a group with that radio in it")

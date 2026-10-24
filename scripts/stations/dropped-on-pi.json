@@ -1,0 +1,38 @@
+[
+ {
+  "url": "https://rtva-live-radio.flumotion.com/rtva/cfr.mp3",
+  "reason": "MPD on the radio stops at once (no decodable audio), twice"
+ },
+ {
+  "url": "https://radiocast.rtp.pt/antena380a.mp3",
+  "reason": "MPD on the radio: mpg123 cannot decode the stream (stops at once), twice"
+ },
+ {
+  "url": "https://stream.cism893.ca/cism128.mp3",
+  "reason": "MPD on the radio: mpg123 \"illegal bit allocation\", stops, twice"
+ },
+ {
+  "url": "https://stream-node0.rri.co.id/streaming/14/9014/kbrn.mp3",
+  "reason": "MPD on the radio stops at once: AAC served under an .mp3 name, twice"
+ },
+ {
+  "url": "https://stream-node0.rri.co.id/streaming/25/9125/voi.mp3",
+  "reason": "MPD on the radio stops at once: AAC served under an .mp3 name, twice"
+ },
+ {
+  "url": "https://a2.siar.us/listen/suarasoneta/radio.mp3",
+  "reason": "MPD on the radio stops at once (AAC under an .mp3 name), twice"
+ },
+ {
+  "url": "https://node.stream-africa.com:8443/AntenaNacional",
+  "reason": "TLS: certificate signer not trusted (curl and MPD)"
+ },
+ {
+  "url": "https://listen.rba.co.rw:8008/rwanda/",
+  "reason": "TLS: certificate signer not trusted (curl and MPD)"
+ },
+ {
+  "url": "http://213.136.96.14:8000/nostalgie2.mp3",
+  "reason": "HTTP 404 from the radio"
+ }
+]

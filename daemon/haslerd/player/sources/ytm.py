@@ -51,6 +51,13 @@ The catalogue (optional, ``catalog=``) changes three things when available:
   appends only ids not already queued. The queue is capped at ``QUEUE_CAP`` by
   deleting already-played songs from the front.
 * ``now_playing()`` names the current track for the key page.
+* **Preset references** (ytm_refs.py: an artist's top songs, a chart, a
+  mood list) are looked up when pressed and on each warm() round, through the
+  catalogue's browser (ytm_browse.py, cached: chart 6 h, artist 1 d, mood
+  6 h). The link found is remembered in the state file and handed to
+  ``on_preset_resolved`` (the web page writes it back to the preset's
+  ``uri``), so the key still plays - through yt-dlp if need be - when
+  YouTube Music can't be asked.
 
 Boot (``state_dir=``, /var/lib/haslerd). A cold box used to wait for Wi-Fi,
 then expansion, then one resolve before the first note. Three things cut that:
@@ -90,6 +97,7 @@ fails outright (no first chunk), the proxy falls back to the 302 and logs it.
 
 from __future__ import annotations
 
+import dataclasses
 import http.client
 import json
 import logging
@@ -109,6 +117,7 @@ import urllib.error
 import urllib.request
 
 from ..base import Preset
+from .ytm_refs import link_for, needs_lookup, ref_key
 
 log = logging.getLogger(__name__)
 
@@ -355,6 +364,12 @@ class YtmSource:
         self._endless: str | None = None
         self._generation = 0
         self._topup_lock = threading.Lock()
+        # Preset references -> the link they last resolved to (ytm_refs.ref_key).
+        # Guarded by _cache_lock; kept in the state file.
+        self._ref_links: dict[str, str] = {}
+        # (preset, link) whenever a reference resolves to a link it didn't have
+        # (web/server.py writes it back to the preset's uri). Any thread.
+        self.on_preset_resolved: Callable[[Preset, str], None] | None = None
 
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
@@ -376,6 +391,9 @@ class YtmSource:
         catches it, logs it and flashes the lamp, and the boot resume retries.
         """
         self.start()
+        preset = self._with_link(preset)
+        if not preset.uri:
+            raise YtmError(f"ytm preset {preset.n} ({preset.name}): YouTube Music didn't say what it plays")
         try:
             ids = self._expand(preset.uri)
         except Exception as exc:
@@ -474,7 +492,7 @@ class YtmSource:
             meta = self._meta.get(vid)
         if meta is None:
             return None
-        return {**meta, "videoId": vid}
+        return {**meta, "explicit": bool(meta.get("explicit")), "videoId": vid}
 
     # -- queues haslerd didn't build ---------------------------------------
 
@@ -571,8 +589,9 @@ class YtmSource:
         """
         self._warm_presets = [p for p in presets if p.source == "ytm"]
         if self.playlists is not None:
-            self.playlists.update(self._warm_presets)
-        self._forget_files({p.uri for p in self._warm_presets})
+            linked = [self._with_link(p, lookup=False) for p in self._warm_presets]
+            self.playlists.update([p for p in linked if p.uri])
+        self._forget_files({self._link(p, lookup=False) for p in self._warm_presets})
         self._start_tagger()
         if self._warm_thread is not None:
             self._warm_kick.set()
@@ -613,11 +632,14 @@ class YtmSource:
     def _ordered(self, presets: list[Preset]) -> list[Preset]:
         """The last-played preset first: it is the one the boot resume plays."""
         last = self._last_uri
-        return sorted(presets, key=lambda p: p.uri != last)
+        return sorted(presets, key=lambda p: self._link(p, lookup=False) != last)
 
     def warm_once(self, preset: Preset) -> bool:
         """Expand ``preset`` and resolve the track it will open on. True if both worked."""
         try:
+            preset = self._with_link(preset)
+            if not preset.uri:
+                return False
             interval = getattr(self, "_warm_interval_s", WARM_INTERVAL_S)
             # Fresh each round so playlist edits show up; kept until the next
             # round so a press in between skips expansion.
@@ -646,6 +668,52 @@ class YtmSource:
         except Exception:
             log.debug("warming ytm preset %s failed", preset.n, exc_info=True)
             return False
+
+    # -- preset references --------------------------------------------------
+
+    def _link(self, preset: Preset, lookup: bool = True) -> str:
+        """The link ``preset`` plays now. A plain link is itself; a reference
+        that needs YouTube Music (artist, chart, mood) is looked up when
+        ``lookup`` (cached by the browser), else - or when that fails - it is
+        the link it last resolved to, else the preset's own ``uri``."""
+        ref = preset.ytm_ref
+        if not ref.get("kind"):
+            return preset.uri
+        fixed = link_for(ref)
+        if fixed:
+            return fixed
+        if not needs_lookup(ref):
+            return preset.uri
+        key = ref_key(ref)
+        browse = getattr(self.catalog, "browse", None) if self._catalog_ready() else None
+        if lookup and browse is not None:
+            try:
+                link = browse.resolve(ref)
+            except Exception:
+                log.warning("looking up ytm preset %s failed", preset.n, exc_info=True)
+                link = None
+            if link:
+                with self._cache_lock:
+                    changed = self._ref_links.get(key) != link
+                    self._ref_links[key] = link
+                if link != preset.uri:
+                    hook = self.on_preset_resolved
+                    if hook is not None:
+                        try:
+                            hook(preset, link)
+                        except Exception:
+                            log.debug("on_preset_resolved failed", exc_info=True)
+                if changed:
+                    log.info("ytm preset %s (%s) plays %s", preset.n, key, link)
+                return link
+        with self._cache_lock:
+            known = self._ref_links.get(key)
+        return known or preset.uri
+
+    def _with_link(self, preset: Preset, lookup: bool = True) -> Preset:
+        """``preset`` with ``uri`` = the link it plays now (see ``_link``)."""
+        link = self._link(preset, lookup)
+        return preset if link == preset.uri else dataclasses.replace(preset, uri=link)
 
     # -- proxy server -----------------------------------------------------
 
@@ -882,6 +950,8 @@ class YtmSource:
                 if isinstance(vid, str) and VIDEO_ID.match(vid):
                     self._meta.pop(vid, None)       # re-insert: newest last
                     self._meta[vid] = {k: str(t.get(k) or "") for k in ("title", "artist", "album", "thumb")}
+                    if t.get("explicit"):
+                        self._meta[vid]["explicit"] = "1"
             while len(self._meta) > META_CAP:
                 del self._meta[next(iter(self._meta))]
 
@@ -916,7 +986,7 @@ class YtmSource:
         if self._state_file is None:
             return
         now = time.time()
-        keep = {p.uri for p in self._warm_presets}
+        keep = {self._link(p, lookup=False) for p in self._warm_presets}
         if self._last_uri:
             keep.add(self._last_uri)
         with self._cache_lock:
@@ -933,6 +1003,7 @@ class YtmSource:
                 "urls": {v: [exp, url] for v, (exp, url) in self._urls.items()
                          if exp > now and v in wanted},
                 "meta": {v: m for v, m in self._meta.items() if v in wanted},
+                "resolved": dict(self._ref_links),
             }
         try:
             body = json.dumps(data, separators=(",", ":")).encode()
@@ -981,6 +1052,9 @@ class YtmSource:
             for vid, meta in (data.get("meta") or {}).items():
                 if valid(vid) and isinstance(meta, dict):
                     self._meta[vid] = {k: str(meta.get(k) or "") for k in ("title", "artist", "album", "thumb")}
+            for key, link in (data.get("resolved") or {}).items():
+                if isinstance(key, str) and isinstance(link, str) and link.startswith("https://"):
+                    self._ref_links[key] = link
             for uri, name in (data.get("files") or {}).items():
                 if isinstance(name, str) and valid(name.split(".", 1)[0]) and "/" not in name:
                     self._files[uri] = name
@@ -1003,8 +1077,11 @@ class YtmSource:
         if self._cache_dir is None:
             return False
         if preset is None:
-            preset = next((p for p in self._warm_presets if p.uri == self._last_uri), None)
+            preset = next((p for p in self._warm_presets if self._link(p, lookup=False) == self._last_uri), None)
         if preset is None or preset.source != "ytm":
+            return False
+        preset = self._with_link(preset, lookup=False)
+        if not preset.uri:
             return False
         self._last_uri = preset.uri
         worker = threading.Thread(target=self._prepare, args=(preset,), name="ytm-boot-cache", daemon=True)
@@ -1112,7 +1189,8 @@ class YtmSource:
             wanted = set(self._files.values())
         try:
             for path in self._cache_dir.iterdir():
-                if path.name not in wanted and not path.name.startswith(TMP_PREFIX):
+                # Directories are not ours: ytm-cache/browse is the browser's (ytm_browse.py).
+                if path.name not in wanted and not path.name.startswith(TMP_PREFIX) and not path.is_dir():
                     path.unlink(missing_ok=True)
         except FileNotFoundError:
             pass

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Probe every radio stream the radio ships (workflow stations-check.yml).
 
-Stdlib + curl. Reads config/stations/*.json (``stations[].url``) and
+Stdlib + curl. Reads config/stations/*.json (``stations[].url`` - today the
+one world collection, config/stations/collection.json, ~600 streams) and
 config/catalog/catalog.json (items with ``source: radio``, ``uri``), fetches
 the first bytes of each (redirects followed; an HLS playlist must look like
 one and its first entry must answer too), tries twice, and writes a report.
@@ -29,7 +30,9 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-UA = "Mozilla/5.0 (X11; Linux aarch64) hasler-stations-check (+https://github.com/Delgado-Murphy/hasler)"
+# MPD's own agent: what the radio sends. Some hosts (zeno.fm, Israeli CDNs)
+# refuse browser-like agents with 401 but serve MPD, curl and VLC.
+UA = "Music Player Daemon 0.24 hasler-stations-check (+https://github.com/Delgado-Murphy/hasler)"
 TIMEOUT = 20
 READ = 16384
 AUDIO_CT = re.compile(r"audio/|mpegurl|application/octet-stream|application/ogg|video/mp2t|"
@@ -49,7 +52,8 @@ def gather(root: Path = ROOT) -> list[dict]:
 
     for f in sorted((root / "config" / "stations").glob("*.json")):
         for s in json.loads(f.read_text()).get("stations", []):
-            add(s.get("name", "?"), s.get("url"), f.relative_to(root).as_posix())
+            where = f.relative_to(root).as_posix() + (f"#{s['id']}" if s.get("id") else "")
+            add(s.get("name", "?"), s.get("url"), where)
     cat = root / "config" / "catalog" / "catalog.json"
     if cat.is_file():
         def walk(node):
@@ -181,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-url", default="")
     a = ap.parse_args(argv)
     entries = [e for e in gather() if not a.only or a.only in e["url"]]
-    with ThreadPoolExecutor(max_workers=12) as ex:
+    with ThreadPoolExecutor(max_workers=24) as ex:
         results = list(ex.map(probe, entries))
     for r in results:
         print(f"{r['verdict']:8} {r['name'][:32]:32} {r['detail'][:70]:70} {r['url']}")

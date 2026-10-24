@@ -218,7 +218,8 @@ def test_tracks_skip_unavailable_and_idless_entries(catalog):
     tracks = catalog.tracks("https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB")
     assert [t["videoId"] for t in tracks] == ["aaaaaaaaaaa", "ccccccccccc"]
     assert tracks[0] == {"videoId": "aaaaaaaaaaa", "title": "One", "artist": "Miles Davis",
-                         "album": "Kind Of Blue", "thumb": "https://t/120", "duration": "9:22"}
+                         "album": "Kind Of Blue", "thumb": "https://t/120", "duration": "9:22",
+                         "explicit": False}
 
 
 def test_liked_songs_need_the_sign_in(catalog):
@@ -230,7 +231,7 @@ def test_song_radio_seeds_from_the_video_and_continues_after_the_last_id(catalog
     uri = f"https://music.youtube.com/watch?v={VID}&list=RDAMVM{VID}"
     tracks = catalog.radio(uri)
     assert tracks[0] == {"videoId": "ddddddddddd", "title": "Watch", "artist": "A, B", "album": "",
-                         "thumb": "https://t/120", "duration": "3:23"}
+                         "thumb": "https://t/120", "duration": "3:23", "explicit": False}
     catalog.radio(uri, after="ccccccccccc")
     calls = [c for c in FakeClient.instances[-1].calls if c[0] == "get_watch_playlist"]
     assert calls == [

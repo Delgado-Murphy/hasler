@@ -209,7 +209,7 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .chip{position:relative;min-height:36px;padding:4px 14px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--muted);font:700 13px/1 var(--sans)}
 .chip::after{content:"";position:absolute;inset:-4px 0}
 .chip[aria-checked="true"]{background:var(--cream);border-color:var(--cream);color:#1E140C}
-.chip:hover:not([aria-checked="true"]){border-color:var(--line2);color:var(--cream)}
+.chip:hover:not([aria-checked="true"]):not([aria-pressed="true"]){border-color:var(--line2);color:var(--cream)}
 .results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
 .res{display:flex;align-items:center;gap:10px;padding:6px 4px;border-radius:8px;min-width:0;cursor:pointer}
 .res:hover,.res[aria-selected="true"]{background:#2A1D13}
@@ -331,7 +331,120 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .card-add:hover span{border-color:var(--amber)}
 .card-play:hover .art{box-shadow:0 0 0 2px var(--line2)}
 .card-play:focus-visible{outline-offset:3px}
-.card.more .art{background:var(--well);border:1px dashed var(--line2);box-shadow:none;display:flex;align-items:center;justify-content:center;color:var(--brass)}
+/* source tabs: Radio | YouTube Music | Spotify */
+.br-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-top:-4px}
+.br-tabs button{position:relative;flex:0 1 auto;min-height:44px;padding:10px 12px;border:0;background:none;color:var(--muted);font:700 14px/18px var(--sans);white-space:nowrap}
+.br-tabs button[aria-selected="true"]{color:var(--title)}
+.br-tabs button[aria-selected="true"]::after{content:"";position:absolute;left:10px;right:10px;bottom:-1px;height:2px;border-radius:2px;background:var(--amber)}
+.br-tabs button:hover:not([aria-selected="true"]){color:var(--cream)}
+.br-pane{display:flex;flex-direction:column;gap:22px;min-width:0}
+/* the station browser */
+.br{display:flex;flex-direction:column;gap:18px;min-width:0}
+.br-head{display:flex;flex-direction:column;gap:10px}
+.br-browse .br-head{position:sticky;top:0;z-index:12;margin:0 -16px;padding:8px 16px 10px;background:var(--ground);box-shadow:0 8px 14px -12px rgba(0,0,0,.7)}
+@media (min-width:960px){ .br-browse .br-head{margin:0;padding:8px 0 10px} }
+.br-body{display:flex;flex-direction:column;gap:22px;min-width:0}
+.br-chips{flex-wrap:nowrap;overflow-x:auto;margin:0 -16px;padding:4px 16px;scrollbar-width:none}
+.br-chips::-webkit-scrollbar{display:none}
+.br-pick .br-chips{margin:0;padding:4px 0;flex-wrap:wrap}
+.br-chips .chip{flex:none}
+.chip[aria-pressed="true"]{background:var(--cream);border-color:var(--cream);color:#1E140C}
+.chip:hover:not([aria-pressed="true"]):not([aria-checked="true"]){border-color:var(--line2);color:var(--cream)}
+.chip:disabled{opacity:.5}
+.chip.strong{color:var(--brass)}
+.chip-n{margin-left:7px;font:500 11px/1 var(--mono);opacity:.75}
+.br-count{margin:0;color:var(--text2);font:600 13px/18px var(--sans)}
+.br-count:focus{outline:none}
+.shelf-head.row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.shelf-head.row .link{padding-bottom:2px}
+.sentinel{height:1px}
+.srow{display:flex;align-items:center;gap:12px;padding:4px;border-radius:10px;min-width:0}
+.srow:hover{background:#2A1D13}
+.srow.picked{box-shadow:inset 2px 0 0 var(--amber);background:#241810}
+.srow-main{flex:1;min-width:0;min-height:52px;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0;border:0;background:none;text-align:left;color:inherit}
+.srow-main .res-title{display:flex;align-items:center;gap:6px}
+.st-badges{display:inline-flex;gap:4px;flex:none}
+.st-badge{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:9px;border:1px solid var(--line2);color:var(--brass);font:700 10.5px/1 var(--sans);white-space:nowrap}
+.st-badge.star{border:0;padding:0;color:var(--amber);font-size:13px}
+.st-badge.mylink{color:var(--text2)}
+/* a station without a logo: genre colour, monogram, flag */
+.stile{position:relative;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;color:#F6ECD6;
+  background-image:radial-gradient(circle at 30% 20%,rgba(255,240,210,.22),rgba(0,0,0,0) 60%),linear-gradient(180deg,rgba(0,0,0,0) 40%,rgba(0,0,0,.28));box-shadow:inset 0 0 0 1px rgba(255,233,194,.12)}
+.stile.sm{width:44px;height:44px;border-radius:8px}
+.stile.lg{width:84px;height:84px;border-radius:14px}
+.stile.card{width:136px;height:136px;border-radius:10px}
+.stile.mylink{background:#3A2A1C}
+.st-mono{font:600 17px/1 var(--serif);letter-spacing:.02em;text-shadow:0 1px 1px rgba(0,0,0,.3)}
+.stile.lg .st-mono{font-size:30px}
+.stile.card .st-mono{font-size:44px}
+.stile .st-flag{position:absolute;right:3px;bottom:2px;font-size:12px;line-height:1}
+.stile.card .st-flag,.stile.lg .st-flag{right:8px;top:7px;bottom:auto;font-size:18px}
+.st-genre{position:absolute;left:8px;bottom:7px;right:8px;color:rgba(255,240,214,.86);font:10px/12px var(--mono);letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.stile.lg .st-genre{display:none}
+.st-card .card-sub{-webkit-line-clamp:3}
+/* genres grid */
+.gtiles{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px}
+.gtile{width:100%;min-height:62px;display:flex;align-items:flex-end;justify-content:space-between;gap:8px;padding:10px 12px;border:0;border-radius:10px;color:#F6ECD6;text-align:left;
+  background-image:linear-gradient(160deg,rgba(255,240,210,.14),rgba(0,0,0,.18));box-shadow:inset 0 0 0 1px rgba(255,233,194,.12)}
+.gtile:hover{filter:brightness(1.08)}
+.gt-name{font:600 15px/18px var(--serif)}
+.gt-n{font:11px/1 var(--mono);opacity:.8}
+/* around the world */
+.world-wrap{position:relative}
+.world{display:block;width:100%;max-width:520px;height:auto;margin:0 auto 8px}
+.world path{fill:#2A1D13;stroke:#3A2A1C;stroke-width:1}
+.world-btns{display:flex;flex-wrap:wrap;gap:8px}
+.world-btn{position:relative;min-height:44px;padding:6px 14px;border:1px solid var(--line2);border-radius:22px;background:rgba(23,16,11,.9);color:var(--cream);font:700 13px/16px var(--sans)}
+.world-btn[aria-pressed="true"]{background:var(--cream);border-color:var(--cream);color:#1E140C}
+@media (min-width:600px){
+  .world-wrap{max-width:560px}
+  .world{margin:0}
+  .world-btns{position:absolute;inset:0;display:block}
+  .world-btn{position:absolute;left:var(--x,50%);top:var(--y,50%);transform:translate(-50%,-50%);white-space:nowrap}
+}
+.country-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px}
+.country{width:100%;min-height:44px;display:flex;align-items:center;gap:10px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:none;color:var(--cream);text-align:left;font:600 14px/18px var(--sans)}
+.country:hover{border-color:var(--line2)}
+.country .cn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br-net .shelf-head h2{font-size:17px}
+/* station sheet, filter sheets, menus */
+dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);overflow:auto;overscroll-behavior:contain}
+.sts-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:12px}
+.sts-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding-top:4px}
+.sts-txt h2{margin:0;overflow-wrap:anywhere}
+.sts-meta{margin:0;color:var(--text2);font-size:13px;line-height:18px}
+.sts-x{margin:-6px -8px 0 0}
+.sts-why{margin:0 0 10px;color:var(--cream);font:italic 600 16px/22px var(--serif)}
+.sts-net{margin:0 0 8px;color:#F2D29B;font:600 12.5px/16px var(--sans)}
+.sts-tech{margin:0;color:var(--muted);font:10.5px/15px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.sts-web{display:inline-flex;align-items:center;padding-left:0}
+.sts-acts{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.sts-acts .btn{flex:none;width:100%}
+.btn[aria-pressed="true"]{color:var(--amber);border-color:#7A5A36}
+.sts-msg{margin:8px 0 0;color:var(--text2);font-size:13px;line-height:18px}
+.sts-msg:empty{display:none}
+.sts-msg.bad{color:#F07A62}
+.sts-msg.ok{color:#8FCF9F}
+.sts-report{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding-top:6px;border-top:1px solid var(--line)}
+.sts-thanks{margin:6px 0;color:#BFE6C8;font-size:13.5px}
+.fs-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px}
+.fs-body{display:flex;flex-direction:column;gap:10px}
+.fs-h{margin:8px 0 0;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.fs-foot{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;margin:14px -18px calc(-18px - env(safe-area-inset-bottom));padding:12px 18px calc(18px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(31,20,13,.9),#1F140D 30%)}
+.fs-foot .btn{flex:none;width:100%}
+.keylist.menu button:disabled{opacity:.45;cursor:default}
+.danger-btn{color:var(--red-text);border-color:rgba(236,94,66,.45)}
+/* My stations */
+.mine-add{margin-left:auto}
+.mine-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.mine-row{display:flex;align-items:center;gap:10px;padding:4px 0;border-bottom:1px solid var(--line);background:var(--ground)}
+.mine-row:first-child{border-top:1px solid var(--line)}
+.mine-row .grip{flex:none;width:18px;color:var(--line2);font:700 13px/1 var(--sans);letter-spacing:-2px;cursor:grab;text-align:center}
+.mine-row.dragging{opacity:.45}
+.mine-row.over{box-shadow:inset 0 2px 0 var(--amber)}
+.sp-note{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border:1px dashed var(--line2);border-radius:14px;color:var(--text2);font-size:14px;line-height:20px}
+.sp-note b{color:var(--title);font:600 16px/20px var(--serif)}
+@media (prefers-reduced-motion:reduce){ .br *, dialog.stsheet *, dialog.fsheet *{transition:none !important;animation:none !important} }
 .more-box{display:flex;flex-direction:column;gap:8px}
 .empty{padding:28px 18px;border:1px dashed var(--line2);border-radius:14px;text-align:center;color:var(--text2)}
 .empty h2{margin:0 0 6px;color:var(--title);font:600 20px/24px var(--serif)}
@@ -339,6 +452,65 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .skeleton{display:flex;gap:12px;overflow:hidden}
 .skeleton i{flex:0 0 136px;height:136px;border-radius:10px;background:linear-gradient(90deg,#20160E,#2A1D13,#20160E);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
 @keyframes shimmer{to{background-position:-200% 0}}
+
+/* YouTube Music tab */
+.ebadge{display:inline-flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px;margin-left:6px;border-radius:3px;background:var(--text2);color:var(--ground);font:800 10px/1 var(--sans);vertical-align:2px;letter-spacing:0}
+.ebadge[hidden]{display:none}
+.yt .res-title{display:flex;align-items:center;min-width:0}
+.yt-t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.yt .chip{min-height:44px}
+.yt-search{position:relative}
+.yt-sug{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:20;list-style:none;margin:0;padding:6px;border:1px solid var(--line2);border-radius:12px;background:var(--sheet);box-shadow:0 14px 30px rgba(0,0,0,.55)}
+.yt-sug[hidden]{display:none}
+.yt-sug-o{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border-radius:8px;color:var(--cream);cursor:pointer}
+.yt-sug-o svg{position:static;transform:none;flex:none}
+.yt-sug-o[aria-selected="true"],.yt-sug-o:hover{background:#2E2117}
+.ythumb{position:relative;flex:none;width:44px;height:44px;border-radius:6px;overflow:hidden;background:#2A1D13;box-shadow:0 0 0 1px rgba(201,161,90,.15)}
+.ythumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ythumb .ph,.art .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.ythumb.lg{width:96px;height:96px;border-radius:12px}
+.ythumb.xl{width:120px;height:120px;border-radius:12px}
+.ythumb.round,.art.round,.thumb.round{border-radius:50%}
+.yt-card.artist .card-title,.yt-card.artist .card-sub{text-align:center}
+.yt-card.picked .art{box-shadow:0 0 0 2px var(--amber)}
+.yt-dots{color:var(--muted)}
+.yt-acts{display:flex;align-items:center;gap:4px}
+.yt-key{gap:4px;padding:10px 14px}
+.yt-signin{padding:12px 14px;border:1px dashed var(--line2);border-radius:12px}
+.yt-signin .link{padding:0;min-height:0}
+.yt-sub-h{margin:6px 0 0;color:var(--text2);font:600 15px/20px var(--sans)}
+.yt-moodlist:empty{display:none}
+.yt-moodlist{display:flex;flex-direction:column;gap:8px}
+.yt-cc{min-height:44px;width:auto;max-width:12em;padding:8px 10px;border-radius:10px}
+.yt-top{display:flex;align-items:center;margin:-6px 0 -10px}
+.yt-back{display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.yt-hero{display:flex;align-items:flex-start;gap:16px}
+.yt-hero-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding-top:6px}
+.yt-page-h{margin:0;color:var(--title);font:600 26px/30px var(--serif);overflow-wrap:anywhere}
+.yt-page-h:focus{outline:none}
+.yt-desc{margin:2px 0 0;color:var(--text2);font-size:13px;line-height:18px;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.yt-opts{border:1px solid var(--line);border-radius:14px;padding:4px}
+.yt-opt{padding:6px 6px 6px 12px}
+.yt-opt-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;min-height:44px;justify-content:center}
+.yt-page-acts{display:flex;flex-wrap:wrap;gap:8px}
+.yt-tracks .yt-n{flex:none;width:28px;text-align:right;color:var(--muted);font:12px/1 var(--mono);font-variant-numeric:tabular-nums}
+.yt-links{display:flex;flex-direction:column;align-items:flex-start;margin-top:6px}
+.yt-sheet .sts-txt h2{display:flex;align-items:center;flex-wrap:wrap}
+.yt-explicit{margin-top:10px}
+@media (max-width:420px){ .ythumb.xl{width:96px;height:96px} .yt-page-h{font-size:22px;line-height:26px} }
+/* the front screen: the YouTube Music song playing */
+.song-line{display:flex;align-items:center;min-width:0}
+.song-line .ebadge{background:#6E5330;color:#F6EBD0;margin-left:5px}
+.ytm-now{display:flex;flex-direction:column;gap:8px;margin:10px 0 2px}
+.ytm-now[hidden]{display:none}
+.ytn-btns{display:flex;flex-wrap:wrap;gap:6px}
+.ytn-btn{min-height:44px;padding:0 14px;border:1px solid var(--line2);border-radius:22px;background:none;color:var(--brass);font:700 13px/1 var(--sans);white-space:nowrap}
+.ytn-btn:hover:not(:disabled){border-color:var(--amber)}
+.ytn-btn[aria-pressed="true"],.ytn-btn[aria-expanded="true"]{color:var(--amber);border-color:#7A5A36;background:#24170F}
+.ytn-btn:disabled,.ytn-btn[aria-disabled="true"]{opacity:.6}
+.ytn-lyrics{max-height:min(46vh,420px);overflow:auto;overscroll-behavior:contain;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--sheet)}
+.ytn-text{margin:0;white-space:pre-wrap;color:var(--cream);font:15px/1.55 var(--sans)}
+.ytn-src{margin:10px 0 0;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.08em;text-transform:uppercase}
 
 /* ---------- settings / HA ---------- */
 .card-box{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line2);border-radius:14px;background:linear-gradient(180deg,#26190F 0%,#211610 100%)}
@@ -701,12 +873,13 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
         <h2 class="dial-name" id="dialName">Hasler</h2>
         <div class="song" id="song">
           <span class="cover radio" id="cover" aria-hidden="true"></span>
-          <div class="song-txt"><span class="song-title" id="songTitle"></span><span class="song-sub" id="songSub"></span></div>
+          <div class="song-txt"><span class="song-line"><span class="song-title" id="songTitle"></span><span class="ebadge" id="songE" title="Explicit" hidden>E</span></span><span class="song-sub" id="songSub"></span></div>
         </div>
         <div class="scale" id="scale" aria-hidden="true"><div class="strip still" id="stripEl"></div><div class="needle"></div></div>
       </div>
     </div>
     <p class="sr" id="nowLive" aria-live="polite"></p>
+    <div class="ytm-now" id="ytmNow" role="group" aria-label="YouTube Music: the song playing now" hidden></div>
 
     <div class="bank" id="bank" role="group" aria-label="Piano keys"></div>
 
@@ -854,9 +1027,9 @@ let cfg = null, draft = null, baseline = '', baseSig = {};
 let status = null, online = true;
 let errs = {}, hints = {}, general = [], lastSent = null, saving = false, saveMsg = {text:'', bad:false};
 let settings = null, haState = null, haEnts = null, haEntsErr = '', browseData = null, browseErr = '';
-let ytm = {available:null, signed_in:false, name:''}, ytmLib = null;
+let ytm = {available:null, signed_in:false, name:''};
 const acctUi = {open:false, text:'', err:'', busy:false};
-const ytmUi = {}, ytmPicked = new Map(), stationMeta = new Map(), autoName = {}, srcMemo = {}, linkMode = {};
+const ytmPicked = new Map(), stationMeta = new Map(), autoName = {}, srcMemo = {}, linkMode = {};
 const ed = {key:null, pick:null, ent:null, rename:false, entQ:'', lp:null, lpQ:'', combo:null};
 const tryRes = {};          // "k1.hold" -> what the last "Try it" said
 let view = 'remote';
@@ -896,6 +1069,30 @@ function ytmTag(it){
   if (ytmIsRadio(it)) return it.type === 'artist' ? 'Artist radio · endless' : 'Radio · endless';
   if (it.type === 'album' || /[?&]list=OLAK5uy_/i.test(it.uri || '')) return 'Album';
   return 'Playlist';
+}
+// A ytm preset may carry a reference (player/sources/ytm_refs.py): kind playlist|album|artist|radio|chart|mood|liked
+// and its fields. The page keeps them beside the link and sends them back untouched.
+const YTM_REF = ['kind', 'id', 'mode', 'seed', 'country', 'list', 'title', 'params'];
+function ytmRef(p){
+  const out = {};
+  if (!p || p.source !== 'ytm' || !p.kind) return out;
+  for (const f of YTM_REF) if (p[f] != null && p[f] !== '') out[f] = String(p[f]);
+  return out;
+}
+const ytmEndless = p => !!p && p.source === 'ytm' && (p.kind === 'radio' || (p.kind === 'artist' && (p.mode || 'top') !== 'top') || isRadioUri(p.uri));
+const ytmPresetKey = p => p.kind ? ['k', p.kind, p.id || '', p.mode || '', p.seed || '', p.country || '', p.list || '', p.params || ''].join(':') : (p.uri || '').trim();
+const ytCountry = cc => !cc || cc === 'ZZ' ? 'Global' : countryName(cc);
+const CHART_WORD = {daily:'daily', top100:'top 100', trending:'trending'};
+function ytmPresetTag(p){
+  switch (p.kind){
+    case 'artist': return p.mode === 'radio' ? 'Artist radio · endless' : p.mode === 'shuffle' ? 'Artist shuffle · endless' : 'Artist · top songs';
+    case 'album': return 'Album';
+    case 'radio': return /^album:/.test(p.seed || '') ? 'Album radio · endless' : 'Song radio · endless';
+    case 'chart': return 'Chart · ' + ytCountry(p.country) + ' · ' + (CHART_WORD[p.list] || 'daily');
+    case 'mood': return 'Moods & genres';
+    case 'liked': return 'Your Liked songs';
+    default: return ytmTag(p);
+  }
 }
 function domainVerb(domain){
   const v = ((cfg && cfg.verbs) || []).find(x => isHa(x.do) && (x.domains || []).includes(domain));
@@ -941,8 +1138,8 @@ function payload(d){
     keys: d.keys.map(k => ({id:k.id, tap:normAct(k.tap), hold:normAct(k.hold)})),
     presets: d.presets
       .filter(p => refCount(d, p.n) || (p.uri || '').trim())
-      .map(p => ({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(),
-        shuffle: p.source === 'radio' || isRadioUri(p.uri) ? false : !!p.shuffle})),
+      .map(p => Object.assign({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(),
+        shuffle: p.source === 'radio' || isRadioUri(p.uri) || ytmEndless(p) ? false : !!p.shuffle}, ytmRef(p))),
   };
   // Only on a radio that has combinations; one still missing a key or an action isn't sent.
   if (Array.isArray(d.combos)) out.combos = d.combos.filter(comboReady).map(comboOut);
@@ -990,7 +1187,7 @@ function comboWhat(a, lower){
 }
 function keySig(d, k){
   const ps = ['tap','hold'].map(s => k[s] && k[s].do === 'preset' ? presetIn(d, k[s].n) : null)
-    .map(p => p ? {name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle} : null);
+    .map(p => p ? Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle}, ytmRef(p)) : null);
   return JSON.stringify([normAct(k.tap), normAct(k.hold), ps]);
 }
 const isDirty = () => !!draft && JSON.stringify(payload(draft)) !== baseline;
@@ -1008,7 +1205,8 @@ const nextFreeN = d => d.presets.reduce((m, p) => Math.max(m, +p.n || 0), 0) + 1
 
 function presetIssues(p){
   const out = {}, uri = (p.uri || '').trim();
-  if (!uri) out.uri = p.source === 'radio' ? 'Pick a station or paste a stream link.' : p.source === 'ytm' ? 'Choose something from the search.' : 'Paste a link.';
+  if (p.source === 'ytm' && p.kind){ /* a reference (artist, chart, mood…): the radio checks it */ }
+  else if (!uri) out.uri = p.source === 'radio' ? 'Pick a station or paste a stream link.' : p.source === 'ytm' ? 'Choose something from the search.' : 'Paste a link.';
   else if (p.source === 'radio' && !/^https?:\/\/\S+$/i.test(uri)) out.uri = 'Pick a station from the list, or paste a link starting with http:// or https://';
   else if (p.source === 'spotify' && !/^spotify:(playlist|album|track|artist|show|episode):\S+$/i.test(uri) && !/^https?:\/\/open\.spotify\.com\/\S+/i.test(uri))
     out.uri = 'That doesn’t look like a Spotify link. Use Share → Copy link in Spotify.';
@@ -1241,8 +1439,9 @@ function setDialName(text){
   if (el.scrollHeight > 42) el.classList.add('long');
 }
 let coverSrc = null;
-function setSong(title, sub, thumb, kind){
+function setSong(title, sub, thumb, kind, explicit){
   const song = $('song');
+  $('songE').hidden = !(explicit && title);
   song.hidden = !title && !sub;
   $('songTitle').textContent = title || '';
   $('songTitle').hidden = !title;
@@ -1291,7 +1490,7 @@ function renderDial(){
     name = pl.name || 'Playing';
     const t = status.track;
     if (pl.source === 'radio') setSong(t && t.title ? t.title : '', t && t.title ? (t.artist || 'Live radio') : 'Live radio', t && t.thumb, 'radio');
-    else setSong(t && t.title ? t.title : '', t ? t.artist || t.album || '' : (pl.source === 'spotify' ? 'Spotify' : ''), t && t.thumb, 'note');
+    else setSong(t && t.title ? t.title : '', t ? t.artist || t.album || '' : (pl.source === 'spotify' ? 'Spotify' : ''), t && (t.art || t.thumb), 'note', !!(t && t.explicit));
     live = 'Now playing ' + name;
   } else if (RENDERERS.includes(status.source) || (status.source === 'spotify')){
     const nm = SRC_HEAD[status.source] || status.source, r = status.renderer || {};
@@ -1306,6 +1505,7 @@ function renderDial(){
   setDialName(name);
   renderScale(status && !status.standby && status.playing ? cur : (optimistic ? cur : null));
   if (live !== lastLive){ lastLive = live; if (live) $('nowLive').textContent = live; }
+  paintYtmNow();
 }
 new ResizeObserver(() => { renderDial(); }).observe($('scale'));
 
@@ -1647,19 +1847,20 @@ function presetSection(sheet, k){
   const uErr = errText(pk + '.uri') || errText(pk + '.source') || errText(pk + '._') || errText(k.id + '.tap');
   if (uErr) body.append(h('p', {class:'err', id:'uriErr', role:'alert'}, uErr));
   sheet.append(body);
-  if (p0.source !== 'radio' && !(p0.source === 'ytm' && isRadioUri(p0.uri))){
+  if (p0.source !== 'radio' && !ytmEndless(p0)){
     sheet.append(h('label', {class:'switch', for:'shuf'}, h('span', null, 'Shuffle'),
       h('input', {type:'checkbox', role:'switch', id:'shuf', checked: !!p0.shuffle,
         onchange: e => { const p = ownPreset(k); p.shuffle = e.target.checked; rerender(); }})));
-  } else if (p0.source === 'ytm' && p0.uri) sheet.append(h('p', {class:'hint'}, 'Endless radio — keeps adding similar songs.'));
+  } else if (p0.source === 'ytm' && (p0.uri || p0.kind)) sheet.append(h('p', {class:'hint'}, 'Endless radio — keeps adding similar songs.'));
   sheet.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { ed.pick = 'tap'; rerender(); }}, 'Tap does something else…')));
 }
 function switchSource(k, src){
   const p = ownPreset(k);
   if (p.source === src) return;
   const memo = srcMemo[p.n] || (srcMemo[p.n] = {});
-  memo[p.source] = {uri:p.uri, name:p.name, shuffle:p.shuffle};
+  memo[p.source] = Object.assign({uri:p.uri, name:p.name, shuffle:p.shuffle}, ytmRef(p));
   const back = memo[src] || {uri:'', name:'', shuffle: src !== 'radio'};
+  for (const f of YTM_REF) delete p[f];
   Object.assign(p, {source:src}, back);
   const pk = 'p' + p.n; clearErr(pk + '.uri', pk + '.source', pk + '.name', pk + '._', k.id + '.tap');
   ed.rename = false;
@@ -1673,17 +1874,17 @@ function choiceCard(k, p){
     const st = stationMeta.get(uri);
     type = 'Radio · live' + (st && st.country ? ' · ' + st.country : '');
   } else if (p.source === 'ytm'){
-    const it = ytmPicked.get(uri) || {uri, type:''};
-    thumbEl = h('span', {class:'thumb' + (it.thumb ? '' : ' blank'), 'aria-hidden':'true'}, it.thumb ? null : IC.note());
+    const it = ytmPicked.get(ytmPresetKey(p)) || ytmPicked.get(uri) || {uri, type:''};
+    thumbEl = h('span', {class:'thumb' + (it.thumb ? '' : ' blank') + (it.type === 'artist' ? ' round' : ''), 'aria-hidden':'true'}, it.thumb ? null : IC.note());
     if (it.thumb) imgInto(thumbEl, it.thumb);
-    type = ytmTag(it) + (it.subtitle ? ' · ' + it.subtitle : '');
+    type = (p.kind ? ytmPresetTag(p) : ytmTag(it)) + (it.subtitle && it.type !== 'artist' ? ' · ' + it.subtitle : '');
   } else {
     thumbEl = h('span', {class:'thumb blank', 'aria-hidden':'true'}, IC.note());
     const m = /(playlist|album|track|artist|show|episode)/i.exec(uri);
     type = 'Spotify' + (m ? ' · ' + m[1] : '');
   }
   const nameErr = errText(pk + '.name');
-  if (!uri){
+  if (!uri && !(p.source === 'ytm' && p.kind)){
     return h('div', {class:'choice unset'}, thumbEl, h('div', {class:'choice-txt'},
       h('span', {class:'choice-name'}, 'Nothing chosen yet'),
       h('span', {class:'choice-type'}, p.source === 'spotify' ? 'Paste a link below' : 'Search below')));
@@ -1714,6 +1915,8 @@ function pickInto(k, fields){
   const p = ownPreset(k);
   const pk = 'p' + p.n;
   p.uri = fields.uri;
+  for (const f of YTM_REF) delete p[f];
+  if (fields.ref) Object.assign(p, fields.ref);
   // A new pick names the key after what was picked; Rename changes it afterwards.
   if ((fields.name || '').trim()){ p.name = fields.name.trim(); autoName[p.n] = p.name; }
   if (fields.radio) p.shuffle = false;
@@ -1722,80 +1925,12 @@ function pickInto(k, fields){
   rerender();
 }
 
-/* ---------- radio: station search ---------- */
+/* ---------- radio: the shared station browser, in pick mode ---------- */
 function radioSection(body, k, p){
-  const key = 'r:' + k.id;
-  const st = ytmUi[key] || (ytmUi[key] = {q:'', results:null, msg:''});
-  const inp = h('input', {type:'search', id:'stq', value: st.q, placeholder:'Search stations or paste a stream link', enterkeyhint:'search',
-    autocomplete:'off', autocapitalize:'off', spellcheck:'false', 'aria-label':'Search radio stations', 'aria-controls':'stres', 'aria-describedby':'ststat uriErr'});
-  const stat = h('p', {class:'stat', id:'ststat', 'aria-live':'polite'});
-  const list = h('ul', {class:'results', id:'stres', 'aria-label':'Stations'});
-  let timer = null, ctl = null;
-  const paint = () => {
-    if (!inp.isConnected) return;
-    stat.textContent = st.msg || '';
-    list.textContent = '';
-    const q = inp.value.trim();
-    if (/^https?:\/\/\S+$/i.test(q)){
-      list.append(h('li', null, resRow({title:'Use this stream link', sub:q, thumb:'', radio:true, picked:false}, () => pickInto(k, {uri:q, name: p.name || 'My station', radio:true}))));
-      return;
-    }
-    for (const s of st.results || []){
-      const sub = [s.genre, s.country].filter(Boolean).join(' · ');
-      list.append(h('li', null, resRow({title:s.name, sub, radio:true, picked: (p.uri || '').trim() === s.url},
-        () => { stationMeta.set(s.url, s); pickInto(k, {uri:s.url, name:s.name, radio:true}); },
-        () => playNow({name:s.name, source:'radio', uri:s.url}, stat))));
-    }
-  };
-  const search = async q => {
-    if (ctl) ctl.abort();
-    const mine = ctl = new AbortController();
-    st.msg = 'Searching…'; paint();
-    try {
-      const r = await api('GET', '/api/stations?q=' + encodeURIComponent(q), undefined, {signal: mine.signal});
-      if (!r.ok || !Array.isArray(r.json)){ st.results = null; st.msg = 'Station search isn’t available right now — paste a stream link instead.'; paint(); return; }
-      st.results = r.json.filter(s => s && s.url).slice(0, 40);
-      st.msg = st.results.length ? '' : 'No stations found. You can also paste a stream link.';
-      paint();
-    } catch (e) { if (e.name !== 'AbortError'){ st.msg = 'Couldn’t reach the station list.'; paint(); } }
-  };
-  inp.addEventListener('input', () => {
-    clearTimeout(timer); st.q = inp.value;
-    const q = inp.value.trim();
-    if (q.length < 2 || /^https?:/i.test(q)){ if (ctl) ctl.abort(); st.results = null; st.msg = ''; paint(); return; }
-    timer = setTimeout(() => search(q), 250);
-  });
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); const f = list.querySelector('.res'); if (f && /^https?:/i.test(inp.value.trim())) f.click(); } });
-  body.append(h('div', {class:'searchbox'}, IC.search(), inp), stat, list);
-  paint();
+  const label = keyLabel(k).replace(/^Key/, 'key');
+  stationBrowser(body, {mode:'pick', chosen:(p.uri || '').trim(), pickLabel:'Use for ' + label,
+    onPick: s => { stationMeta.set(s.url, s); pickInto(k, {uri:s.url, name: s.name || p.name || 'My station', radio:true}); toast(s.name + ' is chosen for ' + label + ' — Save to keep it.'); }});
 }
-function resRow(it, onPick, onPlay){
-  const th = h('span', {class:'thumb sm' + (it.thumb ? '' : it.radio ? ' radio' : ' blank'), 'aria-hidden':'true'}, it.thumb ? null : it.radio ? IC.radio('#7A5E38', 18) : IC.note());
-  if (it.thumb) imgInto(th, it.thumb);
-  const row = h('div', {class:'res' + (it.picked ? ' picked' : '')},
-    th,
-    h('button', {type:'button', class:'res-txt', style:'background:none;border:0;padding:0;text-align:left;min-height:44px;justify-content:center',
-      'aria-label':'Choose ' + it.title + (it.sub ? ', ' + it.sub : '') + (it.picked ? ' (chosen)' : ''), onclick: onPick},
-      h('span', {class:'res-title'}, it.title), it.sub ? h('span', {class:'res-sub'}, it.sub) : null),
-    onPlay ? h('button', {type:'button', class:'res-play', 'aria-label':'Play ' + it.title + ' now', title:'Play now', onclick: e => { e.stopPropagation(); onPlay(e.currentTarget); }}, IC.play()) : null);
-  row.addEventListener('click', e => { if (e.target === row || e.target === th) onPick(); });
-  return row;
-}
-async function playNow(preset, stat){
-  if (stat) stat.textContent = 'Starting ' + preset.name + '…';
-  try {
-    const r = await api('POST', '/api/play', {preset:{name:preset.name, source:preset.source, uri:preset.uri, shuffle:!!preset.shuffle}});
-    if (r.ok && (!r.json || r.json.ok !== false)){
-      if (stat && stat.isConnected) stat.textContent = 'Playing ' + preset.name + ' — tap the row to keep it on this key.';
-      toast('Playing ' + preset.name);
-    } else {
-      const m = (r.json && r.json.error) || 'Couldn’t play that.';
-      if (stat && stat.isConnected) stat.textContent = m; else toast(m, true);
-    }
-  } catch (_) { if (stat && stat.isConnected) stat.textContent = NET_ERR; else toast(NET_ERR, true); }
-  pollSoon();
-}
-
 /* ---------- spotify ---------- */
 function spotifySection(body, k, p){
   const inp = h('input', {type:'url', id:'spuri', value:p.uri, placeholder:'https://open.spotify.com/playlist/…', inputmode:'url',
@@ -1809,95 +1944,28 @@ function spotifySection(body, k, p){
   body.append(h('label', {for:'spuri'}, 'Spotify link'), inp, h('p', {class:'hint', id:'sphint'}, 'A playlist, album or track. In Spotify: Share → Copy link.'));
 }
 
-/* ---------- YouTube Music search (carried over) ---------- */
-const YT_TYPES = [['songs','Songs'], ['artists','Artists'], ['albums','Albums'], ['playlists','Playlists'], ['library','Library']];
-const YT_IDLE = 'Type a song, artist, album or playlist.';
+/* ---------- YouTube Music: the tab in pick mode (or a pasted link) ---------- */
 function ytmSection(body, k, p){
   const pk = 'p' + p.n;
   if (ytm.available === false || linkMode[pk]){
     const inp = h('input', {type:'url', id:'yturi', value:p.uri, placeholder:'https://music.youtube.com/playlist?list=…', inputmode:'url',
       autocomplete:'off', autocapitalize:'off', spellcheck:'false', 'aria-describedby':'ythint uriErr',
-      oninput: e => { const pp = ownPreset(k); pp.uri = e.target.value; clearErr('p' + pp.n + '.uri'); if (!(pp.name || '').trim()){ pp.name = 'YouTube Music'; autoName[pp.n] = pp.name; } },
+      oninput: e => { const pp = ownPreset(k); pp.uri = e.target.value; for (const f of YTM_REF) delete pp[f]; clearErr('p' + pp.n + '.uri'); if (!(pp.name || '').trim()){ pp.name = 'YouTube Music'; autoName[pp.n] = pp.name; } },
       onblur: () => { const i = presetIssues(presetIn(draft, k.tap.n)); if (i.uri && p.uri.trim()) hints['p' + k.tap.n + '.uri'] = i.uri; rerender(); }});
     body.append(h('label', {for:'yturi'}, 'YouTube Music link'), inp,
       h('p', {class:'hint', id:'ythint'}, 'A playlist, album or radio link — it contains “list=”.'));
-    if (ytm.available !== false) body.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { linkMode[pk] = false; rerender(); const f = $('ytq'); if (f) f.focus(); }}, 'Search YouTube Music instead')));
+    if (ytm.available !== false) body.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { linkMode[pk] = false; rerender(); const f = $('ytq-pick'); if (f) f.focus(); }}, 'Search YouTube Music instead')));
     else body.append(h('p', {class:'hint'}, 'Search isn’t available on this radio — paste a playlist link instead.'));
     return;
   }
-  const key = 'y:' + k.id;
-  const st = ytmUi[key] || (ytmUi[key] = {q:'', type:'songs', results:null, msg:YT_IDLE});
-  if (st.type === 'library' && !ytm.signed_in){ st.type = 'songs'; st.results = null; st.msg = YT_IDLE; }
-  const inp = h('input', {type:'search', id:'ytq', value: st.q, placeholder:'Search YouTube Music', enterkeyhint:'search',
-    autocomplete:'off', autocapitalize:'off', spellcheck:'false', 'aria-label':'Search YouTube Music', 'aria-controls':'ytres', 'aria-describedby':'ytstat uriErr'});
-  const chips = h('div', {class:'chips', role:'radiogroup', 'aria-label':'Look for'});
-  for (const [t, label] of YT_TYPES){
-    if (t === 'library' && !ytm.signed_in) continue;
-    chips.append(h('button', {type:'button', class:'chip', role:'radio', 'aria-checked': String(st.type === t),
-      onclick: e => { st.type = t; st.results = null; for (const c of chips.children) c.setAttribute('aria-checked', String(c === e.currentTarget)); run(true); }}, label));
-  }
-  const stat = h('p', {class:'stat', id:'ytstat', 'aria-live':'polite'});
-  const list = h('ul', {class:'results', id:'ytres', 'aria-label':'Results'});
-  let timer = null, ctl = null;
-  const pick = it => { ytmPicked.set(it.uri, it); pickInto(k, {uri:it.uri, name: it.name || it.title, radio: ytmIsRadio(it)}); };
-  const paint = () => {
-    if (!inp.isConnected) return;
-    stat.textContent = st.msg || '';
-    list.textContent = '';
-    for (const it of st.results || []){
-      list.append(h('li', null, resRow({title: it.title || it.name || 'Untitled', sub: ytmTag(it) + (it.subtitle ? ' — ' + it.subtitle : ''), thumb: it.thumb, picked: (p.uri || '').trim() === it.uri},
-        () => pick(it), () => playNow({name: it.name || it.title || 'YouTube Music', source:'ytm', uri: it.uri}, stat))));
-    }
-  };
-  const unavailable = () => { ytm.available = false; rerender(); };
-  const counted = n => n ? n + (n === 1 ? ' result' : ' results') + ' — tap one to put it on this key' : '';
-  async function library(){
-    const q = inp.value.trim().toLowerCase();
-    if (!ytmLib){
-      if (ctl) ctl.abort();
-      ctl = new AbortController();
-      st.msg = 'Loading your library…'; paint();
-      try {
-        const r = await api('GET', '/api/ytm/library', undefined, {signal: ctl.signal});
-        if (r.json && r.json.available === false){ unavailable(); return; }
-        if (r.json && r.json.signed_in === false){ ytm.signed_in = false; st.type = 'songs'; st.results = null; st.msg = 'You’re signed out of YouTube Music. Sign in from Settings to see your library.'; rerender(); return; }
-        if (!r.ok || !r.json || !Array.isArray(r.json.items)){ st.results = null; st.msg = (r.json && r.json.error) || 'Couldn’t load your library just now.'; paint(); return; }
-        ytmLib = r.json.items.filter(x => x && x.uri);
-      } catch (e) { if (e.name !== 'AbortError'){ st.results = null; st.msg = NET_ERR; paint(); } return; }
-    }
-    st.results = ytmLib.filter(it => !q || ((it.title || '') + ' ' + (it.subtitle || '')).toLowerCase().includes(q));
-    if (!ytmLib.length) st.msg = 'Your library is empty.';
-    else if (st.results.length) st.msg = counted(st.results.length);
-    else { st.results = ytmLib.slice(); st.msg = 'Nothing matches “' + inp.value.trim() + '” — here’s your whole library.'; }
-    paint();
-  }
-  async function search(q){
-    if (ctl) ctl.abort();
-    const mine = ctl = new AbortController();
-    st.msg = 'Searching…'; stat.textContent = st.msg;
-    try {
-      const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=' + st.type, undefined, {signal: mine.signal});
-      if (r.json && r.json.available === false){ unavailable(); return; }
-      if (!r.ok || !r.json || !Array.isArray(r.json.results)){ st.results = null; st.msg = (r.json && r.json.error) || 'Search didn’t work just now — try again, or paste a link.'; paint(); return; }
-      st.results = r.json.results.filter(x => x && x.uri).slice(0, 20);
-      st.msg = st.results.length ? counted(st.results.length) : 'Nothing found — try other words or another type.';
-      paint();
-    } catch (e) { if (e.name !== 'AbortError'){ st.results = null; st.msg = NET_ERR; paint(); } }
-  }
-  function run(now){
-    clearTimeout(timer);
-    st.q = inp.value;
-    if (st.type === 'library'){ if (now || ytmLib) library(); else timer = setTimeout(library, 150); return; }
-    const q = inp.value.trim();
-    if (q.length < 2){ if (ctl) ctl.abort(); st.results = null; st.msg = q ? 'Keep typing…' : YT_IDLE; paint(); return; }
-    if (now) search(q); else timer = setTimeout(() => search(q), 350);
-  }
-  inp.addEventListener('input', () => run(false));
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); run(true); } });
-  body.append(h('div', {class:'searchbox'}, IC.search(), inp), chips, stat, list,
-    h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { linkMode[pk] = true; rerender(); const f = $('yturi'); if (f) f.focus(); }}, 'Paste a link instead')));
-  paint();
-  if (st.type === 'library' && !st.results) library();
+  const label = keyLabel(k).replace(/^Key/, 'key');
+  ytmBrowser(body, {mode:'pick', chosen: (p.uri || '').trim() || p.kind ? ytmPresetKey(p) : '', pickLabel:'Use for ' + label,
+    onPick: (preset, it) => {
+      if (it) ytmPicked.set(ytmPresetKey(preset), it);
+      pickInto(k, {uri: preset.uri || '', name: preset.name, radio: ytmEndless(preset), ref: ytmRef(preset)});
+      toast((preset.name || 'That') + ' is chosen for ' + label + ' — Save to keep it.');
+    }});
+  body.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { linkMode[pk] = true; rerender(); const f = $('yturi'); if (f) f.focus(); }}, 'Paste a link instead')));
 }
 
 /* ---------- other actions (tap or hold) ---------- */
@@ -2412,11 +2480,11 @@ function serviceEditor(wrap, k, slot){
 /* ---------- test / save ---------- */
 async function testPreset(p){
   const btn = $('testBtn');
-  if (!(p.uri || '').trim()){ saveMsg = {text:'Choose something to play first.', bad:true}; rerender(); return; }
+  if (!(p.uri || '').trim() && !ytmRef(p).kind){ saveMsg = {text:'Choose something to play first.', bad:true}; rerender(); return; }
   if (btn){ btn.disabled = true; btn.textContent = 'Tuning in…'; }
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 30000);
   try {
-    const r = await api('POST', '/api/play', {preset:{name:(p.name || '').trim() || 'Test', source:p.source, uri:p.uri.trim(), shuffle: p.source !== 'radio' && !!p.shuffle}}, {signal: ctl.signal});
+    const r = await api('POST', '/api/play', {preset:Object.assign({name:(p.name || '').trim() || 'Test', source:p.source, uri:(p.uri || '').trim(), shuffle: p.source !== 'radio' && !ytmEndless(p) && !!p.shuffle}, ytmRef(p))}, {signal: ctl.signal});
     if (r.json && r.json.ok){ saveMsg = {text:'Playing on the radio.', bad:false}; }
     else saveMsg = {text:(r.json && r.json.error) || 'Couldn’t play that (error ' + r.status + ').', bad:true};
   } catch (e) { saveMsg = {text: e.name === 'AbortError' ? 'The radio took too long to answer.' : NET_ERR, bad:true}; }
@@ -2488,9 +2556,11 @@ function putItemOnKey(item, keyId){
   const name = (item.name || item.title || '').trim() || 'Untitled';
   return applyToKey(d => {
     const k = d.keys.find(x => x.id === keyId);
-    const fields = {name, source:item.source, uri:item.uri, shuffle: item.type === 'playlist'};
+    const ref = ytmRef(item);
+    const shuffle = ref.kind ? ['playlist', 'liked', 'mood'].includes(ref.kind) && !ytmEndless(item) : item.type === 'playlist';
+    const fields = Object.assign({name, source:item.source, uri:item.uri || '', shuffle}, ref);
     let p = k.tap && k.tap.do === 'preset' && refCount(d, k.tap.n) === 1 ? presetIn(d, k.tap.n) : null;
-    if (p) Object.assign(p, fields);
+    if (p){ for (const f of YTM_REF) delete p[f]; Object.assign(p, fields); }
     else { p = Object.assign({n: nextFreeN(d)}, fields); d.presets.push(p); k.tap = {do:'preset', n:p.n}; }
   }, name + ' is on ' + (k0 ? keyLabel(k0).replace(/^Key/, 'key') : keyId));
 }
@@ -2794,7 +2864,11 @@ function slotSummaryCfg(k, s){
   return verbShort(v);
 }
 
-/* ================= browse ================= */
+/* ================= browse: Radio | YouTube Music | Spotify ================= */
+// One tab per source, each with its own search and shelves; the station sheet, the key
+// chooser and "My stations" are shared. #browse = Radio, #browse/ytm, #browse/spotify, #browse/mine.
+const BR_TABS = [{id:'radio', label:'Radio'}, {id:'ytm', label:'YouTube Music'}, {id:'spotify', label:'Spotify'}];
+const brTab = () => view === 'browse' && ['ytm', 'spotify', 'mine'].includes(route.arg) ? route.arg : 'radio';
 let browseLoading = false;
 async function loadBrowse(force){
   if (browseLoading || (browseData && !force)) return;
@@ -2805,34 +2879,710 @@ async function loadBrowse(force){
     else browseErr = r.status === 404 ? 'none' : ((r.json && r.json.error) || 'Couldn’t load the catalogue.');
   } catch (_) { browseErr = NET_ERR; }
   browseLoading = false;
-  if ((view === 'browse' || (view === 'remote' && wide.matches))) renderPanel();
+  if (browseShown()) rerender();
 }
+const browseShown = () => view === 'browse' || (view === 'remote' && wide.matches);
 function renderBrowse(){
   const panel = $('panel'); panel.textContent = '';
+  const tab = brTab();
+  if (tab === 'mine'){ renderMine(panel); return; }
   panel.append(screenTop('Browse', wide.matches ? false : ''));
-  if (!browseData && !browseErr){
-    loadBrowse();
-    panel.append(h('div', {class:'shelf', 'aria-busy':'true'}, h('div', {class:'skeleton'}, h('i'), h('i'), h('i'))),
-      h('div', {class:'shelf'}, h('div', {class:'skeleton'}, h('i'), h('i'), h('i'))));
-    return;
+  const tl = h('div', {class:'br-tabs', role:'tablist', 'aria-label':'Music sources'});
+  for (const t of BR_TABS){
+    const on = t.id === tab;
+    tl.append(h('button', {type:'button', role:'tab', id:'brtab-' + t.id, 'aria-selected': String(on), 'aria-controls':'brpane', tabindex: on ? '0' : '-1',
+      onclick: () => brGoTab(t.id),
+      onkeydown: e => {
+        const d = {ArrowRight:1, ArrowLeft:-1}[e.key]; if (!d) return;
+        e.preventDefault(); const i = BR_TABS.findIndex(x => x.id === tab); brGoTab(BR_TABS[(i + d + BR_TABS.length) % BR_TABS.length].id);
+      }}, t.label));
   }
-  if (browseErr || !browseData.available || !(browseData.sections || []).length){
-    panel.append(h('div', {class:'empty'}, h('h2', null, 'Nothing to browse yet'),
-      h('p', null, browseErr && browseErr !== 'none' ? browseErr : 'The radio’s catalogue isn’t ready. Your keys still work — and you can search for stations and music when you edit a key.'),
-      h('button', {type:'button', class:'btn small', style:'margin-top:12px', onclick: () => { browseData = null; browseErr = ''; renderBrowse(); }}, 'Try again')));
-    return;
-  }
-  for (const sec of browseData.sections){
-    if (!sec.items || !sec.items.length) continue;
-    const hid = 'sh-' + String(sec.id || sec.title).replace(/[^\w-]/g, '');
-    const cards = h('ul', {class:'cards', 'aria-labelledby':hid});
-    for (const it of sec.items) cards.append(browseCard(it));
-    if (/radio/i.test(sec.id + ' ' + sec.title) && sec.items.some(x => x.source === 'radio') && /spa|españ|es\b|genre/i.test(sec.id + ' ' + sec.title)) cards.append(moreCard());
-    panel.append(h('section', {class:'shelf'},
-      h('div', {class:'shelf-head'}, h('h2', {id:hid}, sec.title), sec.subtitle ? h('p', null, sec.subtitle) : null), cards));
-  }
+  const pane = h('div', {class:'br-pane', id:'brpane', role:'tabpanel', 'aria-labelledby':'brtab-' + tab});
+  panel.append(tl, pane);
+  if (tab === 'radio') stationBrowser(pane, {mode:'browse'});
+  else if (tab === 'ytm') renderYtmTab(pane);
+  else renderSpotifyTab(pane);
   panel.append(h('div', {class:'about', style:'padding-top:10px'}, h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
+  if (brFocusTab === tab){ brFocusTab = null; const b = $('brtab-' + tab); if (b) setTimeout(() => b.focus(), 0); }
 }
+let brFocusTab = null;      // a tab picked from the keyboard keeps focus once its page is drawn
+function brGoTab(id){
+  brFocusTab = id;
+  go(id === 'radio' ? 'browse' : 'browse/' + id);
+}
+// "/" jumps to the search on the tab in front (not while typing somewhere).
+document.addEventListener('keydown', e => {
+  if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || document.querySelector('dialog[open]')) return;
+  const t = e.target; if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  const inp = $('panel').querySelector('.br-search input');
+  if (inp && inp.offsetParent){ e.preventDefault(); inp.focus(); inp.select(); }
+});
+
+/* ---------- YouTube Music tab: search, shelves, artist and album pages ---------- */
+// ytmBrowser(host, {mode:'browse'}) on the tab; {mode:'pick', onPick(preset, item), pickLabel, chosen} in Edit keys.
+// Every item from /api/ytm/* carries a ready preset (ytm_refs.py kinds: playlist, album, artist top|radio|shuffle,
+// radio from a song or album, chart, mood, liked); Play now sends it to /api/play, a key stores it.
+function renderYtmTab(pane){
+  if (cfg && cfg.sources && cfg.sources.ytm === false) pane.append(h('p', {class:'note-bad'}, 'YouTube Music is switched off on this radio, so these won’t play until it’s on.'));
+  if (ytm.available === false){
+    pane.append(h('div', {class:'empty'}, h('h2', null, 'YouTube Music isn’t available'),
+      h('p', null, 'This radio can’t search YouTube Music. You can still paste a playlist link on a key in Edit keys.')));
+    return;
+  }
+  ytmBrowser(pane, {mode:'browse'});
+}
+const ytCache = new Map(), ytBusy = {}, ytErr = {}, ytMoodTitle = new Map();
+const ytSt = {};
+const ytState = mode => ytSt[mode] || (ytSt[mode] = {q:'', resFor:'', res:null, busy:false, err:'', more:{}, sug:[], sugOpen:false, sugAt:-1, page:null, stack:[], mood:null, staff:null, depth:0, shown:''});
+let ytCountryPick = 'ES';
+function ytForget(prefix){ for (const k of [...ytCache.keys()]) if (!prefix || k.startsWith(prefix)) ytCache.delete(k); }
+const ytOnScreen = () => !!document.querySelector('#panel .yt');
+function ytRepaint(){ if (ytOnScreen()) rerender(); }
+async function ytGet(key, path){
+  if (ytBusy[key]) return;
+  ytBusy[key] = true; delete ytErr[key];
+  try {
+    const r = await api('GET', path);
+    if (r.ok && r.json){
+      if (r.json.available === false && ytm.available !== false){ ytm.available = false; }
+      ytCache.set(key, r.json);
+    } else ytErr[key] = (r.json && r.json.error) || 'YouTube Music didn’t answer just now.';
+  } catch (_) { ytErr[key] = NET_ERR; }
+  ytBusy[key] = false;
+  ytRepaint();
+}
+// The cached answer, or null while it loads (the first ask starts the load).
+function ytNeed(key, path){
+  if (ytCache.has(key)) return ytCache.get(key);
+  if (!ytBusy[key] && !ytErr[key]) ytGet(key, path);
+  return null;
+}
+const ytSkel = () => h('div', {class:'skeleton', 'aria-hidden':'true'}, h('i'), h('i'), h('i'));
+const ytErrLine = key => h('p', {class:'stat'}, ytErr[key] + ' ', h('button', {type:'button', class:'link', onclick: () => { delete ytErr[key]; rerender(); }}, 'Try again'));
+// Waiting / failed / ready, for one shelf.
+const ytPending = key => ytErr[key] ? ytErrLine(key) : ytSkel();
+const ytTitle = it => (it && (it.title || it.name)) || 'Untitled';
+const ebadge = () => h('span', {class:'ebadge', title:'Explicit', 'aria-hidden':'true'}, 'E');
+// Thumbnails come straight from YouTube's image servers, sized for where they show.
+function ytThumbUrl(url, px){
+  url = String(url || '');
+  return /googleusercontent\.com/.test(url) ? url.replace(/=w\d+-h\d+/, '=w' + px + '-h' + px) : url;
+}
+function ytArt(it, cls, px, alt){
+  const round = it.type === 'artist';
+  const el = h('span', {class:cls + (round ? ' round' : ''), 'aria-hidden': alt ? null : 'true'});
+  el.append(h('span', {class:'ph'}, it.type === 'artist' ? ytPersonIcon() : IC.note('#5A4128')));
+  if (it.thumb){
+    const img = h('img', {src: ytThumbUrl(it.thumb, px * 2), alt: alt || '', width: String(px), height: String(px), loading:'lazy', decoding:'async', referrerpolicy:'no-referrer'});
+    img.addEventListener('error', () => img.remove());
+    el.append(img);
+  }
+  const badge = it.type === 'album' ? 'Album' : it.type === 'chart' ? 'Chart' : ytmEndless(it.preset || {}) && it.type !== 'song' && it.type !== 'artist' ? 'Radio' : '';
+  if (badge && cls.split(' ')[0] === 'art') el.append(h('span', {class:'badge'}, badge));
+  return el;
+}
+const ytPersonIcon = () => icon('<circle cx="11" cy="8" r="3.6" fill="none" stroke="#5A4128" stroke-width="1.5"/><path d="M4 19c1.2-3.6 4-5.4 7-5.4s5.8 1.8 7 5.4" fill="none" stroke="#5A4128" stroke-width="1.5" stroke-linecap="round"/>', 22, 22);
+function ytWhat(it){
+  if (it.type === 'song') return 'Song';
+  if (it.type === 'artist') return 'Artist';
+  if (it.type === 'album') return 'Album';
+  if (it.type === 'chart') return 'Chart';
+  return ytmEndless(it.preset || {}) ? 'Radio' : 'Playlist';
+}
+// "Song · …", without saying it twice when YouTube's own subtitle starts with the kind ("Album · ROSALÍA").
+function ytSubOf(it){
+  const w = ytWhat(it), sub = String(it.subtitle || '');
+  return sub.toLowerCase().startsWith(w.toLowerCase()) ? sub : [w, sub].filter(Boolean).join(' · ');
+}
+const ytLabel = it => ytTitle(it) + (it.explicit ? ', explicit' : '') + (it.subtitle ? ', ' + it.subtitle : '');
+
+/* -- playing, radios, keys -- */
+async function ytPlay(preset, quiet){
+  if (!preset) return false;
+  const name = (preset.name || 'YouTube Music').trim();
+  try {
+    const r = await api('POST', '/api/play', {preset});
+    if (r.ok && (!r.json || r.json.ok !== false)){ if (!quiet) toast('Playing ' + name); pollSoon(); return true; }
+    toast((r.json && r.json.error) || 'Couldn’t play that.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  pollSoon();
+  return false;
+}
+// The seed for "Start a radio": a song, an album (its OLAK list) or an artist.
+function ytSeed(it){
+  if (!it) return '';
+  if (it.type === 'artist' && /^UC/.test(it.id || '')) return 'artist:' + it.id;
+  if (it.radio && it.radio.seed) return it.radio.seed;
+  if (it.type === 'song' && it.id) return 'song:' + it.id;
+  return '';
+}
+const ytHasRadio = it => !!(ytSeed(it) || (it && it.radio));
+async function ytStartRadio(it){
+  const seed = ytSeed(it), name = (it.radio && it.radio.name) || ytTitle(it) + ' radio';
+  if (!seed) return ytPlay(it.radio);
+  try {
+    const r = await api('POST', '/api/ytm/radio', {seed, name});
+    if (r.ok && r.json && r.json.ok){ toast('Playing ' + ((r.json.preset && r.json.preset.name) || name)); pollSoon(); return true; }
+    toast((r.json && (r.json.error || (r.json.errors && r.json.errors[0] && r.json.errors[0].message))) || 'That radio didn’t start. Try again in a minute.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  pollSoon();
+  return false;
+}
+// What a song row plays: its radio (a key can't hold a single song).
+const ytMain = it => it.type === 'song' ? (it.radio || it.preset) : it.preset;
+const ytPlayItem = it => it.type === 'song' ? ytStartRadio(it) : ytPlay(it.preset);
+async function ytToKey(preset, it, msg){
+  if (!preset) return false;
+  if (!cfg){ toast('Still loading the keys — try again in a moment.', true); return false; }
+  const name = (preset.name || ytTitle(it)).trim();
+  const c = await chooseKey({title:'Put on a key', sub:'“' + name + '” will play when you tap the key. It replaces what’s there now.'});
+  if (!c) return false;
+  const ok = await putItemOnKey(Object.assign({}, preset, {type: it && it.type === 'chart' ? 'chart' : (it && it.type) || 'playlist'}), c.key);
+  if (ok){
+    if (it) ytmPicked.set(ytmPresetKey(preset), it);
+    if (msg){ msg.textContent = name + ' is on ' + keyLabel(cfg.keys.find(k => k.id === c.key) || {id:c.key}) + '.'; msg.classList.remove('bad'); }
+  }
+  return ok;
+}
+function ytUse(opts, preset, it){
+  if (!preset || !opts.onPick) return;
+  opts.onPick(preset, it);
+}
+const ytChosen = (opts, preset) => !!(opts && opts.chosen && preset && opts.chosen === ytmPresetKey(preset));
+
+/* -- pages (artist, album): #browse/ytm/artist:UC… on the tab, a small stack in Edit keys -- */
+function ytPage(mode){
+  if (mode === 'browse'){
+    if (route.arg !== 'ytm' || !route.arg2) return null;
+    let a = ''; try { a = decodeURIComponent(route.arg2); } catch (_) {}
+    const m = /^(artist|album):([\w-]+)$/.exec(a);
+    return m ? {kind:m[1], id:m[2]} : null;
+  }
+  return ytState(mode).page;
+}
+function ytOpen(mode, kind, id){
+  const st = ytState(mode);
+  if (mode === 'browse'){ st.depth++; go('browse/ytm/' + encodeURIComponent(kind + ':' + id)); return; }
+  if (st.page) st.stack.push(st.page);
+  st.page = {kind, id};
+  rerender();
+}
+function ytBack(mode){
+  const st = ytState(mode);
+  if (mode === 'browse'){ if (st.depth > 0){ st.depth--; history.back(); } else go('browse/ytm'); return; }
+  st.page = st.stack.pop() || null;
+  rerender();
+  const f = $('ytq-' + mode); if (f && !st.page) f.focus({preventScroll:true});
+}
+function ytActivate(it, opts, opener){
+  if (it.type === 'artist' && /^UC/.test(it.id || '')) return ytOpen(opts.mode, 'artist', it.id);
+  // An album known only by its list (OLAK…, e.g. a staff pick) opens its sheet: Play works even if the lookup doesn't.
+  if (it.type === 'album' && /^MPREb_/.test(it.id || '')) return ytOpen(opts.mode, 'album', it.id);
+  ytSheet(it, opts, opener);
+}
+
+/* -- the component -- */
+function ytmBrowser(host, opts){
+  const mode = opts.mode, st = ytState(mode);
+  const wrap = h('div', {class:'br yt br-' + mode + ' yt-' + mode});
+  const page = ytPage(mode);
+  host.append(wrap);
+  if (page){
+    if (page.kind === 'artist') ytArtistPage(wrap, page.id, opts);
+    else ytAlbumPage(wrap, page.id, opts);
+    const sig = page.kind + ':' + page.id;
+    if (st.shown !== sig){
+      st.shown = sig;
+      setTimeout(() => { const hd = $('ytpageH-' + mode); if (hd){ hd.focus({preventScroll:true}); if (mode === 'browse') window.scrollTo(0, 0); else hd.scrollIntoView({block:'nearest'}); } }, 0);
+    }
+    return;
+  }
+  st.shown = '';
+  const body = h('div', {class:'br-body', id:'ytbody-' + mode});
+  wrap.append(ytSearchHead(opts, body), body);
+  ytPaintBody(body, opts);
+}
+function ytPaintBody(body, opts){
+  const st = ytState(opts.mode);
+  body.textContent = '';
+  if (st.resFor) ytResults(body, opts);
+  else ytHome(body, opts);
+}
+function ytSearchHead(opts, body){
+  const mode = opts.mode, st = ytState(mode);
+  const lid = 'ytsug-' + mode;
+  const inp = h('input', {type:'search', id:'ytq-' + mode, value:st.q, enterkeyhint:'search', autocomplete:'off', autocapitalize:'off', spellcheck:'false',
+    placeholder:'Search songs, artists, albums', 'aria-label':'Search YouTube Music', role:'combobox', 'aria-autocomplete':'list',
+    'aria-expanded':'false', 'aria-controls':lid, 'aria-keyshortcuts':'/'});
+  const list = h('ul', {class:'yt-sug', id:lid, role:'listbox', 'aria-label':'Suggestions', hidden:true});
+  const paintSug = () => {
+    list.textContent = '';
+    const show = st.sugOpen && st.sug.length && document.activeElement === inp;
+    list.hidden = !show;
+    inp.setAttribute('aria-expanded', String(!!show));
+    inp.removeAttribute('aria-activedescendant');
+    if (!show) return;
+    st.sug.forEach((s, i) => {
+      const li = h('li', {role:'option', id:lid + '-' + i, 'aria-selected': String(i === st.sugAt), class:'yt-sug-o'}, IC.search(), h('span', null, s));
+      li.addEventListener('mousedown', e => e.preventDefault());     // keep focus in the box
+      li.addEventListener('click', () => choose(s));
+      list.append(li);
+    });
+    if (st.sugAt >= 0) inp.setAttribute('aria-activedescendant', lid + '-' + st.sugAt);
+  };
+  const choose = s => { inp.value = s; st.q = s; st.sugOpen = false; st.sugAt = -1; paintSug(); ytSearch(opts, s, body); };
+  let timer = null, asked = '';
+  const suggest = async q => {
+    asked = q;
+    try {
+      const r = await api('GET', '/api/ytm/suggest?q=' + encodeURIComponent(q));
+      if (asked !== q || inp.value.trim() !== q) return;
+      st.sug = r.ok && r.json && Array.isArray(r.json.suggestions) ? r.json.suggestions.slice(0, 8) : [];
+      st.sugAt = -1; st.sugOpen = true; paintSug();
+    } catch (_) {}
+  };
+  inp.addEventListener('input', () => {
+    st.q = inp.value;
+    const q = inp.value.trim();
+    clearTimeout(timer);
+    if (!q){ st.sug = []; st.sugOpen = false; paintSug(); if (st.resFor){ st.resFor = ''; st.res = null; st.more = {}; ytPaintBody(body, opts); } return; }
+    timer = setTimeout(() => suggest(q), 250);
+  });
+  inp.addEventListener('keydown', e => {
+    const open = !list.hidden && st.sug.length;
+    if (e.key === 'ArrowDown' && open){ e.preventDefault(); st.sugAt = (st.sugAt + 1) % st.sug.length; paintSug(); }
+    else if (e.key === 'ArrowUp' && open){ e.preventDefault(); st.sugAt = st.sugAt <= 0 ? st.sug.length - 1 : st.sugAt - 1; paintSug(); }
+    else if (e.key === 'Enter'){
+      e.preventDefault(); clearTimeout(timer);
+      if (open && st.sugAt >= 0) choose(st.sug[st.sugAt]);
+      else if (inp.value.trim()){ st.sugOpen = false; paintSug(); ytSearch(opts, inp.value.trim(), body); }
+    } else if (e.key === 'Escape'){
+      if (open){ e.preventDefault(); e.stopPropagation(); st.sugOpen = false; paintSug(); }
+      else if (inp.value){ e.preventDefault(); e.stopPropagation(); inp.value = ''; st.q = ''; st.resFor = ''; st.res = null; st.more = {}; ytPaintBody(body, opts); }
+    }
+  });
+  inp.addEventListener('focus', () => { if (st.sug.length && inp.value.trim()){ st.sugOpen = true; paintSug(); } });
+  inp.addEventListener('blur', () => setTimeout(() => { st.sugOpen = false; paintSug(); }, 120));
+  const status = h('p', {class:'sr', id:'ytsugn-' + mode, 'aria-live':'polite'});
+  return h('div', {class:'br-head yt-head'}, h('div', {class:'searchbox br-search yt-search'}, IC.search(), inp, list), status);
+}
+const YT_SECTIONS = [['songs', 'Songs'], ['artists', 'Artists'], ['albums', 'Albums'], ['playlists', 'Playlists']];
+const ytGroup = it => it.type === 'song' ? 'songs' : it.type === 'artist' ? 'artists' : it.type === 'album' ? 'albums' : it.type === 'playlist' || it.type === 'chart' ? 'playlists' : '';
+async function ytSearch(opts, q, body){
+  const st = ytState(opts.mode);
+  st.q = q; st.resFor = q; st.res = null; st.err = ''; st.more = {}; st.busy = true;
+  ytPaintBody(body, opts);
+  try {
+    const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=all');
+    if (st.resFor !== q) return;
+    if (r.json && r.json.available === false){ ytm.available = false; rerender(); return; }
+    if (r.ok && r.json && Array.isArray(r.json.items)){
+      const res = {songs:[], artists:[], albums:[], playlists:[]};
+      for (const it of r.json.items){ const g = ytGroup(it); if (g) res[g].push(it); }
+      st.res = res;
+    } else st.err = (r.json && r.json.error) || 'Search didn’t work just now. Try again in a minute.';
+  } catch (_) { if (st.resFor === q) st.err = NET_ERR; }
+  st.busy = false;
+  if (body.isConnected) ytPaintBody(body, opts);
+}
+async function ytMore(opts, type, body){
+  const st = ytState(opts.mode), q = st.resFor;
+  st.more[type] = 'busy'; ytPaintBody(body, opts);
+  try {
+    const r = await api('GET', '/api/ytm/search?q=' + encodeURIComponent(q) + '&type=' + type);
+    if (st.resFor !== q) return;
+    st.more[type] = r.ok && r.json && Array.isArray(r.json.items) ? r.json.items : 'err';
+  } catch (_) { if (st.resFor === q) st.more[type] = 'err'; }
+  if (body.isConnected){ ytPaintBody(body, opts); const f = $('ytsec-' + opts.mode + '-' + type); if (f) f.focus({preventScroll:true}); }
+}
+function ytResults(body, opts){
+  const mode = opts.mode, st = ytState(mode), q = st.resFor;
+  const count = h('p', {class:'br-count', id:'ytcount-' + mode, tabindex:'-1', role:'status', 'aria-live':'polite'});
+  body.append(count);
+  if (st.busy){ count.textContent = 'Searching YouTube Music for “' + q + '”…'; body.append(ytSkel()); return; }
+  if (st.err){ count.textContent = st.err; body.append(h('div', null, h('button', {type:'button', class:'btn small', onclick: () => ytSearch(opts, q, body)}, 'Try again'))); return; }
+  const res = st.res || {};
+  const n = YT_SECTIONS.reduce((a, [g]) => a + (res[g] || []).length, 0);
+  count.textContent = n ? 'Results for “' + q + '”' : 'Nothing found for “' + q + '”. Try other words.';
+  for (const [g, label] of YT_SECTIONS){
+    const more = st.more[g];
+    const items = Array.isArray(more) ? more : (res[g] || []);
+    if (!items.length && !Array.isArray(more)) continue;
+    const hid = 'ytsec-' + mode + '-' + g;
+    const l = h('ul', {class:'results', 'aria-labelledby':hid});
+    for (const it of items.slice(0, Array.isArray(more) ? 20 : 5)) l.append(ytRow(it, opts));
+    const moreBtn = Array.isArray(more) ? null : more === 'busy' ? h('p', {class:'stat', role:'status'}, 'Loading more…')
+      : h('button', {type:'button', class:'link', onclick: () => ytMore(opts, g, body)}, more === 'err' ? 'Couldn’t load more — try again' : 'More ' + label.toLowerCase() + ' ›');
+    body.append(h('section', {class:'shelf', 'aria-labelledby':hid},
+      h('div', {class:'shelf-head row'}, h('h2', {id:hid, tabindex:'-1'}, label), moreBtn),
+      items.length ? l : h('p', {class:'stat'}, 'No ' + label.toLowerCase() + ' for “' + q + '”.')));
+  }
+  // Everyone's playlists: on request (YouTube Music's own come first above).
+  const com = st.more.community, hid = 'ytsec-' + mode + '-community';
+  const box = h('section', {class:'shelf', 'aria-labelledby':hid});
+  if (Array.isArray(com)){
+    const l = h('ul', {class:'results', 'aria-labelledby':hid});
+    for (const it of com.slice(0, 20)) l.append(ytRow(it, opts));
+    box.append(h('div', {class:'shelf-head'}, h('h2', {id:hid, tabindex:'-1'}, 'Community playlists'), h('p', null, 'Made by YouTube Music listeners')),
+      com.length ? l : h('p', {class:'stat'}, 'No community playlists for “' + q + '”.'));
+  } else box.append(h('h2', {id:hid, class:'sr'}, 'Community playlists'), com === 'busy' ? h('p', {class:'stat', role:'status'}, 'Loading community playlists…')
+    : h('button', {type:'button', class:'link', onclick: () => ytMore(opts, 'community', body)}, com === 'err' ? 'Couldn’t load them — try again' : 'More: community playlists ›'));
+  if (n || Array.isArray(com)) body.append(box);
+}
+
+/* -- rows, cards, the item sheet -- */
+function ytRow(it, opts){
+  const title = ytTitle(it), main = ytMain(it), picked = ytChosen(opts, main);
+  const page = (it.type === 'artist' && /^UC/.test(it.id || '')) || (it.type === 'album' && /^MPREb_/.test(it.id || ''));
+  const sub = ytSubOf(it);
+  return h('li', null, h('div', {class:'srow' + (picked ? ' picked' : '')},
+    ytArt(it, 'ythumb', 44),
+    h('button', {type:'button', class:'srow-main', 'aria-label': ytLabel(it) + (page ? ', opens the ' + it.type + ' page' : '') + (picked ? ' (chosen)' : ''), 'aria-haspopup': page ? null : 'dialog',
+      onclick: e => ytActivate(it, opts, e.currentTarget)},
+      h('span', {class:'res-title'}, h('span', {class:'yt-t'}, title), it.explicit ? ebadge() : null), h('span', {class:'res-sub'}, sub)),
+    main ? h('button', {type:'button', class:'res-play', 'aria-label': (it.type === 'song' ? 'Start a radio from ' : 'Play ') + title + ' now on the radio', title: it.type === 'song' ? 'Start a radio from this song' : 'Play now',
+      onclick: () => ytPlayItem(it)}, IC.play()) : null,
+    page ? h('button', {type:'button', class:'round yt-dots', 'aria-label':'More for ' + title, 'aria-haspopup':'dialog', onclick: e => ytSheet(it, opts, e.currentTarget)}, IC.dots()) : null));
+}
+function ytCard(it, opts, sub){
+  const title = ytTitle(it), main = ytMain(it), picked = ytChosen(opts, main);
+  return h('li', {class:'card yt-card' + (picked ? ' picked' : '') + (it.type === 'artist' ? ' artist' : '')},
+    h('button', {type:'button', class:'card-play', 'aria-label': ytLabel(it) + (picked ? ' (chosen)' : ''), onclick: e => ytActivate(it, opts, e.currentTarget)},
+      ytArt(it, 'art', 136), h('span', {class:'card-title'}, title, it.explicit ? ebadge() : null),
+      (sub || it.subtitle) ? h('span', {class:'card-sub'}, sub || it.subtitle) : null),
+    opts.mode === 'browse' && main ? h('button', {type:'button', class:'card-add', 'aria-label':'Put ' + title + ' on a key', title:'Put on a key',
+      onclick: () => ytToKey(main, it)}, h('span', null, IC.plus(), ' key')) : null);
+}
+const ytCards = (items, opts, sub) => { const l = h('ul', {class:'cards'}); for (const it of items) l.append(ytCard(it, opts, sub)); return l; };
+function ytSheet(it, opts, opener){
+  const mode = opts.mode, pick = mode === 'pick', title = ytTitle(it);
+  const dlg = h('dialog', {class:'stsheet yt-sheet', 'aria-labelledby':'ytsTitle'});
+  const msg = h('p', {class:'sts-msg', role:'status', 'aria-live':'polite'});
+  const acts = h('div', {class:'sts-acts'});
+  const close = () => dlg.close();
+  const btn = (label, fn, primary, id) => h('button', {type:'button', class:'btn' + (primary ? ' primary' : ''), id: id || null, onclick: async e => {
+    const b = e.currentTarget; b.disabled = true; try { await fn(); } finally { if (b.isConnected) b.disabled = false; } }}, label);
+  const playing = async (p, f) => { msg.classList.remove('bad'); msg.textContent = 'Starting…'; const ok = await f(); msg.textContent = ok ? 'Playing on the radio.' : 'It didn’t start. Try again in a minute.'; msg.classList.toggle('bad', !ok); };
+  const use = (label, preset) => btn(label, () => { close(); ytUse(opts, preset, it); }, true, 'ytsUse');
+  const toKey = preset => btn('Put on a key', () => ytToKey(preset, it, msg));
+  const t = it.type;
+  if (t === 'song'){
+    if (pick) acts.append(use(opts.pickLabel + ': this song’s radio', it.radio || it.preset));
+    acts.append(btn('Start a radio from this song', () => playing(null, () => ytStartRadio(it)), !pick, 'ytsPlay'));
+    if (!pick) acts.append(toKey(it.radio || it.preset));
+  } else if (t === 'album'){
+    if (pick){ acts.append(use(opts.pickLabel, it.preset)); if (it.radio) acts.append(btn(opts.pickLabel + ': album radio', () => { close(); ytUse(opts, it.radio, it); })); }
+    acts.append(btn('Play the album', () => playing(null, () => ytPlay(it.preset, true)), !pick, 'ytsPlay'));
+    if (ytHasRadio(it)) acts.append(btn('Start an album radio', () => playing(null, () => ytStartRadio(it))));
+    if (!pick) acts.append(toKey(it.preset));
+  } else if (t === 'artist'){
+    if (pick){ acts.append(use(opts.pickLabel + ': top songs', it.preset)); if (it.radio) acts.append(btn(opts.pickLabel + ': artist radio', () => { close(); ytUse(opts, it.radio, it); })); }
+    acts.append(btn('Play their top songs', () => playing(null, () => ytPlay(it.preset, true)), !pick, 'ytsPlay'));
+    acts.append(btn('Start an artist radio', () => playing(null, () => ytStartRadio(it))));
+    if (!pick) acts.append(toKey(it.preset));
+  } else {
+    if (pick) acts.append(use(opts.pickLabel, it.preset));
+    acts.append(btn('Play now on the radio', () => playing(null, () => ytPlay(it.preset, true)), !pick, 'ytsPlay'));
+    if (!pick) acts.append(toKey(it.preset));
+  }
+  const links = h('div', {class:'yt-links'});
+  if (t === 'artist' && /^UC/.test(it.id || '')) links.append(h('button', {type:'button', class:'link', onclick: () => { close(); ytOpen(mode, 'artist', it.id); }}, 'Open the artist page ›'));
+  if (t === 'album' && it.id) links.append(h('button', {type:'button', class:'link', onclick: () => { close(); ytOpen(mode, 'album', it.id); }}, 'See the tracks ›'));
+  if (t === 'song'){
+    for (const a of (it.artists || []).filter(a => /^UC/.test(a.id || '')).slice(0, 2))
+      links.append(h('button', {type:'button', class:'link', onclick: () => { close(); ytOpen(mode, 'artist', a.id); }}, 'Go to ' + a.name + ' ›'));
+    if (it.album && /^(MPREb_|OLAK5uy_)/.test(it.album.id || '')) links.append(h('button', {type:'button', class:'link', onclick: () => { close(); ytOpen(mode, 'album', it.album.id); }}, 'Go to the album: ' + it.album.title + ' ›'));
+  }
+  const what = t === 'song' ? 'Starts with this song and keeps adding similar ones.' : ytmEndless(it.preset || {}) ? 'Endless radio — keeps adding similar songs.' : '';
+  dlg.append(...[
+    h('div', {class:'sts-head'}, ytArt(it, 'ythumb lg', 96),
+      h('div', {class:'sts-txt'},
+        h('h2', {id:'ytsTitle'}, title, it.explicit ? ebadge() : null),
+        h('p', {class:'sts-meta'}, ytSubOf(it)),
+        it.explicit ? h('p', {class:'sr'}, 'Explicit') : null),
+      h('button', {type:'button', class:'round sts-x', 'aria-label':'Close', onclick: close}, icon('<path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>', 14, 14))),
+    what ? h('p', {class:'hint'}, what) : null,
+    acts, msg, links.childNodes.length ? links : null].filter(Boolean));
+  const onHash = () => { if (dlg.open) dlg.close(); };      // Back (or any page change) closes the sheet
+  window.addEventListener('hashchange', onHash);
+  dlg.addEventListener('close', () => { window.removeEventListener('hashchange', onHash); dlg.remove(); if (opener && opener.isConnected) opener.focus(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
+  document.body.append(dlg); dlg.showModal();
+  const f = dlg.querySelector('#ytsUse') || dlg.querySelector('#ytsPlay'); if (f) f.focus();
+}
+
+/* -- the tab's front: shelves -- */
+function ytHome(body, opts){
+  const mode = opts.mode, st = ytState(mode);
+  if (ytm.signed_in){
+    const home = ytNeed('home', '/api/ytm/home');
+    const liked = ytNeed('lib:liked', '/api/ytm/library?section=liked');
+    const likedHead = liked && liked.preset ? ytListActs(liked.preset, {type:'playlist', title:'Liked songs', subtitle:'Your likes', preset:liked.preset}, opts) : null;
+    body.append(shelf('ytsh-liked-' + mode, 'Liked songs', liked ? (liked.items || []).length ? null : 'Nothing liked yet. Like a song from the front screen while it plays.' : null,
+      liked ? (liked.items || []).length ? ytCards(liked.items.slice(0, 20), opts) : null : ytPending('lib:liked'), likedHead));
+    for (const [sec, title, empty] of [['playlists', 'Your playlists', 'No playlists in your library yet.'], ['mixes', 'Mixes', ''], ['history', 'Recently played', '']]){
+      const d = ytNeed('lib:' + sec, '/api/ytm/library?section=' + sec);
+      const items = d ? (d.items || []).filter(it => !(it.preset && it.preset.kind === 'liked')) : [];
+      if (d && !items.length && !empty) continue;
+      body.append(shelf('ytsh-' + sec + '-' + mode, title, d && !items.length ? empty : null, d ? items.length ? ytCards(items.slice(0, 20), opts) : null : ytPending('lib:' + sec)));
+    }
+    if (home) (home.sections || []).forEach((s, i) => { if ((s.items || []).length) body.append(shelf('ytsh-home' + i + '-' + mode, s.title, null, ytCards(s.items.slice(0, 20), opts))); });
+    else body.append(shelf('ytsh-home-' + mode, 'For you', null, ytPending('home')));
+  } else if (ytm.available !== null){
+    body.append(h('p', {class:'hint yt-signin'}, 'Sign in to see your library → ',
+      h('a', {class:'link', href:'#settings/radio/ytm'}, 'This radio → YouTube Music')));
+  }
+  body.append(ytMoodsShelf(opts), ytChartsShelf(opts));
+  const sp = ytStaffShelf(opts); if (sp) body.append(sp);
+}
+function ytListActs(preset, it, opts){
+  const box = h('div', {class:'yt-acts'});
+  box.append(h('button', {type:'button', class:'res-play', 'aria-label':'Play ' + preset.name + ' now on the radio', title:'Play now', onclick: () => ytPlay(preset)}, IC.play()));
+  if (opts.mode === 'pick') box.append(h('button', {type:'button', class:'btn small' + (ytChosen(opts, preset) ? '' : ' primary'), onclick: () => ytUse(opts, preset, it)}, ytChosen(opts, preset) ? 'Chosen ✓' : 'Use'));
+  else box.append(h('button', {type:'button', class:'btn small yt-key', 'aria-label':'Put ' + preset.name + ' on a key', onclick: () => ytToKey(preset, it)}, IC.plus(), ' key'));
+  return box;
+}
+function ytMoodsShelf(opts){
+  const mode = opts.mode, st = ytState(mode);
+  const d = ytNeed('moods', '/api/ytm/moods');
+  const hid = 'ytsh-moods-' + mode;
+  const sec = h('section', {class:'shelf', 'aria-labelledby':hid}, h('div', {class:'shelf-head'}, h('h2', {id:hid}, 'Moods & genres')));
+  if (!d){ sec.append(ytPending('moods')); return sec; }
+  for (const s of d.sections || []){
+    if (!(s.items || []).length) continue;
+    const c = h('div', {class:'chips yt-chips', role:'group', 'aria-label':s.title});
+    for (const m of s.items){
+      ytMoodTitle.set(m.id, m.title);
+      const on = st.mood === m.id;
+      c.append(h('button', {type:'button', class:'chip', id:'ytmood-' + mode + '-' + m.id, 'aria-pressed': String(on), 'aria-controls':'ytmoodlist-' + mode,
+        onclick: () => { st.mood = on ? null : m.id; rerender(); }}, m.title));
+    }
+    sec.append(h('h3', {class:'fs-h'}, s.title), c);
+  }
+  const box = h('div', {id:'ytmoodlist-' + mode, class:'yt-moodlist'});
+  if (st.mood){
+    const key = 'mood:' + st.mood, got = ytNeed(key, '/api/ytm/mood?params=' + encodeURIComponent(st.mood));
+    box.append(h('h3', {class:'yt-sub-h'}, ytMoodTitle.get(st.mood) || 'Playlists'));
+    box.append(got ? (got.items || []).length ? ytCards(got.items, opts) : h('p', {class:'stat'}, 'No playlists here right now.') : ytPending(key));
+  }
+  sec.append(box);
+  return sec;
+}
+function ytChartsShelf(opts){
+  const mode = opts.mode;
+  const cc = ytCountryPick, key = 'charts:' + cc;
+  const d = ytNeed(key, '/api/ytm/charts?country=' + encodeURIComponent(cc));
+  const hid = 'ytsh-charts-' + mode;
+  const codes = (d && d.countries && d.countries.length ? d.countries : [cc]).slice();
+  if (!codes.includes(cc)) codes.unshift(cc);
+  const sel = h('select', {id:'ytcc-' + mode, 'aria-label':'Charts for', class:'yt-cc', onchange: e => { ytCountryPick = e.target.value; rerender(); }});
+  for (const c of codes.sort((a, b) => (a === 'ZZ' ? -1 : b === 'ZZ' ? 1 : ytCountry(a).localeCompare(ytCountry(b)))))
+    sel.append(h('option', {value:c, selected: c === cc}, (c === 'ZZ' ? '🌍 ' : flagOf(c) + ' ') + ytCountry(c)));
+  const sec = h('section', {class:'shelf', 'aria-labelledby':hid},
+    h('div', {class:'shelf-head row'}, h('div', null, h('h2', {id:hid}, 'Charts'), h('p', null, 'Daily, top 100 and trending · ' + ytCountry(cc))),
+      h('label', {class:'yt-cc-l'}, h('span', {class:'sr'}, 'Country'), sel)));
+  if (!d){ sec.append(ytPending(key)); return sec; }
+  const order = {daily:0, top100:1, trending:2};
+  const items = (d.items || []).slice().sort((a, b) => ((order[(a.preset || {}).list] ?? 9) - (order[(b.preset || {}).list] ?? 9)));
+  sec.append(items.length ? ytCards(items, opts) : h('p', {class:'stat'}, 'No charts for ' + ytCountry(cc) + ' right now.'));
+  if ((d.artists || []).length) sec.append(h('h3', {class:'yt-sub-h'}, 'Top artists'), ytCards(d.artists, opts));
+  return sec;
+}
+// "Staff picks": the playlists and albums we checked (GET /api/ytm/curated, config/catalog/ytm-curated.json),
+// one chip per shelf, each card saying why. A radio without that list shows its older /api/browse shelves.
+function ytStaffShelf(opts){
+  const mode = opts.mode, st = ytState(mode);
+  const cur = ytNeed('curated', '/api/ytm/curated');
+  let secs = cur ? (cur.sections || []).filter(s => (s.items || []).length) : [];
+  if (cur && !secs.length){
+    if (!browseData && !browseErr && !browseLoading){ loadBrowse().then(() => { if (view === 'edit' && (browseData || browseErr)) ytRepaint(); }); }
+    secs = ((browseData && browseData.sections) || [])
+      .map(s => ({title:s.title, items:(s.items || []).filter(it => it.source === 'ytm' && it.uri).map(it => ({type:'playlist', title: it.title || it.name,
+        subtitle: it.subtitle || '', thumb: it.thumb || '', id:'', preset:{source:'ytm', name:(it.name || it.title || 'YouTube Music').slice(0, 60), uri:it.uri, shuffle:false}, radio:null, explicit:false}))}))
+      .filter(s => s.items.length);
+    if (!secs.length) return null;
+  }
+  const hid = 'ytsh-staff-' + mode;
+  const sec = h('section', {class:'shelf', 'aria-labelledby':hid},
+    h('div', {class:'shelf-head'}, h('h2', {id:hid}, 'Staff picks'), h('p', null, 'Playlists and albums we checked for the radio')));
+  if (!cur){ sec.append(ytPending('curated')); return sec; }
+  const on = secs.find(s => s.title === st.staff) || secs[0];
+  const c = h('div', {class:'chips yt-chips br-chips', role:'group', 'aria-label':'Staff picks by theme'});
+  secs.forEach((s, i) => {
+    c.append(h('button', {type:'button', class:'chip', id:'ytstaff-' + mode + '-' + i, 'aria-pressed': String(s === on), 'aria-controls':'ytstafflist-' + mode,
+      onclick: () => { st.staff = s.title; rerender(); }}, s.title, h('span', {class:'chip-n', 'aria-hidden':'true'}, String(s.items.length))));
+  });
+  const list = ytCards(on.items, opts);
+  list.id = 'ytstafflist-' + mode;
+  list.setAttribute('aria-label', 'Staff picks: ' + on.title);
+  sec.append(c, list);
+  return sec;
+}
+
+/* -- the artist page -- */
+function ytPageTop(wrap, opts){
+  wrap.append(h('div', {class:'yt-top'}, h('button', {type:'button', class:'link yt-back', 'aria-label':'Back to the previous YouTube Music page', onclick: () => ytBack(opts.mode)}, IC.back(), ' Back')));
+}
+function ytOptRow(preset, label, sub, it, opts){
+  const picked = ytChosen(opts, preset);
+  return h('li', null, h('div', {class:'srow yt-opt' + (picked ? ' picked' : '')},
+    h('span', {class:'yt-opt-txt'}, h('span', {class:'res-title'}, label), h('span', {class:'hint'}, sub)),
+    h('button', {type:'button', class:'res-play', 'aria-label':'Play ' + preset.name + ' now on the radio', title:'Play now', onclick: () => ytPlay(preset)}, IC.play()),
+    opts.mode === 'pick'
+      ? h('button', {type:'button', class:'btn small' + (picked ? '' : ' primary'), 'aria-label':(picked ? 'Chosen: ' : opts.pickLabel + ': ') + preset.name, onclick: () => ytUse(opts, preset, it)}, picked ? 'Chosen ✓' : 'Use')
+      : h('button', {type:'button', class:'btn small yt-key', 'aria-label':'Put ' + preset.name + ' on a key', onclick: () => ytToKey(preset, it)}, IC.plus(), ' key')));
+}
+function ytArtistPage(wrap, id, opts){
+  const mode = opts.mode, key = 'artist:' + id;
+  ytPageTop(wrap, opts);
+  const d = ytNeed(key, '/api/ytm/artist/' + id);
+  if (!d){ wrap.append(h('h2', {id:'ytpageH-' + mode, tabindex:'-1', class:'yt-page-h'}, ytErr[key] ? 'Artist' : 'Loading the artist…'), ytPending(key)); return; }
+  if (!d.found){ wrap.append(h('div', {class:'empty'}, h('h2', {id:'ytpageH-' + mode, tabindex:'-1'}, 'Artist not found'), h('p', null, 'YouTube Music didn’t find this artist just now.'))); return; }
+  const it = {type:'artist', id, title:d.title, subtitle:d.subtitle, thumb:d.thumb, preset:d.preset, radio:d.radio};
+  wrap.append(h('div', {class:'yt-hero'},
+    ytArt(it, 'ythumb xl', 120, 'Photo of ' + d.title),
+    h('div', {class:'yt-hero-txt'},
+      h('h2', {id:'ytpageH-' + mode, tabindex:'-1', class:'yt-page-h'}, d.title),
+      d.subtitle ? h('p', {class:'sts-meta'}, d.subtitle) : null,
+      d.description ? h('p', {class:'yt-desc', title:d.description}, d.description) : null)));
+  const ol = h('ul', {class:'results yt-opts', 'aria-label':'Play ' + d.title});
+  if (d.preset) ol.append(ytOptRow(d.preset, 'Top songs', 'Their most-played songs, in order', it, opts));
+  if (d.radio) ol.append(ytOptRow(d.radio, 'Artist radio', 'Endless: their songs and music like it', it, opts));
+  if (d.shuffle) ol.append(ytOptRow(d.shuffle, 'Shuffle', 'Endless: their songs, shuffled', it, opts));
+  wrap.append(ol);
+  const songs = d.songs || [];
+  if (songs.length){ const l = h('ul', {class:'results'}); for (const s of songs.slice(0, 5)) l.append(ytRow(s, opts)); wrap.append(shelf('ytar-songs-' + mode, 'Songs', null, l)); }
+  if ((d.albums || []).length) wrap.append(shelf('ytar-albums-' + mode, 'Albums', null, ytCards(d.albums, opts)));
+  if ((d.singles || []).length) wrap.append(shelf('ytar-singles-' + mode, 'Singles', null, ytCards(d.singles, opts)));
+  if ((d.related || []).length) wrap.append(shelf('ytar-related-' + mode, 'Fans also like', null, ytCards(d.related, opts)));
+}
+
+/* -- the album page -- */
+function ytAlbumPage(wrap, id, opts){
+  const mode = opts.mode, pick = mode === 'pick', key = 'album:' + id;
+  ytPageTop(wrap, opts);
+  const d = ytNeed(key, '/api/ytm/album/' + id);
+  if (!d){ wrap.append(h('h2', {id:'ytpageH-' + mode, tabindex:'-1', class:'yt-page-h'}, ytErr[key] ? 'Album' : 'Loading the album…'), ytPending(key)); return; }
+  if (!d.found){ wrap.append(h('div', {class:'empty'}, h('h2', {id:'ytpageH-' + mode, tabindex:'-1'}, 'Album not found'), h('p', null, 'YouTube Music didn’t find this album just now.'))); return; }
+  const it = {type:'album', id, title:d.title, subtitle:d.subtitle, thumb:d.thumb, preset:d.preset, radio:d.radio, explicit:d.explicit};
+  wrap.append(h('div', {class:'yt-hero'},
+    ytArt(it, 'ythumb xl', 120, 'Cover of ' + d.title),
+    h('div', {class:'yt-hero-txt'},
+      h('h2', {id:'ytpageH-' + mode, tabindex:'-1', class:'yt-page-h'}, d.title, d.explicit ? ebadge() : null),
+      h('p', {class:'sts-meta'}, d.subtitle || 'Album'),
+      h('p', {class:'sts-tech'}, [d.year, (d.tracks || []).length ? d.tracks.length + ' songs' : '', d.duration].filter(Boolean).join(' · ')),
+      d.explicit ? h('p', {class:'sr'}, 'Explicit') : null)));
+  const acts = h('div', {class:'yt-page-acts'});
+  const chosen = ytChosen(opts, d.preset), rChosen = ytChosen(opts, d.radio);
+  if (pick && d.preset) acts.append(h('button', {type:'button', class:'btn small' + (chosen ? '' : ' primary'), onclick: () => ytUse(opts, d.preset, it)}, chosen ? 'Chosen ✓' : opts.pickLabel));
+  if (d.preset) acts.append(h('button', {type:'button', class:'btn small' + (pick ? '' : ' primary'), onclick: () => ytPlay(d.preset)}, IC.play(), ' Play'));
+  if (ytHasRadio(it)) acts.append(h('button', {type:'button', class:'btn small', onclick: () => ytStartRadio(it)}, 'Album radio'));
+  if (!pick && d.preset) acts.append(h('button', {type:'button', class:'btn small', onclick: () => ytToKey(d.preset, it)}, IC.plus(), ' Put on a key'));
+  if (pick && d.radio) acts.append(h('button', {type:'button', class:'btn small', onclick: () => ytUse(opts, d.radio, it)}, rChosen ? 'Album radio chosen ✓' : 'Use the album radio'));
+  wrap.append(acts);
+  const tracks = d.tracks || [];
+  if (tracks.length){
+    const ol = h('ol', {class:'results yt-tracks', 'aria-label':'Tracks'});
+    tracks.forEach((t, i) => {
+      const who = (t.artists || []).map(a => a.name).join(', ');
+      ol.append(h('li', null, h('div', {class:'srow'},
+        h('span', {class:'yt-n', 'aria-hidden':'true'}, String(i + 1)),
+        h('button', {type:'button', class:'srow-main', 'aria-haspopup':'dialog', 'aria-label': (i + 1) + '. ' + ytLabel(Object.assign({}, t, {subtitle: who})), onclick: e => ytSheet(t, opts, e.currentTarget)},
+          h('span', {class:'res-title'}, h('span', {class:'yt-t'}, ytTitle(t)), t.explicit ? ebadge() : null),
+          who ? h('span', {class:'res-sub'}, who) : null),
+        h('button', {type:'button', class:'res-play', 'aria-label':'Start a radio from ' + ytTitle(t), title:'Start a radio from this song', onclick: () => ytStartRadio(t)}, IC.play()))));
+    });
+    wrap.append(shelf('ytal-tracks-' + mode, 'Tracks', null, ol));
+  }
+}
+
+/* -- Settings → This radio → YouTube Music: Hide explicit songs -- */
+function ytExplicitRow(){
+  if (ytm.available === false) return null;
+  const on = !!(settings && settings.ytm && settings.ytm.hide_explicit);
+  return h('div', {class:'list yt-explicit'}, h('div', {class:'li'},
+    h('label', {class:'switch', for:'ytExplicit', style:'flex:1'},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Hide explicit songs'),
+        h('span', {class:'li-sub'}, 'Leaves songs and albums marked E out of searches and lists. Keys keep playing what they play.')),
+      h('input', {type:'checkbox', role:'switch', id:'ytExplicit', checked:on, onchange: e => ytSaveExplicit(e.target.checked)}))));
+}
+async function ytSaveExplicit(on){
+  const box = $('ytExplicit'); if (box) box.disabled = true;
+  try {
+    const r = await api('PUT', '/api/settings', {ytm:{hide_explicit:on}});
+    if (r.ok && r.json && r.json.ok !== false){
+      settings = Object.assign(settings || {}, {ytm:{hide_explicit:on}});
+      ytForget(); for (const m in ytSt){ ytSt[m].res = null; ytSt[m].resFor = ''; ytSt[m].more = {}; }
+      toast(on ? 'Explicit songs are hidden' : 'Explicit songs show, marked E');
+    } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t change that') + '. Try again.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  const b = $('ytExplicit'); if (b){ b.disabled = false; b.checked = !!(settings && settings.ytm && settings.ytm.hide_explicit); }
+}
+
+/* -- the front screen: what YouTube Music plays now -- */
+const ytNow = {vid:'', liked:false, busy:false, lyr:null, lyrFor:'', lyrOpen:false, lyrBusy:false, sig:''};
+function paintYtmNow(){
+  const box = $('ytmNow'); if (!box) return;
+  const pl = status && !status.standby && status.playing, t = status && status.track;
+  const on = !!(online && pl && pl.source === 'ytm' && t && t.vid && !status.recovering);
+  box.hidden = !on;
+  if (!on){ if (ytNow.sig){ ytNow.sig = ''; box.textContent = ''; } return; }
+  if (t.vid !== ytNow.vid) Object.assign(ytNow, {vid:t.vid, liked:false, busy:false});
+  const sig = [t.vid, ytm.signed_in, ytNow.liked, ytNow.busy, ytNow.lyrOpen, ytNow.lyrFor === t.vid ? (ytNow.lyrBusy ? 'b' : 'y') : 'n'].join('|');
+  if (sig === ytNow.sig) return;
+  ytNow.sig = sig;
+  const had = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
+  box.textContent = '';
+  const song = t.title || 'this song';
+  const row = h('div', {class:'ytn-btns'},
+    h('button', {type:'button', class:'ytn-btn', id:'ytnRadio', onclick: () => ytStartRadio({type:'song', id:t.vid, title:t.title, radio:{seed:'song:' + t.vid, name:(t.title || 'Song') + ' radio'}})}, 'Start radio from this song'),
+    h('button', {type:'button', class:'ytn-btn', id:'ytnKey', onclick: () => ytToKey({source:'ytm', kind:'radio', seed:'song:' + t.vid, name:((t.title || 'Song') + ' radio').slice(0, 60),
+      uri:'https://music.youtube.com/watch?v=' + t.vid + '&list=RDAMVM' + t.vid, shuffle:false}, {type:'song', id:t.vid, title:t.title, subtitle:t.artist, thumb:t.art || t.thumb})}, 'Put this on a key'),
+    ytm.signed_in ? h('button', {type:'button', class:'ytn-btn', id:'ytnLike', 'aria-pressed': String(ytNow.liked), 'aria-disabled': ytNow.busy ? 'true' : null,
+      'aria-label': (ytNow.liked ? 'Liked: ' : 'Like ') + song + (ytNow.liked ? '. Take the like back' : ''), onclick: ytLike},
+      h('span', {'aria-hidden':'true'}, ytNow.liked ? '♥ ' : '♡ '), ytNow.liked ? 'Liked' : 'Like') : null,
+    h('button', {type:'button', class:'ytn-btn', id:'ytnLyr', 'aria-expanded': String(ytNow.lyrOpen), 'aria-controls':'ytnLyrics', onclick: () => { ytNow.lyrOpen = !ytNow.lyrOpen; paintYtmNow(); }}, 'Lyrics'));
+  box.append(row);
+  if (ytNow.lyrOpen){
+    const dr = h('div', {class:'ytn-lyrics', id:'ytnLyrics', role:'region', 'aria-label':'Lyrics for ' + song, tabindex:'0'});
+    if (ytNow.lyrFor !== t.vid && !ytNow.lyrBusy) ytLyrics(t.vid);
+    if (ytNow.lyrFor !== t.vid || ytNow.lyrBusy) dr.append(h('p', {class:'stat'}, 'Finding the lyrics…'));
+    else if (ytNow.lyr && ytNow.lyr.lyrics) dr.append(h('p', {class:'ytn-text'}, ytNow.lyr.lyrics.replace(/\r\n?/g, '\n')), ytNow.lyr.source ? h('p', {class:'ytn-src'}, ytNow.lyr.source) : null);
+    else dr.append(h('p', {class:'stat'}, ytNow.lyr && ytNow.lyr.err ? ytNow.lyr.err : 'No lyrics for this song.'));
+    box.append(dr);
+  }
+  if (had){ const f = $(had); if (f) f.focus({preventScroll:true}); }
+}
+async function ytLyrics(vid){
+  ytNow.lyrBusy = true; ytNow.lyrFor = vid;
+  let doc = null;
+  try { const r = await api('GET', '/api/ytm/lyrics/' + vid); doc = r.ok && r.json ? r.json : {err:'The lyrics didn’t load. Try again in a minute.'}; }
+  catch (_) { doc = {err:NET_ERR}; }
+  if (ytNow.lyrFor !== vid) return;
+  ytNow.lyr = doc; ytNow.lyrBusy = false; ytNow.sig = '';
+  paintYtmNow();
+  if (doc.err) ytNow.lyrFor = '';     // ask again next time it opens
+}
+async function ytLike(){
+  const vid = ytNow.vid;
+  if (ytNow.busy || !vid) return;
+  const want = !ytNow.liked;
+  ytNow.busy = true; paintYtmNow();
+  try {
+    const r = await api('POST', '/api/ytm/like', {vid, rating: want ? 'LIKE' : 'INDIFFERENT'});
+    if (r.ok && r.json && r.json.ok){
+      if (ytNow.vid === vid) ytNow.liked = want;
+      ytForget('lib:liked');
+      toast(want ? 'Liked — it’s in your Liked songs' : 'Like taken back');
+    } else if (r.status === 403){
+      if (!r.json || r.json.signed_in === false) ytm.signed_in = false;
+      toast('Sign in to YouTube Music to like songs: Settings → This radio → YouTube Music.', true);
+    } else if (r.status === 409) toast('That song has ended — only the song playing now can be liked.', true);
+    else toast((r.json && r.json.error) || 'YouTube Music didn’t take that just now. Try again.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  ytNow.busy = false; paintYtmNow();
+}
+
 function artFor(it, cls){
   const radio = it.source === 'radio' && !it.thumb;
   const art = h('span', {class:(cls || 'art') + (radio ? ' radio' : ''), 'aria-hidden':'true'});
@@ -2867,40 +3617,861 @@ async function addItemToKey(it){
   const c = await chooseKey({title:'Put on a key', sub:'“' + name + '” will play when you tap the key. It replaces what’s there now.'});
   if (c) putItemOnKey(it, c.key);
 }
-function moreCard(){
-  return h('li', {class:'card more'}, h('button', {type:'button', class:'card-play', onclick: moreStations},
-    h('span', {class:'art', 'aria-hidden':'true'}, IC.search()), h('span', {class:'card-title'}, 'More stations…'), h('span', {class:'card-sub'}, 'Search all Spanish radio')));
+
+/* ---------- Spotify tab (no search: Spotify has no API for that here) ---------- */
+const spUi = {url:'', name:'', err:''};
+function spotifyUri(s){
+  s = String(s || '').trim();
+  let m = /^spotify:(playlist|album|track|artist|show|episode):([A-Za-z0-9]+)$/i.exec(s);
+  if (m) return 'spotify:' + m[1].toLowerCase() + ':' + m[2];
+  m = /^https?:\/\/open\.spotify\.com\/(?:intl-[a-z-]+\/)?(?:embed\/)?(playlist|album|track|artist|show|episode)\/([A-Za-z0-9]+)/i.exec(s);
+  return m ? 'spotify:' + m[1].toLowerCase() + ':' + m[2] : '';
 }
-function moreStations(){
-  const dlg = $('dlg'); dlg.textContent = '';
-  const inp = h('input', {type:'search', id:'moreq', placeholder:'Station name, city or genre', autocomplete:'off', 'aria-label':'Search stations'});
-  const stat = h('p', {class:'stat', 'aria-live':'polite'});
-  const list = h('ul', {class:'results'});
-  let timer = null, ctl = null;
-  const run = async q => {
-    if (ctl) ctl.abort(); const mine = ctl = new AbortController();
-    stat.textContent = 'Searching…';
-    let items = null;
-    try {
-      const r = await api('GET', '/api/browse/radio?q=' + encodeURIComponent(q), undefined, {signal: mine.signal});
-      if (r.ok && r.json && Array.isArray(r.json.items)) items = r.json.items;
-      else {
-        const s = await api('GET', '/api/stations?q=' + encodeURIComponent(q), undefined, {signal: mine.signal});
-        if (s.ok && Array.isArray(s.json)) items = s.json.filter(x => x && x.url).map(x => ({type:'radio', title:x.name, subtitle:[x.genre, x.country].filter(Boolean).join(' · '), thumb:'', source:'radio', uri:x.url, name:x.name}));
-      }
-    } catch (e) { if (e.name === 'AbortError') return; }
-    list.textContent = '';
-    if (!items){ stat.textContent = 'Station search isn’t available right now.'; return; }
-    stat.textContent = items.length ? '' : 'No stations found.';
-    for (const it of items.slice(0, 40)) list.append(h('li', null, resRow({title:it.title || it.name, sub:it.subtitle || '', radio:true},
-      async () => { dlg.close(); addItemToKey(it); }, () => { playItem(it); })));
+const spKind = uri => { const m = /^spotify:(\w+):/.exec(uri || '') || /(playlist|album|track|artist|show|episode)/i.exec(uri || ''); return m ? m[1].toLowerCase() : 'link'; };
+function renderSpotifyTab(pane){
+  if (cfg && cfg.sources && cfg.sources.spotify === false) pane.append(h('p', {class:'note-bad'}, 'Spotify is switched off on this radio, so Spotify keys won’t play until it’s on.'));
+  const onKeys = [];
+  for (const k of (cfg ? cfg.keys : [])){
+    if (verbOf(k.tap) !== 'preset') continue;
+    const p = presetIn(cfg, k.tap.n);
+    if (p && p.source === 'spotify') onKeys.push([k, p]);
+  }
+  const list = h('ul', {class:'keylist'});
+  for (const [k, p] of onKeys) list.append(h('li', null, h('button', {type:'button', onclick: () => go('edit/' + k.id)},
+    h('span', {class:'kl-n' + (k.id === 'pu' ? ' pu' : ''), 'aria-hidden':'true'}, k.label),
+    h('span', {class:'kl-txt'}, h('span', {class:'kl-name'}, p.name || 'Spotify ' + spKind(p.uri)), h('span', {class:'kl-sub'}, keyLabel(k) + ' · Spotify ' + spKind(p.uri))),
+    h('span', {class:'chev'}, IC.chev()))));
+  pane.append(h('section', {class:'shelf', 'aria-labelledby':'spKeysH'}, h('div', {class:'shelf-head'}, h('h2', {id:'spKeysH'}, 'On your keys'),
+    h('p', null, onKeys.length ? onKeys.length + (onKeys.length === 1 ? ' key plays' : ' keys play') + ' Spotify. Tap one to change it.' : 'No key plays Spotify yet.')),
+    onKeys.length ? list : null));
+  const urlIn = h('input', {type:'url', id:'spAddUrl', value:spUi.url, placeholder:'https://open.spotify.com/playlist/…', inputmode:'url', autocomplete:'off', autocapitalize:'off', spellcheck:'false',
+    'aria-describedby':'spAddHint spAddErr', 'aria-invalid': spUi.err ? 'true' : 'false', oninput: e => { spUi.url = e.target.value; spUi.err = ''; const er = $('spAddErr'); if (er) er.textContent = ''; }});
+  const nameIn = h('input', {type:'text', id:'spAddName', value:spUi.name, placeholder:'e.g. Sunday morning', maxlength:'80', autocomplete:'off', oninput: e => { spUi.name = e.target.value; }});
+  const add = async () => {
+    const uri = spotifyUri(spUi.url);
+    if (!uri){ spUi.err = 'That isn’t a Spotify link. In Spotify: Share → Copy link, then paste it here.'; rerender(); $('spAddUrl') && $('spAddUrl').focus(); return; }
+    const kind = spKind(uri), name = spUi.name.trim() || 'Spotify ' + kind;
+    if (!cfg){ toast('Still loading the keys — try again in a moment.', true); return; }
+    const c = await chooseKey({title:'Put on a key', sub:'“' + name + '” will play when you tap the key. It replaces what’s there now.'});
+    if (!c) return;
+    if (await putItemOnKey({name, source:'spotify', uri, type: kind === 'playlist' ? 'playlist' : kind}, c.key)){ spUi.url = ''; spUi.name = ''; if (brTab() === 'spotify') rerender(); }
   };
-  inp.addEventListener('input', () => { clearTimeout(timer); const q = inp.value.trim(); if (q.length < 2){ list.textContent = ''; stat.textContent = ''; return; } timer = setTimeout(() => run(q), 280); });
-  dlg.append(h('h2', {id:'dlgTitle'}, 'More stations'), h('p', {class:'sub'}, '▶ plays it now · tap a name to put it on a key'),
-    h('div', {class:'searchbox'}, IC.search(), inp), stat, list,
-    h('div', {style:'display:flex;justify-content:flex-end;margin-top:10px'}, h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Close')));
-  dlg.onclose = null; dlg.onclick = e => { if (e.target === dlg) dlg.close(); };
-  dlg.showModal(); inp.focus();
+  pane.append(h('section', {class:'shelf card-box', 'aria-labelledby':'spAddH'},
+    h('h2', {id:'spAddH', class:'combo-h'}, 'Add a Spotify link'),
+    h('div', {class:'field'}, h('label', {for:'spAddUrl'}, 'Spotify link'), urlIn,
+      h('p', {class:'hint', id:'spAddHint'}, 'A playlist, album or track. In Spotify: Share → Copy link.'),
+      h('p', {class:'err', id:'spAddErr', role:'alert'}, spUi.err)),
+    h('div', {class:'field'}, h('label', {for:'spAddName'}, 'Name on the key (optional)'), nameIn),
+    h('div', null, h('button', {type:'button', class:'btn primary inline', onclick: add}, 'Put on a key'))));
+  pane.append(h('div', {class:'sp-note'}, h('b', null, 'Play from your phone'), h('span', null, 'Open Spotify → Devices → Hasler. Anything you pick there plays on the radio.')));
+}
+
+/* ================= stations: the collection, my stations ================= */
+const COL_KEY = 'hasler.stations.v1', MINE_KEY = 'hasler.mine.v1';
+const HOME_CC = 'ES';
+const stn = {col:null, err:'', loading:null, mine:null, mineLocal:false, mineLoading:null, byId:new Map(), byUrl:new Map(), tiles:[], playing:null, saving:Promise.resolve()};
+const fold = s => String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+let dnRegion = null, dnLang = null;
+try { dnRegion = new Intl.DisplayNames(['en'], {type:'region'}); dnLang = new Intl.DisplayNames(['en'], {type:'language'}); } catch (_) {}
+function countryName(cc){ if (!cc) return ''; try { return (dnRegion && dnRegion.of(cc)) || cc; } catch (_) { return cc; } }
+const flagOf = cc => /^[A-Z]{2}$/.test(cc || '') ? String.fromCodePoint(...[...cc].map(c => 0x1F1A5 + c.charCodeAt(0))) : '';
+function langName(code){
+  if (!code) return '';
+  const m = stn.col && stn.col.languages && stn.col.languages[code];
+  if (m && m !== code) return m;
+  if (code === 'zxx') return 'No words';
+  try { return (dnLang && dnLang.of(code)) || code; } catch (_) { return code; }
+}
+// ~16 tiles from the curators' tags (real counts); a tag nobody merged gets its own tile once it has 5 stations.
+const GENRE_TILES = [
+  ['pop', 'Pop & hits', ['pop', 'hits']], ['rock', 'Rock & indie', ['rock', 'indie', 'metal', 'alternative']],
+  ['electronic', 'Electronic & dance', ['electronic', 'dance', 'house', 'techno']], ['chill', 'Chill & ambient', ['chill', 'ambient', 'lounge', 'sleep']],
+  ['jazz', 'Jazz & blues', ['jazz', 'blues']], ['classical', 'Classical', ['classical', 'opera', 'baroque']],
+  ['soul', 'Soul, funk & gospel', ['soul', 'funk', 'gospel', 'rnb']], ['hiphop', 'Hip-hop', ['hip-hop', 'hiphop', 'rap']],
+  ['latin', 'Latin', ['latin', 'flamenco', 'salsa']], ['reggae', 'Reggae', ['reggae', 'dub', 'ska']],
+  ['folk', 'Folk & country', ['folk', 'country', 'americana']], ['world', 'World', ['world']],
+  ['oldies', 'Oldies', ['oldies', 'retro']], ['news', 'News & talk', ['news', 'talk', 'sports']],
+  ['public', 'Public & culture', ['public', 'culture']], ['community', 'Community & college', ['community', 'college']],
+  ['experimental', 'Experimental', ['experimental', 'soundtrack']], ['kids', 'Kids & comedy', ['kids', 'comedy']],
+];
+// Twelve genre colours that sit with brass and walnut (cream text on all of them).
+const TILE_COL = ['#8A5A2B', '#5E6B3A', '#7A3B2E', '#3F5D5A', '#6B4A6B', '#8C6D2F', '#4E5F7A', '#6E4A2E', '#4F6B52', '#94603A', '#4A4E6B', '#7A4242'];
+function tileFor(tag){ return stn.tiles.find(t => t.tags.includes(tag)) || null; }
+function stColour(s){
+  const t = tileFor((s.genres || [])[0]);
+  if (t) return TILE_COL[t.ci];
+  let n = 0; for (const c of String(s.genre || s.name || '')) n = (n * 31 + c.charCodeAt(0)) >>> 0;
+  return TILE_COL[n % TILE_COL.length];
+}
+function monogram(name){
+  const skip = /^(radio|the|la|el|le|les|los|das|der|die|fm|am|rádio|ràdio|stream)$/i;
+  const w = String(name || '?').replace(/\(.*?\)/g, ' ').split(/[^\p{L}\p{N}]+/u).filter(Boolean), keep = w.filter(x => !skip.test(x));
+  const ws = keep.length ? keep : w;
+  const a = ws.length > 1 ? ws[0][0] + ws[1][0] : (ws[0] || '?').slice(0, 2);
+  return a.toUpperCase();
+}
+const stGenreWord = s => (s.genres && s.genres[0] && stn.col && stn.col.genres && stn.col.genres[s.genres[0]] ? stn.col.genres[s.genres[0]].en : s.genre || (s.genres || [])[0] || '');
+function stTile(s, size){
+  const el = h('span', {class:'stile ' + (size || 'sm'), style:'background-color:' + stColour(s), 'aria-hidden':'true'},
+    h('span', {class:'st-mono'}, monogram(s.name)));
+  const fl = flagOf(s.country);
+  if (fl && size !== 'xs') el.append(h('span', {class:'st-flag'}, fl));
+  if (size === 'card' || size === 'lg'){ const g = stGenreWord(s); if (g) el.append(h('span', {class:'st-genre'}, g)); }
+  return el;
+}
+const kbps = s => s.bitrate ? s.bitrate + ' kbps' : '';
+const fmtWord = c => { const u = String(c || '').toUpperCase(); return u === 'HLS' ? 'HLS' : u === 'AAC+' ? 'AAC+' : u; };
+const stWhere = s => s.country ? countryName(s.country) : String(s.region || '').split('·')[0].trim();
+const stSub = s => [stWhere(s), String(stGenreWord(s) || '').toLowerCase(), kbps(s)].filter(Boolean);
+const stLabel = s => [s.name].concat(stSub(s)).join(', ');
+function verifiedWords(d){
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d || ''); if (!m) return '';
+  return 'verified ' + (+m[3]) + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m[2] - 1];
+}
+
+function useCol(doc){
+  if (!doc || !Array.isArray(doc.stations)) return false;
+  stn.col = doc; stn.err = ''; stn.byId.clear(); stn.byUrl.clear();
+  const counts = {};
+  for (const s of doc.stations){
+    if (!s || !s.url) continue;
+    s.genres = Array.isArray(s.genres) ? s.genres : [];
+    s.country = String(s.country || '').toUpperCase();
+    if (!s.id) s.id = s.url;
+    stn.byId.set(s.id, s); stn.byUrl.set(s.url, s);
+    for (const g of new Set(s.genres)) counts[g] = (counts[g] || 0) + 1;
+  }
+  const tiles = [], used = new Set();
+  for (const [id, label, tags] of GENRE_TILES){
+    tags.forEach(t => used.add(t));
+    tiles.push({id, label, tags: tags.slice()});
+  }
+  for (const [g, n] of Object.entries(counts)) if (!used.has(g) && n >= 5) tiles.push({id:'g-' + g, label: (doc.genres && doc.genres[g] && doc.genres[g].en) || capFirst(g), tags:[g]});
+  for (const t of tiles) t.n = doc.stations.filter(s => s.genres.some(g => t.tags.includes(g))).length;
+  stn.tiles = tiles.filter(t => t.n > 0).sort((a, b) => b.n - a.n).slice(0, 16);
+  stn.tiles.forEach((t, i) => { t.ci = i % TILE_COL.length; });
+  for (const s of doc.stations){
+    const gw = s.genres.map(g => doc.genres && doc.genres[g] ? doc.genres[g].en + ' ' + doc.genres[g].es : g).join(' ');
+    s._n = fold(s.name); s._w = s._n.split(/[^a-z0-9]+/).filter(Boolean); s._k = fold(s.keywords);
+    s._o = fold([s.region, countryName(s.country), s.genre, s.genres.join(' '), gw, langName(s.language)].join(' '));
+  }
+  return true;
+}
+function loadCollection(){
+  if (stn.col || stn.loading) return stn.loading;
+  stn.loading = (async () => {
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem(COL_KEY) || 'null'); } catch (_) {}
+    try {
+      const r = await fetch('/api/stations/collection', {cache:'no-store', headers: cached && cached.etag ? {'If-None-Match': cached.etag} : {}});
+      if (r.status === 304 && cached) useCol(cached.doc);
+      else if (r.ok){
+        const doc = await r.json();
+        if (useCol(doc)){ const et = r.headers.get('ETag'); if (et) try { localStorage.setItem(COL_KEY, JSON.stringify({etag:et, doc})); } catch (_) {} }
+        else stn.err = 'The station list came back empty. Try again in a minute.';
+      } else if (!(cached && useCol(cached.doc))) stn.err = r.status === 404 ? 'none' : 'Couldn’t load the stations. Try again in a minute.';
+    } catch (_) { if (!(cached && useCol(cached.doc))) stn.err = NET_ERR; }
+    stn.loading = null;
+    brRepaint();
+  })();
+  return stn.loading;
+}
+// Repaint whatever station browser is on screen (Browse, or the Radio tab of Edit keys).
+function brRepaint(){ if (browseShown() || (view === 'edit' && document.querySelector('.br'))) rerender(); }
+
+const emptyMine = () => ({favourites:[], custom:[], order:[], recent:[]});
+function normMine(m){
+  m = m && typeof m === 'object' ? m : {};
+  const arr = x => Array.isArray(x) ? x : [];
+  return {favourites: arr(m.favourites).filter(x => typeof x === 'string'), custom: arr(m.custom).filter(c => c && c.url), order: arr(m.order).filter(x => typeof x === 'string'), recent: arr(m.recent).filter(r => r && (r.id || r.url))};
+}
+function loadMine(force){
+  if ((stn.mine && !force) || stn.mineLoading) return stn.mineLoading;
+  stn.mineLoading = (async () => {
+    try {
+      const r = await api('GET', '/api/stations/mine');
+      if (r.ok && r.json){ stn.mine = normMine(r.json); stn.mineLocal = false; }
+      else if (r.status === 404){ stn.mineLocal = true; let m = null; try { m = JSON.parse(localStorage.getItem(MINE_KEY) || 'null'); } catch (_) {} stn.mine = normMine(m); }
+      else if (!stn.mine) stn.mine = emptyMine();
+    } catch (_) { if (!stn.mine) stn.mine = emptyMine(); }
+    stn.mineLoading = null;
+    brRepaint();
+  })();
+  return stn.mineLoading;
+}
+function saveMine(){
+  const doc = clone(stn.mine);
+  if (stn.mineLocal){ try { localStorage.setItem(MINE_KEY, JSON.stringify(doc)); } catch (_) {} return Promise.resolve(true); }
+  stn.saving = stn.saving.then(async () => {
+    try {
+      const r = await api('PUT', '/api/stations/mine', doc);
+      if (r.ok) return true;
+      toast((r.json && r.json.error) || 'Couldn’t save your stations. Try again in a moment.', true);
+    } catch (_) { toast(NET_ERR, true); }
+    return false;
+  });
+  return stn.saving;
+}
+// A station is known by its collection id; anything else (a link, an internet find) by its URL.
+const refOf = s => s.custom ? s.custom : (s.id && stn.byId.has(s.id) ? s.id : (stn.byUrl.get(s.url) || {}).id || s.url);
+function stByRef(ref){
+  if (stn.byId.has(ref)) return stn.byId.get(ref);
+  const c = stn.mine && stn.mine.custom.find(x => x.id === ref || x.url === ref);
+  if (c) return {name:c.name, url:c.url, custom:c.id, mine:true};
+  if (stn.byUrl.has(ref)) return stn.byUrl.get(ref);
+  if (/^https?:/i.test(ref || '')) return {name: ref.replace(/^https?:\/\//, '').split('/')[0], url:ref, internet:true};
+  return null;
+}
+const isFav = s => !!stn.mine && (stn.mine.favourites.includes(refOf(s)) || (!!s.url && stn.mine.custom.some(c => c.url === s.url)));
+// Keys whose tap plays this station.
+function keysFor(url){
+  if (!cfg || !url) return [];
+  return cfg.keys.filter(k => { if (verbOf(k.tap) !== 'preset') return false; const p = presetIn(cfg, k.tap.n); return p && p.source === 'radio' && (p.uri || '').trim() === url; });
+}
+// "My stations": favourites, custom links and the stations on keys, one list in the owner's order.
+function myItems(){
+  const m = stn.mine || emptyMine(), items = new Map(), byUrl = new Map();
+  const add = (ref, st, patch) => {
+    let it = items.get(ref) || (st.url && byUrl.get(st.url));
+    if (!it){ it = {ref, st, fav:false, custom:null, keys:[]}; items.set(ref, it); if (st.url) byUrl.set(st.url, it); }
+    Object.assign(it, patch(it));
+  };
+  for (const f of m.favourites){ const st = stByRef(f); if (st) add(f, st, () => ({fav:true})); }
+  for (const c of m.custom) add(c.id || c.url, {name:c.name, url:c.url, custom:c.id || c.url, mine:true}, it => ({custom:c, st: it.st.custom ? it.st : Object.assign({}, it.st, {name: c.name || it.st.name})}));
+  for (const k of (cfg ? cfg.keys : [])){
+    if (verbOf(k.tap) !== 'preset') continue;
+    const p = presetIn(cfg, k.tap.n);
+    if (!p || p.source !== 'radio' || !(p.uri || '').trim()) continue;
+    const url = p.uri.trim(), known = stn.byUrl.get(url);
+    add(known ? known.id : url, known || {name: p.name || url, url, onkey:true}, it => ({keys: it.keys.concat(k)}));
+  }
+  const all = [...items.values()], pos = new Map(m.order.map((r, i) => [r, i]));
+  const at = it => pos.has(it.ref) ? pos.get(it.ref) : (it.st.url && pos.has(it.st.url) ? pos.get(it.st.url) : 1e6 + all.indexOf(it));
+  return all.sort((a, b) => at(a) - at(b));
+}
+function recentStations(){
+  const out = [], seen = new Set();
+  for (const r of (stn.mine ? stn.mine.recent : []).slice().sort((a, b) => (b.t || 0) - (a.t || 0))){
+    const st = stByRef(r.id || r.url);
+    if (st && !seen.has(st.url)){ seen.add(st.url); out.push(st); }
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+// Eight picks with a reason, the same all week (seeded by the week number).
+function staffPicks(){
+  const pool = stn.col.stations.filter(s => s.why);
+  let seed = Math.floor(Date.now() / 604800000) >>> 0;
+  const rnd = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const a = pool.slice();
+  for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(rnd() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  const out = [], tiles = new Set();
+  for (const s of a){ const t = (tileFor(s.genres[0]) || {}).id || s.genre; if (!tiles.has(t)){ tiles.add(t); out.push(s); } if (out.length === 8) break; }
+  for (const s of a){ if (out.length >= 8) break; if (!out.includes(s)) out.push(s); }
+  return out;
+}
+
+/* ---------- searching and filtering the collection (all in the page) ---------- */
+const brSt = {};
+function brState(mode){
+  return brSt[mode] || (brSt[mode] = {q:'', genre:new Set(), where:new Set(), lang:new Set(), high:false, aacOk:true, near:false, shown:30, region:null,
+    net:null, netFor:'', netBusy:false, netErr:''});
+}
+const brFiltered = st => st.genre.size || st.where.size || st.lang.size || st.high || !st.aacOk || st.near;
+const brActive = st => !!st.q.trim() || brFiltered(st);
+function stScore(s, toks){
+  let score = 0;
+  for (const t of toks){
+    let b;
+    if (s._n.startsWith(t)) b = 100;
+    else if (s._w.some(w => w.startsWith(t))) b = 60;
+    else if (s._n.includes(t)) b = 40;
+    else if (s._k.includes(t)) b = 20;
+    else if (s._o.includes(t)) b = 10;
+    else return 0;
+    if (b >= 40 && s._w.includes(t)) b += 15;     // a whole word beats the start of one
+    score += b;
+  }
+  if (toks.length > 1){ const ph = toks.join(' '); if (s._n.startsWith(ph) || s._n.includes(' ' + ph)) score += 50; }   // the words in order
+  return score;
+}
+function stPasses(s, st, skip){
+  if (skip !== 'genre' && st.genre.size){
+    const tags = new Set(); for (const id of st.genre){ const t = stn.tiles.find(x => x.id === id); if (t) t.tags.forEach(g => tags.add(g)); }
+    if (!s.genres.some(g => tags.has(g))) return false;
+  }
+  if (skip !== 'where' && st.where.size){
+    const regs = stn.col.regions || {};
+    let ok = false;
+    for (const w of st.where){
+      if (w.startsWith('c:') && s.country === w.slice(2)){ ok = true; break; }
+      if (w.startsWith('r:') && (regs[w.slice(2)] || []).includes(s.country)){ ok = true; break; }
+    }
+    if (!ok) return false;
+  }
+  if (skip !== 'lang' && st.lang.size && !st.lang.has(s.language)) return false;
+  if (skip !== 'quality'){
+    if (st.high && s.bitrate && s.bitrate < 128) return false;
+    if (!st.aacOk && !/^mp3$/i.test(s.codec || '')) return false;
+  }
+  if (skip !== 'near' && st.near && s.country !== HOME_CC) return false;
+  return true;
+}
+function stSearch(st, skip){
+  if (!stn.col) return [];
+  const toks = fold(st.q).split(/\s+/).filter(Boolean), out = [];
+  for (const s of stn.col.stations){
+    if (!s._n || !stPasses(s, st, skip)) continue;
+    const sc = toks.length ? stScore(s, toks) : 1;
+    if (sc) out.push([sc, s]);
+  }
+  out.sort((a, b) => b[0] - a[0] || a[1].name.localeCompare(b[1].name));
+  return out.map(x => x[1]);
+}
+
+/* ---------- the browser component ---------- */
+// stationBrowser(host, {mode:'browse'}) on the Radio tab; {mode:'pick', onPick, pickLabel, chosen} in Edit keys.
+function stationBrowser(host, opts){
+  const mode = opts.mode, st = brState(mode);
+  if (!stn.col && !stn.err) loadCollection();
+  if (!stn.mine) loadMine();
+  const wrap = h('div', {class:'br br-' + mode});
+  const qid = 'brq-' + mode;
+  const inp = h('input', {type:'search', id:qid, value:st.q, enterkeyhint:'search', autocomplete:'off', autocapitalize:'off', spellcheck:'false',
+    placeholder: mode === 'pick' ? 'Search stations, or paste a link' : 'Search stations, places, genres', 'aria-label':'Search radio stations',
+    'aria-controls':'brres-' + mode, 'aria-keyshortcuts':'/'});
+  const chips = h('div', {class:'chips br-chips', role:'group', 'aria-label':'Filters'});
+  const body = h('div', {class:'br-body', id:'brbody-' + mode});
+  const paintChips = () => {
+    chips.textContent = '';
+    const n = s => s.size ? ' · ' + s.size : '';
+    const chip = (id, label, pressed, onclick, sheet) => h('button', {type:'button', class:'chip' + (sheet ? ' has-sheet' : ''), id:'brc-' + mode + '-' + id, 'aria-pressed': String(!!pressed),
+      'aria-haspopup': sheet ? 'dialog' : null, onclick}, label);
+    chips.append(
+      chip('genre', 'Genre' + n(st.genre), st.genre.size, () => filterSheet(mode, 'genre'), true),
+      chip('where', 'Where' + n(st.where), st.where.size, () => filterSheet(mode, 'where'), true),
+      chip('lang', 'Language' + n(st.lang), st.lang.size, () => filterSheet(mode, 'lang'), true),
+      chip('quality', st.high ? 'High quality' : !st.aacOk ? 'MP3 only' : 'Quality', st.high || !st.aacOk, () => filterSheet(mode, 'quality'), true),
+      chip('near', 'Near you', st.near, () => { st.near = !st.near; st.shown = 30; paintChips(); paint(); }));
+    if (brFiltered(st)) chips.append(h('button', {type:'button', class:'link quiet', onclick: () => { brClear(st); paintChips(); paint(); inp.focus(); }}, 'Clear filters'));
+  };
+  const paint = () => {
+    body.textContent = '';
+    if (!stn.col){
+      if (stn.err){
+        body.append(h('div', {class:'empty'}, h('h2', null, 'Stations aren’t ready'),
+          h('p', null, stn.err === 'none' ? 'This radio’s station list isn’t there yet.' + (mode === 'pick' ? ' You can still paste a station link above.' : '') : stn.err),
+          h('button', {type:'button', class:'btn small', style:'margin-top:12px', onclick: () => { stn.err = ''; loadCollection(); paint(); }}, 'Try again')));
+        if (mode === 'pick' && /^https?:\/\/\S+$/i.test(st.q.trim())) body.prepend(linkRow(st.q.trim(), opts));
+      } else body.append(h('div', {class:'shelf', 'aria-busy':'true'}, h('p', {class:'stat'}, 'Loading the stations…'), h('div', {class:'skeleton'}, h('i'), h('i'), h('i'))));
+      return;
+    }
+    if (brActive(st)) paintResults(body, st, opts);
+    else paintHome(body, st, opts, () => { paintChips(); paint(); });
+  };
+  let timer = null;
+  inp.addEventListener('input', () => {
+    st.q = inp.value; st.shown = 30; st.net = null; st.netErr = '';
+    clearTimeout(timer); timer = setTimeout(paint, 90);
+  });
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && inp.value){ e.preventDefault(); e.stopPropagation(); inp.value = ''; st.q = ''; st.net = null; paint(); }
+    else if (e.key === 'Enter'){ e.preventDefault(); const f = body.querySelector('.srow-main'); if (f && mode === 'pick' && /^https?:/i.test(inp.value.trim())) f.click(); }
+  });
+  wrap.append(h('div', {class:'br-head'}, h('div', {class:'searchbox br-search'}, IC.search(), inp), chips), body);
+  host.append(wrap);
+  paintChips(); paint();
+}
+function brClear(st){ st.genre.clear(); st.where.clear(); st.lang.clear(); st.high = false; st.aacOk = true; st.near = false; st.shown = 30; }
+function linkRow(url, opts){
+  return h('ul', {class:'results'}, h('li', null, h('div', {class:'srow'},
+    h('span', {class:'stile sm mylink', 'aria-hidden':'true'}, IC.radio('#EDE3CC', 18)),
+    h('button', {type:'button', class:'srow-main', 'aria-label':'Use this link: ' + url, onclick: () => opts.onPick({name:'', url})},
+      h('span', {class:'res-title'}, 'Use this link'), h('span', {class:'res-sub'}, url)))));
+}
+function stationRow(s, opts, extra){
+  const chosen = opts && opts.chosen && opts.chosen === s.url;
+  const fav = isFav(s), keys = keysFor(s.url);
+  const sub = s.internet ? [s.country ? countryName(s.country) : '', String(s.genre || '').split(',')[0], kbps(s)].filter(Boolean) : stSub(s);
+  const badges = [];
+  if (fav) badges.push(h('span', {class:'st-badge star', title:'In My stations'}, '★'));
+  for (const k of keys.slice(0, 2)) badges.push(h('span', {class:'st-badge'}, keyLabel(k)));
+  return h('li', null, h('div', {class:'srow' + (chosen ? ' picked' : '')},
+    stTile(s, 'sm'),
+    h('button', {type:'button', class:'srow-main', 'aria-label': (s.internet ? [s.name].concat(sub).join(', ') : stLabel(s)) + (fav ? ', in My stations' : '') + (keys.length ? ', on ' + keys.map(keyLabel).join(' and ') : '') + (chosen ? ' (chosen)' : ''),
+      onclick: e => openStation(s, opts, e.currentTarget)},
+      h('span', {class:'res-title'}, s.name, badges.length ? h('span', {class:'st-badges', 'aria-hidden':'true'}, badges) : null),
+      h('span', {class:'res-sub'}, sub.join(' · '))),
+    extra || h('button', {type:'button', class:'res-play', 'aria-label':'Play ' + s.name + ' now on the radio', title:'Play now on the radio',
+      onclick: e => tryStation(s, e.currentTarget)}, IC.play())));
+}
+function stationCard(s, opts, sub){
+  return h('li', {class:'card st-card'},
+    h('button', {type:'button', class:'card-play', 'aria-label': stLabel(s) + (sub ? '. ' + sub : ''), onclick: e => openStation(s, opts, e.currentTarget)},
+      stTile(s, 'card'), h('span', {class:'card-title'}, s.name), h('span', {class:'card-sub'}, sub || stSub(s).slice(0, 2).join(' · '))));
+}
+function shelf(id, title, subtitle, list, more){
+  return h('section', {class:'shelf', 'aria-labelledby':id},
+    h('div', {class:'shelf-head row'}, h('div', null, h('h2', {id}, title), subtitle ? h('p', null, subtitle) : null), more || null), list);
+}
+function paintHome(body, st, opts, refresh){
+  const mode = opts.mode;
+  const apply = (fn, focusRes) => { brClear(st); st.q = ''; fn(); refresh(); const t = $('brcount-' + mode); if (focusRes && t) t.focus({preventScroll:true}); window.scrollTo({top: Math.max(0, ($('brq-' + mode) || body).getBoundingClientRect().top + window.scrollY - 80), behavior: reduced.matches ? 'auto' : 'smooth'}); };
+  // Your stations
+  const mine = myItems();
+  const yl = h('ul', {class:'cards'});
+  for (const it of mine) yl.append(stationCard(it.st, opts, it.keys.length ? 'On ' + it.keys.map(keyLabel).join(', ') : it.custom ? 'Your link' : '★ ' + (stSub(it.st)[0] || 'Saved')));
+  body.append(shelf('brh-mine-' + mode, 'Your stations', mine.length ? null : 'Tap ☆ on any station to keep it here.',
+    mine.length ? yl : null, mode === 'browse' ? h('a', {class:'link', href:'#browse/mine'}, 'Manage ›') : null));
+  const rec = recentStations();
+  if (rec.length){
+    const l = h('ul', {class:'cards'}); for (const s of rec) l.append(stationCard(s, opts));
+    body.append(shelf('brh-rec-' + mode, 'Recently played', null, l));
+  }
+  const near = stn.col.stations.filter(s => s.country === HOME_CC);
+  if (near.length){
+    const l = h('ul', {class:'cards'}); for (const s of near.slice(0, 12)) l.append(stationCard(s, opts));
+    body.append(shelf('brh-near-' + mode, 'Near you · ' + countryName(HOME_CC), near.length + ' stations checked by us', l,
+      near.length > 12 ? h('button', {type:'button', class:'link', onclick: () => apply(() => { st.near = true; }, true)}, 'All ' + near.length + ' ›') : null));
+  }
+  const picks = staffPicks();
+  if (picks.length){
+    const l = h('ul', {class:'cards'}); for (const s of picks) l.append(stationCard(s, opts, s.why));
+    body.append(shelf('brh-picks-' + mode, 'Staff picks', 'Eight we love this week', l));
+  }
+  const g = h('ul', {class:'gtiles'});
+  for (const t of stn.tiles) g.append(h('li', null, h('button', {type:'button', class:'gtile', style:'background-color:' + TILE_COL[t.ci], 'aria-label': t.label + ', ' + t.n + ' stations',
+    onclick: () => apply(() => st.genre.add(t.id), true)}, h('span', {class:'gt-name'}, t.label), h('span', {class:'gt-n'}, String(t.n)))));
+  body.append(shelf('brh-gen-' + mode, 'Genres', null, g));
+  if (mode !== 'pick') body.append(worldSection(st, mode, apply, refresh));
+  const lc = {};
+  for (const s of stn.col.stations) if (s.language) lc[s.language] = (lc[s.language] || 0) + 1;
+  const langs = Object.entries(lc).sort((a, b) => b[1] - a[1]).slice(0, 14);
+  const ll = h('div', {class:'chips'});
+  for (const [code, n] of langs) ll.append(h('button', {type:'button', class:'chip', 'aria-pressed':'false', 'aria-label': langName(code) + ', ' + n + ' stations',
+    onclick: () => apply(() => st.lang.add(code), true)}, langName(code), h('span', {class:'chip-n', 'aria-hidden':'true'}, String(n))));
+  body.append(shelf('brh-lang-' + mode, 'Languages', null, ll));
+}
+// Around the world: six regions as buttons on a light map, then that region's countries with counts.
+const WORLD_SPOTS = {'North America':[70, 52], 'Latin America':[112, 122], 'Europe':[196, 42], 'Africa & Middle East':[214, 104], 'Asia & Oceania':[300, 76], 'Internet':[316, 140]};
+function worldSection(st, mode, apply, refresh){
+  const regs = stn.col.regions || {}, names = Object.keys(regs);
+  const count = r => stn.col.stations.filter(s => (regs[r] || []).includes(s.country)).length;
+  if (!names.length) return '';
+  const sec = h('section', {class:'shelf', 'aria-labelledby':'brh-world-' + mode},
+    h('div', {class:'shelf-head'}, h('h2', {id:'brh-world-' + mode}, 'Around the world')));
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const map = document.createElementNS(svgNS, 'svg');
+  map.setAttribute('viewBox', '0 0 360 170'); map.setAttribute('class', 'world'); map.setAttribute('aria-hidden', 'true'); map.setAttribute('focusable', 'false');
+  // a few soft land shapes (not to scale: a hint of the map, the buttons do the work)
+  const land = ['M30 30q40-22 90-8q10 22-12 40q-20 6-30 22q-24-4-40-26z', 'M96 92q22-6 36 10q-2 30-18 52q-14-8-16-30q-8-14-2-32z',
+    'M176 22q30-10 52 2q-4 20-22 26q-20 0-30-10z', 'M184 66q36-8 56 14q-6 36-30 52q-18-20-22-40q-8-12-4-26z', 'M240 24q70-14 104 22q-10 30-50 34q-34-4-54-22z', 'M290 118q24-6 40 6q-6 16-30 16q-14-8-10-22z'];
+  for (const d of land){ const p = document.createElementNS(svgNS, 'path'); p.setAttribute('d', d); map.append(p); }
+  const mapWrap = h('div', {class:'world-wrap'}, map);
+  const btns = h('div', {class:'world-btns', role:'group', 'aria-label':'Regions'});
+  for (const r of names){
+    const pos = WORLD_SPOTS[r], on = st.region === r;
+    const b = h('button', {type:'button', class:'world-btn', 'aria-pressed': String(on), 'aria-controls':'brworld-' + mode,
+      onclick: () => { st.region = on ? null : r; refresh(); const nb = document.querySelector('.br-' + mode + ' .world-btn[aria-pressed="true"]'); if (nb) nb.focus(); }},
+      r, h('span', {class:'chip-n'}, String(count(r))));
+    if (pos) b.style.cssText = '--x:' + (pos[0] / 3.6).toFixed(1) + '%;--y:' + (pos[1] / 1.7).toFixed(1) + '%';
+    btns.append(b);
+  }
+  mapWrap.append(btns);
+  sec.append(mapWrap);
+  const cl = h('ul', {class:'country-list', id:'brworld-' + mode});
+  if (st.region){
+    const cs = (regs[st.region] || []).map(c => [c, stn.col.stations.filter(s => s.country === c).length]).filter(x => x[1]).sort((a, b) => b[1] - a[1] || countryName(a[0]).localeCompare(countryName(b[0])));
+    for (const [c, n] of cs) cl.append(h('li', null, h('button', {type:'button', class:'country', 'aria-label': countryName(c) + ', ' + n + ' stations', onclick: () => apply(() => st.where.add('c:' + c), true)},
+      h('span', {class:'st-flag', 'aria-hidden':'true'}, flagOf(c)), h('span', {class:'cn'}, countryName(c)), h('span', {class:'chip-n', 'aria-hidden':'true'}, String(n)))));
+    sec.append(h('p', {class:'hint'}, st.region + ': ' + cs.length + ' countries. Pick one, or ', h('button', {type:'button', class:'link', onclick: () => apply(() => st.where.add('r:' + st.region), true)}, 'see all ' + count(st.region) + ' stations'), '.'), cl);
+  }
+  return sec;
+}
+function paintResults(body, st, opts){
+  const mode = opts.mode, q = st.q.trim();
+  if (mode === 'pick' && /^https?:\/\/\S+$/i.test(q)){ body.append(linkRow(q, opts)); return; }
+  const res = stSearch(st);
+  const words = [];
+  if (q) words.push('“' + q + '”');
+  const count = h('p', {class:'br-count', id:'brcount-' + mode, tabindex:'-1', role:'status', 'aria-live':'polite'},
+    res.length ? res.length + (res.length === 1 ? ' station' : ' stations') + (words.length ? ' for ' + words.join(' ') : '') : 'No checked stations' + (words.length ? ' for ' + words.join(' ') : '') + (brFiltered(st) ? ' with these filters' : '') + '.');
+  body.append(count);
+  const list = h('ul', {class:'results', id:'brres-' + mode, 'aria-label':'Stations'});
+  const more = () => {
+    const from = list.querySelectorAll(':scope > li:not(.sentinel)').length;
+    for (const s of res.slice(from, st.shown)) list.insertBefore(stationRow(s, opts), sentinel);
+    if (st.shown >= res.length) sentinel.remove();
+  };
+  const sentinel = h('li', {class:'sentinel', 'aria-hidden':'true'});
+  list.append(sentinel);
+  more();
+  if (res.length > st.shown && 'IntersectionObserver' in window){
+    const io = new IntersectionObserver(ents => {
+      if (!sentinel.isConnected){ io.disconnect(); return; }
+      if (ents.some(e => e.isIntersecting)){ st.shown += 30; more(); if (!sentinel.isConnected) io.disconnect(); }
+    }, {rootMargin:'400px'});
+    io.observe(sentinel);
+  } else if (res.length > st.shown) body.append(list, h('button', {type:'button', class:'btn small', onclick: e => { st.shown += 60; more(); if (st.shown >= res.length) e.currentTarget.remove(); }}, 'Show more'));
+  if (res.length) body.append(list);
+  if (!res.length && brFiltered(st)) body.append(h('p', {class:'hint'}, 'Try fewer filters, or ', h('button', {type:'button', class:'link', onclick: () => { brClear(st); rerender(); }}, 'clear them'), '.'));
+  // The internet (Radio Browser): straight away when we have fewer than 5 checked matches, otherwise on request.
+  if (q.length >= 2) body.append(netSection(st, q, opts, res.length < 5));
+}
+function netSection(st, q, opts, auto){
+  const box = h('section', {class:'shelf br-net', 'aria-labelledby':'brnet-' + opts.mode});
+  const paint = () => {
+    box.textContent = '';
+    if (st.netFor !== q || (!st.net && !st.netBusy && !st.netErr)){
+      if (!auto && !st.netBusy){
+        box.append(h('button', {type:'button', class:'link', id:'brnetgo-' + opts.mode, onclick: () => go_()}, 'Search the internet too ›'));
+        return;
+      }
+      go_(); return;
+    }
+    box.append(h('div', {class:'shelf-head'}, h('h2', {id:'brnet-' + opts.mode}, 'From the internet · not checked by us'),
+      h('p', null, 'Found on Radio Browser. Some may not play, or may sound poor.')));
+    if (st.netBusy){ box.append(h('p', {class:'stat', role:'status'}, 'Searching the internet…')); return; }
+    if (st.netErr){ box.append(h('p', {class:'stat', role:'status'}, st.netErr)); return; }
+    const known = new Set(stn.col ? stn.col.stations.map(s => s.url) : []);
+    const rows = st.net.filter(s => !known.has(s.url));
+    box.append(h('p', {class:'stat', role:'status'}, rows.length ? rows.length + ' more on the internet.' : 'Nothing more on the internet for “' + q + '”.'));
+    const l = h('ul', {class:'results'});
+    for (const s of rows.slice(0, 30)) l.append(stationRow(s, opts));
+    if (rows.length) box.append(l);
+  };
+  const go_ = async () => {
+    if (st.netBusy && st.netFor === q) return;
+    st.netFor = q; st.netBusy = true; st.net = null; st.netErr = ''; paint();
+    try {
+      const r = await api('GET', '/api/stations?q=' + encodeURIComponent(q) + '&scope=internet');
+      if (st.netFor !== q) return;
+      if (r.ok && Array.isArray(r.json)) st.net = r.json.filter(s => s && s.url).map(s => Object.assign({}, s, {internet:true, genres:[], country: String(s.country || '').toUpperCase()}));
+      else st.netErr = 'The internet search isn’t answering right now. Try again in a minute.';
+    } catch (_) { if (st.netFor === q) st.netErr = NET_ERR; }
+    st.netBusy = false;
+    if (box.isConnected) paint();
+  };
+  // Typing settles first: a quick search shouldn't fire one request per letter.
+  if (auto && st.netFor !== q){ box.append(h('p', {class:'stat'}, 'Searching the internet…')); clearTimeout(netSection.t); netSection.t = setTimeout(() => { if (box.isConnected) go_(); }, 350); return box; }
+  paint();
+  return box;
+}
+
+/* ---------- filter sheets (multi-select, AND across filters, live count) ---------- */
+function filterSheet(mode, which){
+  const st = brState(mode), opener = document.activeElement;
+  const dlg = h('dialog', {class:'fsheet', 'aria-labelledby':'fsTitle'});
+  const title = {genre:'Genre', where:'Where', lang:'Language', quality:'Quality'}[which];
+  const body = h('div', {class:'fs-body'});
+  const showBtn = h('button', {type:'button', class:'btn primary', onclick: () => dlg.close()});
+  const live = () => { const n = stSearch(st).length; showBtn.textContent = n ? 'Show ' + n + (n === 1 ? ' station' : ' stations') : 'No stations — try fewer'; };
+  const toggleChip = (label, n, pressed, onToggle, extraCls) => {
+    const b = h('button', {type:'button', class:'chip' + (extraCls ? ' ' + extraCls : ''), 'aria-pressed': String(!!pressed), 'aria-label': label + (n != null ? ', ' + n + ' stations' : '')},
+      label, n != null ? h('span', {class:'chip-n', 'aria-hidden':'true'}, String(n)) : null);
+    b.addEventListener('click', () => { const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', String(on)); onToggle(on); st.shown = 30; live(); });
+    return b;
+  };
+  const counter = (skipKey, pred) => stSearch(st, skipKey).filter(pred).length;
+  const base = k => stSearch(st, k);
+  if (which === 'genre'){
+    const pool = base('genre'), c = h('div', {class:'chips'});
+    for (const t of stn.tiles){ const n = pool.filter(s => s.genres.some(g => t.tags.includes(g))).length; c.append(toggleChip(t.label, n, st.genre.has(t.id), on => on ? st.genre.add(t.id) : st.genre.delete(t.id))); }
+    body.append(c);
+  } else if (which === 'where'){
+    const pool = base('where'), regs = stn.col.regions || {};
+    for (const [r, cs] of Object.entries(regs)){
+      const rn = pool.filter(s => cs.includes(s.country)).length;
+      const c = h('div', {class:'chips'});
+      c.append(toggleChip('All of ' + r, rn, st.where.has('r:' + r), on => on ? st.where.add('r:' + r) : st.where.delete('r:' + r), 'strong'));
+      for (const cc of cs.slice().sort((a, b) => countryName(a).localeCompare(countryName(b)))){
+        const n = pool.filter(s => s.country === cc).length; if (!n && !st.where.has('c:' + cc)) continue;
+        c.append(toggleChip(flagOf(cc) + ' ' + countryName(cc), n, st.where.has('c:' + cc), on => on ? st.where.add('c:' + cc) : st.where.delete('c:' + cc)));
+      }
+      body.append(h('h3', {class:'fs-h'}, r), c);
+    }
+  } else if (which === 'lang'){
+    const pool = base('lang'), lc = {};
+    for (const s of stn.col.stations) if (s.language) lc[s.language] = 0;
+    for (const s of pool) if (s.language) lc[s.language] = (lc[s.language] || 0) + 1;
+    const c = h('div', {class:'chips'});
+    for (const [code, n] of Object.entries(lc).sort((a, b) => b[1] - a[1] || langName(a[0]).localeCompare(langName(b[0])))){ if (!n && !st.lang.has(code)) continue; c.append(toggleChip(langName(code), n, st.lang.has(code), on => on ? st.lang.add(code) : st.lang.delete(code))); }
+    body.append(c);
+  } else {
+    const pool = base('quality');
+    body.append(h('div', {class:'chips'},
+      toggleChip('High (128 kbps and up)', pool.filter(s => !s.bitrate || s.bitrate >= 128).length, st.high, on => { st.high = on; })),
+      h('p', {class:'hint'}, 'Most stations sound good at 128 kbps. Lower can sound thin on a big speaker.'),
+      h('label', {class:'switch', for:'fsAac'}, h('span', null, 'AAC and HLS stations are fine'),
+        h('input', {type:'checkbox', role:'switch', id:'fsAac', checked: st.aacOk, onchange: e => { st.aacOk = e.target.checked; live(); }})),
+      h('p', {class:'hint'}, 'Leave this on. Turn it off only if a station in those formats won’t play on your radio.'));
+  }
+  dlg.append(h('div', {class:'fs-head'}, h('h2', {id:'fsTitle'}, title),
+      h('button', {type:'button', class:'link quiet', onclick: () => { if (which === 'genre') st.genre.clear(); else if (which === 'where') st.where.clear(); else if (which === 'lang') st.lang.clear(); else { st.high = false; st.aacOk = true; }
+        dlg.querySelectorAll('.chip[aria-pressed="true"]').forEach(b => b.setAttribute('aria-pressed', 'false')); const a = dlg.querySelector('#fsAac'); if (a) a.checked = true; live(); }}, 'Clear')),
+    body, h('div', {class:'fs-foot'}, showBtn));
+  live();
+  dlg.addEventListener('close', () => { dlg.remove(); rerender(); const o = opener && opener.id && $(opener.id); if (o) o.focus(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  document.body.append(dlg); dlg.showModal();
+  const f = dlg.querySelector('.chip, input'); if (f) f.focus();
+}
+
+/* ---------- the station sheet ---------- */
+async function tryStation(s, btn){
+  const ref = s.id && stn.byId.has(s.id) ? {id:s.id} : {url:s.url};
+  const label = btn ? btn.innerHTML : '';
+  if (btn){ btn.disabled = true; }
+  let out = {ok:false, error:''};
+  try {
+    let r = await api('POST', '/api/stations/try', ref);
+    if (r.status === 404 || r.status === 405) r = await api('POST', '/api/play', {preset:{name:s.name, source:'radio', uri:s.url}});
+    out = r.ok && r.json && r.json.ok !== false ? Object.assign({ok:true}, r.json) : {ok:false, error:(r.json && r.json.error) || ''};
+  } catch (_) { out = {ok:false, error:NET_ERR}; }
+  if (btn && btn.isConnected){ btn.disabled = false; btn.innerHTML = label; }
+  if (out.ok){
+    stn.playing = s.url;
+    if (stn.mine){
+      const key = ref.id || ref.url;
+      stn.mine.recent = [{[ref.id ? 'id' : 'url']: key, t: Math.floor(Date.now() / 1000)}].concat(stn.mine.recent.filter(r => (r.id || r.url) !== key)).slice(0, 30);
+      if (stn.mineLocal) saveMine();
+    }
+    if (!btn || !btn.closest('dialog')) toast('Playing ' + s.name + ' on the radio');
+  } else if (!btn || !btn.closest('dialog')) toast(out.error || s.name + ' didn’t start. Try another station, or try again in a minute.', true);
+  pollSoon();
+  return out;
+}
+async function stopRadio(){
+  try { await api('POST', '/api/stop', {}); } catch (_) {}
+  stn.playing = null; pollSoon();
+}
+async function toggleFav(s){
+  if (!stn.mine) await loadMine();
+  if (!stn.mine) return false;
+  const m = stn.mine, ref = refOf(s);
+  if (isFav(s)){
+    const keys = keysFor(s.url);
+    const c = m.custom.find(x => x.url === s.url);
+    if (c && keys.length){ toast('It’s on ' + keyLabel(keys[0]).replace(/^Key/, 'key') + ' — change the key first.', true); return true; }
+    const before = clone(m);
+    m.favourites = m.favourites.filter(x => x !== ref && x !== s.url);
+    if (c) m.custom = m.custom.filter(x => x !== c);
+    m.order = m.order.filter(x => x !== ref && x !== s.url && x !== (c && c.id));
+    saveMine();
+    toast(s.name + ' left My stations', {undo: () => { stn.mine = before; saveMine(); rerender(); }});
+    return false;
+  }
+  if (stn.byId.has(ref)) m.favourites.push(ref);
+  else { const id = 'c' + Date.now().toString(36); m.custom.push({id, name:s.name, url:s.url}); }
+  saveMine();
+  toast(s.name + ' is in My stations');
+  return true;
+}
+function openStation(s, opts, opener){
+  opts = opts || {mode:'browse'};
+  const dlg = h('dialog', {class:'stsheet', 'aria-labelledby':'stsTitle'});
+  const fav0 = isFav(s);
+  const meta = [];
+  if (s.region || s.country) meta.push(s.region || countryName(s.country));
+  if (s.language) meta.push(langName(s.language));
+  const tech = [fmtWord(s.codec), kbps(s)].filter(Boolean);
+  const ver = s.internet ? '' : verifiedWords(s.verified || (stn.col && stn.col.verified));
+  const msg = h('p', {class:'sts-msg', role:'status', 'aria-live':'polite'});
+  const playBtn = h('button', {type:'button', class:'btn' + (opts.mode === 'pick' ? '' : ' primary'), id:'stsPlay'});
+  const paintPlay = () => {
+    const on = stn.playing === s.url;
+    playBtn.textContent = '';
+    playBtn.append(on ? h('span', null, 'Playing… ', h('span', {'aria-hidden':'true'}, '■'), ' Stop') : h('span', null, 'Play now on the radio'));
+    playBtn.setAttribute('aria-label', on ? 'Playing ' + s.name + '. Stop' : 'Play ' + s.name + ' now on the radio');
+  };
+  playBtn.addEventListener('click', async () => {
+    if (stn.playing === s.url){ await stopRadio(); msg.textContent = 'Stopped.'; paintPlay(); return; }
+    playBtn.disabled = true; playBtn.textContent = 'Starting…'; msg.textContent = '';
+    const r = await tryStation(s, null);
+    playBtn.disabled = false; paintPlay();
+    msg.textContent = r.ok ? 'Playing on the radio' + (r.codec ? ' · ' + fmtWord(r.codec) + (r.bitrate ? ' ' + r.bitrate + 'k' : '') : '') + '.' : (r.error || 'It didn’t start. Try again in a minute, or tell us below.');
+    msg.classList.toggle('bad', !r.ok);
+  });
+  paintPlay();
+  const favBtn = h('button', {type:'button', class:'btn', 'aria-pressed': String(fav0)});
+  const paintFav = on => { favBtn.setAttribute('aria-pressed', String(on)); favBtn.textContent = on ? '★ In My stations' : '☆ Add to my stations'; };
+  paintFav(fav0);
+  favBtn.addEventListener('click', async () => { paintFav(await toggleFav(s)); });
+  const keys = keysFor(s.url);
+  const acts = h('div', {class:'sts-acts'});
+  if (opts.mode === 'pick') acts.append(h('button', {type:'button', class:'btn primary', id:'stsUse', onclick: () => { dlg.close(); opts.onPick(s); }}, opts.pickLabel || 'Use this station'));
+  acts.append(playBtn);
+  if (opts.mode !== 'pick') acts.append(h('button', {type:'button', class:'btn', onclick: async () => {
+    if (!cfg){ toast('Still loading the keys — try again in a moment.', true); return; }
+    const c = await chooseKey({title:'Put on a key', sub:'“' + s.name + '” will play when you tap the key. It replaces what’s there now.'});
+    if (c && await putItemOnKey({name:s.name, source:'radio', uri:s.url}, c.key)){ stationMeta.set(s.url, s); msg.textContent = s.name + ' is on ' + keyLabel(cfg.keys.find(k => k.id === c.key) || {id:c.key}) + '.'; msg.classList.remove('bad'); }
+  }}, 'Put on a key'));
+  acts.append(favBtn);
+  // "Doesn't play?" — quiet, and only for what we can fix.
+  const rep = h('div', {class:'sts-report'});
+  const paintRep = open => {
+    rep.textContent = '';
+    if (!open){ rep.append(h('button', {type:'button', class:'link quiet', 'aria-expanded':'false', onclick: () => { paintRep(true); const f = rep.querySelector('.chip'); if (f) f.focus(); }}, 'Doesn’t play?')); return; }
+    const note = h('input', {type:'text', id:'stsNote', maxlength:'200', placeholder:'Anything else? (optional)', 'aria-label':'Anything else (optional)', autocomplete:'off'});
+    const send = async reason => {
+      rep.querySelectorAll('button').forEach(b => { b.disabled = true; });
+      const body = Object.assign(s.id && stn.byId.has(s.id) ? {id:s.id} : {url:s.url}, {reason}, note.value.trim() ? {note:note.value.trim()} : {});
+      let ok = false;
+      try { const r = await api('POST', '/api/stations/report', body); ok = r.ok; } catch (_) {}
+      rep.textContent = '';
+      rep.append(h('p', {class:'sts-thanks', role:'status'}, ok ? 'Thanks — we’ll check it this week.' : 'Couldn’t send that just now. Check the radio is on, then try again.'));
+    };
+    const reasons = [['silent', 'No sound'], ['wrong', 'Wrong station'], ['drops', 'Stops after a while'], ['other', 'Other']];
+    rep.append(h('p', {class:'hint'}, 'What happens? We check every report.'),
+      h('div', {class:'chips', role:'group', 'aria-label':'What happens'}, reasons.map(([id, l]) => h('button', {type:'button', class:'chip', onclick: () => send(id)}, l))), note);
+  };
+  paintRep(false);
+  dlg.append(...[
+    h('div', {class:'sts-head'}, stTile(s, 'lg'), h('div', {class:'sts-txt'},
+      h('h2', {id:'stsTitle'}, s.name),
+      meta.length ? h('p', {class:'sts-meta'}, meta.join(' · ')) : null,
+      keys.length ? h('p', {class:'sts-meta'}, 'On ' + keys.map(keyLabel).join(', ')) : null),
+      h('button', {type:'button', class:'round sts-x', 'aria-label':'Close', onclick: () => dlg.close()}, icon('<path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>', 14, 14))),
+    s.why ? h('p', {class:'sts-why'}, s.why) : null,
+    s.internet ? h('p', {class:'sts-net'}, 'From the internet · not checked by us') : null,
+    h('p', {class:'sts-tech'}, [tech.join(' · '), ver].filter(Boolean).join(' · ') || 'Live radio'),
+    s.homepage && /^https?:\/\//i.test(s.homepage) ? h('a', {class:'link sts-web', href:s.homepage, target:'_blank', rel:'noopener noreferrer'}, 'Website ↗') : null,
+    acts, msg, rep].filter(Boolean));
+  dlg.addEventListener('close', () => { dlg.remove(); const o = opener && opener.isConnected ? opener : null; if (o) o.focus(); else if (browseShown() || view === 'edit') rerender(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  document.body.append(dlg); dlg.showModal();
+  const f = dlg.querySelector('#stsUse') || playBtn; f.focus();
+}
+
+/* ---------- My stations ---------- */
+const mineUi = {drag:null};
+function srSay(t){ let n = $('srLive'); if (!n){ n = h('p', {class:'sr', id:'srLive', 'aria-live':'polite'}); document.body.append(n); } n.textContent = ''; setTimeout(() => { n.textContent = t; }, 40); }
+function renderMine(panel){
+  if (!stn.col && !stn.err) loadCollection();
+  if (!stn.mine) loadMine();
+  panel.append(screenTop('My stations', 'browse', h('button', {type:'button', class:'btn small mine-add', id:'mineAdd', onclick: () => addLinkSheet()}, IC.plus(), ' Link')));
+  panel.append(h('p', {class:'hint'}, 'Your favourites, your own links and the stations on your keys — in the order you like. Drag a row, or use ⋯ to move it.'));
+  if (!stn.mine){ panel.append(h('p', {class:'loading'}, 'Loading your stations…')); return; }
+  const items = myItems();
+  if (!items.length){
+    panel.append(h('div', {class:'empty'}, h('h2', null, 'No stations yet'), h('p', null, 'Tap ☆ on any station in Browse to keep it here, or add your own link.'),
+      h('a', {class:'btn small', style:'margin-top:12px', href:'#browse'}, 'Find stations')));
+    return;
+  }
+  const list = h('ul', {class:'mine-list', 'aria-label':'My stations'});
+  items.forEach((it, i) => {
+    const s = it.st, badges = [];
+    if (it.fav && !it.custom) badges.push(h('span', {class:'st-badge star'}, '★'));
+    for (const k of it.keys) badges.push(h('span', {class:'st-badge'}, keyLabel(k)));
+    if (it.custom) badges.push(h('span', {class:'st-badge mylink'}, 'Your link'));
+    const sub = s.custom || s.onkey ? String(s.url).replace(/^https?:\/\//, '') : stSub(s).join(' · ');
+    const li = h('li', {class:'mine-row', draggable:'true', 'data-i': String(i)},
+      h('span', {class:'grip', 'aria-hidden':'true', title:'Drag to move'}, '⋮⋮'),
+      stTile(s, 'sm'),
+      h('button', {type:'button', class:'srow-main', id:'mine-' + i, 'aria-label': s.name + ', ' + [it.fav && !it.custom ? 'favourite' : '', it.custom ? 'your link' : '', it.keys.length ? 'on ' + it.keys.map(keyLabel).join(' and ') : ''].filter(Boolean).join(', '),
+        onclick: e => openStation(s, {mode:'browse'}, e.currentTarget)},
+        h('span', {class:'res-title'}, s.name, h('span', {class:'st-badges', 'aria-hidden':'true'}, badges)), h('span', {class:'res-sub'}, sub)),
+      h('button', {type:'button', class:'round', id:'minemenu-' + i, 'aria-label':'More for ' + s.name, 'aria-haspopup':'dialog', onclick: () => mineMenu(it, i, items)}, IC.dots()));
+    li.addEventListener('dragstart', e => { mineUi.drag = i; li.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(i)); } catch (_) {} });
+    li.addEventListener('dragend', () => { mineUi.drag = null; li.classList.remove('dragging'); list.querySelectorAll('.over').forEach(x => x.classList.remove('over')); });
+    li.addEventListener('dragover', e => { if (mineUi.drag == null) return; e.preventDefault(); li.classList.add('over'); });
+    li.addEventListener('dragleave', () => li.classList.remove('over'));
+    li.addEventListener('drop', e => { e.preventDefault(); const from = mineUi.drag; mineUi.drag = null; if (from != null && from !== i) mineMove(items, from, i); });
+    list.append(li);
+  });
+  panel.append(list);
+}
+function mineMove(items, from, to, focusId){
+  const refs = items.map(it => it.ref);
+  const [x] = refs.splice(from, 1); refs.splice(to, 0, x);
+  stn.mine.order = refs;
+  saveMine();
+  rerender();
+  const f = $(focusId || 'mine-' + to); if (f) f.focus();
+  srSay(items[from].st.name + ' moved to place ' + (to + 1));
+}
+function mineMenu(it, i, items){
+  const dlg = h('dialog', {class:'fsheet', 'aria-labelledby':'mmTitle'}), opener = $('minemenu-' + i);
+  const s = it.st, m = stn.mine;
+  const close = () => dlg.close();
+  const row = (label, fn, dis) => h('li', null, h('button', {type:'button', disabled: !!dis, onclick: fn}, h('span', {class:'kl-txt'}, h('span', {class:'kl-name'}, label))));
+  const list = h('ul', {class:'keylist menu'});
+  let renaming = null;
+  if (it.custom) list.append(row('Rename', () => {
+    if (renaming) return;
+    renaming = h('input', {type:'text', id:'mmName', value:it.custom.name, maxlength:'80', 'aria-label':'New name', autocomplete:'off'});
+    const save = () => { const v = renaming.value.trim(); if (v){ it.custom.name = v; saveMine(); } close(); rerender(); };
+    renaming.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); save(); } });
+    list.before(h('div', {class:'field'}, renaming, h('button', {type:'button', class:'btn primary inline', onclick: save}, 'Save name')));
+    renaming.focus(); renaming.select();
+  }));
+  list.append(row('Put on a key', async () => {
+    close();
+    if (!cfg) return;
+    const c = await chooseKey({title:'Put on a key', sub:'“' + s.name + '” will play when you tap the key. It replaces what’s there now.'});
+    if (c && await putItemOnKey({name:s.name, source:'radio', uri:s.url}, c.key)) rerender();
+  }));
+  list.append(row('Move up', () => { close(); mineMove(items, i, i - 1, 'minemenu-' + (i - 1)); }, i === 0));
+  list.append(row('Move down', () => { close(); mineMove(items, i, i + 1, 'minemenu-' + (i + 1)); }, i === items.length - 1));
+  const foot = h('div', {class:'fs-foot'});
+  if (it.keys.length){
+    const k = it.keys[0];
+    foot.append(h('p', {class:'hint'}, 'On ' + keyLabel(k).replace(/^Key/, 'key') + ' — ', h('a', {class:'link', href:'#edit/' + k.id, onclick: () => close()}, 'change the key first'), ' to remove it.'));
+  } else foot.append(h('button', {type:'button', class:'btn danger-btn', onclick: () => {
+    const before = clone(m);
+    m.favourites = m.favourites.filter(x => x !== it.ref && x !== s.url);
+    m.custom = m.custom.filter(x => x !== it.custom && x.url !== s.url);
+    m.order = m.order.filter(x => x !== it.ref);
+    saveMine(); close(); rerender();
+    toast(s.name + ' removed', {undo: () => { stn.mine = before; saveMine(); rerender(); }});
+    const f = $('mine-' + Math.min(i, myItems().length - 1)) || $('mineAdd'); if (f) f.focus();
+  }}, 'Remove'));
+  foot.append(h('button', {type:'button', class:'btn small', onclick: close}, 'Cancel'));
+  dlg.append(h('h2', {id:'mmTitle'}, s.name), list, foot);
+  dlg.addEventListener('close', () => { dlg.remove(); const o = opener && opener.isConnected ? opener : null; if (o) o.focus(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) close(); });
+  document.body.append(dlg); dlg.showModal();
+  const f = dlg.querySelector('.keylist button:not(:disabled)'); if (f) f.focus();
+}
+// "+ Link": paste a station's address, give it a name, test it on the radio, save it.
+function addLinkSheet(){
+  const dlg = h('dialog', {class:'fsheet', 'aria-labelledby':'alTitle'}), opener = $('mineAdd');
+  const url = h('input', {type:'url', id:'alUrl', inputmode:'url', placeholder:'https://…', autocomplete:'off', autocapitalize:'off', spellcheck:'false', 'aria-describedby':'alRes'});
+  const name = h('input', {type:'text', id:'alName', maxlength:'80', placeholder:'e.g. Radio Euskadi', autocomplete:'off'});
+  const res = h('p', {class:'sts-msg', id:'alRes', role:'status', 'aria-live':'polite'});
+  const valid = () => /^https?:\/\/\S+\.\S+/i.test(url.value.trim());
+  const save = h('button', {type:'button', class:'btn primary', disabled:true});
+  save.textContent = 'Save';
+  const test = h('button', {type:'button', class:'btn', disabled:true}, 'Test on the radio');
+  const upd = () => { test.disabled = !valid(); save.disabled = !valid() || !name.value.trim(); };
+  url.addEventListener('input', () => { res.textContent = ''; res.classList.remove('bad', 'ok'); upd(); });
+  name.addEventListener('input', upd);
+  test.addEventListener('click', async () => {
+    test.disabled = true; res.textContent = 'Trying it on the radio…'; res.classList.remove('bad', 'ok');
+    let r = null;
+    try { r = await api('POST', '/api/stations/try', {url:url.value.trim()}); } catch (_) {}
+    const j = r && r.json;
+    if (r && r.ok && j && j.ok){ res.textContent = 'Plays ✓' + (j.codec ? ' · ' + fmtWord(j.codec) + (j.bitrate ? ' ' + j.bitrate + 'k' : '') : ''); res.classList.add('ok'); stn.playing = url.value.trim(); }
+    else { res.textContent = r ? 'No audio found — check the link' : NET_ERR; res.classList.add('bad'); }
+    upd(); pollSoon();
+  });
+  save.addEventListener('click', async () => {
+    if (!stn.mine) await loadMine();
+    const u = url.value.trim(), n = name.value.trim();
+    if (stn.mine.custom.some(c => c.url === u)){ res.textContent = 'That link is already in My stations.'; res.classList.add('bad'); return; }
+    const id = 'c' + Date.now().toString(36);
+    stn.mine.custom.push({id, name:n, url:u});
+    saveMine(); dlg.close(); rerender(); toast(n + ' is in My stations');
+  });
+  dlg.append(h('h2', {id:'alTitle'}, 'Add your own link'),
+    h('p', {class:'sub'}, 'For a station you know that isn’t in the list. Paste its web address — the one that plays the sound.'),
+    h('div', {class:'field'}, h('label', {for:'alUrl'}, 'Link'), url),
+    h('div', {class:'field'}, h('label', {for:'alName'}, 'Name'), name),
+    res, h('div', {class:'sts-acts'}, test, save),
+    h('div', {class:'fs-foot'}, h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Cancel')));
+  dlg.addEventListener('close', () => { dlg.remove(); const o = opener && opener.isConnected ? opener : $('mineAdd'); if (o) o.focus(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  document.body.append(dlg); dlg.showModal(); url.focus();
 }
 
 /* ================= settings ================= */
@@ -3240,7 +4811,7 @@ function renderRadio(panel){
   const miss = ((haState && haState.missing) || []).length;
   panel.append(setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
     setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha'))));
-  panel.append(setGroup('ytm', 'YouTube Music', accountCard()));
+  panel.append(setGroup('ytm', 'YouTube Music', accountCard(), ytExplicitRow()));
   const hg = helpGroup(); if (hg) panel.append(hg);   // last: rarely needed
 }
 // The setup network (GET /api/wifi .setup): what the radio opens when it can't join the home Wi-Fi.
@@ -5790,7 +7361,7 @@ function accountCard(){
   const err = acctUi.err ? h('p', {class:'err', id:'acctErr', role:'alert'}, acctUi.err) : document.createDocumentFragment();
   if (ytm.signed_in){
     box.append(h('h3', {id:'acctH', tabindex:'-1'}, 'Signed in' + (ytm.name ? ' as ' + ytm.name : '')),
-      h('p', {class:'body'}, 'Your Liked songs and playlists show up when you edit a key.'),
+      h('p', {class:'body'}, 'Your library shows in Browse → YouTube Music, and when you edit a key. The front screen can like the song playing.'),
       h('div', null, h('button', {type:'button', class:'btn small inline', onclick: signOut}, 'Sign out')), err);
     return box;
   }
@@ -5819,7 +7390,9 @@ function accountCard(){
 function adoptAccount(acc){
   const was = ytm.signed_in;
   ytm = {available: acc.available !== false, signed_in: !!acc.signed_in, name: acc.name || ''};
-  if (was !== ytm.signed_in) ytmLib = null;
+  if (was !== ytm.signed_in){ ytForget('lib:'); ytForget('home'); }
+  paintYtmNow();
+  if (view === 'browse' && ytOnScreen()) rerender();
   if (view === 'settings' || view === 'edit') rerender();
 }
 async function loadAccount(){

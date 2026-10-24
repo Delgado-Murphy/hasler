@@ -1,21 +1,31 @@
-"""Radio stations for the page's station picker: three lists, one search box.
+"""Radio stations for the page: the checked collection, moOde's list, the internet.
 
 The owner lives in Spain, and moOde's built-in list (a couple of hundred
-stations, almost none Spanish) is no help there. So a search now draws on:
+stations, almost none Spanish) is no help there. So a search draws on:
 
-1. **The curated Spanish list** shipped in the repo (config/stations/es.json):
-   the national and regional broadcasters - RNE, SER, COPE, Onda Cero, LOS40,
-   RAC1, Catalunya Ràdio, Canal Sur, EITB, Radio Galega... - each stream
-   checked from a Spanish IP when it was added. Searched first, and what an
-   empty search box shows.
+1. **The collection** shipped in the repo (config/stations/collection.json,
+   built by scripts/stations/build_collection.py): about 600 stations from
+   some 120 countries - the Spanish national and regional broadcasters first
+   (RNE, SER, COPE, RAC1, Catalunya Ràdio, Canal Sur, EITB, Radio Galega...),
+   then public, community and genre stations from every region. Each stream
+   was played by MPD on the radio itself (a Pi in Spain) when it was added.
+   Searched first (Spanish stations ahead of the rest), and what an empty
+   search shows (the Spanish ones, in the file's order). The page's station
+   browser downloads the whole file (``GET /api/stations/collection``) and
+   filters it itself; ``collection_doc`` serves it.
 2. **moOde's own list** (its sqlite ``cfg_radio``), read-only as before.
 3. **Radio Browser** (radio-browser.info), the free community directory of
    ~50,000 health-checked streams, asked over its JSON API. Spanish stations
    first (one query with ``countrycode=ES``, one without), then the rest.
+   Unchecked by us, so the merged search only asks it when the collection
+   has fewer than ``INTERNET_BELOW`` matches; ``search_internet`` (``GET
+   /api/stations?scope=internet``, the page's "Search the internet too")
+   asks it alone.
 
-Matching is accent- and case-insensitive on name, genre and region/country, so
-"radio clasica" finds "Radio Clásica" and "rac" finds "RAC1". Results are
-merged in that order, deduped by stream URL, and capped at ``LIMIT``.
+Matching is accent- and case-insensitive on name, genre, region/country,
+language and keywords, so "radio clasica" finds "Radio Clásica" and "rac"
+finds "RAC1". Results are merged in that order, deduped by stream URL, and
+capped at ``LIMIT``.
 
 Radio Browser is the only part that leaves the box, and it is optional: its
 queries run with short timeouts in a worker thread under an overall budget, a
@@ -23,15 +33,19 @@ dead mirror is skipped for the next one, and an unreachable directory is a log
 line - the other two lists still answer at once. Answers are cached per query
 for ``CACHE_TTL`` so a page that searches as you type does not hammer it.
 
-Every entry is ``{"name", "url", "genre", "country", "source"}`` - the first
-four are what the page has always read; ``source`` is "curated", "moode" or
-"radio-browser", and directory hits may also carry ``codec``, ``bitrate`` and
-``favicon``.
+Every entry is ``{"name", "url", "genre", "country", "source", "checked"}`` -
+the first four are what the page has always read (``country`` is the display
+place, "Spain · Catalonia"); ``source`` is "curated", "moode" or
+"radio-browser"; ``checked`` is true for the collection's own stations.
+Collection hits also carry ``id``, ``cc`` (ISO country code) and ``genres``;
+directory hits may carry ``codec``, ``bitrate`` and ``favicon``.
 """
 
 from __future__ import annotations
 
 import concurrent.futures
+import gzip
+import hashlib
 import json
 import logging
 import sqlite3
@@ -52,7 +66,9 @@ MOODE_DB = "/var/local/www/db/moode-sqlite3.db"
 LIMIT = 50
 # Shipped with the release (config/stations in the release root, which is the
 # checkout root when running from the repo - boxconfig.find_release).
-CURATED_FILE = shipped_data("stations/es.json")
+CURATED_FILE = shipped_data("stations/collection.json")
+# The merged search leaves the internet out once the collection has this many matches.
+INTERNET_BELOW = 5
 
 # Radio Browser publishes a DNS round-robin of mirrors; a fixed short list is
 # simpler than a DNS SRV lookup in the stdlib and has been stable for years.
@@ -97,12 +113,13 @@ _curated_cache: dict[Path, tuple[float, list[tuple[dict, str]]]] = {}
 
 
 def _curated(path: Path) -> list[tuple[dict, str]]:
-    """The curated stations, re-read when the file changes; [] if it is missing.
+    """The collection's stations, re-read when the file changes; [] if it is missing.
 
     Each file entry: name, url, genre, region and optional ``keywords`` - extra
     search terms that are not shown (the group, "Catalunya" for "Catalonia",
-    "Radio Nacional de España" for "RNE"). Kept in the file's order, which is
-    the order an empty search shows (national stations, then by region).
+    "Radio Nacional de España" for "RNE") - plus, in the collection, ``id``,
+    ``country`` (ISO code), ``genres`` and ``language``. Kept in the file's
+    order (Spanish national stations, then by region, then the world).
     """
     try:
         mtime = path.stat().st_mtime
@@ -114,34 +131,93 @@ def _curated(path: Path) -> list[tuple[dict, str]]:
         log.warning("no curated station list at %s", path, exc_info=True)
         return []
     entries = doc.get("stations", []) if isinstance(doc, dict) else doc
-    out = [
-        (
-            {
-                "name": e["name"],
-                "url": e["url"],
-                "genre": e.get("genre", ""),
-                "country": e.get("region", "Spain"),
-                "source": "curated",
-            },
-            e.get("keywords", ""),
-        )
-        for e in entries
-        if isinstance(e, dict) and e.get("name") and str(e.get("url", "")).startswith(("http://", "https://"))
-    ]
+    countries = doc.get("countries", {}) if isinstance(doc, dict) else {}
+    languages = doc.get("languages", {}) if isinstance(doc, dict) else {}
+    out = []
+    for e in entries:
+        if not (isinstance(e, dict) and e.get("name") and str(e.get("url", "")).startswith(("http://", "https://"))):
+            continue
+        station = {
+            "name": e["name"],
+            "url": e["url"],
+            "genre": e.get("genre", ""),
+            "country": e.get("region") or countries.get(e.get("country", ""), "Spain"),
+            "source": "curated",
+            "checked": True,
+        }
+        for field in ("id", "genres", "codec", "bitrate"):
+            if e.get(field):
+                station[field] = e[field]
+        if e.get("country"):
+            station["cc"] = e["country"]
+        terms = " ".join([
+            e.get("keywords", ""), " ".join(e.get("genres") or []), countries.get(e.get("country", ""), ""),
+            languages.get(e.get("language", ""), ""),
+        ])
+        out.append((station, terms))
     _curated_cache[path] = (mtime, out)
     return out
 
 
-def load_curated(path: Path = CURATED_FILE) -> list[dict]:
-    return [dict(station) for station, _ in _curated(path)]
+def _spanish(station: dict) -> bool:
+    # es.json-style entries (no ISO code) were all Spanish.
+    return station.get("cc", "ES") == "ES"
 
 
-def search_curated(query: str, path: Path = CURATED_FILE) -> list[dict]:
+def load_curated(path: Path | None = None) -> list[dict]:
+    """What an empty search shows: the collection's Spanish stations, in order."""
+    path = path or CURATED_FILE  # looked up per call (tests switch it)
+    return [dict(station) for station, _ in _curated(path) if _spanish(station)]
+
+
+def search_curated(query: str, path: Path | None = None) -> list[dict]:
+    """Collection matches, Spanish stations first (each part in the file's order)."""
+    path = path or CURATED_FILE  # looked up per call (tests switch it)
     q = fold(query)
-    return [
+    found = [
         dict(s) for s, keywords in _curated(path)
         if _matches(q, s["name"], s["genre"], s["country"], keywords)
     ]
+    return [s for s in found if _spanish(s)] + [s for s in found if not _spanish(s)]
+
+
+def by_id(station_id: str, path: Path | None = None) -> dict | None:
+    """The collection station with this id, or None."""
+    path = path or CURATED_FILE  # looked up per call (tests switch it)
+    for station, _ in _curated(path):
+        if station.get("id") == station_id:
+            return dict(station)
+    return None
+
+
+def id_for_url(url: str, path: Path | None = None) -> str | None:
+    """The collection id of a stream URL (scheme/case/trailing slash ignored), or None."""
+    path = path or CURATED_FILE  # looked up per call (tests switch it)
+    key = _key(url)
+    for station, _ in _curated(path):
+        if station.get("id") and _key(station["url"]) == key:
+            return station["id"]
+    return None
+
+
+# path -> (mtime, raw bytes, gzipped bytes, etag)
+_doc_cache: dict[Path, tuple[float, bytes, bytes, str]] = {}
+
+
+def collection_doc(path: Path | None = None) -> tuple[bytes, bytes, str]:
+    """(JSON bytes, the same gzipped, ETag) of the whole collection, for the
+    page's browser. Compressed once per file change (about 250 KB -> 60 KB).
+    Raises OSError if the file is missing."""
+    path = path or CURATED_FILE  # looked up per call (tests switch it)
+    mtime = path.stat().st_mtime
+    hit = _doc_cache.get(path)
+    if hit and hit[0] == mtime:
+        return hit[1], hit[2], hit[3]
+    raw = path.read_bytes()
+    packed = gzip.compress(raw, compresslevel=9, mtime=0)
+    etag = '"' + hashlib.sha256(raw).hexdigest()[:20] + '"'
+    _doc_cache[path] = (mtime, raw, packed, etag)
+    return raw, packed, etag
 
 
 # -- 2. moOde's list ------------------------------------------------------------
@@ -171,7 +247,7 @@ def search_moode(query: str, db: str = MOODE_DB, limit: int = LIMIT) -> list[dic
         con.close()
     q = fold(query)
     return [
-        {"name": n, "url": u, "genre": g or "", "country": c or "", "source": "moode"}
+        {"name": n, "url": u, "genre": g or "", "country": c or "", "source": "moode", "checked": False}
         for n, u, g, c in rows
         if _matches(q, n or "", g or "", c or "")
     ][:limit]
@@ -284,6 +360,7 @@ class RadioBrowser:
             "genre": ", ".join(tags),
             "country": raw.get("country") or "",
             "source": "radio-browser",
+            "checked": False,
         }
         if raw.get("codec") and raw["codec"] != "UNKNOWN":
             station["codec"] = raw["codec"]
@@ -307,34 +384,7 @@ def _key(url: str) -> str:
 
 # -- the search -----------------------------------------------------------------
 
-def search(
-    query: str,
-    db: str = MOODE_DB,
-    limit: int = LIMIT,
-    curated: Path = CURATED_FILE,
-    directory: RadioBrowser | None | str = "default",
-    budget: float = BUDGET,
-) -> list[dict]:
-    """Curated matches, then moOde's, then Radio Browser's; deduped by URL.
-
-    An empty query is the curated Spanish list alone: moOde's whole list (and
-    the world's) is no sensible default. ``directory=None`` searches offline;
-    the default is the module's shared ``DIRECTORY`` (looked up per call, so a
-    test can switch it off).
-    """
-    if directory == "default":
-        directory = DIRECTORY
-    if not query.strip():
-        return load_curated(curated)[:limit]
-    pending = _pool.submit(directory.search, query) if directory else None
-    found = search_curated(query, curated) + search_moode(query, db, limit)
-    if pending:
-        try:
-            found += pending.result(timeout=budget)
-        except concurrent.futures.TimeoutError:
-            log.info("radio-browser too slow for %r; answering without it", query)
-        except Exception:  # noqa: BLE001 - the directory is optional, never fatal
-            log.warning("radio-browser search failed", exc_info=True)
+def _dedupe(found: list[dict], limit: int) -> list[dict]:
     out, seen = [], set()
     for station in found:
         if _key(station["url"]) not in seen:
@@ -343,3 +393,64 @@ def search(
             if len(out) >= limit:
                 break
     return out
+
+
+def search(
+    query: str,
+    db: str = MOODE_DB,
+    limit: int = LIMIT,
+    curated: Path | None = None,
+    directory: RadioBrowser | None | str = "default",
+    budget: float = BUDGET,
+) -> list[dict]:
+    """Collection matches, then moOde's, then Radio Browser's; deduped by URL.
+
+    An empty query is the collection's Spanish stations alone: moOde's whole
+    list (and the world's) is no sensible default. Radio Browser is asked only
+    while the collection has fewer than ``INTERNET_BELOW`` matches (the page
+    offers "Search the internet too" otherwise). ``directory=None`` searches
+    offline; the default is the module's shared ``DIRECTORY`` (looked up per
+    call, so a test can switch it off).
+    """
+    curated = curated or CURATED_FILE  # looked up per call (tests switch it)
+    if directory == "default":
+        directory = DIRECTORY
+    if not query.strip():
+        return load_curated(curated)[:limit]
+    checked = search_curated(query, curated)
+    pending = _pool.submit(directory.search, query) if directory and len(checked) < INTERNET_BELOW else None
+    found = checked + search_moode(query, db, limit)
+    if pending:
+        try:
+            found += pending.result(timeout=budget)
+        except concurrent.futures.TimeoutError:
+            log.info("radio-browser too slow for %r; answering without it", query)
+        except Exception:  # noqa: BLE001 - the directory is optional, never fatal
+            log.warning("radio-browser search failed", exc_info=True)
+    return _dedupe(found, limit)
+
+
+def search_internet(
+    query: str,
+    limit: int = LIMIT,
+    curated: Path | None = None,
+    directory: RadioBrowser | None | str = "default",
+    budget: float = BUDGET + 2,
+) -> list[dict]:
+    """Radio Browser alone (``scope=internet``): every hit ``checked: False``,
+    minus streams the collection already has (those the page shows as checked)."""
+    curated = curated or CURATED_FILE  # looked up per call (tests switch it)
+    if directory == "default":
+        directory = DIRECTORY
+    if not directory or not query.strip():
+        return []
+    try:
+        found = _pool.submit(directory.search, query).result(timeout=budget)
+    except concurrent.futures.TimeoutError:
+        log.info("radio-browser too slow for %r", query)
+        return []
+    except Exception:  # noqa: BLE001
+        log.warning("radio-browser search failed", exc_info=True)
+        return []
+    ours = {_key(s["url"]) for s, _ in _curated(curated)}
+    return _dedupe([dict(s, checked=False) for s in found if _key(s["url"]) not in ours], limit)

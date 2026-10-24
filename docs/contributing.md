@@ -10,12 +10,12 @@ or describe a new cabinet. If you only want to use a Hasler, see
 |---|---|
 | `daemon/haslerd/` | The service that runs on the radio. |
 | `daemon/haslerd/panel/` | Input backends (GPIO, MCP23017, ADS1115) and the control types. |
-| `daemon/haslerd/player/` | Playing radio, Spotify (go-librespot) and YouTube Music; moOde's casting targets (`renderers.py`). |
+| `daemon/haslerd/player/` | Playing radio, Spotify (go-librespot) and YouTube Music; moOde's casting targets (`renderers.py`). YouTube Music: `sources/ytm.py` (playing), `ytmusic.py` (catalogue, sign-in), `ytm_browse.py` (browsing, caches, preset lookups), `ytm_refs.py` (what a key can hold). |
 | `daemon/haslerd/multiroom/` | Several Haslers in step: finding peers, the group, the Snapcast audio path ([multiroom.md](multiroom.md)). |
 | `daemon/haslerd/lamp/` | The pilot lamp: what to show ([lamp.md](lamp.md)) and how to fade. |
 | `daemon/haslerd/dsp/` | The knobs' sound effects ([sound.md](sound.md)); `scripts/hasler-dsp` applies them. |
 | `daemon/haslerd/ha/` | Home Assistant: finding it, its REST API, what a key can ask it to do. |
-| `daemon/haslerd/web/` | The key page (`static/index.html`) and the Wi-Fi setup page, and their API. |
+| `daemon/haslerd/web/` | The key page (`static/index.html`) and the Wi-Fi setup page, and their API (`/api/ytm/*` in `ytm_api.py`). |
 | `daemon/tests/` | Tests for the service. |
 | `update/` | The over-the-air updater that runs on the radio ([ota.md](ota.md)). |
 | `config/variants/` | One file per cabinet: `hasler-hm.yaml`, `excelsior.yaml`. |

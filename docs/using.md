@@ -306,9 +306,73 @@ put the radio to sleep or skip to the next song, and see what is playing.
 
 ### Browse music
 
-Tap **Browse music** for YouTube Music suggestions and to search for radio
-stations (**More stations**). Press play to listen now, or **+** to put it on
-a key.
+Tap **Browse music**. Each kind of music has its own tab: **Radio**,
+**YouTube Music** and **Spotify**. Press play to listen now, or **+** to put
+it on a key.
+
+### Radio stations
+
+The **Radio** tab is the radio's own collection: nearly 600 stations from
+about 120 countries, from the Spanish national and regional broadcasters
+(RNE, SER, COPE, RAC1, Catalunya Ràdio, Canal Sur, EITB, Radio Galega...) to
+public, community and college stations, jazz, classical and late-night
+ambient from everywhere else. Every one was played on a Hasler before it went
+in, and they are checked again every week. Look by **region and country**, by
+**genre** or by **language**, or type a name, a city or a style (accents
+don't matter: *radio clasica* finds *Radio Clásica*). Each station says in a
+line why it is worth a listen.
+
+- **Play** listens now without changing your keys. A link you paste is tried
+  first: if it is a web page or doesn't answer, the radio says so and keeps
+  playing what it was playing.
+- **My stations** is your shortlist: tap the star on any station to keep it
+  there, add your own stream links, and put them in the order you like. It is
+  separate from the keys (a key holds one station; the shortlist can hold
+  hundreds). **Recently played** lists the last stations the radio played,
+  from a key or from here.
+- **Search the internet too**: when a name isn't in the collection (or it
+  finds fewer than five), the radio also asks Radio Browser, a free directory
+  of some 50,000 stations. Those haven't been checked by us, and are marked
+  so.
+- **Doesn't play?** on a station tells us it's broken, sounds bad or is
+  something else. The note is kept on your radio (in its state folder,
+  `reports.jsonl`); nothing is sent anywhere.
+
+Your shortlist is kept on the radio (`/var/lib/haslerd/stations.json`), so
+every phone sees the same one, and it survives updates.
+
+### YouTube Music
+
+Search YouTube Music for songs, albums, artists and playlists, or look
+through the **charts**, **moods & genres**, your **home** page and (signed
+in) your **library**: Liked songs, your playlists, what you played lately,
+your artists and your mixes. Open an artist for their top songs, albums and
+similar artists; open an album for its tracks.
+
+A key can hold:
+
+| On the key | What it plays |
+|---|---|
+| A playlist or an album | That list, in order (or shuffled). Tap again: the next song. |
+| An artist | Their **top songs**, an endless **artist radio**, or the artist **shuffled**. |
+| A song or album **radio** | Music like it, endlessly: the radio keeps adding songs. |
+| A **chart** (for example Spain, daily or top 100) | Today's chart each time you press it. |
+| A **mood or genre** list | That list, even when YouTube Music swaps it for a new one. |
+| **Liked songs** | Your likes (signed in). |
+
+Charts, artists and mood lists are looked up again when you press the key, so
+they stay current. If YouTube Music can't be reached, the key plays what it
+played last time instead of nothing.
+
+**Like**: while a YouTube Music song plays, the front screen can like it (or
+take the like back) for your account. You need to be signed in, and only the
+song playing now can be liked. Nothing else in your account is changed.
+**Start radio** there starts an endless radio from the song playing.
+
+Songs and albums marked explicit by YouTube show an **E**. To leave them out
+of searches and lists altogether, turn on **Hide explicit songs** in the
+YouTube Music settings (off to start). It doesn't change what a key already
+plays.
 
 ### Edit keys
 

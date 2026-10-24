@@ -49,6 +49,7 @@ from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
 from .web.help_api import MAKERS_TAILNET, HelpApi
 from .web.spotify_account_api import SpotifyAccountApi
+from .web.stations_api import StationsApi
 from .web.sources_api import apply_saved as apply_sources
 from .dsp.knobs import KnobFunctions, helper_runner
 from .web.knobs_api import KnobFunctionsApi
@@ -791,6 +792,12 @@ def build_web(
     # /api/help: "Let the makers help (24 h)" - off until the owner asks
     app.extra_routes.append(HelpApi(app, tailnet=spec.get("help_tailnet", MAKERS_TAILNET)))
     app.extra_routes.append(app.spotify_account)
+    # /api/stations/try, /mine, /report: the station browser (My stations in <state>/stations.json)
+    app.stations_api = StationsApi(app, state_dir)
+    app.extra_routes.append(app.stations_api)
+    radio = (sources or {}).get("radio")
+    if radio is not None and hasattr(radio, "on_play"):
+        radio.on_play = app.stations_api.played
     if actions.dsp is not None:                 # /api/knobs/functions, /api/knobs/try
         app.knob_functions = actions.dsp
         app.extra_routes.append(KnobFunctionsApi(app, actions.dsp))

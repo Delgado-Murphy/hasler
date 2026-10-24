@@ -27,6 +27,12 @@ class Preset:
     ``radio``    an HTTP stream URL, played by MPD
     ``spotify``  a ``spotify:playlist:…`` / album / track URI, played by go-librespot
     ``ytm``      a YouTube Music playlist (or watch) URL, queued into MPD via the proxy
+
+    A ytm preset may also hold a reference (``ref``: kind, id, mode, seed,
+    country, list, title, params - player/sources/ytm_refs.py) that the ytm
+    source resolves when pressed; ``uri`` is then the link it last resolved
+    to, played as-is when YouTube Music can't be asked. No kind = a playlist
+    link, exactly as before.
     """
 
     n: int
@@ -34,6 +40,17 @@ class Preset:
     uri: str
     source: str = "radio"
     shuffle: bool = False
+    # ((field, value), ...) sorted: hashable, so the preset stays frozen.
+    ref: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def ytm_ref(self) -> dict[str, str]:
+        """The ytm reference as a dict ({} = a plain link)."""
+        return dict(self.ref)
+
+    @property
+    def kind(self) -> str:
+        return dict(self.ref).get("kind", "")
 
     @property
     def url(self) -> str:
@@ -58,17 +75,25 @@ class Preset:
         except (TypeError, ValueError):
             raise ValueError(f"preset n {spec['n']!r} is not an integer") from None
         given = [key for key in ("radio", "spotify", "ytm", "url") if spec.get(key)]
+        if not given and spec.get("kind") and not any(spec.get(k) for k in ("radio", "spotify", "url")):
+            given = ["ytm"]     # a ytm reference not yet resolved to a link (a chart, an artist)
         if not given:
             raise ValueError(f"preset {n} has no radio/spotify/ytm/url")
         if len(given) > 1:
             raise ValueError(f"preset {n} names more than one source: {', '.join(given)}")
         key = given[0]
+        ref: tuple[tuple[str, str], ...] = ()
+        if key == "ytm" and spec.get("kind"):
+            from .sources.ytm_refs import REF_KEYS  # noqa: PLC0415 - pure module, no cycle
+
+            ref = tuple(sorted((k, str(spec[k])) for k in REF_KEYS if spec.get(k) not in (None, "")))
         return cls(
             n=n,
             name=str(spec.get("name", f"Preset {n}")),
-            uri=str(spec[key]),
+            uri=str(spec.get(key) or ""),
             source="radio" if key == "url" else key,
             shuffle=bool(spec.get("shuffle", False)),
+            ref=ref,
         )
 
 

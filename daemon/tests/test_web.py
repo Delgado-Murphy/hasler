@@ -376,7 +376,7 @@ def test_directory_spanish_first_and_shape():
     found = directory(fake).search("ser")
     assert [s["name"] for s in found] == ["Cadena SER", "SER World"]
     assert found[0] == {"name": "Cadena SER", "url": "https://ser/live.mp3", "genre": "news, talk, live",
-                        "country": "Spain", "source": "radio-browser", "codec": "MP3", "bitrate": 128,
+                        "country": "Spain", "source": "radio-browser", "checked": False, "codec": "MP3", "bitrate": 128,
                         "favicon": "https://ser/i.png"}
     sent = fake.calls[0]
     assert "name=ser" in sent and "hidebroken=true" in sent and "order=clickcount" in sent and "reverse=true" in sent
@@ -464,16 +464,15 @@ def test_missing_curated_file_is_empty(tmp_path):
 
 
 def test_shipped_curated_list_is_valid():
+    # The world collection; its own checks are in test_stations_collection.py.
     doc = json.loads(stations.CURATED_FILE.read_text(encoding="utf-8"))
     entries = doc["stations"]
-    assert len(entries) >= 30
-    urls = [e["url"] for e in entries]
+    assert len(entries) >= 500
     for e in entries:
         assert e["name"].strip() and e["url"].startswith(("http://", "https://")), e
-        assert e.get("genre") and e.get("region", "").startswith("Spain"), e
-    assert len(urls) == len(set(urls)), "duplicate stream URL"
-    assert len({e["name"] for e in entries}) == len(entries), "duplicate name"
-    assert len(stations.load_curated()) == len(entries)  # nothing silently dropped
+        assert e.get("genre") and e.get("region"), e
+    spanish = [e for e in entries if e["country"] == "ES"]
+    assert len(stations.load_curated()) == len(spanish) >= 30   # the empty search: Spain, nothing dropped
 
 
 class TestHttp:
@@ -620,8 +619,9 @@ class TestYtm:
         app, catalog, _ = ytm_rig
         res = app.ytm_search("so what", "songs")
         assert res["available"] is True and res["results"][0]["name"] == "so what radio"
-        assert app.ytm_search("", "songs") == {"available": True, "results": []}
-        assert app.ytm_library() == {"available": True, "signed_in": False, "items": []}
+        assert app.ytm_search("", "songs") == {"available": True, "q": "", "type": "songs", "items": [],
+                                               "results": []}
+        assert app.ytm_library() == {"available": True, "signed_in": False, "section": "playlists", "items": []}
         assert app.ytm_account() == {"available": True, "signed_in": False, "name": ""}
         assert app.ytm_sign_in({"headers": "Cookie: SAPISID=x"}) == {"signed_in": True, "name": "Owner"}
         assert app.ytm_library()["items"][0]["title"] == "Liked songs"
@@ -630,8 +630,9 @@ class TestYtm:
     def test_without_a_catalog_everything_says_unavailable(self, rig):
         app, *_ = rig
         assert app.catalog is None
-        assert app.ytm_search("x", "songs") == {"available": False, "results": []}
-        assert app.ytm_library() == {"available": False, "signed_in": False, "items": []}
+        assert app.ytm_search("x", "songs") == {"available": False, "q": "x", "type": "songs", "items": [],
+                                                "results": []}
+        assert app.ytm_library() == {"available": False, "signed_in": False, "section": "playlists", "items": []}
         assert app.ytm_account() == {"available": False, "signed_in": False, "name": ""}
         with pytest.raises(ValueError):
             app.ytm_sign_in({"headers": "x"})
@@ -645,7 +646,9 @@ class TestYtm:
         assert app.status()["track"] is None
         player.source = "ytm"
         assert app.status()["track"] == {"title": "So What", "artist": "Miles Davis",
-                                         "album": "Kind Of Blue", "thumb": "https://t/1"}
+                                         "album": "Kind Of Blue", "thumb": "https://t/1",
+                                         "vid": "aaaaaaaaaaa", "explicit": False,
+                                         "art": "https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg"}
         ytm.track = None
         assert app.status()["track"] is None
 

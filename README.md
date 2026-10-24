@@ -21,6 +21,9 @@ the pilot lamp and the original speaker all still work.
 
 - **Press a key, hear music.** Each of the six keys plays an internet radio
   station, a Spotify playlist or a YouTube Music playlist. No phone, no app.
+- **Nearly 600 checked radio stations from about 120 countries**, each one
+  played on a Hasler before it went in: browse by region, genre or language,
+  keep a shortlist of your own, or search the whole internet's directory.
 - **Be a speaker for your phone** with Spotify Connect (guests on your Wi-Fi
   too), AirPlay, Bluetooth or other music apps (UPnP/DLNA). It remembers your
   Bluetooth phones and calls the last one when you switch to Bluetooth.

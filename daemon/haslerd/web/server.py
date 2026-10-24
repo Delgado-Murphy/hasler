@@ -8,12 +8,14 @@ Requests run on their own threads; everything that touches the layout goes
 through ``WebApp`` under one lock, and the change itself is a reference swap
 (see keymap.apply), so the 50 Hz panel loop never waits on the web.
 
-The ``/api/ytm/*`` endpoints front the YouTube Music catalogue (search, the
-owner's library and sign-in; player/sources/ytmusic.py). They answer
+The ``/api/ytm/*`` endpoints front the YouTube Music catalogue (web/ytm_api.py:
+search, Moods & genres, charts, artists, albums, home, the owner's library,
+related, lyrics, Like, start a radio; sign-in here). They answer
 ``{"available": false, ...}`` when there is no catalogue - no ytm source, or no
 ytmusicapi - so the page can simply hide that part. They do not take the layout
 lock: the catalogue has its own, and a slow search must not hold up a save.
 The sign-in body is the account's cookie: it is never logged or echoed back.
+``ytm.hide_explicit`` (settings) drops explicit songs and albums from them.
 
 The remote control (``/api/press``, ``/api/volume``, ``/api/next``,
 ``/api/standby``) drives the radio exactly as the cabinet does: a pressed key is
@@ -106,6 +108,7 @@ from ..net import HOTSPOT_ADDRS
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
 from . import integration
 from .room import Room
+from .ytm_api import PREFIX as YTM_PREFIX, YtmApi
 from .software import NotInstalled, Software, SoftwareError
 from .wifi import Wifi
 from . import wifi_page
@@ -137,7 +140,8 @@ LOOPBACK = ("127.0.0.1", "::1")
 EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "/api/group", "/api/peer",
                   "/api/knobs/functions", "/api/knobs/try",   # web/knobs_api.py
                   "/api/help",                                # web/help_api.py
-                  "/api/spotify")                             # web/spotify_account_api.py
+                  "/api/spotify",                             # web/spotify_account_api.py
+                  "/api/stations/try", "/api/stations/mine", "/api/stations/report")  # web/stations_api.py
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
@@ -312,6 +316,11 @@ class WebApp:
         # The ytm source (for now_playing) and its catalogue, if the player has them.
         self.ytm = (getattr(actions.player, "sources", None) or {}).get("ytm")
         self.catalog = catalog if catalog is not None else getattr(self.ytm, "catalog", None)
+        # /api/ytm/* (web/ytm_api.py).
+        self.ytm_api = YtmApi(self)
+        self._ytm_prefs: dict = {}          # ytm settings when there is no settings file
+        if self.ytm is not None and hasattr(self.ytm, "on_preset_resolved"):
+            self.ytm.on_preset_resolved = self._ytm_resolved
         # The descriptor's own layout, for "reset to defaults". Taken before any
         # saved overlay is laid on top.
         self.defaults = (copy.deepcopy(actions.variant.presets), copy.deepcopy(actions.variant.actions))
@@ -775,21 +784,25 @@ class WebApp:
             "wifi": {"ssid": ssid},
             "room": self.room.doc(),
             "spotify_guests": self._spotify_guests(),
+            # YouTube Music: hide_explicit drops explicit songs/albums from the browser.
+            "ytm": self.ytm_settings(),
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
 
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
-        ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``."""
-        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests"}
+        ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``,
+        ``ytm`` ({"hide_explicit": bool})."""
+        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
                              "{\"location\": {\"name\", \"lat\", \"lon\"}} and/or "
                              "{\"night\": \"sun\"|\"off\"|\"22:00-07:00\"}, "
                              "{\"room\": {\"name\", \"casting_names\"}}, "
-                             "{\"spotify_guests\": true|false}")
+                             "{\"spotify_guests\": true|false}, "
+                             "{\"ytm\": {\"hide_explicit\": true|false}}")
         limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
         floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
                  if "volume_floor" in body else None)
@@ -809,6 +822,10 @@ class WebApp:
         guests = body.get("spotify_guests")
         if "spotify_guests" in body and not isinstance(guests, bool):
             raise ValueError("spotify_guests must be true or false")
+        ytm = body.get("ytm")
+        if "ytm" in body and not (isinstance(ytm, dict) and set(ytm) <= {"hide_explicit"}
+                                  and isinstance(ytm.get("hide_explicit", False), bool)):
+            raise ValueError("ytm must be {\"hide_explicit\": true|false}")
         with self.lock:
             if mono is not None:
                 try:
@@ -833,9 +850,13 @@ class WebApp:
                     doc["room"] = room
                 if guests is not None:
                     doc["spotify_guests"] = guests
+                if ytm is not None:
+                    doc["ytm"] = {**(doc.get("ytm") if isinstance(doc.get("ytm"), dict) else {}), **ytm}
                 doc.setdefault("schema", boxconfig.SCHEMA)
                 save_settings(self.settings_file, doc)
             else:
+                if ytm is not None:
+                    self._ytm_prefs.update(ytm)
                 doc = self._lamp_settings
                 if place is not None:
                     doc["location"] = place
@@ -867,6 +888,9 @@ class WebApp:
             log.info("output set to %s from the web page", "mono" if mono else "stereo")
         if guests is not None:
             log.info("Spotify for guests %s from the web page", "on" if guests else "off")
+        if ytm is not None:
+            log.info("YouTube Music explicit results %s from the web page",
+                     "hidden" if self.ytm_settings()["hide_explicit"] else "shown with a badge")
         return self.settings(host)
 
     def lamp_settings(self) -> dict:
@@ -1372,7 +1396,15 @@ class WebApp:
             return None
         if not info:
             return None
-        return {k: str(info.get(k) or "") for k in ("title", "artist", "album", "thumb")}
+        track: dict[str, Any] = {k: str(info.get(k) or "") for k in ("title", "artist", "album", "thumb")}
+        vid = str(info.get("videoId") or "")
+        # For the page's Like and Start radio buttons: which song, its cover
+        # (square album art when the catalogue named it), the explicit badge.
+        track["vid"] = vid
+        track["explicit"] = bool(info.get("explicit"))
+        track["art"] = _big_art(self.cover(vid) or track["thumb"]) if vid else _big_art(track["thumb"])
+        self.ytm_api.note_playing(vid)
+        return track
 
     def _source(self, current: Any) -> tuple[str, bool, dict | None]:
         player = self.actions.player
@@ -1412,7 +1444,10 @@ class WebApp:
         if sync is not None:
             sync.kick()
 
-    def stations(self, query: str) -> list[dict]:
+    def stations(self, query: str, scope: str = "") -> list[dict]:
+        """``GET /api/stations?q=``: the merged search; ``&scope=internet``: Radio Browser alone."""
+        if scope == "internet":
+            return stations.search_internet(query)
         return stations.search(query, self.station_db)
 
     # -- YouTube Music ----------------------------------------------------
@@ -1424,14 +1459,43 @@ class WebApp:
             return False
 
     def ytm_search(self, query: str, kind: str) -> dict:
-        if not self._ytm_available():
-            return {"available": False, "results": []}
-        return {"available": True, "results": self.catalog.search(query, kind or "songs")}
+        return self.ytm_api.search(query, kind)
 
-    def ytm_library(self) -> dict:
-        if not self._ytm_available():
-            return {"available": False, "signed_in": False, "items": []}
-        return {"available": True, "signed_in": bool(self.catalog.signed_in), "items": self.catalog.library()}
+    def ytm_library(self, section: str = "") -> dict:
+        return self.ytm_api.library(section)
+
+    def ytm_settings(self) -> dict:
+        """``{"hide_explicit": bool}`` - settings.json ``ytm`` (default: badges only)."""
+        doc = load_settings(self.settings_file).get("ytm") if self.settings_file is not None else self._ytm_prefs
+        doc = doc if isinstance(doc, dict) else {}
+        return {"hide_explicit": doc.get("hide_explicit") is True}
+
+    def _ytm_resolved(self, preset: Preset, link: str) -> None:
+        """A ytm preset reference resolved to a new link (player/sources/ytm.py):
+        write it back to the preset's ``uri`` - the saved layout too - so the
+        key plays it through yt-dlp when YouTube Music can't be asked. Off the
+        caller's thread: play() may be running under the layout lock."""
+        threading.Thread(target=self._write_link, args=(preset, link), name="ytm-link", daemon=True).start()
+
+    def _write_link(self, preset: Preset, link: str) -> None:
+        def same(spec: Any) -> bool:
+            return (isinstance(spec, dict) and spec.get("n") == preset.n and spec.get("kind") == preset.kind
+                    and all(str(spec.get(k) or "") == v for k, v in preset.ref)
+                    and spec.get("ytm") != link)
+        try:
+            with self.lock:
+                specs = [({**s, "ytm": link} if same(s) else s) for s in self.actions.variant.presets]
+                if specs == list(self.actions.variant.presets):
+                    return
+                saved = keymap.load_layout(self.keys_file)
+                if saved is not None and self.keys_file is not None:
+                    keymap.save(self.keys_file, [({**s, "ytm": link} if same(s) else s) for s in saved[0]],
+                                saved[1])
+                self.actions.variant.presets = specs
+                self.actions.presets = keymap.build_presets(specs, self.actions.variant.name)
+            log.info("ytm preset %s now remembers %s", preset.n, link)
+        except Exception:
+            log.warning("could not write back the link of ytm preset %s", preset.n, exc_info=True)
 
     def ytm_account(self) -> dict:
         if not self._ytm_available():
@@ -1459,6 +1523,14 @@ class WebApp:
         prefetch = getattr(self.actions.player, "prefetch", None)
         if callable(prefetch):
             prefetch(list(self.actions.presets.values()))
+
+
+def _big_art(url: str) -> str:
+    """googleusercontent artwork at now-playing size (544 px square)."""
+    url = str(url or "")
+    if "googleusercontent.com/" in url and "=" in url.rsplit("/", 1)[-1]:
+        return re.sub(r"=[^=/]*$", "=w544-h544-l90-rj", url)
+    return url
 
 
 def _host_only(host: str | None) -> str:
@@ -1588,16 +1660,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif url.path == "/api/status":
                 self._guard(lambda: self._json(200, app.status()))
             elif url.path == "/api/stations":
-                q = parse_qs(url.query).get("q", [""])[0]
-                self._guard(lambda: self._json(200, app.stations(q)))
-            elif url.path == "/api/ytm/search":
                 query = parse_qs(url.query)
-                q, kind = query.get("q", [""])[0], query.get("type", ["songs"])[0]
-                self._guard(lambda: self._json(200, app.ytm_search(q, kind)))
-            elif url.path == "/api/ytm/library":
-                self._guard(lambda: self._json(200, app.ytm_library()))
-            elif url.path == "/api/ytm/account":
-                self._guard(lambda: self._json(200, app.ytm_account()))
+                q, scope = query.get("q", [""])[0], query.get("scope", [""])[0]
+                self._guard(lambda: self._json(200, app.stations(q, scope)))
+            elif url.path == "/api/stations/collection":
+                self._guard(self._collection)
+            elif url.path.startswith(YTM_PREFIX):
+                self._guard(lambda: self._json(*app.ytm_api.get(url.path, parse_qs(url.query))))
             elif url.path.startswith("/fonts/"):
                 self._guard(lambda: self._font(url.path[len("/fonts/"):]))
             elif url.path == "/api/settings":
@@ -1632,6 +1701,33 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, app.browse_radio(q)))
             else:
                 self._send(404, b"not found", "text/plain")
+
+        def _collection(self) -> None:
+            """The whole station collection for the page's browser: gzipped once,
+            revalidated by ETag on every load (304 when unchanged)."""
+            try:
+                raw, packed, etag = stations.collection_doc()
+            except OSError:
+                self._json(404, {"ok": False, "errors": [], "error": "no station collection installed"})
+                return
+            if etag in [t.strip() for t in (self.headers.get("If-None-Match") or "").split(",")]:
+                self.send_response(304)
+                self.send_header("ETag", etag)
+                self.send_header("Cache-Control", "no-cache")
+                self.end_headers()
+                return
+            gz = "gzip" in (self.headers.get("Accept-Encoding") or "")
+            body = packed if gz else raw
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            if gz:
+                self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            self.wfile.write(body)
 
         def _art_current(self) -> None:
             pic = app.art_current()
@@ -1789,6 +1885,14 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                     self._body(), self.client_address[0] if self.client_address else None)))
             elif path == "/api/ytm/account":
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_in(self._body())}))
+            elif path.startswith(YTM_PREFIX):
+                def ytm_post() -> None:
+                    answer = app.ytm_api.post(path, self._body())
+                    if answer is None:
+                        self._json(404, {"ok": False, "errors": [], "error": "not found"})
+                    else:
+                        self._json(*answer)
+                self._guard(ytm_post)
             elif (m := KNOB_ID.match(path)) and m.group(2) == "fit":
                 self._guard(lambda: self._json(200, {"ok": True, **app.knob_fit(m.group(1), self._body())}))
             else:

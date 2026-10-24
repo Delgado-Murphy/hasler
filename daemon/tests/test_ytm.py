@@ -683,7 +683,7 @@ def test_now_playing_names_our_current_track(mpd, runner):
         src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
         mpd.file = src.prefix + IDS[1]
         assert src.now_playing() == {"title": "Song b", "artist": "Band", "album": "LP",
-                                     "thumb": f"https://t/{IDS[1]}", "videoId": IDS[1]}
+                                     "thumb": f"https://t/{IDS[1]}", "explicit": False, "videoId": IDS[1]}
         mpd.file = src.prefix + "zzzzzzzzzzz"                   # ours, but never named
         assert src.now_playing() is None
         mpd.file = "http://radio.example/stream"

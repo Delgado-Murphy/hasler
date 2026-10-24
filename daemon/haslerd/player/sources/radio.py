@@ -168,6 +168,9 @@ class RadioSource:
         # The factory YtmSource shares. Callable, returns a connected client.
         self.mpd: Callable[[], Any] = mpd or MpdConnection(host, port)
         self.ytm_port = ytm_port
+        # Called with the preset after a stream starts (web/stations_api.py
+        # keeps "recently played" with it). Must not raise; errors are logged.
+        self.on_play: Callable[[Preset], None] | None = None
 
     def play(self, preset: Preset) -> None:
         client = self.mpd()
@@ -181,6 +184,11 @@ class RadioSource:
         client.add(preset.uri)
         client.play()
         log.info("playing radio preset %s (%s)", preset.n, preset.name)
+        if self.on_play is not None:
+            try:
+                self.on_play(preset)
+            except Exception:
+                log.warning("radio on_play hook failed", exc_info=True)
 
     def stop(self) -> None:
         try:

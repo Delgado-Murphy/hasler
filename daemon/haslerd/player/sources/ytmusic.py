@@ -77,6 +77,7 @@ SEARCH_KINDS = ("songs", "artists", "albums", "playlists")
 MAX_RESULTS = 20
 RADIO_LIMIT = 50            # get_watch_playlist gives ~50 whatever you ask for
 REQUEST_TIMEOUT_S = 10      # ytmusicapi's default session waits 30 s
+BROWSE_TIMEOUT_S = 3        # the web page's browsing calls (ytm_browse.py) give up sooner
 LIKED = "LM"
 
 BASE = "https://music.youtube.com"
@@ -115,6 +116,17 @@ class YtmCatalog:
         self._client: Any = None
         self._client_auth: str | None = None   # which login the client was built with
         self._name: str | None = None          # account name, cached after one lookup
+        # A second, unauthenticated client with language="es", only for the
+        # Moods & genres category names: language="es" empties search filters.
+        self._es_client: Any = None
+        # Per-request timeout the session applies; set by _call under _lock.
+        self._timeout_s: float = REQUEST_TIMEOUT_S
+        # The web page's browser (search, charts, artists, preset lookups):
+        # ytm_browse.YtmBrowse over this catalogue, with its caches.
+        from .ytm_browse import YtmBrowse  # noqa: PLC0415 - imports this module
+
+        cache = Path(state_dir) / "ytm-cache" / "browse" if state_dir is not None else None
+        self.browse = YtmBrowse(self, cache_dir=cache)
 
     # -- files ------------------------------------------------------------
 
@@ -149,23 +161,29 @@ class YtmCatalog:
                 log.info("ytmusicapi not installed; YouTube Music search and names are off")
         return self._api
 
-    def _new_client(self, auth: str | None) -> Any:
+    def _new_client(self, auth: str | None, **extra: Any) -> Any:
         api = self._module()
-        kwargs: dict[str, Any] = {}
+        kwargs: dict[str, Any] = dict(extra)
         if api is not None and getattr(api, "__name__", "") == "ytmusicapi":
             # Only for the real module: a session with a timeout, so a wedged
-            # request cannot hold the lock (and the web page) for 30 s.
+            # request cannot hold the lock (and the web page) for 30 s. The
+            # timeout is read per request: browsing calls use a shorter one.
             try:
-                import functools
-
                 import requests
 
                 session = requests.Session()
-                session.request = functools.partial(session.request, timeout=REQUEST_TIMEOUT_S)
+                plain = session.request
+
+                def request(method: str, url: str, **kw: Any) -> Any:
+                    kw.setdefault("timeout", self._timeout_s)
+                    return plain(method, url, **kw)
+
+                session.request = request  # type: ignore[method-assign]
                 kwargs["requests_session"] = session
             except Exception:
                 log.debug("no requests session with a timeout", exc_info=True)
-        # No language/location: location="ES" was seen to return empty searches.
+        # No language/location: language="es" empties search filters (only the
+        # mood category names use it, on their own client - see _call).
         return api.YTMusic(auth, **kwargs) if auth else api.YTMusic(**kwargs)
 
     def _get_client(self) -> Any:
@@ -176,16 +194,35 @@ class YtmCatalog:
             self._client_auth = auth
         return self._client
 
-    def _call(self, what: str, fn: Callable[[Any], Any], default: Any) -> Any:
-        """Run ``fn(client)`` under the lock; on any failure, log and return ``default``."""
+    def _call(self, what: str, fn: Callable[[Any], Any], default: Any, *,
+              timeout: float | None = None, wait: float | None = None, language: str | None = None) -> Any:
+        """Run ``fn(client)`` under the lock; on any failure, log and return ``default``.
+
+        ``timeout``: seconds per HTTP request (default ``REQUEST_TIMEOUT_S``).
+        ``wait``: give up (``default``) if the lock isn't free within this long -
+        a page browsing must not queue behind a slow radio top-up for ever.
+        ``language="es"``: the unauthenticated Spanish client (mood names only).
+        """
         if not self.available:
             return default
+        if not self._lock.acquire(timeout=wait if wait is not None else -1):
+            log.info("YouTube Music %s skipped: the catalogue is busy", what)
+            return default
         try:
-            with self._lock:
-                return fn(self._get_client())
+            self._timeout_s = timeout if timeout is not None else REQUEST_TIMEOUT_S
+            if language == "es":
+                if self._es_client is None:
+                    self._es_client = self._new_client(None, language="es")
+                client = self._es_client
+            else:
+                client = self._get_client()
+            return fn(client)
         except Exception as exc:
             log.warning("YouTube Music %s failed: %s: %s", what, type(exc).__name__, str(exc)[:200])
             return default
+        finally:
+            self._timeout_s = REQUEST_TIMEOUT_S
+            self._lock.release()
 
     # -- search -----------------------------------------------------------
 
@@ -276,6 +313,25 @@ class YtmCatalog:
         )
         return _tracks((data or {}).get("tracks"))
 
+    # -- rating -----------------------------------------------------------
+
+    def rate(self, vid: str, rating: str) -> bool:
+        """Like (``LIKE``) or un-like (``INDIFFERENT``) a song for the signed-in
+        account. False if YouTube Music refused or couldn't be reached. Raises
+        ValueError on a bad id/rating and PermissionError when not signed in."""
+        if not VIDEO_ID.match(vid or ""):
+            raise ValueError("not a video id")
+        if rating not in ("LIKE", "INDIFFERENT"):
+            raise ValueError("rating must be LIKE or INDIFFERENT")
+        if not self.signed_in:
+            raise PermissionError("sign in to YouTube Music (Settings) to like songs")
+        done = self._call("rating", lambda c: c.rate_song(vid, rating) or {}, None, wait=5.0)
+        if done is None:
+            return False
+        self.browse.forget("library", "home")
+        log.info("YouTube Music: %s %s", "liked" if rating == "LIKE" else "un-liked", vid)
+        return True
+
     # -- account ----------------------------------------------------------
 
     def account(self) -> dict:
@@ -360,6 +416,7 @@ class YtmCatalog:
                     "music.youtube.com tab where you are signed in."
                 ) from None
             self._name = name or None
+        self.browse.forget("library", "home")
         log.info("YouTube Music signed in%s", f" as {name}" if name else "")
         return {"signed_in": True, "name": name}
 
@@ -379,6 +436,9 @@ class YtmCatalog:
         self._client = None
         self._client_auth = None
         self._name = None
+        browse = getattr(self, "browse", None)
+        if browse is not None:
+            browse.forget("library", "home")
 
 
 # -- result mapping ----------------------------------------------------------
@@ -456,6 +516,7 @@ def _tracks(raw: Any) -> list[dict]:
             "thumb": _thumb(t),
             # get_playlist says "duration", get_watch_playlist "length".
             "duration": str(t.get("duration") or t.get("length") or ""),
+            "explicit": bool(t.get("isExplicit")),
         })
     return out
 

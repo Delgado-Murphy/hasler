@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.0 - 2026-10-24
+
+- A world of radio: 585 hand-picked stations from 118 countries - public
+  broadcasters, iconic music stations, college and community radio, and
+  specialists in every genre - each one checked by playing it on a Hasler.
+- A new music browser with one tab per source: Radio, YouTube Music and
+  Spotify. Radio: search as you type, filters (genre, where, language,
+  quality), Near you, Staff picks, genres, a world map and languages; every
+  station has a card with Play now, Put on a key, Save and "Doesn't play?".
+  Internet search (unchecked stations) only when the collection has fewer
+  than five matches. Edit keys uses the same browser.
+- My stations: a shortlist of favourites and your own stream links (tested
+  on the radio before saving), plus Recently played.
+- YouTube Music: search with suggestions, artist and album pages, Moods &
+  genres, Charts by country, your library when signed in, and 201 curated
+  Staff picks (playlists and classic albums). A key can now hold an album,
+  an artist (top songs, radio or shuffle), a radio from a song or album, a
+  country chart, a mood or your Liked songs. The front screen shows the
+  album art with Start radio from this song, Put this on a key, Like (when
+  signed in) and lyrics. "Hide explicit songs" in This radio -> YouTube Music.
+
 ## 1.0.9 - 2026-10-24
 
 - Key combinations: the default is now 1 + 6 (Bluetooth pairing). On the

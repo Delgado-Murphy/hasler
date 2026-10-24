@@ -27,6 +27,7 @@ from ..ha import behaviour
 from ..panel.combos import COMBO_HOLD_RANGE, DEFAULT_COMBO_HOLD_S, MAX_COMBOS, combo_id
 from ..panel.controls import Momentary
 from ..player.base import Preset
+from ..player.sources import ytm_refs
 
 log = logging.getLogger(__name__)
 
@@ -122,7 +123,9 @@ def to_page(spec: dict | None) -> dict | None:
 
 
 def preset_to_page(p: Preset) -> dict:
-    return {"n": p.n, "name": p.name, "source": p.source, "uri": p.uri, "shuffle": p.shuffle}
+    """A preset for the page; a ytm reference adds its fields (kind, id, mode,
+    seed, country, list, title, params - player/sources/ytm_refs.py)."""
+    return {"n": p.n, "name": p.name, "source": p.source, "uri": p.uri, "shuffle": p.shuffle, **p.ytm_ref}
 
 
 def ha_connected(ha: Any) -> bool:
@@ -216,8 +219,78 @@ def check_entity(verb: str, entity: str) -> str | None:
     return None
 
 
+def ytm_ref_from_page(raw: dict, where: str, errors: list) -> tuple[dict, str] | None:
+    """A ytm preset with a ``kind`` -> (its reference, the link it plays now
+    or "" when that is looked up at press time). Appends to ``errors``."""
+    before = len(errors)
+
+    def bad(field: str, message: str) -> None:
+        errors.append({"where": f"{where}.{field}", "message": message})
+
+    kind = raw.get("kind")
+    if kind not in ytm_refs.KINDS:
+        bad("kind", f"kind must be one of: {', '.join(ytm_refs.KINDS)}")
+        return None
+    ref: dict[str, str] = {"kind": kind}
+    uri = str(raw.get("uri") or "").strip()
+    if uri and not YTM_LINK.match(uri):
+        bad("uri", "the fallback link must be a music.youtube.com playlist or watch link")
+    rid = str(raw.get("id") or "").strip()
+    if kind == "playlist":
+        pid = ytm_refs.strip_vl(rid)
+        if rid and not ytm_refs.LIST_ID.match(pid):
+            bad("id", "not a YouTube Music playlist id")
+        elif rid:
+            ref["id"] = pid
+        elif not uri:
+            bad("uri", "paste a YouTube Music playlist link (…playlist?list=…)")
+    elif kind == "album":
+        if not (ytm_refs.OLAK_ID.match(rid) or ytm_refs.MPRE_ID.match(rid)):
+            bad("id", "an album id starts OLAK5uy_ or MPREb_")
+        ref["id"] = rid
+    elif kind == "artist":
+        mode = str(raw.get("mode") or "top")
+        if not ytm_refs.CHANNEL_ID.match(rid):
+            bad("id", "an artist id starts UC (22 more characters)")
+        if mode not in ytm_refs.ARTIST_MODES:
+            bad("mode", f"mode must be one of: {', '.join(ytm_refs.ARTIST_MODES)}")
+        ref.update(id=rid, mode=mode)
+    elif kind == "radio":
+        seed = str(raw.get("seed") or "").strip()
+        m = ytm_refs.SEED.match(seed)
+        if not m or not (ytm_refs.VIDEO_ID.match(m.group(2)) if m.group(1) == "song"
+                         else ytm_refs.OLAK_ID.match(m.group(2))):
+            bad("seed", "a radio seed is song:<video id> or album:<OLAK5uy_… id>")
+        ref["seed"] = seed
+    elif kind == "chart":
+        country = str(raw.get("country") or "ZZ").strip().upper()
+        chart = str(raw.get("list") or "daily")
+        if not ytm_refs.COUNTRY.match(country):
+            bad("country", "a chart country is two letters, like ES (ZZ = global)")
+        if chart not in ytm_refs.CHART_LISTS:
+            bad("list", f"list must be one of: {', '.join(ytm_refs.CHART_LISTS)}")
+        ref.update(country=country, list=chart)
+    elif kind == "mood":
+        params = str(raw.get("params") or "").strip()
+        title = " ".join(str(raw.get("title") or "").split())
+        if not ytm_refs.PARAMS.match(params):
+            bad("params", "not a Moods & genres page")
+        if not title or len(title) > 120:
+            bad("title", "a mood preset needs the YouTube Music list's title")
+        if rid and ytm_refs.LIST_ID.match(rid):
+            ref["id"] = rid
+        ref.update(params=params, title=title)
+    if len(errors) > before:
+        return None
+    return ref, ytm_refs.link_for(ref) or uri
+
+
 def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
-    """Page preset -> descriptor-style spec (``{n, name, radio: …}``)."""
+    """Page preset -> descriptor-style spec (``{n, name, radio: …}``).
+
+    A ytm preset with a ``kind`` keeps its reference beside the link:
+    ``{n, name, ytm: <link or "">, kind, id, …, shuffle}`` (ytm_ref_from_page).
+    """
     if not isinstance(raw, dict):
         errors.append({"where": where, "message": "not a preset"})
         return None
@@ -230,6 +303,17 @@ def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
     if source not in ("radio", "spotify", "ytm"):
         errors.append({"where": f"{where}.source", "message": "pick radio, Spotify or YouTube Music"})
         return None
+    if source == "ytm" and raw.get("kind"):
+        got = ytm_ref_from_page(raw, where, errors)
+        if got is None:
+            return None
+        ref, link = got
+        name = str(raw.get("name") or "").strip() or f"Preset {n}"
+        spec = {"n": n, "name": name[:60], "ytm": link, **ref}
+        endless = ref["kind"] == "radio" or (ref["kind"] == "artist" and ref.get("mode") != "top")
+        if raw.get("shuffle") and not endless:
+            spec["shuffle"] = True
+        return spec
     uri = normalise_uri(source, str(raw.get("uri") or ""))
     problem = check_uri(source, uri)
     if problem:
