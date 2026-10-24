@@ -74,7 +74,7 @@ You choose what each key plays, and what holding it does, in
 #### Key combinations
 
 Hold **two keys down together** for about a second and the radio does one
-more thing. Out of the box, **keys 1 and 2 held together** open Bluetooth
+more thing. Out of the box, **keys 1 + 6 held together** open Bluetooth
 pairing for 2 minutes (the same as holding PU), and the lamp dips once, then
 breathes blue.
 
@@ -88,6 +88,9 @@ You can change the pairing combination, or add up to 8 of your own (any job a
 key can do, and how long to hold: half a second to 3 seconds), in
 [Edit keys](#edit-keys). Keys that are in no combination work exactly as
 before.
+
+On some cabinets neighbouring keys can't be held together; the editor's
+check (**Check this pair**) shows which pairs work.
 
 ### The two knobs
 
@@ -325,10 +328,11 @@ fade), or **Join another Hasler**. A key can also be a
 
 **Key combinations** (two keys held together, see
 [Key combinations](#key-combinations)) are in Edit keys too: pick the two
-keys, how long to hold them and what they do, and **Try it** to hear it.
+keys (**Check this pair** to see that the cabinet lets you hold them both),
+how long to hold them and what they do, and **Try it** to hear it.
 
 **Reset keys to defaults** (the factory stations back on every key, and keys
-1 + 2 for pairing) is at the bottom of Edit keys.
+1 + 6 for pairing) is at the bottom of Edit keys.
 
 ### Settings
 

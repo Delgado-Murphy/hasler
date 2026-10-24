@@ -46,6 +46,11 @@ to the box's calibration overlay (boxconfig, ``/etc/hasler/variant.d``) and
 applies it live; ``DELETE`` goes back to the shipped curve. Positions are
 measured from the knob's quiet end - see calibrate.py.
 
+``GET /api/keys/state`` is the same idea for the keys: which contacts read
+closed at the panel loop's last poll (Panel.keys_down), for the key page's
+"Check this pair" - some cabinets won't let two neighbouring keys close
+together. No event is fired and the I2C bus is never touched from the web.
+
 **Who may change things.** The page has no login, so every state-changing
 request (POST/PUT/PATCH/DELETE) must look like it came from the page itself
 (``request_refusal``): ``Content-Type: application/json`` (a cross-site form
@@ -73,12 +78,14 @@ integration reads besides ``/api/status`` (whose ``art`` points at the latter).
 
 from __future__ import annotations
 
+import collections
 import copy
 import json
 import logging
 import re
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -117,6 +124,11 @@ VOLUME_FLOOR_GAP = 10            # the floor stays this far under the ceiling: t
 VOLUME_GUESS = 40.0              # a relative nudge with no reading starts here, as volume_step does
 KNOB_ID = re.compile(r"^/api/knobs/([A-Za-z0-9_.-]{1,64})/(sample|fit|calibration)$")
 HYSTERESIS_MAX = 5000
+# GET /api/keys/state ("Check this pair" on the key page polls it every 200 ms
+# for 10 s): at most this many reads per client per second, else 429.
+KEYS_STATE_PER_S = 10
+# Keys do nothing for this long after each such read (Panel.hush).
+KEYS_HUSH_S = 0.8
 CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
 # Names the box answers to besides its own hostname (+ web.hostnames in box.yaml).
 OWN_NAMES = ("localhost", "hasler", "hasler.local")
@@ -328,6 +340,9 @@ class WebApp:
         # joined to it need no key press (that phone is next to the radio, and
         # the radio has no other network then).
         self.hotspot_addrs: set[str] = set(HOTSPOT_ADDRS)
+        # GET /api/keys/state: each client's recent read times (rate limit).
+        self._keys_state_reads: dict[str, collections.deque] = {}
+        self._keys_state_lock = threading.Lock()
 
     def _lamp_reply(self, name: str) -> None:
         reply = getattr(self.actions, "_reply", None)
@@ -1274,6 +1289,40 @@ class WebApp:
 
     # -- health -------------------------------------------------------------
 
+    def keys_state(self, client: str | None, now: float | None = None) -> tuple[int, dict]:
+        """``GET /api/keys/state``: which keys read down right now, for the key
+        page's "Check this pair" (some cabinets won't let neighbouring keys
+        close together). ``{"down": ["k1", "k6"], "t": <monotonic>}``.
+
+        The panel loop's last poll (Panel.keys_down), never a read of its own,
+        so it costs nothing and fires no key. 409 with no panel board, 429
+        past KEYS_STATE_PER_S reads a second from one client. While the page
+        keeps asking, the keys do nothing (Panel.hush): holding a pair to check
+        it changes no station and fires no combination."""
+        now = time.monotonic() if now is None else now
+        with self._keys_state_lock:
+            reads = self._keys_state_reads.setdefault(client or "?", collections.deque())
+            while reads and now - reads[0] >= 1.0:
+                reads.popleft()
+            if len(reads) >= KEYS_STATE_PER_S:
+                return 429, {"ok": False, "error": "too many key checks; at most 10 a second"}
+            reads.append(now)
+            # Forget clients that went quiet, so the table never grows.
+            for who in [w for w, q in self._keys_state_reads.items() if not q or now - q[-1] >= 1.0]:
+                if who != (client or "?"):
+                    del self._keys_state_reads[who]
+        keys_down = getattr(self.panel, "keys_down", None)
+        if getattr(self.panel, "absent", False) or not callable(keys_down):
+            return 409, {"ok": False, "absent": True,
+                         "error": "The radio can't read its keys: the key board isn't answering."}
+        # The owner is about to hold keys to check them: they do nothing meanwhile
+        # (Panel.hush), and for a moment after the page stops asking.
+        hush = getattr(self.panel, "hush", None)
+        if callable(hush):
+            hush(time.monotonic() + KEYS_HUSH_S)
+        down, t = keys_down()
+        return 200, {"down": down, "t": t}
+
     def health(self) -> tuple[int, dict]:
         """``GET /api/health`` (docs/ota-format.md): haslerd/health.py's report."""
         try:
@@ -1560,6 +1609,9 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif (m := KNOB_ID.match(url.path)) and m.group(2) == "sample":
                 n = parse_qs(url.query).get("n", ["15"])[0]
                 self._guard(lambda: self._json(200, app.knob_sample(m.group(1), n)))
+            elif url.path == "/api/keys/state":
+                client = self.client_address[0] if self.client_address else None
+                self._guard(lambda: self._json(*app.keys_state(client)))
             elif url.path == "/api/info":
                 self._guard(lambda: self._json(200, app.info()))
             elif url.path == "/api/art/current":

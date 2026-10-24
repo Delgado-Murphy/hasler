@@ -295,6 +295,20 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .ccap:disabled{opacity:.32;cursor:default}
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .combo-note{padding:8px 12px;border:1px dashed var(--line2);border-radius:10px}
+/* "Check this pair": the two keys light as the radio reads them down */
+.pchk{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--well)}
+.pchk-row{display:flex;align-items:center;gap:12px}
+.pchk-caps{flex:none;display:flex;align-items:center;gap:6px;padding:6px;border-radius:10px;background:#1F140D}
+.pchk-cap{width:40px;height:46px;border-radius:5px 5px 7px 7px;background:#4A3E30;color:#8C7A60;font:900 17px/46px var(--sans);text-align:center;transition:background .08s,color .08s,box-shadow .08s}
+.pchk-cap.pu{width:46px;font-size:13px}
+.pchk-cap.down{background:#FFF3D9;color:var(--ink);box-shadow:0 0 0 2px var(--amber),0 0 14px rgba(255,178,56,.55)}
+.pchk-txt{flex:1;min-width:0;color:var(--text2);font-size:13.5px;line-height:18px}
+.pchk-txt b{color:var(--cream);font-weight:600}
+.pchk-left{color:var(--muted);font:10px/13px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.pchk-verdict{margin:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line2);font-size:13.5px;line-height:18px}
+.pchk-verdict:empty{display:none}
+.pchk-verdict.ok{border-color:rgba(95,191,122,.45);color:#BFE6C8;background:rgba(95,191,122,.08)}
+.pchk-verdict.warn{border-color:rgba(233,179,92,.5);color:#F2D29B;background:rgba(233,179,92,.07)}
 
 /* ---------- browse ---------- */
 .shelf{display:flex;flex-direction:column;gap:10px;min-width:0}
@@ -2563,6 +2577,109 @@ function comboCaps(c){
   const hint = c.keys.length === 0 ? 'Pick two keys.' : c.keys.length === 1 ? 'Pick one more.' + (taken.length ? ' Already ' + (taken.length > 1 ? 'combinations' : 'a combination') + ': ' + taken.join(', ') + '.' : '') : 'To change one, tap it to let it go, then pick another.';
   return h('div', {class:'field'}, h('label', null, 'Keys'), grp, h('p', {class:'hint', id:'capsHint', 'aria-live':'polite'}, hint));
 }
+/* "Check this pair": some cabinets won't let two keys close together (on the
+   Hasler HM a held key blocks its neighbour). For 10 s the page reads which keys
+   the radio sees down (GET /api/keys/state, the panel loop's last poll) every
+   200 ms, lights the two caps, and says whether it ever saw both at once. */
+const PCHK_MS = 10000, PCHK_EVERY = 200, PCHK_QUIET = 3;   // 3 empty reads (0.6 s) = let go, not a bounce
+let pchk = null;   // {id, pair, st, until, timer, busy, fails, down, verdict, msg}
+// One reading -> the check's state. Pure, so it is easy to follow (and test).
+function pairStep(st, down, pair){
+  if (st.verdict) return st;
+  const d = pair.filter(id => down.includes(id));
+  for (const id of d) st.seen[id] = true;
+  if (d.length === 2) st.verdict = 'both';
+  else if (d.length) { st.any = true; st.quiet = 0; }
+  else if (st.any && ++st.quiet >= PCHK_QUIET) st.verdict = 'one';
+  return st;
+}
+const pairTimeout = st => st.verdict || (st.any || Object.keys(st.seen).length ? 'one' : 'none');
+function pairVerdictText(v, pair){
+  const [a, b] = pair.map(id => comboKey(id).label);
+  if (v === 'both') return {cls:'ok', text:'Both seen at once – this pair works.'};
+  if (v === 'one') return {cls:'warn', text:'The radio only ever saw one key at a time – pick keys further apart.'};
+  if (v === 'none') return {cls:'warn', text:'The radio didn’t see ' + a + ' or ' + b + ' go down. Hold both keys on the radio, then check again.'};
+  return null;
+}
+function stopPairCheck(verdict, msg){
+  if (!pchk) return;
+  clearTimeout(pchk.timer); pchk.timer = null;
+  pchk.running = false;
+  if (verdict) pchk.verdict = verdict;
+  if (msg) pchk.msg = msg;
+  paintPairCheck();
+}
+function startPairCheck(c){
+  if (pchk) clearTimeout(pchk.timer);
+  const pair = comboOrder(c.keys);
+  pchk = {id: c.id, pair, st: {seen:{}, any:false, quiet:0, verdict:null}, until: Date.now() + PCHK_MS, timer: null,
+          running: true, fails: 0, down: [], verdict: null, msg: ''};
+  paintPairCheck();
+  pairTick();
+}
+// Still looking at the same two keys of the same combination?
+const pairCheckLive = () => !!(pchk && view === 'edit' && ed.combo === pchk.id && $('pchk') &&
+  (() => { const c = comboById(pchk.id); return c && c.keys.length === 2 && comboPairId(c.keys) === pchk.pair.join('+'); })());
+async function pairTick(){
+  const me = pchk;
+  if (!me || !me.running) return;
+  if (!pairCheckLive()){ clearTimeout(me.timer); me.running = false; return; }
+  const t0 = Date.now();
+  try {
+    const r = await api('GET', '/api/keys/state');
+    if (pchk !== me || !me.running) return;
+    if (r.status === 409){ stopPairCheck('err', (r.json && r.json.error) || 'The radio can’t read its keys right now.'); return; }
+    if (r.ok && r.json && Array.isArray(r.json.down)){
+      me.fails = 0; me.down = r.json.down;
+      pairStep(me.st, me.down, me.pair);
+    } else if (r.status !== 429 && ++me.fails >= 3){
+      stopPairCheck('err', ((r.json && r.json.error) ? capFirst(r.json.error) : 'The radio didn’t answer (error ' + r.status + ')') + '. Try again.'); return;
+    }
+  } catch (_) {
+    if (pchk !== me || !me.running) return;
+    if (++me.fails >= 3){ stopPairCheck('err', NET_ERR); return; }
+  }
+  if (me.st.verdict){ stopPairCheck(me.st.verdict); return; }
+  if (Date.now() >= me.until){ me.down = []; stopPairCheck(pairTimeout(me.st)); return; }
+  paintPairCheck();
+  me.timer = setTimeout(pairTick, Math.max(0, PCHK_EVERY - (Date.now() - t0)));
+}
+// Paint in place: no re-render, so focus and the rest of the sheet stay put.
+function paintPairCheck(){
+  const box = $('pchk'); if (!box || !pchk) return;
+  const c = comboById(pchk.id); if (!c || comboPairId(c.keys) !== pchk.pair.join('+')) return;
+  for (const id of pchk.pair){ const cap = $('pchk-' + id); if (cap) cap.classList.toggle('down', !!pchk.running && pchk.down.includes(id)); }
+  const btn = $('pchkBtn'); if (btn) btn.textContent = pchk.running ? 'Stop checking' : 'Check again';
+  const txt = $('pchkTxt'); if (txt){ txt.textContent = ''; txt.append(...pairCheckText(pchk.pair, pchk.running ? 'running' : pchk.verdict ? 'done' : 'idle')); }
+  const left = $('pchkLeft');
+  if (left) left.textContent = pchk.running ? Math.max(0, Math.ceil((pchk.until - Date.now()) / 1000)) + ' s left' : '';
+  const v = $('pchkVerdict');
+  if (v){
+    const t = pchk.verdict === 'err' ? {cls:'warn', text: pchk.msg} : pairVerdictText(pchk.verdict, pchk.pair);
+    v.className = 'pchk-verdict' + (t ? ' ' + t.cls : '');
+    v.textContent = t ? t.text : '';
+  }
+}
+// The words beside the caps: before, during and after a check.
+function pairCheckText(pair, state){
+  const [a, b] = pair.map(id => comboKey(id).label);
+  if (state === 'running') return [h('b', null, 'Hold both keys now'), ' – ' + a + ' and ' + b + ' together on the radio. Each lights here when the radio sees it down. The keys do nothing meanwhile.'];
+  if (state === 'done') return ['To see it again, Check again, then hold ' + a + ' and ' + b + ' on the radio.'];
+  return ['Some cabinets won’t let neighbouring keys go down together. Check this pair, then hold ' + a + ' and ' + b + ' on the radio.'];
+}
+function pairCheckView(c){
+  const pair = comboOrder(c.keys), mine = !!(pchk && pchk.id === c.id && pchk.pair.join('+') === pair.join('+'));
+  if (pchk && !mine){ clearTimeout(pchk.timer); pchk = null; }
+  const box = h('div', {class:'pchk', id:'pchk'},
+    h('div', {class:'pchk-row'},
+      h('span', {class:'pchk-caps', 'aria-hidden':'true'}, pair.map(id => h('span', {class:'pchk-cap' + (id === 'pu' ? ' pu' : ''), id:'pchk-' + id}, comboKey(id).label))),
+      h('span', {class:'pchk-txt'}, h('span', {id:'pchkTxt'}, pairCheckText(pair, 'idle')), h('br'), h('span', {class:'pchk-left', id:'pchkLeft'}))),
+    h('p', {class:'pchk-verdict', id:'pchkVerdict', role:'status', 'aria-live':'polite'}),
+    h('div', null, h('button', {type:'button', class:'btn small inline', id:'pchkBtn',
+      onclick: () => { if (pchk && pchk.id === c.id && pchk.running) stopPairCheck(); else startPairCheck(c); }}, 'Check this pair')));
+  if (mine) queueMicrotask(paintPairCheck);
+  return box;
+}
 function comboSheet(sheet, c){
   const two = c.keys.length === 2, name = two ? comboName(c) : '';
   sheet.append(h('div', {class:'sheet-head'},
@@ -2570,6 +2687,7 @@ function comboSheet(sheet, c){
     h('button', {type:'button', class:'link quiet', id:'comboCancel', onclick: () => cancelCombo(c)}, 'Cancel')));
   const kErr = errText(c.id + '._'); if (kErr) sheet.append(h('p', {class:'err', role:'alert'}, kErr));
   sheet.append(comboCaps(c));
+  if (two) sheet.append(pairCheckView(c));
   const [lo, hi] = comboLim().hold_s, hs = Math.min(hi, Math.max(lo, +c.hold_s || comboLim().default_hold_s));
   sheet.append(h('div', {class:'field'},
     h('div', {class:'sub-lbl'}, h('label', {for:'holdS'}, 'Hold for'), h('span', {class:'li-val', id:'holdSVal'}, holdWords(hs))),

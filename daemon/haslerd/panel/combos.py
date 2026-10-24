@@ -1,6 +1,7 @@
 """Key combinations: two keys held down together.
 
-The owner's "hold 1 and 2 together to pair a phone". Panel.poll runs every
+The owner's "hold 1 and 6 together to pair a phone" (not neighbours: on
+the Hasler HM a held key blocks the one beside it). Panel.poll runs every
 momentary key as usual and then hands its events through ``ComboWatch``,
 which reads the same keys' debounced states and
 

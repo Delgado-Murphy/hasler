@@ -183,6 +183,15 @@ class Panel:
         # Two keys held together (panel/combos.py). Idle - and never called -
         # until set_combos gives it a combination.
         self.combos = ComboWatch(controls)
+        # The last good digital reading and the poll time it was taken at,
+        # kept by poll() for the key page's "Check this pair"
+        # (keys_down). One reference swapped per poll: the web thread reads
+        # it and never opens a second I2C transfer racing the panel loop.
+        self._last_digital: tuple[float, Mapping[str, bool]] | None = None
+        # While the key page checks a pair, the keys do nothing (hush): until
+        # this monotonic time, and after it for any key still held from then.
+        self._hush_until = 0.0
+        self._hushed: set[str] = set()
 
     @classmethod
     def from_variant(cls, variant: Variant, fake: bool = False) -> "Panel":
@@ -218,15 +227,57 @@ class Panel:
         if self._bus_failing:
             log.info("panel reads again")
             self._bus_failing = False
+        self._last_digital = (now, digital)
         events: list[Event] = []
         for control in self.controls:
             events.extend(control.update(now, digital, analog))
         if self.combos.active:
             events = self.combos.filter(now, events)
+        if self._hushed or now < self._hush_until:
+            events = self._hush(now, digital, events)
         return events
+
+    def hush(self, until: float) -> None:
+        """Keys do nothing until ``until`` (monotonic), nor afterwards until each
+        key held meanwhile is let go: the owner holding two keys for "Check
+        this pair" must not change the station, ramp the volume or fire a
+        combination. Knobs and switches are untouched. Called from the web
+        thread: one float written, read by the next poll."""
+        self._hush_until = max(self._hush_until, until)
+
+    def _hush(self, now: float, digital: Mapping[str, bool], events: list[Event]) -> list[Event]:
+        keys = [c for c in self.controls if c.kind == "momentary"]
+        if now < self._hush_until:
+            self._hushed |= {c.id for c in keys if c.state() or digital.get(getattr(c, "pin", ""), False)}
+        ids = {c.id for c in keys}
+
+        def quiet(e: Event) -> bool:
+            parts = e.control.split("+") if e.kind == "combo" else [e.control]
+            if not set(parts) <= ids:
+                return False
+            return now < self._hush_until or any(p in self._hushed for p in parts)
+
+        kept = [e for e in events if not quiet(e)]
+        if now >= self._hush_until:
+            self._hushed -= {c.id for c in keys
+                             if not c.state() and not digital.get(getattr(c, "pin", ""), False)}
+        return kept
 
     def states(self) -> dict[str, Any]:
         return {c.id: c.state() for c in self.controls}
+
+    def keys_down(self) -> tuple[list[str], float | None]:
+        """The keys (momentary controls) whose contact read closed at the panel
+        loop's last good poll, in descriptor order, and that poll's monotonic
+        time (None before the first). Raw contacts, not debounced and with no
+        events: for checking which keys the cabinet lets you hold together."""
+        last = self._last_digital
+        if last is None:
+            return [], None
+        t, digital = last
+        down = [c.id for c in self.controls
+                if c.kind == "momentary" and digital.get(getattr(c, "pin", ""), False)]
+        return down, t
 
     def raw(self) -> tuple[Mapping[str, bool], Mapping[int, int]]:
         return self.digital.read(), self.analog.read()
