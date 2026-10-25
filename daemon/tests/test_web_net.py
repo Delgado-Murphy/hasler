@@ -5,6 +5,7 @@ journal line per change."""
 import ipaddress
 import json
 import logging
+import time
 import socket
 from http.client import HTTPConnection
 
@@ -216,10 +217,20 @@ class TestJournal:
         yield server.port
         server.close()
 
-    def lines(self, caplog):
-        return [r.getMessage() for r in caplog.records
-                if r.name == "haslerd.web.server" and r.levelno == logging.INFO
-                and r.getMessage().startswith("web: ")]
+    def lines(self, caplog, wait_s=1.0):
+        # The line is written just after the answer goes out: give the server
+        # thread a moment (a fast CI box reads the answer first).
+        end = time.monotonic() + wait_s
+        while True:
+            got = [r.getMessage() for r in caplog.records
+                   if r.name == "haslerd.web.server" and r.levelno == logging.INFO
+                   and r.getMessage().startswith("web: ")]
+            if got or time.monotonic() >= end:
+                time.sleep(0.05)
+                return [r.getMessage() for r in caplog.records
+                        if r.name == "haslerd.web.server" and r.levelno == logging.INFO
+                        and r.getMessage().startswith("web: ")]
+            time.sleep(0.02)
 
     def test_a_change_is_one_line_without_body_or_query(self, port, caplog):
         caplog.set_level(logging.INFO, logger="haslerd.web.server")
