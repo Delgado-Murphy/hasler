@@ -38,7 +38,8 @@ from ..bootresume import http_answers, mpd_answers
 from .base import Preset, Source
 from .bluetooth import Bluetooth
 from .renderers import MoodeRenderers
-from .sources.radio import RadioSource
+from .sources.hls import HlsProxy
+from .sources.radio import RadioSource, mpd_patience
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +73,9 @@ SWELL_STEPS = 20
 # costs an HTTP status call and a read of moOde's sqlite db, and a human
 # cannot tell a one-second-old answer from a fresh one.
 SOURCE_CACHE_S = 1.0
+# ...nor is it worth waiting for: MPD busy (or hung, 2026-10-25) answers
+# "not ytm" after this long rather than holding up the panel loop or the page.
+SOURCE_MPD_S = 1.0
 
 
 @dataclass
@@ -152,7 +156,7 @@ def build_sources(config: MoodeConfig, state_dir: str | Path | None = None) -> d
     (/var/lib/haslerd) is where the YouTube Music sign-in, its state across
     reboots and the boot cache of opening tracks are kept.
     """
-    radio = RadioSource(config.mpd_host, config.mpd_port, ytm_port=config.ytm.port)
+    radio = RadioSource(config.mpd_host, config.mpd_port, ytm_port=config.ytm.port, hls=HlsProxy())
     sources: dict[str, Source] = {"radio": radio}
     if config.spotify.enabled:
         try:
@@ -247,6 +251,7 @@ class MoodePlayer:
         self._want: tuple | None = None
         self._gen = 0
         self._starting: Preset | None = None      # asked to start, not yet started
+        self._wanted: Preset | None = None        # the last start asked for (None: a stop)
         self._worker: threading.Thread | None = None
         self._busy = False
         self._warm_up()
@@ -316,6 +321,12 @@ class MoodePlayer:
         return self._gen
 
     @property
+    def wanted(self) -> Preset | None:
+        """The preset the last routing asked for, whether or not it started
+        (None after a stop). What comes back once MPD answers again."""
+        return self._wanted
+
+    @property
     def routing(self) -> bool:
         """A start or stop is pending or under way."""
         with self._want_cv:
@@ -366,6 +377,7 @@ class MoodePlayer:
             self._want = None
             self.current_preset = preset
             self._starting = preset
+            self._wanted = preset
             self._source_cache = None
             return self._gen, previous, cached
 
@@ -724,7 +736,9 @@ class MoodePlayer:
             if source is None:
                 continue
             try:
-                if source.is_active():
+                with mpd_patience(SOURCE_MPD_S):
+                    active = source.is_active()
+                if active:
                     return name
             except Exception:
                 log.debug("%s is_active failed", name, exc_info=True)
@@ -796,7 +810,8 @@ class MoodePlayer:
                 client = source.mpd()
                 if client.status().get("state") != "play":
                     return False
-                return str(client.currentsong().get("file", "")) == preset.uri
+                queued = getattr(source, "queued_uri", lambda u: u)(preset.uri)   # HLS: its proxy URL
+                return str(client.currentsong().get("file", "")) == queued
             return bool(source.is_active())
         except Exception:
             log.debug("still_playing check failed", exc_info=True)

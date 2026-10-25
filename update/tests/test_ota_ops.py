@@ -99,7 +99,8 @@ def test_strict_release_integration(built):
               "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "bin/hasler-dsp", "shutdown/hasler-lamp-halt",
               "avahi/hasler.service", "systemd/bluetooth.service.d/hasler-speaker.conf",
               "systemd/bluealsa-aplay@.service.d/hasler-buffer.conf",
-              "systemd/bluealsa-aplay.service.d/hasler-moode-owns.conf"):
+              "systemd/bluealsa-aplay.service.d/hasler-moode-owns.conf",
+              "systemd/mpd.service.d/hasler-watchdog.conf"):
         assert f"integration/{p}" in integ_files, p
     assert files["integration/sbin/hasler-ytdlp-update"][1] == 0o755
     assert files["integration/sbin/hasler-help"][1] == 0o755
@@ -187,7 +188,8 @@ def test_sudoers_source_is_todays_rules():
                      "/usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, "
                      "/usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/local/sbin/hasler-help, "
                      "/usr/bin/systemctl try-restart go-librespot.service, "
-                     "/bin/systemctl try-restart go-librespot.service"]
+                     "/bin/systemctl try-restart go-librespot.service, "
+                     "/usr/bin/systemctl restart mpd.service, /bin/systemctl restart mpd.service"]
     if shutil.which("visudo"):
         assert subprocess.run(["visudo", "-cf", str(ROOT / "config/sudoers/haslerd")]).returncode == 0
 

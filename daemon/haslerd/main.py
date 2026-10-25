@@ -89,7 +89,8 @@ from .net import Connectivity, tcp_probe
 from .wifiwatch import HotspotWatchdog
 from .ytdlp_lane import YtdlpLane
 from .player.base import FakePlayer, Preset
-from .player.moode import MoodeConfig, MoodePlayer
+from .player.moode import SOURCE_MPD_S, MoodeConfig, MoodePlayer
+from .player.sources.radio import mpd_patience
 from .player.watchdog import EVENTS_FILE, StreamEvents, StreamWatchdog
 from .state import StateStore
 from .variant import Panel, Variant, load_variant
@@ -135,7 +136,8 @@ def preset_sounding(player, preset: Preset) -> bool:
     if preset.source not in ("radio", "ytm") or not callable(mpd):
         return True
     try:
-        status = mpd().status()
+        with mpd_patience(SOURCE_MPD_S):      # the panel loop: never wait long on MPD
+            status = mpd().status()
         return status.get("state") == "play" and float(status.get("elapsed") or 0) > 0
     except Exception:
         log.debug("MPD status for the loading lamp failed", exc_info=True)
@@ -1014,7 +1016,7 @@ def build_stream_watchdog(actions: Actions, app: Any, keeper: LampKeeper | None)
     # On the card (/var/lib/haslerd), not /var/log: that is log2ram, lost at a power cut.
     settings_file = getattr(app, "settings_file", None)
     events = StreamEvents(Path(settings_file).parent / EVENTS_FILE if settings_file else None)
-    watchdog = StreamWatchdog(actions, night=night, events=events)
+    watchdog = StreamWatchdog(actions, night=night, events=events, lock=getattr(app, "lock", None))
     actions.stalled = watchdog.stalled_on      # its key plays it again, not "again"
     if keeper is not None:
         keeper.watchdog = watchdog

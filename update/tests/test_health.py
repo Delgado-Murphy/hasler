@@ -65,6 +65,42 @@ def test_wait_pass_hold_and_fail():
     assert not good and "within 90s" in why
 
 
+def mpd_out(recovering=True, **checks):
+    """haslerd fine, MPD hung (2026-10-25) and haslerd bringing it back."""
+    api = {**GOOD_API, "ok": False, "checks": {**GOOD_API["checks"], "mpd": False, **checks},
+           "mpd": {"unresponsive_s": 12.0, "restarts_last_hour": 0, "recovering": recovering}}
+    return sample(api=api, mpd=False)
+
+
+def test_an_mpd_recovery_is_waited_out_not_failed():
+    # Passing, then MPD hangs mid-hold for 40 s and comes back: the hold starts again.
+    seq = [sample()] * 6 + [mpd_out()] * 8 + [sample()] * 13
+    good, why = checker(seq).wait("1.1.0", sample())
+    assert good, why
+
+
+def test_an_mpd_recovery_has_a_limit():
+    seq = [sample()] * 6 + [mpd_out()] * 40
+    good, why = checker(seq).wait("1.1.0", sample())
+    assert not good and "MPD not back" in why
+
+
+def test_mpd_down_without_haslerd_recovering_it_still_fails():
+    seq = [sample()] * 6 + [mpd_out(recovering=False)] + [sample()] * 30
+    good, why = checker(seq).wait("1.1.0", sample())
+    assert not good and "during hold" in why and "mpd" in why
+
+
+def test_anything_else_wrong_during_an_mpd_recovery_still_fails():
+    hc = HealthChecker
+    probs = hc.problems(mpd_out(lamp=False), sample(), "1.1.0", 0)
+    assert not hc.mpd_recovery_only(mpd_out(lamp=False), probs)
+    probs = hc.problems(mpd_out(), sample(), "1.1.0", 0)
+    assert hc.mpd_recovery_only(mpd_out(), probs)
+    restarted = {**mpd_out(), "restarts": 1}
+    assert not hc.mpd_recovery_only(restarted, hc.problems(restarted, sample(), "1.1.0", 0))
+
+
 # --- daemon side ---------------------------------------------------------------------
 
 
@@ -81,7 +117,8 @@ def test_health_report_shape_and_idle():
     a = app()
     doc = health_report(a, now=10_000.0)
     assert set(doc) == {"version", "ok", "uptime_s", "checks", "idle", "standby", "playing", "last_play_s",
-                        "recovering", "stalled_s", "stream_events_recent", "os_updates", "components"}
+                        "recovering", "recovering_reason", "mpd", "stalled_s", "stream_events_recent",
+                        "os_updates", "components"}
     assert set(doc["checks"]) == {"mpd", "audio_card", "panel", "lamp", "web"}
     assert doc["standby"] is True and doc["playing"] is False
     # it saw activity now -> not idle for the next 10 minutes

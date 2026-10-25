@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.1.4 - 2026-10-25
+
+- Fixed: switching away from an HLS radio station (RNE Radio 3, Onda Cero,
+  Europa FM, BBC Radio 1 and 33 more) could freeze the player for good, and
+  the whole radio with it. The radio now turns HLS stations into an ordinary
+  stream itself, so the player never runs the decoder that got stuck (MPD
+  0.24's; fixed upstream only in 0.25). HLS stations take 0.5-3 s longer to
+  start.
+- If the player ever stops answering for another reason, the keys and the
+  key page keep working, systemd restarts the player within about 20 s (the
+  radio itself does it after 30 s if needed, at most 3 times an hour), and
+  what you were playing comes back. The lamp breathes meanwhile, and the
+  health report says why.
+- A player that stopped answering no longer makes an update roll back: an
+  update is judged on the radio's own software.
+- Includes 1.1.3 (the radio follows its Home Assistant to a new address),
+  which the player freeze had rolled back.
+
 ## 1.1.3 - 2026-10-25
 
 - The radio follows its Home Assistant to a new address. If HA stops

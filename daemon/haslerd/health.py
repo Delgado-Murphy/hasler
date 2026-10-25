@@ -63,16 +63,54 @@ def _version() -> str:
         return "unknown"
 
 
+MPD_FRESH_S = 5.0       # a command MPD answered this recently: it answers
+MPD_PROBE_S = 1.5       # else a probe of its own, never longer than this
+
+
 def _mpd_ok(player: Any) -> bool:
+    """MPD answers - quickly, whatever MPD does: /api/health must answer while
+    MPD hangs (2026-10-25), and never wait behind the shared connection's lock.
+
+    Marked unresponsive (radio.py MpdConnection): False at once. Answered a
+    command in the last MPD_FRESH_S: True. Otherwise a probe on a connection
+    of its own, within MPD_PROBE_S, that doesn't mark MPD unresponsive (MPD
+    busy stopping a stream must not start a recovery from here)."""
     radio = (getattr(player, "sources", None) or {}).get("radio")
     mpd = getattr(radio, "mpd", None)
     if not callable(mpd):
         return False
+    if callable(getattr(mpd, "unresponsive_s", None)):
+        try:
+            if mpd.unresponsive_s() is not None or mpd.suspected():
+                return False                    # out, or a question just timed out
+            if mpd.answered_within(MPD_FRESH_S):
+                return True
+            return mpd.probe(MPD_PROBE_S, trip=False) == "ok"
+        except Exception:
+            return False
     try:
         mpd().status()
         return True
     except Exception:
         return False
+
+
+def _mpd_doc(player: Any, watch: Any) -> dict | None:
+    """``{"unresponsive_s", "restarts_last_hour", "recovering"}`` - None without a real MPD connection."""
+    radio = (getattr(player, "sources", None) or {}).get("radio")
+    mpd = getattr(radio, "mpd", None)
+    if not callable(getattr(mpd, "unresponsive_s", None)):
+        return None
+    recovery = getattr(watch, "mpd_recovery", None)
+    try:
+        out = mpd.unresponsive_s()
+        now = getattr(watch, "clock", time.monotonic)()
+        restarts = recovery.restarts_last_hour(now) if recovery is not None else 0
+    except Exception:
+        return None
+    # recovering: out, and being brought back (the updater waits that out, not fails on it).
+    return {"unresponsive_s": None if out is None else round(out, 1), "restarts_last_hour": restarts,
+            "recovering": bool(getattr(watch, "mpd_out", False))}
 
 
 def _audio_card(cards: Path = Path("/proc/asound/cards")) -> bool:
@@ -187,6 +225,10 @@ def health_report(app: Any, now: float | None = None) -> dict:
         "playing": playing or casting,
         # MPD stopped a preset by itself and the radio is bringing it back.
         "recovering": bool(watch is not None and getattr(watch, "recovering", False)),
+        # Why ("MPD not answering for 34 s", "MPD stopped by itself"); None when not recovering.
+        "recovering_reason": getattr(watch, "reason", None) if watch is not None else None,
+        # MPD itself: not answering for how long (None = it answers), haslerd's restarts of it.
+        "mpd": _mpd_doc(player, watch),
         "stalled_s": watch.status_doc()["stalled_s"] if watch is not None else None,
         # The last few MPD stops/errors and recovery attempts (stream-events.jsonl).
         "stream_events_recent": _recent_events(watch),

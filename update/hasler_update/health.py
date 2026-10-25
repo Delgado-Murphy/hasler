@@ -9,6 +9,14 @@ keep passing for 60 s:
 * ``/api/health`` 200 reporting the new version, no check worse than baseline;
 * MPD answering on 6600, the sound cards of the baseline present;
 * go-librespot and the moOde UI as they were.
+
+MPD hanging is not haslerd's doing (2026-10-25: MPD 0.24's ffmpeg decoder
+stuck on an HLS stream; the innocent 1.1.3 was rolled back). A sample whose
+only problems are MPD's, while haslerd itself is fine and its /api/health
+says it is bringing MPD back (``mpd.recovering``), is neither a pass nor a
+failure: the wait goes on (the hold starts again once MPD answers), for at
+most ``MPD_GRACE_S`` in all. A release that keeps MPD down longer than that,
+or whose haslerd doesn't see it, fails as before.
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ APPEAR_S = 90.0
 BOOT_APPEAR_S = 300.0   # a trial judged after a reboot: moOde starts MPD late (bench: >90 s)
 HOLD_S = 60.0
 INTERVAL_S = 5.0
+MPD_GRACE_S = 120.0     # MPD being restarted by haslerd/systemd: this long at most, per judgement
 
 
 def _good(key: str, value) -> bool:
@@ -156,22 +165,50 @@ class HealthChecker:
             out.append(f"sound card missing: {', '.join(sorted(missing))}")
         return out
 
+    @staticmethod
+    def mpd_recovery_only(sample: dict, problems: list[str]) -> bool:
+        """Every problem is MPD's, haslerd itself is fine and says it is bringing MPD back."""
+        api = sample.get("api")
+        if not problems or not sample.get("haslerd") or not isinstance(api, dict):
+            return False
+        if not (api.get("mpd") or {}).get("recovering"):
+            return False
+        mpd_only = ("check mpd failed", "/api/health ok=false", "mpd lost")
+        if not all(p.startswith(mpd_only) for p in problems):
+            return False
+        # ok=false must be MPD's alone: every other check as good as can be.
+        others = {k: v for k, v in (api.get("checks") or {}).items() if k != "mpd"}
+        return "/api/health ok=false" not in problems or all(_good(k, v) for k, v in others.items())
+
     def wait(self, version: str, baseline: dict) -> tuple[bool, str]:
         """Pass within ``appear_s``, then hold for ``hold_s``. (ok, reason)."""
         start = self.clock()
         restarts0: int | None = None
         passed_at: float | None = None
         last: list[str] = ["no sample"]
+        grace = 0.0                     # spent waiting out an MPD recovery
+        grace_at: float | None = None
         while True:
             sample = self.probe()
             if restarts0 is None and sample.get("haslerd"):
                 restarts0 = sample.get("restarts", 0)
             last = self.problems(sample, baseline, version, restarts0 if restarts0 is not None else 1 << 30)
             now = self.clock()
+            if last and self.mpd_recovery_only(sample, last):
+                if grace_at is not None:
+                    grace += now - grace_at
+                grace_at = now
+                if grace < MPD_GRACE_S:
+                    passed_at = None    # MPD back first, then the whole hold again
+                    self.sleep(self.interval_s)
+                    continue
+                return False, "MPD not back within %ds: %s" % (MPD_GRACE_S, "; ".join(last))
+            else:
+                grace_at = None
             if last:
                 if passed_at is not None:
                     return False, "health regressed during hold: " + "; ".join(last)
-                if now - start >= self.appear_s:
+                if now - start >= self.appear_s + grace:
                     return False, "not healthy within %ds: %s" % (self.appear_s, "; ".join(last))
             else:
                 if passed_at is None:

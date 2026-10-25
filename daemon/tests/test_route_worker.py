@@ -20,7 +20,7 @@ from haslerd.main import preset_sounding
 from haslerd.panel.controls import Event
 from haslerd.player.base import Preset
 from haslerd.player.moode import MoodeConfig, MoodePlayer
-from haslerd.player.sources.radio import MpdConnection
+from haslerd.player.sources.radio import MpdConnection, MpdUnresponsive
 from haslerd.variant import load_variant
 
 R1 = Preset(1, "Swiss Jazz", "http://example.invalid/sj")
@@ -273,12 +273,18 @@ class TestMpdConnectionAfterATimeout:
             made.append(TimingOutMpd())
             return made[-1]
 
-        conn = MpdConnection(client_factory=factory)
+        conn = MpdConnection(client_factory=factory, prober=lambda h, p, t: "ok")
         conn()
         made[0].time_out_next = True
         with pytest.raises(TimeoutError):
             conn().stop()
         assert "disconnect" in made[0].calls
+        # MPD is marked unresponsive: the next caller fails fast (2026-10-25)...
+        with pytest.raises(MpdUnresponsive):
+            conn().status()
+        assert len(made) == 1
+        # ...until a probe of its own hears MPD again: then a fresh connection.
+        assert conn.probe() == "ok"
         conn().status()
         assert len(made) == 2, "the next command gets a fresh connection"
 

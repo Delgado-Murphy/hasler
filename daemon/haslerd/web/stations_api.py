@@ -41,6 +41,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from ..player.sources import hls
 from . import stations
 
 log = logging.getLogger(__name__)
@@ -332,6 +333,8 @@ class StationsApi:
             sid = stations.id_for_url(url, self.collection) or ""
             name = str(body.get("name") or "").strip()[:60] or (stations.by_id(sid, self.collection) or {}).get(
                 "name", "") or url.split("://", 1)[-1][:60]
+        if str(info.get("codec") or "").lower().startswith("hls"):
+            hls.remember(url)       # plays through the local HLS proxy even without .m3u8 in the path
         self.app.play({"source": "radio", "uri": url, "name": name})
         return 200, {"ok": True, "id": sid or None, "url": url, "name": name, **info, "error": ""}
 

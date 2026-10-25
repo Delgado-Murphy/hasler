@@ -8,8 +8,10 @@
 # Accepting a Bluetooth pairing request while the owner's pairing window is
 # open (hasler-bt-accept, player/btaccept.py). Remote help, after a press on
 # the radio (hasler-help start|status|stop: Tailscale for 24 h, web/help_api.py;
-# it checks its own arguments). Nothing else.
+# it checks its own arguments). Restarting MPD when it has stopped answering
+# with its process still there (player/watchdog.py MpdRecovery, rate-limited;
+# mpd.service's own watchdog drop-in normally gets there first). Nothing else.
 # -> /etc/sudoers.d/haslerd (0440, checked with visudo -cf first). Shipped in
 # every release as integration/sudoers/haslerd; scripts/install.sh renders it
 # for the legacy layout. Updates and yt-dlp go through polkit, not sudo.
-pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, /usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/local/sbin/hasler-help, /usr/bin/systemctl try-restart go-librespot.service, /bin/systemctl try-restart go-librespot.service
+pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, /usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, /usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/local/sbin/hasler-help, /usr/bin/systemctl try-restart go-librespot.service, /bin/systemctl try-restart go-librespot.service, /usr/bin/systemctl restart mpd.service, /bin/systemctl restart mpd.service

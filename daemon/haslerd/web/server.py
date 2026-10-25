@@ -106,7 +106,8 @@ from ..panel import calibrate
 from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot
 from ..player.base import Preset
 from ..player.glr_config import SpotifyGuests, guests_from
-from ..player.moode import treble_db
+from ..player.moode import SOURCE_MPD_S, treble_db
+from ..player.sources.radio import mpd_patience
 from . import keymap, stations
 from ..net import HOTSPOT_ADDRS
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
@@ -568,7 +569,8 @@ class WebApp:
         stream = watch.status_doc() if watch is not None else {"recovering": False, "stalled_s": None}
         if watch is not None and watch.silent:
             playing = None
-        track = self._track() if source == "ytm" else None
+        with mpd_patience(SOURCE_MPD_S):      # the page polls: never wait long on MPD
+            track = self._track() if source == "ytm" else None
         return {
             "pressed": pressed,
             "playing": playing,
@@ -576,6 +578,8 @@ class WebApp:
             # bringing it back; stalled_s = for how long (None = not stalled).
             "recovering": stream["recovering"],
             "stalled_s": stream["stalled_s"],
+            # Why, in a few words ("MPD not answering for 34 s"); None when not recovering.
+            "recovering_reason": stream.get("reason"),
             "standby": self.actions.standby,
             "volume": None if volume is None else round(volume),
             # What owns the speaker: radio | spotify | ytm | bluetooth | airplay.
@@ -1355,7 +1359,8 @@ class WebApp:
             from .. import health
         except ImportError:
             return 503, {"ok": False, "error": "health report not installed"}
-        return 200, health.health_report(self)
+        with mpd_patience(SOURCE_MPD_S):      # must answer while MPD hangs (2026-10-25)
+            return 200, health.health_report(self)
 
     # -- browse -----------------------------------------------------------
 

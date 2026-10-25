@@ -120,6 +120,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("config/systemd-dropins/bluetooth.service.d/hasler-*.conf", "integration/systemd/bluetooth.service.d/"),
     Rule("config/systemd-dropins/bluealsa-aplay@.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay@.service.d/"),
     Rule("config/systemd-dropins/bluealsa-aplay.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay.service.d/"),
+    Rule("config/systemd-dropins/mpd.service.d/hasler-*.conf", "integration/systemd/mpd.service.d/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
     Rule("config/avahi/hasler.service", "integration/avahi/"),
     # licensing, at the top next to bin/ and wheelhouse/ it describes: our MIT

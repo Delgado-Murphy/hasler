@@ -117,6 +117,7 @@ import urllib.error
 import urllib.request
 
 from ..base import Preset
+from .radio import patience
 from .ytm_refs import link_for, needs_lookup, ref_key
 
 log = logging.getLogger(__name__)
@@ -269,6 +270,13 @@ def stream_ok(url: str, timeout: float = 4.0) -> bool:
         return err.code not in (403, 410)
     except Exception:
         return True
+
+
+def _question_wait() -> float:
+    """How long a question (is it ours? what plays?) waits for ``_mpd_lock``:
+    this thread's ``mpd_patience``, else as long as it takes (-1)."""
+    budget = patience()
+    return -1 if budget is None else budget
 
 
 class YtmError(RuntimeError):
@@ -463,15 +471,18 @@ class YtmSource:
         Radio presets also play through MPD, so "MPD is playing" alone would
         make the router believe ytm owns the box when a radio station does.
         """
+        if not self._mpd_lock.acquire(timeout=_question_wait()):
+            return False                        # a start or the proxy is talking to MPD
         try:
-            with self._mpd_lock:
-                client = self._mpd()
-                if client.status().get("state") != "play":
-                    return False
-                return str(client.currentsong().get("file", "")).startswith(self.prefix)
+            client = self._mpd()
+            if client.status().get("state") != "play":
+                return False
+            return str(client.currentsong().get("file", "")).startswith(self.prefix)
         except Exception:
             log.debug("ytm is_active check failed", exc_info=True)
             return False
+        finally:
+            self._mpd_lock.release()
 
     def now_playing(self) -> dict | None:
         """The current MPD song, named, if it is ours and the catalogue named it.
@@ -479,12 +490,15 @@ class YtmSource:
         ``{"title", "artist", "album", "thumb", "videoId"}`` or None. For the
         key page; never raises.
         """
+        if not self._mpd_lock.acquire(timeout=_question_wait()):
+            return None
         try:
-            with self._mpd_lock:
-                file = str(self._mpd().currentsong().get("file", ""))
+            file = str(self._mpd().currentsong().get("file", ""))
         except Exception:
             log.debug("ytm now_playing failed", exc_info=True)
             return None
+        finally:
+            self._mpd_lock.release()
         if not file.startswith(self.prefix):
             return None
         vid = file[len(self.prefix):]

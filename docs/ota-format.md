@@ -259,13 +259,25 @@ matches spaces). The updater checks the instance name again.
  "checks": {"mpd": true, "audio_card": true, "panel": "ok|absent|allowed_absent",
             "lamp": true, "web": true},
  "idle": true, "standby": true, "playing": false, "last_play_s": 1234,
- "recovering": false, "stalled_s": null, "stream_events_recent": []}
+ "recovering": false, "recovering_reason": null, "stalled_s": null,
+ "mpd": {"unresponsive_s": null, "restarts_last_hour": 0, "recovering": false},
+ "stream_events_recent": []}
 ```
 
-`recovering` / `stalled_s`: MPD stopped a preset by itself and haslerd's
-stream watchdog (`haslerd/player/watchdog.py`) is bringing it back - `playing`
-is false meanwhile. `stream_events_recent`: the last few MPD stops/errors and
-recovery attempts from `/var/lib/haslerd/stream-events.jsonl`.
+`recovering` / `stalled_s`: MPD stopped a preset by itself, or stopped
+answering altogether, and haslerd's stream watchdog
+(`haslerd/player/watchdog.py`) is bringing it back - `playing` is false
+meanwhile; `recovering_reason` says which ("MPD not answering for 34 s").
+`mpd`: for how long MPD has not answered (`null` = it answers), how often
+haslerd restarted it in the last hour, and whether it is being brought back
+(then `checks.mpd` and `ok` are false). The answer never waits on MPD.
+`stream_events_recent`: the last few MPD stops/errors and recovery attempts
+from `/var/lib/haslerd/stream-events.jsonl`.
+
+The updater's judgement waits out an MPD recovery instead of failing on it:
+a sample whose only problems are MPD's, with haslerd itself healthy and
+`mpd.recovering` true, restarts the hold once MPD is back, for at most 120 s
+in all (`update/hasler_update/health.py` `MPD_GRACE_S`).
 
 `idle` = safe to update now: standby, no phone casting, nothing played for at
 least 10 minutes; `playing` includes casting. haslerd builds it in

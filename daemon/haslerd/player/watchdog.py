@@ -40,6 +40,19 @@ error, each stall, attempt and recovery is also appended as one JSON line to
 kept to the last ``EVENTS_KEEP`` lines / ``EVENTS_MAX_BYTES`` by rewriting it
 in place; the last few are in /api/health ``stream_events_recent``.
 
+MPD not answering at all (2026-10-25: MPD 0.24's ffmpeg decoder stuck in an
+HLS retry loop, its main thread waiting on it, port 6600 open and silent) is
+``MpdRecovery``'s, on the same thread: the shared connection fails fast once
+MPD has timed out (radio.py ``MpdUnresponsive``), this probes it on a
+connection of its own every poll, and after ``MPD_HANG_S`` with mpd.service
+still "active" restarts it - ``sudo -n systemctl restart mpd.service``, the
+one line sudoers allows (config/sudoers/haslerd), at most
+``MPD_RESTARTS_PER_H`` an hour, spaced by ``MPD_RESTART_GAP_S``. Normally
+systemd gets there first: mpd.service's own watchdog (the hasler-watchdog.conf
+drop-in) kills a main loop that stopped pinging. Either way, once MPD
+answers again the preset last asked for (``MoodePlayer.wanted``) is started
+again, unless MPD plays already or a hand, standby or a phone has it.
+
 ``/api/status`` and ``/api/health`` ask ``silent`` / ``status_doc()`` so they
 tell the truth meanwhile ("playing" off, ``recovering`` and ``stalled_s``),
 and the lamp leaves its playing look for the loading breath while it tries.
@@ -50,6 +63,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
 import threading
 import time
 from collections import deque
@@ -73,6 +87,14 @@ EVENTS_FILE = "stream-events.jsonl"
 EVENTS_KEEP = 200         # lines kept on the card...
 EVENTS_MAX_BYTES = 64 * 1024   # ...and bytes, whichever is reached first
 EVENTS_RECENT = 5         # in /api/health
+# MPD not answering at all (MpdRecovery)
+MPD_HANG_S = 30.0         # unanswered this long, mpd.service "active": restart it (systemd's own
+                          # watchdog, 20 s + a 10 s stop, normally has by then)
+MPD_RESTARTS_PER_H = 3
+MPD_RESTART_GAP_S = (60.0, 300.0)   # after the 1st restart, then after each later one
+MPD_RESTART = ("sudo", "-n", "/usr/bin/systemctl", "restart", "mpd.service")
+MPD_RESTART_TIMEOUT_S = 60.0
+MPD_PROBE_S = 2.0
 
 
 class StreamEvents:
@@ -142,6 +164,132 @@ class StreamEvents:
             return list(self._recent)
 
 
+class MpdRecovery:
+    """MPD alive but not answering: wait, restart it (rate-limited), start the
+    preset again once it answers. ``tick(now)`` is called by the stream
+    watchdog's thread every poll; True while MPD is out (the watchdog then
+    leaves its own stream checks alone).
+
+    ``conn`` is radio.py's MpdConnection (``unresponsive_s``, ``probe``).
+    ``run`` runs a command (subprocess.run); ``replay()`` starts the preset
+    last asked for again: its number, or None if it wasn't (``_replay``).
+    """
+
+    def __init__(self, conn: Any, record: Callable[..., None], replay: Callable[[], str | None],
+                 run: Callable[..., Any] = subprocess.run, hang_s: float = MPD_HANG_S) -> None:
+        self.conn = conn
+        self.record = record
+        self.replay = replay
+        self.run = run
+        self.hang_s = hang_s
+        self.since: float | None = None     # out since (monotonic)
+        self.reason = ""
+        self._restarted = False             # by us, this outage
+        self._withheld = False              # the rate limit said no, this outage (noted once)
+        self._restarts: deque = deque()     # our restarts in the last hour (monotonic)
+
+    @property
+    def out(self) -> bool:
+        return self.since is not None
+
+    def restarts_last_hour(self, now: float) -> int:
+        while self._restarts and now - self._restarts[0] >= 3600.0:
+            self._restarts.popleft()
+        return len(self._restarts)
+
+    def tick(self, now: float) -> bool:
+        if self.since is None:
+            down = self.conn.unresponsive_s()
+            suspected = getattr(self.conn, "suspected", None)
+            if down is None and callable(suspected) and suspected():
+                # A quick question timed out somewhere: a full-length probe
+                # here decides (MPD busy stopping a stream answers in time).
+                self.conn.probe(float(getattr(self.conn, "timeout", 8.0)))
+                down = self.conn.unresponsive_s()
+            if down is None:
+                return False
+            self.since = now - down
+            self._restarted = self._withheld = False
+            self.reason = "MPD not answering"
+            log.warning("MPD not answering (%s); watching it", getattr(self.conn, "down_reason", "") or "timeout")
+            self.record("mpd unresponsive", None, getattr(self.conn, "down_reason", "") or None)
+        result = self.conn.probe(MPD_PROBE_S)
+        if result == "ok":
+            self._back(now)
+            return False
+        out_s = now - self.since
+        if result == "refused":
+            self.reason = "MPD restarting"
+            return True
+        self.reason = f"MPD not answering for {out_s:.0f} s"
+        if out_s >= self.hang_s:
+            self._maybe_restart(now)
+        return True
+
+    def _may_restart(self, now: float) -> bool:
+        n = self.restarts_last_hour(now)
+        if n >= MPD_RESTARTS_PER_H:
+            return False
+        if n:
+            gap = MPD_RESTART_GAP_S[min(n - 1, len(MPD_RESTART_GAP_S) - 1)]
+            if now - self._restarts[-1] < gap:
+                return False
+        return True
+
+    def _active(self) -> bool:
+        """mpd.service is "active": its process is there (not stopping or
+        starting - systemd's own watchdog may be restarting it right now)."""
+        try:
+            out = self.run(["systemctl", "is-active", "mpd.service"], capture_output=True,
+                           text=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return str(getattr(out, "stdout", "") or "").strip() == "active"
+
+    def _maybe_restart(self, now: float) -> None:
+        if not self._may_restart(now):
+            if not self._withheld:
+                self._withheld = True
+                log.warning("MPD still not answering; not restarting it again yet (%d restarts in the "
+                            "last hour)", self.restarts_last_hour(now))
+                self.record("mpd restart withheld", None, None, reason="rate limit",
+                            restarts_last_hour=self.restarts_last_hour(now))
+            self.reason = "MPD not answering; restart limit reached"
+            return
+        if not self._active():
+            return                          # stopping or starting already: give it the time
+        self._restarts.append(now)
+        self._restarted = True
+        log.warning("MPD has not answered for %.0f s; restarting it", now - (self.since or now))
+        self.reason = "MPD not answering - restarting it"
+        try:
+            done = self.run(list(MPD_RESTART), capture_output=True, text=True, timeout=MPD_RESTART_TIMEOUT_S)
+            code = getattr(done, "returncode", 1)
+            err = (str(getattr(done, "stderr", "") or "").strip()[-200:]) or None
+        except (OSError, subprocess.SubprocessError) as exc:
+            code, err = None, str(exc)
+        if code == 0:
+            log.info("MPD restarted")
+        else:
+            log.error("restarting MPD failed (%s): %s", code, err)
+        self.record("mpd unresponsive -> restarted", None, err if code != 0 else None,
+                    ok=code == 0, after_s=round(now - (self.since or now), 1),
+                    restarts_last_hour=self.restarts_last_hour(now))
+
+    def _back(self, now: float) -> None:
+        out_s = now - (self.since or now)
+        log.info("MPD answering again after %.0f s%s", out_s, " (restarted by haslerd)" if self._restarted else "")
+        replayed = None
+        try:
+            replayed = self.replay()
+        except Exception:
+            log.exception("could not start the preset again after MPD came back")
+        self.record("mpd back", None, None, after_s=round(out_s, 1), restarted_by_haslerd=self._restarted,
+                    replayed=replayed)
+        self.since = None
+        self.reason = ""
+
+
 class StreamWatchdog:
     """Watches MPD for a preset that stopped sounding by itself; restarts it.
 
@@ -158,9 +306,14 @@ class StreamWatchdog:
         night: Callable[[], bool] | None = None,
         poll_s: float = POLL_S,
         events: StreamEvents | None = None,
+        lock: Any = None,
+        run: Callable[..., Any] = subprocess.run,
     ) -> None:
         self.actions = actions
         self.events = events if events is not None else StreamEvents(None)
+        # The web page's lock (WebApp.lock), held while the preset is started
+        # again after an MPD outage, as a key press from the page would be.
+        self.lock = lock
         self.clock = clock
         self.night = night
         self.poll_s = poll_s
@@ -187,28 +340,53 @@ class StreamWatchdog:
         self._pulsed = False
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        radio = (getattr(actions.player, "sources", None) or {}).get("radio")
+        conn = getattr(radio, "mpd", None)
+        self.mpd_recovery: MpdRecovery | None = None
+        if callable(getattr(conn, "unresponsive_s", None)) and callable(getattr(conn, "probe", None)):
+            self.mpd_recovery = MpdRecovery(conn, self._record_mpd, self._replay, run=run)
 
     # -- what the page, health and lamp ask --------------------------------
 
     @property
+    def mpd_out(self) -> bool:
+        """MPD is not answering at all (MpdRecovery)."""
+        return self.mpd_recovery is not None and self.mpd_recovery.out
+
+    @property
     def recovering(self) -> bool:
-        """MPD should be playing and isn't: the watchdog is bringing it back."""
-        return self._stalled_at is not None
+        """MPD should be playing and isn't, or isn't answering: the watchdog is bringing it back."""
+        return self._stalled_at is not None or self.mpd_out
+
+    @property
+    def reason(self) -> str | None:
+        """Why it is recovering, in a few words (None when it isn't)."""
+        if self.mpd_out:
+            return self.mpd_recovery.reason or "MPD not answering"
+        if self._stalled_at is not None:
+            return self._reason or "stalled"
+        return None
 
     @property
     def silent(self) -> bool:
-        """The preset the radio names is not actually sounding (stalled or ended)."""
-        return self._stalled_at is not None or self._finished
+        """The preset the radio names is not actually sounding (stalled, ended, or MPD out)."""
+        return self._stalled_at is not None or self._finished or self.mpd_out
 
     @property
     def breathing(self) -> bool:
         """The lamp's loading breath: recovering, and not yet given up on loudly."""
+        if self.mpd_out:
+            return True
         return self._stalled_at is not None and self._attempts < PULSE_AFTER
 
     def stalled_s(self, now: float | None = None) -> float | None:
-        if self._stalled_at is None:
+        since = self._stalled_at
+        if self.mpd_out:
+            out = self.mpd_recovery.since
+            since = out if since is None or out is None else min(since, out)
+        if since is None:
             return None
-        return max(0.0, (self.clock() if now is None else now) - self._stalled_at)
+        return max(0.0, (self.clock() if now is None else now) - since)
 
     def stalled_on(self, preset: Preset | None) -> bool:
         """``preset`` is the one that has gone quiet (its key then means "play", not "again")."""
@@ -216,7 +394,8 @@ class StreamWatchdog:
 
     def status_doc(self) -> dict:
         s = self.stalled_s()
-        return {"recovering": self.recovering, "stalled_s": None if s is None else round(s, 1)}
+        return {"recovering": self.recovering, "stalled_s": None if s is None else round(s, 1),
+                "reason": self.reason}
 
     # -- the thread -------------------------------------------------------
 
@@ -242,6 +421,8 @@ class StreamWatchdog:
     def check(self, now: float | None = None) -> None:
         now = self.clock() if now is None else now
         actions, player = self.actions, self.actions.player
+        if self.mpd_recovery is not None and self.mpd_recovery.tick(now):
+            return                      # MPD out: nothing to sample; MpdRecovery has it
         gen = player.route_gen
         if gen != self._gen:
             if self._stalled_at is not None:
@@ -315,6 +496,54 @@ class StreamWatchdog:
             self.events.add(action, self._preset, state, error, **extra)
         except Exception:
             log.debug("stream event not recorded", exc_info=True)
+
+    def _record_mpd(self, action: str, _preset: Any, error: str | None, **extra: Any) -> None:
+        try:
+            self.events.add(action, getattr(self.actions.player, "wanted", None), None, error, **extra)
+        except Exception:
+            log.debug("stream event not recorded", exc_info=True)
+
+    def _replay(self) -> str | None:
+        """MPD answers again: start the preset last asked for, as it was asked.
+        Not when a hand, standby or a phone has the radio, or MPD plays already.
+        The preset's number (as a string) if it was started, else None."""
+        actions, player = self.actions, self.actions.player
+        preset = getattr(player, "wanted", None)
+        if preset is None or preset.source not in MPD_SOURCES:
+            return None
+        if actions.standby or getattr(actions, "shutting_down", False) or player.routing:
+            return None
+        group = getattr(actions, "group", None)
+        if group is not None and getattr(group, "following", False):
+            return None
+        try:
+            if actions.phone_has_it():
+                return None
+        except Exception:
+            pass
+        status = self._status()
+        if status is not None and status.get("state") == "play":
+            return None                 # it came back playing (moOde, its state file): leave it
+        lock = self.lock
+        if lock is not None and not lock.acquire(timeout=2.0):
+            return None
+        try:
+            gen = player.route_gen
+            if player.current() not in (None, preset):
+                return None
+            on_start = getattr(actions, "on_start", None)
+            if callable(on_start):
+                try:
+                    on_start(preset)        # the lamp's loading breath, as for a key
+                except Exception:
+                    log.debug("on_start hook failed", exc_info=True)
+            if player.restart(preset, gen, on_error=getattr(actions, "_start_failed", None)) is None:
+                return None
+        finally:
+            if lock is not None:
+                lock.release()
+        log.info("MPD is back: starting preset %s (%s) again", preset.n, preset.name)
+        return str(preset.n)
 
     def recent_events(self) -> list[dict]:
         return self.events.recent()
