@@ -862,7 +862,8 @@ class HaPublisher:
 
     ``status()`` shells out (amixer, moOde) and HA may be slow, so each
     publish runs on a short-lived thread; a tick while one is still running is
-    skipped rather than queued. Never raises into the loop.
+    skipped rather than queued. Never raises into the loop. The same thread
+    first lets HaApi.watch() notice HA has moved to a new address (ha/follow).
     """
 
     def __init__(self, app: WebApp | None, period_s: float = HA_PUBLISH_S) -> None:
@@ -883,6 +884,9 @@ class HaPublisher:
 
     def _publish(self) -> None:
         try:
+            watch = getattr(self.ha_api, "watch", None)
+            if callable(watch):
+                watch()
             self.ha_api.publish(self.app.status())
         except Exception:
             log.debug("Home Assistant publish failed", exc_info=True)

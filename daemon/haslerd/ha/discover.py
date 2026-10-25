@@ -22,6 +22,7 @@ deduplicated by HA's uuid and URL.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import subprocess
@@ -123,6 +124,29 @@ def probe_fallback(url: str = FALLBACK_URL, fetch=urllib_fetch) -> bool:
     except Exception:
         return False
     return status in (200, 401)
+
+
+def probe_ha(url: str, fetch=urllib_fetch) -> bool:
+    """Is it Home Assistant answering at ``url``, not just anything? No token is sent.
+
+    Stricter than probe_fallback, for ha/follow: an old IP now held by a
+    printer or a router's page must count as "HA is gone". Only HA's own
+    answers to an unauthenticated ``GET /api/`` pass: 401, or 200 with
+    ``{"message": "API running."}``.
+    """
+    try:
+        status, raw = fetch("GET", url + "/api/", {}, None, 2.0)
+    except Exception:
+        return False
+    if status == 401:
+        return True
+    if status != 200:
+        return False
+    try:
+        doc = json.loads(raw or b"null")
+    except ValueError:
+        return False
+    return isinstance(doc, dict) and doc.get("message") == "API running."
 
 
 def discover(runner: Runner = subprocess.run, probe: Probe = probe_fallback) -> tuple[list[dict], str | None]:

@@ -26,7 +26,9 @@ The status doc::
     {"configured", "connected", "url", "location", "version", "publish",
      "error": str|null,
      "missing": [{"key", "event", "do", "entity", "label", "reason"}],
-     "previous_instance": str|null}
+     "previous_instance": str|null,
+     "moved": {"from", "to", "at"}|null,   # the radio followed HA to a new address (``at``: epoch s)
+     "lost": str|null}                     # it looked for HA and couldn't follow it: why, in words
 
 **The token never leaves.** No response is built from anything that holds it.
 
@@ -44,6 +46,12 @@ the HA the key layout was made for when it isn't the one connected now (see
 ha/config.fingerprint). ``clear-missing`` removes the listed actions through
 keymap's normal save/apply path, so keys.yaml is updated too.
 
+**HA moves within the home.** ``watch()`` (called by main's HaPublisher every
+few seconds) follows the same instance to a new address when the saved one
+stops answering - see ha/follow for when, and for where the token may go.
+Moving is the hot swap above plus a save; connecting or disconnecting from the
+page resets it, so the owner's own address always wins.
+
 **Startup** (the server agent's build_web)::
 
     ha_api = HaApi(actions, state_dir, config.get("home_assistant"),
@@ -55,6 +63,7 @@ keymap's normal save/apply path, so keys.yaml is updated too.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import threading
 import time
@@ -65,6 +74,7 @@ from urllib.parse import parse_qs, urlparse
 from ..ha import behaviour
 from ..ha import config as ha_config
 from ..ha import discover as ha_discover
+from ..ha import follow
 from ..ha.rest import HaError, HomeAssistant
 from . import keymap
 
@@ -96,6 +106,8 @@ class HaApi:
         panel: Any = None,
         lock: Any = None,
         clock: Callable[[], float] = time.monotonic,
+        probe: Callable[[str], bool] = ha_discover.probe_ha,
+        wall: Callable[[], float] = time.time,
     ) -> None:
         self.actions = actions
         self.state_dir = Path(state_dir) if state_dir is not None else None
@@ -120,6 +132,10 @@ class HaApi:
         self._pub_last: dict | None = None
         self._pub_t = float("-inf")
         self._verifier: threading.Thread | None = None
+        self.probe = probe                        # tokenless "is it HA there?" (ha/discover)
+        self.wall = wall                          # for the date the page shows after a move
+        self.follow = follow.Tracker(clock)
+        self.lost: str | None = None
 
     # -- lifecycle --------------------------------------------------------
 
@@ -147,19 +163,44 @@ class HaApi:
 
     def _install(self, settings: ha_config.HaSettings, client: Any) -> None:
         with self._lock:
+            old = self.client
             self.settings = settings
             self.client = client
             self._states = None
             self._pub_last, self._pub_t = None, float("-inf")
+        self._hook(old, None)
+        self._hook(client, self._reach)
         self.actions.ha = client                  # the hot swap: one reference assignment
 
     def _uninstall(self) -> None:
         with self._lock:
+            old = self.client
             self.settings = None
             self.client = None
             self.info, self.error, self._states = {}, None, None
             self._pub_last, self._pub_t = None, float("-inf")
+        self._hook(old, None)
+        self._reset_follow()
         self.actions.ha = None
+
+    @staticmethod
+    def _hook(client: Any, fn: Callable[[bool], None] | None) -> None:
+        if client is not None:
+            try:
+                client.on_reach = fn
+            except AttributeError:
+                pass
+
+    def _reach(self, ok: bool) -> None:
+        """The installed client's every request: did HA answer at all?"""
+        if self.follow.reached(ok):
+            log.info("Home Assistant answers again at %s", self.settings.url if self.settings else "?")
+        if ok:
+            self.lost = None
+
+    def _reset_follow(self) -> None:
+        self.follow.reset()
+        self.lost = None
 
     def _verify(self) -> None:
         """Background check after load: fill location/version, learn missing entities."""
@@ -176,8 +217,12 @@ class HaApi:
             log.exception("Home Assistant check failed")
             return
         self.info, self.error = info, None
-        if not settings.instance:
-            settings.instance = ha_config.fingerprint(info, self._uuids.get(settings.url))
+        uuid = settings.instance.get("uuid") or self._uuids.get(settings.url) or self._announced_uuid(settings.url)
+        if not settings.instance or (uuid and not settings.instance.get("uuid")):
+            if settings.instance:
+                settings.instance["uuid"] = uuid    # learnt: lets the radio follow this HA if it moves
+            else:
+                settings.instance = ha_config.fingerprint(info, uuid)
             if settings.source == "file":
                 try:
                     ha_config.save(self.state_dir, settings)
@@ -187,6 +232,112 @@ class HaApi:
             self._fetch_states(refresh=True)
         except HaError as exc:
             log.info("Home Assistant entity list unavailable: %s", exc)
+
+    def _announced_uuid(self, url: str) -> str:
+        """The uuid HA announces over mDNS for ``url``, or "" (no token involved)."""
+        try:
+            instances, _ = self.discover()
+        except Exception:
+            return ""
+        for item in instances:
+            if item.get("uuid"):
+                self._uuids[item["url"]] = item["uuid"]
+        return self._uuids.get(url, "")
+
+    # -- following HA to a new address ---------------------------------------
+
+    def watch(self) -> bool:
+        """Periodic: probe a quiet saved address, follow HA if it moved. True if it did.
+
+        Runs off the panel loop (main's HaPublisher thread) and may block for
+        discovery plus one check (~10 s) - only while HA isn't answering.
+        Never raises.
+        """
+        try:
+            settings = self.settings
+            if settings is None or self.client is None:
+                return False
+            if self.follow.probe_due():
+                try:
+                    ok = bool(self.probe(settings.url))       # GET /api/, no token
+                except Exception:
+                    ok = False
+                self._reach(ok)
+            if not self.follow.look_due():
+                return False
+            return self._look(settings)
+        except Exception:
+            log.exception("following Home Assistant failed")
+            return False
+
+    def _look(self, settings: ha_config.HaSettings) -> bool:
+        """Discovery, then the same instance's new address, then the token there."""
+        try:
+            instances, _ = self.discover()
+        except Exception:
+            log.exception("Home Assistant discovery failed")
+            instances = []
+        for item in instances:
+            if item.get("uuid"):
+                self._uuids[item["url"]] = item["uuid"]
+        item, why = follow.candidate(instances, settings.url, str(settings.instance.get("uuid") or ""))
+        if item is None:
+            self.lost = self._lost_note(why, settings.url, instances)
+            log.info("Home Assistant isn't answering at %s; looked on the network: %s", settings.url, why)
+            return False
+        try:
+            url = ha_config.normalise_url(item["url"])
+        except ValueError:
+            log.info("Home Assistant announced an unusable address %r; not following it", item["url"])
+            return False
+        # Only now does the token travel: to the address that announced this
+        # instance's own uuid. check() = GET /api/ and /api/config, nothing else.
+        client = self.client_factory(url, settings.token)
+        try:
+            info = client.check()
+        except HaError as exc:
+            self.lost = (f"Found your Home Assistant at {url}, but it didn't let the radio in. "
+                         "Connect it again below.")
+            log.info("Home Assistant announced itself at %s, but the check failed: %s; not following it", url, exc)
+            return False
+        if not ha_config.same_instance(ha_config.fingerprint(info, item.get("uuid")), settings.instance):
+            log.info("the Home Assistant at %s isn't this radio's after all; not following it", url)
+            return False
+        moved = dataclasses.replace(settings, url=url, source="file",
+                                    moved={"from": settings.url, "to": url, "at": int(self.wall())})
+        with self._lock:
+            if self.settings is not settings:
+                return False                    # the owner connected or disconnected meanwhile
+            save_error = None
+            try:
+                ha_config.save(self.state_dir, moved)
+            except OSError as exc:
+                log.error("could not save Home Assistant's new address: %s", exc)
+                save_error = "Found Home Assistant at a new address, but the radio couldn't save it"
+            self._install(moved, client)
+        self.info, self.error = info, save_error
+        self._reset_follow()
+        log.info("Home Assistant moved: %s -> %s (same instance)", settings.url, url)
+        try:
+            self._fetch_states(refresh=True)
+        except HaError as exc:
+            log.info("Home Assistant entity list unavailable: %s", exc)
+        return True
+
+    @staticmethod
+    def _lost_note(why: str, url: str, instances: list[dict]) -> str:
+        """What the page says when the radio looked and couldn't follow."""
+        if why == "other":
+            names = ", ".join(sorted({str(i.get("name") or i["url"]) for i in instances}))
+            return (f"Home Assistant isn't answering at {url}. The one on this network ({names}) "
+                    "is a different Home Assistant, so the radio left it alone.")
+        if why == "no-uuid":
+            where = ", ".join(i["url"] for i in instances)
+            return (f"Home Assistant isn't answering at {url}. The radio saw one at {where} - "
+                    "if that's yours, change the address below.")
+        if why == "same-address":
+            return f"Home Assistant isn't answering at {url} at the moment."
+        return f"Home Assistant isn't answering at {url}, and the radio couldn't find it on this network."
 
     # -- entities and missing actions --------------------------------------
 
@@ -360,6 +511,8 @@ class HaApi:
             "error": self.error,
             "missing": missing,
             "previous_instance": self.previous_instance(),
+            "moved": dict(settings.moved) if settings and settings.moved else None,
+            "lost": self.lost if settings else None,
         }
 
     # -- operations -------------------------------------------------------
@@ -399,6 +552,7 @@ class HaApi:
             self._drop_sensor(self.client)
         self._install(settings, client)
         self.info, self.error = info, save_error
+        self._reset_follow()                  # the owner's address wins, and starts clean
         log.info("Home Assistant connected from the key page: %s (%s)", url, info.get("location_name", ""))
         try:
             self._fetch_states(refresh=True)

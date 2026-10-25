@@ -6,9 +6,12 @@ keys.yaml, normally ``/var/lib/haslerd/secrets/ha.json`` (``/var/lib/haslerd/ha.
 on a box from before the secrets directory)::
 
     {"url": "http://192.168.1.10:8123", "token": "eyJ…", "publish": false,
-     "instance": {"uuid": "…", "name": "Home", "where": "3f2a…", "time_zone": "Europe/Madrid"}}
+     "instance": {"uuid": "…", "name": "Home", "where": "3f2a…", "time_zone": "Europe/Madrid"},
+     "moved": {"from": "http://192.168.1.9:8123", "to": "http://192.168.1.10:8123", "at": 1793000000}}
 
-``instance`` is which HA this is (see ``fingerprint``). A second, non-secret
+``instance`` is which HA this is (see ``fingerprint``). ``moved`` is present
+only when the radio itself followed that HA to a new address (ha/follow), so
+the page can say so; saving from the page drops it. A second, non-secret
 file, ``ha-instance.json``, remembers the HA the *key layout* was made for; it
 survives Disconnect on purpose, so that when the radio moves to another home
 and is connected to that home's HA the page can say "your keys were set up
@@ -67,6 +70,7 @@ class HaSettings:
     publish: bool = False
     source: str = "file"
     instance: dict = field(default_factory=dict)
+    moved: dict = field(default_factory=dict)
 
     def __repr__(self) -> str:  # explicit, so the token can never leak via repr
         masked = "***" if self.token else "''"
@@ -137,8 +141,9 @@ def load(state_dir: Path | None, yaml_conf: dict | None = None) -> HaSettings | 
                 log.info("Home Assistant was disconnected from the key page (%s)", path)
                 return None          # tombstone: deliberately off, don't fall back
             instance = doc.get("instance") if isinstance(doc.get("instance"), dict) else {}
+            moved = doc.get("moved") if isinstance(doc.get("moved"), dict) else {}
             return HaSettings(url=url, token=token, publish=bool(doc.get("publish", False)),
-                              source="file", instance=instance)
+                              source="file", instance=instance, moved=moved)
     return _from_yaml(yaml_conf)
 
 
@@ -169,8 +174,11 @@ def save(state_dir: Path | None, settings: HaSettings) -> bool:
     if path is None:
         log.warning("no state directory: the Home Assistant connection lasts until restart")
         return False
-    _write(path, {"url": settings.url, "token": settings.token, "publish": bool(settings.publish),
-                  "instance": settings.instance})
+    doc = {"url": settings.url, "token": settings.token, "publish": bool(settings.publish),
+           "instance": settings.instance}
+    if settings.moved:
+        doc["moved"] = settings.moved
+    _write(path, doc)
     log.info("Home Assistant connection saved to %s (%s)", path, settings.url)
     return True
 

@@ -20,6 +20,7 @@ from conftest import VARIANTS
 from haslerd.actions import Actions
 from haslerd.ha import config as ha_config
 from haslerd.ha import discover
+from haslerd.ha import follow
 from haslerd.ha.rest import AREAS_TEMPLATE, HaError, HomeAssistant, parse_areas
 from haslerd.panel.controls import Event
 from haslerd.player.base import FakePlayer
@@ -483,7 +484,8 @@ class TestHaApi:
         code, doc = api.route("GET", "/api/ha", None)
         assert code == 200
         assert doc == {"configured": False, "connected": False, "url": "", "location": "", "version": "",
-                       "publish": False, "error": None, "missing": [], "previous_instance": None}
+                       "publish": False, "error": None, "missing": [], "previous_instance": None,
+                       "moved": None, "lost": None}
         api.connect({"url": URL, "token": TOKEN})
         code, doc = api.route("GET", "/api/ha", None)
         assert doc["connected"] and doc["url"] == URL and doc["location"] == "Home" and doc["version"] == "2026.9.4"
@@ -790,3 +792,260 @@ class TestPublish:
         api.route("DELETE", "/api/ha", None)
         assert client.deleted == [SENSOR]
         assert api.publish(PLAYING) is False
+
+
+# -- following HA to a new address ----------------------------------------------------
+
+
+OLD = "http://192.168.88.159:8123"
+NEW = "http://192.168.88.170:8123"
+UUID = "ed23aa11"
+REFUSED = urllib.error.URLError(ConnectionRefusedError(111, "refused"))
+HA_FULL = {**HA_OK, ("GET", "/api/states"): (200, []), ("POST", "/api/states/sensor.hasler_radio"): (200, {}),
+           ("POST", "/api/template"): (200, "[]")}
+PRINTER = {("GET", "/api/"): (200, "<html>Printer status</html>"),
+           ("POST", "/api/services/scene/turn_on"): (404, "<html>Not here</html>")}
+
+
+class Net:
+    """Several hosts behind one fetch; records every request with its headers."""
+
+    def __init__(self):
+        self.hosts = {}
+        self.calls = []
+
+    def __call__(self, method, url, headers, body, timeout):
+        self.calls.append((method, url, dict(headers)))
+        for base, routes in self.hosts.items():
+            if url.startswith(base + "/"):
+                if isinstance(routes, BaseException):
+                    raise routes
+                answer = routes.get((method, url[len(base):]))
+                if answer is None:
+                    return 404, b"404: Not Found"
+                status, doc = answer
+                return status, json.dumps(doc).encode() if isinstance(doc, (dict, list)) else str(doc).encode()
+        raise REFUSED
+
+    def authed(self, base):
+        return [c for c in self.calls if c[1].startswith(base + "/") and "Authorization" in c[2]]
+
+
+class TestFollow:
+    def rig(self, actions, tmp_path, uuid=UUID, found=None, old=REFUSED):
+        net = Net()
+        net.hosts[OLD] = old
+        clock = Clock()
+        info = {"location_name": "Home", "time_zone": "Europe/Madrid", "latitude": 40.41, "longitude": -3.70}
+        ha_config.save(tmp_path, ha_config.HaSettings(url=OLD, token=TOKEN, publish=True,
+                                                      instance=ha_config.fingerprint(info, uuid)))
+        looked = []
+
+        def discover_fn():
+            looked.append(clock.t)
+            return list(found or []), None
+
+        api = HaApi(actions, tmp_path, None, client_factory=lambda url, token: HomeAssistant(url, token, fetch=net),
+                    discover=discover_fn, clock=clock, probe=lambda url: discover.probe_ha(url, fetch=net),
+                    wall=lambda: 1793000000.0)
+        api.load(verify=False)
+        return api, net, clock, looked
+
+    @staticmethod
+    def broken(api, clock):
+        """Boot check misses, then the watcher's two tokenless probes a minute apart."""
+        api._verify()
+        moved = False
+        for _ in range(2):
+            clock.t += follow.PROBE_S
+            moved = api.watch()
+        return moved
+
+    def test_tracker_threshold(self):
+        clock = Clock()
+        t = follow.Tracker(clock)
+        for _ in range(5):
+            t.reached(False)
+            clock.t += 10
+        assert not t.broken()                          # many misses, but only 50 s
+        clock.t += 70
+        assert t.broken()
+        assert t.reached(True) and not t.broken() and not t.suspicious()
+        t.reached(False)
+        clock.t += 300
+        t.reached(False)
+        assert not t.broken()                          # long enough, but only two misses
+
+    def test_client_reports_reach_but_401_is_an_answer(self):
+        seen = []
+        ha = HomeAssistant(URL, TOKEN, fetch=fake_fetch({("GET", "/api/"): (401, "no"),
+                                                         ("POST", "/api/services/scene/turn_on"): OSError("down")}))
+        ha.on_reach = seen.append
+        with pytest.raises(HaError):
+            ha.check()
+        ha._post("/api/services/scene/turn_on", {"entity_id": "scene.a"})
+        assert seen == [True, False]
+
+    @pytest.mark.parametrize("answer, ok", [
+        ((401, "401: Unauthorized"), True),
+        ((200, {"message": "API running."}), True),
+        ((200, "<html>Printer status</html>"), False),
+        ((200, {"message": "something else"}), False),
+        ((404, "404: Not Found"), False),
+        ((500, "oops"), False),
+        (REFUSED, False),
+    ])
+    def test_probe_counts_only_home_assistant(self, answer, ok):
+        calls = []
+        assert discover.probe_ha(URL, fetch=fake_fetch({("GET", "/api/"): answer}, calls)) is ok
+        assert all("Authorization" not in c[2] for c in calls)
+
+    @pytest.mark.parametrize("path, answer, ok", [
+        ("/api/services/scene/turn_on", (404, "<html>Not here</html>"), False),
+        ("/api/services/scene/turn_on", (200, "<html>Welcome</html>"), False),
+        ("/api/states/sensor.hasler_radio", (404, {"message": "Entity not found."}), True),
+        ("/api/services/scene/turn_on", (500, {"message": "error"}), True),
+        ("/api/services/scene/turn_on", (401, "401: Unauthorized"), True),
+        ("/api/services/scene/turn_on", (403, "403: Forbidden"), True),
+        ("/api/template", (200, "plain text"), True),
+    ])
+    def test_client_counts_only_home_assistant_answers(self, path, answer, ok):
+        seen = []
+        ha = HomeAssistant(URL, TOKEN, fetch=fake_fetch({("POST", path): answer}))
+        ha.on_reach = seen.append
+        ha._post(path, {})
+        assert seen == [ok]
+
+    def test_old_address_taken_by_something_else_is_followed(self, actions, tmp_path):
+        api, net, clock, looked = self.rig(actions, tmp_path, found=[{"name": "Home", "url": NEW, "uuid": UUID}],
+                                           old=PRINTER)
+        net.hosts[NEW] = HA_FULL
+        api.client._post("/api/services/scene/turn_on", {"entity_id": "scene.a"})   # the printer's 404 page
+        for _ in range(2):
+            clock.t += follow.PROBE_S
+            api.watch()                                # the printer's 200 page isn't HA either
+        assert len(looked) == 1 and api.settings.url == NEW
+        assert net.authed(NEW) and all(c[1].endswith("/api/services/scene/turn_on") for c in net.authed(OLD))
+
+    def test_same_instance_is_followed_saved_and_hot_swapped(self, actions, tmp_path, caplog):
+        found = [{"name": "Home", "url": NEW, "uuid": UUID}]
+        api, net, clock, looked = self.rig(actions, tmp_path, found=found)
+        net.hosts[NEW] = HA_FULL
+        with caplog.at_level(logging.INFO):
+            assert self.broken(api, clock)
+        assert len(looked) == 1
+        assert api.settings.url == NEW and actions.ha is api.client and api.client.base_url == NEW
+        saved = json.loads((tmp_path / "ha.json").read_text())
+        assert saved["url"] == NEW and saved["token"] == TOKEN and saved["publish"] is True
+        assert saved["instance"]["uuid"] == UUID
+        assert saved["moved"] == {"from": OLD, "to": NEW, "at": 1793000000}
+        assert f"Home Assistant moved: {OLD} -> {NEW} (same instance)" in caplog.text
+        assert TOKEN not in caplog.text
+        # The probes of the dead address carried no token; the new one got it only to check.
+        assert [c[1] for c in net.calls if c[1].startswith(OLD) and "Authorization" not in c[2]] == [OLD + "/api/"] * 2
+        assert {c[1][len(NEW):] for c in net.authed(NEW)} >= {"/api/", "/api/config"}
+        doc = api.route("GET", "/api/ha", None)[1]
+        assert doc["url"] == NEW and doc["moved"]["to"] == NEW and doc["lost"] is None
+        assert_no_token(doc)
+        assert api.publish(PLAYING)                    # publishing carries on, to the new address
+        assert api.watch() is False                    # and all is quiet again
+
+    @pytest.mark.parametrize("found", [
+        [{"name": "Casa Nueva", "url": NEW, "uuid": "feedbeef"}],
+        [{"name": "homeassistant.local", "url": discover.FALLBACK_URL}],
+    ])
+    def test_other_instance_never_gets_the_token(self, actions, tmp_path, found):
+        api, net, clock, _ = self.rig(actions, tmp_path, found=found)
+        net.hosts[NEW] = net.hosts[discover.FALLBACK_URL] = HA_FULL
+        assert not self.broken(api, clock)
+        assert api.settings.url == OLD and json.loads((tmp_path / "ha.json").read_text())["url"] == OLD
+        assert net.authed(NEW) == [] and net.authed(discover.FALLBACK_URL) == []
+        assert net.calls and all(not c[1].startswith((NEW, discover.FALLBACK_URL)) for c in net.calls)
+        assert api.status()["lost"]
+
+    def test_moved_house_says_so_and_stays(self, actions, tmp_path):
+        api, net, clock, _ = self.rig(actions, tmp_path, found=[{"name": "Casa Nueva", "url": NEW, "uuid": "feedbeef"}])
+        self.broken(api, clock)
+        assert "Casa Nueva" in api.lost and "different Home Assistant" in api.lost
+
+    def test_token_rejected_at_the_new_address_is_not_adopted(self, actions, tmp_path):
+        api, net, clock, _ = self.rig(actions, tmp_path, found=[{"name": "Home", "url": NEW, "uuid": UUID}])
+        net.hosts[NEW] = {("GET", "/api/"): (401, "401: Unauthorized")}
+        assert not self.broken(api, clock)
+        assert api.settings.url == OLD and api.client.base_url == OLD
+        assert "didn't let the radio in" in api.status()["lost"]
+
+    def test_saved_without_uuid_is_never_moved(self, actions, tmp_path):
+        api, net, clock, _ = self.rig(actions, tmp_path, uuid=None, found=[{"name": "Home", "url": NEW, "uuid": UUID}])
+        net.hosts[NEW] = HA_FULL
+        assert not self.broken(api, clock)
+        assert net.authed(NEW) == [] and api.settings.url == OLD
+        assert NEW in api.lost
+
+    def test_uuid_is_learnt_when_ha_announces_the_saved_address(self, actions, tmp_path):
+        api, net, _, _ = self.rig(actions, tmp_path, uuid=None, found=[{"name": "Home", "url": OLD, "uuid": UUID}],
+                                  old=HA_FULL)
+        api._verify()
+        assert api.settings.instance["uuid"] == UUID
+        assert ha_config.load(tmp_path).instance["uuid"] == UUID
+
+    def test_discovery_is_rate_limited_with_backoff(self, actions, tmp_path):
+        api, net, clock, looked = self.rig(actions, tmp_path)
+        self.broken(api, clock)
+        assert len(looked) == 1
+        for step in (5, 60, 400, 120):                 # 585 s: still within 10 min
+            clock.t += step
+            api.watch()
+        assert len(looked) == 1
+        clock.t += 20
+        api.watch()
+        assert len(looked) == 2                        # 10 min after the first look
+        clock.t += follow.RETRY_S + 5
+        api.watch()
+        assert len(looked) == 2                        # backed off to 20 min
+        clock.t += follow.RETRY_S
+        api.watch()
+        assert len(looked) == 3
+
+    def test_answer_at_the_old_address_ends_it(self, actions, tmp_path):
+        api, net, clock, looked = self.rig(actions, tmp_path)
+        self.broken(api, clock)
+        assert api.lost
+        net.hosts[OLD] = HA_FULL                       # it was only away
+        clock.t += follow.PROBE_S
+        api.watch()
+        assert api.lost is None and not api.follow.suspicious()
+
+    def test_401_at_the_old_address_does_not_rediscover(self, actions, tmp_path):
+        api, net, clock, looked = self.rig(actions, tmp_path, old={
+            ("GET", "/api/"): (401, "401: Unauthorized"),
+            ("POST", "/api/services/scene/turn_on"): (401, "401: Unauthorized"),
+        })
+        api._verify()
+        for _ in range(10):
+            api.client._post("/api/services/scene/turn_on", {"entity_id": "scene.a"})
+            clock.t += follow.PROBE_S
+            api.watch()
+        assert looked == [] and "rejected the token" in api.status()["error"]
+
+    def test_manual_save_wins_and_resets(self, actions, tmp_path):
+        api, net, clock, looked = self.rig(actions, tmp_path, found=[{"name": "Home", "url": NEW, "uuid": UUID}])
+        net.hosts[NEW] = HA_FULL
+        assert self.broken(api, clock)
+        assert "moved" in json.loads((tmp_path / "ha.json").read_text())
+        api.client._post("/x", None)
+        net.hosts[NEW] = REFUSED
+        api.client._post("/x", None)                   # suspicious again...
+        assert api.follow.suspicious()
+        net.hosts[URL] = HA_FULL
+        code, doc = api.route("POST", "/api/ha", {"url": URL, "token": TOKEN})
+        assert code == 200 and doc["url"] == URL and doc["moved"] is None and doc["lost"] is None
+        assert not api.follow.suspicious()             # ...until the owner chose an address
+        assert "moved" not in json.loads((tmp_path / "ha.json").read_text())
+
+    def test_moved_round_trips_in_the_store(self, tmp_path):
+        moved = {"from": OLD, "to": NEW, "at": 1}
+        ha_config.save(tmp_path, ha_config.HaSettings(url=NEW, token=TOKEN, moved=moved))
+        assert ha_config.load(tmp_path).moved == moved
+        ha_config.save(tmp_path, ha_config.HaSettings(url=NEW, token=TOKEN))
+        assert ha_config.load(tmp_path).moved == {}

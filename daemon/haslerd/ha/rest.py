@@ -102,6 +102,25 @@ def _human(exc: BaseException) -> str:
     return "Can't reach that address"
 
 
+def _ha_shaped(path: str, status: int, raw: bytes) -> bool:
+    """Was that Home Assistant answering (for ha/follow), or something else at its address?
+
+    401/403 are HA refusing the token: an answer, never a reason to go looking.
+    Otherwise HA answers JSON (errors too: ``{"message": "Entity not found."}``),
+    except a rendered template, which is text. An HTML page or a bare 404 from
+    whatever now holds the IP is not HA.
+    """
+    if status in (401, 403):
+        return True
+    if path == "/api/template" and 200 <= status < 300:
+        return True
+    try:
+        json.loads(raw or b"")
+    except (ValueError, TypeError):
+        return False
+    return True
+
+
 class HomeAssistant:
     """One HA instance. Callable as Actions' ``ha`` transport."""
 
@@ -119,6 +138,9 @@ class HomeAssistant:
         # learnt by web/ha_api, so a key sends each bulb only what it supports.
         self.lights: dict[str, dict | None] = {}
         self._warned: set[str] = set()
+        # Told after every request whether HA answered (see _ha_shaped) or
+        # not (unreachable, DNS, refused, timeout, someone else) - ha/follow notices a move.
+        self.on_reach: Callable[[bool], None] | None = None
 
     def __repr__(self) -> str:
         return f"HomeAssistant({self.base_url!r})"
@@ -168,7 +190,21 @@ class HomeAssistant:
     def _request(self, method: str, path: str, data: dict | None, timeout: float) -> tuple[int, bytes]:
         headers = {"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"}
         body = None if data is None else json.dumps(data).encode()
-        return self.fetch(method, self.base_url + path, headers, body, timeout)
+        try:
+            answer = self.fetch(method, self.base_url + path, headers, body, timeout)
+        except Exception:
+            self._reached(False)
+            raise
+        self._reached(_ha_shaped(path, *answer))
+        return answer
+
+    def _reached(self, ok: bool) -> None:
+        hook = self.on_reach
+        if hook is not None:
+            try:
+                hook(ok)
+            except Exception:
+                log.debug("on_reach hook failed", exc_info=True)
 
     def _sync(self, method: str, path: str, data: dict | None = None) -> Any:
         """One call, JSON answer or HaError with a sentence."""

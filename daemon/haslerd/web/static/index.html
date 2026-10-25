@@ -7506,7 +7506,7 @@ async function signOut(){
 }
 
 /* ================= Home Assistant ================= */
-const haUi = {url:'', token:'', urlErr:'', tokErr:'', busy:false, finding:false, found:null, note:''};
+const haUi = {url:'', token:'', urlErr:'', tokErr:'', busy:false, finding:false, found:null, note:'', editing:false};
 async function refreshHa(){
   try { const r = await api('GET', '/api/ha'); if (r.ok && r.json) haState = r.json; else if (r.status === 404) haState = {configured:false, connected:false, unsupported:true}; } catch (_) {}
   if (haState && haState.connected && !haEnts) await loadEntities();
@@ -7535,7 +7535,7 @@ function renderHa(panel){
   if (haState.previous_instance) panel.append(h('section', {class:'card-box'}, h('span', {class:'mono'}, 'A different home'),
     h('p', {class:'body'}, 'These keys were set up with another Home Assistant' + (typeof haState.previous_instance === 'string' ? ' (' + haState.previous_instance + ')' : (haState.previous_instance.location || haState.previous_instance.url ? ' (' + (haState.previous_instance.location || haState.previous_instance.url) + ')' : '')) + '. Anything this one doesn’t have is listed below — reassign it when you have a moment.')));
   if (miss.length) panel.append(missingCard(miss));
-  if (haState.connected) haConnected(panel);
+  if (haState.connected && !haUi.editing) haConnected(panel);
   else haSetup(panel);
 }
 function missingCard(miss){
@@ -7567,7 +7567,12 @@ async function clearMissing(){
   } catch (_) { toast(NET_ERR, true); }
 }
 function haSetup(panel){
-  if (haState.configured){
+  if (haState.connected && haUi.editing){
+    panel.append(h('section', {class:'card-box'}, h('h3', null, 'Change the address'),
+      h('p', {class:'body'}, 'Now ' + (haState.url || 'not set') + '. Hasler keeps using it until the new one connects.'),
+      h('div', null, h('button', {type:'button', class:'link', onclick: () => { haUi.editing = false; haUi.urlErr = ''; haUi.tokErr = ''; rerender(); }}, 'Keep it as it is'))));
+    if (!haUi.url) haUi.url = haState.url || '';
+  } else if (haState.configured){
     panel.append(h('section', {class:'card-box warn'}, h('h3', null, 'Can’t reach Home Assistant'),
       h('p', {class:'body'}, (haState.url ? haState.url + ' — ' : '') + (haState.error || 'It didn’t answer.')),
       h('div', {class:'hstack'}, h('button', {type:'button', class:'btn small inline', onclick: () => { haState = null; rerender(); refreshHa(); }}, 'Try again'),
@@ -7577,6 +7582,8 @@ function haSetup(panel){
     panel.append(h('section', {class:'card-box'},
       h('h3', null, 'Your home, on a key'),
       h('p', {class:'body'}, 'Hold a key to run a scene, toggle a light or start a script. Hasler connects to the Home Assistant on your Wi-Fi — it stays on your network.')));
+    // First time: look straight away, so one Home Assistant fills the address by itself.
+    if (haUi.found === null && !haUi.finding){ haUi.finding = true; setTimeout(haDiscover, 0); }
   }
   // step 1: address
   const urlInp = h('input', {type:'url', id:'haUrl', value:haUi.url, placeholder:'http://homeassistant.local:8123', inputmode:'url', autocomplete:'off', autocapitalize:'off', spellcheck:'false',
@@ -7626,7 +7633,7 @@ async function haConnect(){
     const r = await api('POST', '/api/ha', {url: haUi.url.trim(), token: haUi.token.trim()});
     haUi.busy = false;
     if (r.ok && r.json && r.json.connected !== false && r.json.ok !== false){
-      haState = r.json; haUi.token = ''; haEnts = null; haLights = null; haLightsErr = '';
+      haState = r.json; haUi.token = ''; haUi.editing = false; haEnts = null; haLights = null; haLightsErr = '';
       toast('Connected to Home Assistant');
       await loadEntities(); await refreshHa();
       return;
@@ -7646,14 +7653,25 @@ async function haDisconnect(){
   } catch (_) { toast(NET_ERR, true); }
   rerender();
 }
+// The radio followed Home Assistant to a new address (ha/follow): say so, quietly.
+function haMovedLine(m){
+  if (!m || !m.to) return null;
+  let host = m.to; try { host = new URL(m.to).hostname; } catch (_) {}
+  const d = m.at ? new Date(m.at * 1000) : null;
+  const when = d ? ' on ' + d.toLocaleDateString(undefined, {day:'numeric', month:'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric'}) : '';
+  return h('p', {class:'hint'}, 'Found Home Assistant at its new address (' + host + ')' + when + '.');
+}
 function haConnected(panel){
   panel.append(h('section', {class:'card-box'},
     h('span', {class:'mono'}, 'Home Assistant'),
     h('h3', null, h('span', {class:'status-dot', 'aria-hidden':'true'}), 'Connected to ' + (haState.location || 'Home Assistant')),
     h('p', {class:'body'}, [haState.version ? 'HA ' + haState.version : '', haState.url || ''].filter(Boolean).join(' · ')),
+    haMovedLine(haState.moved),
+    haState.lost ? h('p', {class:'err'}, haState.lost) : null,
     h('label', {class:'switch', for:'haPub'}, h('span', null, 'Show the radio in Home Assistant', h('br'), h('small', {class:'li-sub'}, 'What’s playing, as sensor.hasler_radio')),
       h('input', {type:'checkbox', role:'switch', id:'haPub', checked: !!haState.publish, onchange: e => haPublish(e.target.checked)})),
-    h('div', null, h('button', {type:'button', class:'link danger', onclick: haDisconnect}, 'Disconnect'))));
+    h('div', {class:'hstack'}, h('button', {type:'button', class:'link', onclick: () => { haUi.editing = true; haUi.url = haState.url || ''; rerender(); const u = $('haUrl'); if (u) u.focus(); }}, 'Change address'),
+      h('button', {type:'button', class:'link danger', onclick: haDisconnect}, 'Disconnect'))));
   const head = h('div', {class:'shelf-head', style:'display:flex;justify-content:space-between;align-items:end;gap:10px;margin-top:6px'},
     h('div', null, h('h2', null, 'What Hasler can use'), h('p', null, 'Try it here, or put it on a key.')),
     h('button', {type:'button', class:'btn small inline', id:'haRefresh', onclick: async () => { const b = $('haRefresh'); if (b){ b.disabled = true; b.textContent = 'Refreshing…'; } await loadEntities(true); rerender(); }}, 'Refresh'));
