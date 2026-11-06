@@ -5,6 +5,8 @@
     hasler-dsp tone GAIN    the old hasler-tone: treble shelf, boosts halved
     hasler-dsp reset        every block back to neutral
     hasler-dsp status       the file's values, and the running CamillaDSP's
+    hasler-dsp serve        ``set`` JSON per line on stdin, an answer per line
+                            (haslerd keeps one running while it lives)
 
 haslerd runs this (haslerd/dsp/knobs.py) each time a knob that carries an
 effect settles. It runs as haslerd's user (pi), who owns the config file.
@@ -79,6 +81,8 @@ SETTLE_S = 0.12
 # Extra room while a block makes a jump bigger than TRANSIENT_JUMP_DB.
 TRANSIENT_DB = 3.0
 TRANSIENT_JUMP_DB = 3.0
+# serve: the file is written once the knob has been still this long.
+SAVE_AFTER_S = 1.0
 # See master_for: 1 dB, and 1 dB more for every 8 dB of the deepest cut, at most 3.
 PHASE_HEADROOM_DB = 1.0
 PHASE_HEADROOM_PER_CUT = 0.125
@@ -322,47 +326,7 @@ def tell_live(values: dict, master: float) -> str:
     except Exception:
         return "not running"
     try:
-        got = _ask(ws, "GetConfigJson")
-        running = json.loads(got.get("value") or "null") if got.get("result") == "Ok" else None
-        if not isinstance(running, dict):
-            return "no config"
-        want = sections(values, master)
-        same = (set((running.get("filters") or {})) == set(want["filters"])
-                and set((running.get("mixers") or {})) == set(want["mixers"])
-                and [(s.get("type"), s.get("name"), s.get("names")) for s in running.get("pipeline") or []]
-                == [(s.get("type"), s.get("name"), s.get("names")) for s in want["pipeline"]])
-        if same:
-            # Never a chunk with a boost it hasn't paid for: the master gain
-            # goes down first, the blocks change a chunk later, and only then
-            # does the master come up to where it belongs. A biquad whose
-            # coefficients jump rings for a few samples (seen on the bench:
-            # +1.6 dB over full scale for 2 samples on a 12 dB jump), so a
-            # big jump also gets TRANSIENT_DB of extra room while it settles.
-            def running_gain(name: str) -> float:
-                params = ((running.get("filters") or {}).get(name) or {}).get("parameters") or {}
-                return float(params.get("gain") or 0.0)
-
-            old = running_gain(MASTER)
-            jump = max((abs(float(f["parameters"].get("gain", 0.0)) - running_gain(n))
-                        for n, f in want["filters"].items() if n != MASTER), default=0.0)
-            rest = {"filters": {n: {"parameters": f["parameters"]} for n, f in want["filters"].items() if n != MASTER},
-                    "mixers": {MIXER: {"mapping": want["mixers"][MIXER]["mapping"]}}}
-
-            def gain(db: float) -> dict:
-                return {"filters": {MASTER: {"parameters": {**want["filters"][MASTER]["parameters"], "gain": db}}}}
-
-            low = min(old, master) - (TRANSIENT_DB if jump > TRANSIENT_JUMP_DB else 0.0)
-            steps = ([gain(round(low, 1))] if low < old else []) + [rest] + ([gain(master)] if master != low else [])
-            for i, patch in enumerate(steps):
-                if i:
-                    time.sleep(SETTLE_S)
-                r = _ask(ws, {"PatchConfig": patch})
-                if r.get("result") != "Ok":
-                    return f"patch refused: {r.get('value')}"
-            return "patched"
-        running.update(want)
-        r = _ask(ws, {"SetConfigJson": json.dumps(running)})
-        return "replaced" if r.get("result") == "Ok" else f"config refused: {r.get('value')}"
+        return patch_live(ws, values, master)
     except Exception as exc:
         return f"error: {exc}"
     finally:
@@ -370,6 +334,51 @@ def tell_live(values: dict, master: float) -> str:
             ws.close()
         except Exception:
             pass
+
+
+def patch_live(ws, values: dict, master: float) -> str:
+    """tell_live on an open connection; a broken connection raises."""
+    got = _ask(ws, "GetConfigJson")
+    running = json.loads(got.get("value") or "null") if got.get("result") == "Ok" else None
+    if not isinstance(running, dict):
+        return "no config"
+    want = sections(values, master)
+    same = (set((running.get("filters") or {})) == set(want["filters"])
+            and set((running.get("mixers") or {})) == set(want["mixers"])
+            and [(s.get("type"), s.get("name"), s.get("names")) for s in running.get("pipeline") or []]
+            == [(s.get("type"), s.get("name"), s.get("names")) for s in want["pipeline"]])
+    if same:
+        # Never a chunk with a boost it hasn't paid for: the master gain
+        # goes down first, the blocks change a chunk later, and only then
+        # does the master come up to where it belongs. A biquad whose
+        # coefficients jump rings for a few samples (seen on the bench:
+        # +1.6 dB over full scale for 2 samples on a 12 dB jump), so a
+        # big jump also gets TRANSIENT_DB of extra room while it settles.
+        def running_gain(name: str) -> float:
+            params = ((running.get("filters") or {}).get(name) or {}).get("parameters") or {}
+            return float(params.get("gain") or 0.0)
+
+        old = running_gain(MASTER)
+        jump = max((abs(float(f["parameters"].get("gain", 0.0)) - running_gain(n))
+                    for n, f in want["filters"].items() if n != MASTER), default=0.0)
+        rest = {"filters": {n: {"parameters": f["parameters"]} for n, f in want["filters"].items() if n != MASTER},
+                "mixers": {MIXER: {"mapping": want["mixers"][MIXER]["mapping"]}}}
+
+        def gain(db: float) -> dict:
+            return {"filters": {MASTER: {"parameters": {**want["filters"][MASTER]["parameters"], "gain": db}}}}
+
+        low = min(old, master) - (TRANSIENT_DB if jump > TRANSIENT_JUMP_DB else 0.0)
+        steps = ([gain(round(low, 1))] if low < old else []) + [rest] + ([gain(master)] if master != low else [])
+        for i, patch in enumerate(steps):
+            if i:
+                time.sleep(SETTLE_S)
+            r = _ask(ws, {"PatchConfig": patch})
+            if r.get("result") != "Ok":
+                return f"patch refused: {r.get('value')}"
+        return "patched"
+    running.update(want)
+    r = _ask(ws, {"SetConfigJson": json.dumps(running)})
+    return "replaced" if r.get("result") == "Ok" else f"config refused: {r.get('value')}"
 
 
 def live_status() -> dict:
@@ -395,22 +404,22 @@ def live_status() -> dict:
 
 # -- main -----------------------------------------------------------------
 
-def apply(values: dict, text: str | None) -> dict:
-    peak, master = master_for(values)
-    saved = False
-    error = None
-    if text is not None:
-        new = render_file(text, values, master)
-        if new != text:
-            try:
-                tmp = CONFIG + ".tmp"
-                with open(tmp, "w") as f:
-                    f.write(new)
-                os.replace(tmp, CONFIG)
-                saved = True
-            except OSError as exc:
-                error = f"config not updated: {exc}"
-    live = tell_live(values, master)
+def save(text: str, values: dict, master: float) -> tuple[str, bool, str | None]:
+    """(the file's text now, whether it was written, why not)."""
+    new = render_file(text, values, master)
+    if new == text:
+        return text, False, None
+    try:
+        tmp = CONFIG + ".tmp"
+        with open(tmp, "w") as f:
+            f.write(new)
+        os.replace(tmp, CONFIG)
+    except OSError as exc:
+        return text, False, f"config not updated: {exc}"
+    return new, True, None
+
+
+def answer(values: dict, peak: float, master: float, saved, live: str, error: str | None) -> dict:
     doc = {"ok": error is None, "peak_db": peak, "master_db": master, "width": values["width"],
            "saved": saved, "live": live,
            "treble_db": values["filters"]["Treble"]["gain"]}
@@ -419,10 +428,151 @@ def apply(values: dict, text: str | None) -> dict:
     return doc
 
 
+def apply(values: dict, text: str | None) -> dict:
+    peak, master = master_for(values)
+    saved, error = False, None
+    if text is not None:
+        _text, saved, error = save(text, values, master)
+    return answer(values, peak, master, saved, tell_live(values, master), error)
+
+
+# -- serve: one process for a knob that keeps turning ------------------------
+
+class Session:
+    """``hasler-dsp serve``: one ``set`` JSON per line in, one answer per line
+    out. Started once by haslerd, so a turning knob pays neither Python's
+    start-up nor a YAML parse nor a new websocket per step - just the live
+    patch. The file (for the next stream) is written once the knob has been
+    still for SAVE_AFTER_S, and at the end."""
+
+    def __init__(self) -> None:
+        self.text, self.mtime = self._read()
+        self.values = values_from_file(self.text) if self.text is not None else neutral()
+        self.master = master_for(self.values)[1]
+        self.ws = None
+        self.unsaved = False
+        self.changed_at = 0.0
+
+    @staticmethod
+    def _read() -> tuple[str | None, float | None]:
+        try:
+            with open(CONFIG) as f:
+                return f.read(), os.stat(CONFIG).st_mtime
+        except OSError:
+            return None, None
+
+    def _follow_file(self) -> None:
+        """Someone else wrote the file (``hasler-dsp set`` by hand, a reset):
+        start from it, as a one-shot run would."""
+        if self.unsaved:
+            return
+        try:
+            mtime = os.stat(CONFIG).st_mtime
+        except OSError:
+            return
+        if mtime != self.mtime:
+            self.text, self.mtime = self._read()
+            if self.text is not None:
+                self.values = values_from_file(self.text)
+
+    def _live(self, values: dict, master: float) -> str:
+        try:
+            import websocket
+        except ImportError:
+            return "no websocket module"
+        for _attempt in (1, 2):
+            if self.ws is None:
+                try:
+                    self.ws = websocket.create_connection(WS, timeout=1.5)
+                except Exception:
+                    return "not running"
+            try:
+                return patch_live(self.ws, values, master)
+            except Exception as exc:
+                # moOde starts a new CamillaDSP per stream: the old
+                # connection dies with it. Once more on a fresh one.
+                self.close_ws()
+                last = f"error: {exc}"
+        return last
+
+    def close_ws(self) -> None:
+        if self.ws is not None:
+            try:
+                self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
+
+    def set(self, patch: dict) -> dict:
+        self._follow_file()
+        values = merge(self.values, patch)
+        peak, master = master_for(values)
+        self.values, self.master = values, master
+        self.unsaved = True
+        self.changed_at = time.monotonic()
+        return answer(values, peak, master, "pending", self._live(values, master), None)
+
+    def flush(self) -> None:
+        if not self.unsaved:
+            return
+        self.unsaved = False
+        if self.text is None:
+            return
+        self.text, saved, error = save(self.text, self.values, self.master)
+        if saved:
+            try:
+                self.mtime = os.stat(CONFIG).st_mtime
+            except OSError:
+                pass
+        if error:
+            print(f"hasler-dsp: {error}", file=sys.stderr, flush=True)
+
+    def wait_s(self) -> float | None:
+        if not self.unsaved:
+            return None
+        return max(0.0, SAVE_AFTER_S - (time.monotonic() - self.changed_at))
+
+
+def serve() -> int:
+    import select
+    import signal
+
+    # systemd stops haslerd's whole group: save what is held on the way out.
+    signal.signal(signal.SIGTERM, lambda *_a: sys.exit(0))
+    session = Session()
+    fd = sys.stdin.fileno()
+    buf = b""
+    try:
+        while True:
+            ready, _w, _x = select.select([fd], [], [], session.wait_s())
+            if not ready:
+                session.flush()
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                if not line.strip():
+                    continue
+                try:
+                    doc = session.set(json.loads(line))
+                except ValueError as exc:      # Refused, bad JSON
+                    doc = {"ok": False, "error": str(exc) or "bad request"}
+                print(json.dumps(doc), flush=True)
+    finally:
+        session.flush()
+        session.close_ws()
+    return 0
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) < 2 or argv[1] not in ("set", "tone", "reset", "status"):
-        print("usage: hasler-dsp set JSON | tone GAIN_DB | reset | status", file=sys.stderr)
+    if len(argv) < 2 or argv[1] not in ("set", "tone", "reset", "status", "serve"):
+        print("usage: hasler-dsp set JSON | tone GAIN_DB | reset | status | serve", file=sys.stderr)
         return 2
+    if argv[1] == "serve":
+        return serve()
     try:
         with open(CONFIG) as f:
             text: str | None = f.read()

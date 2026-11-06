@@ -7,6 +7,7 @@ import json
 import random
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -16,7 +17,7 @@ from conftest import VARIANTS
 
 from haslerd.actions import Actions
 from haslerd.dsp import effects as fx
-from haslerd.dsp.knobs import TRY_SECONDS, KnobFunctions
+from haslerd.dsp.knobs import TRY_SECONDS, KnobFunctions, helper_runner
 from haslerd.panel.controls import Event
 from haslerd.player.base import FakePlayer
 from haslerd.variant import Panel, Variant, load_variant
@@ -242,6 +243,94 @@ class TestHelper:
         assert code == 2 and doc["ok"] is False and "Nope" in doc["error"]
         code, doc = run("reset")
         assert doc["master_db"] == 0.0 and cfg.read_text() == SHIPPED.read_text()
+
+    def test_serve_answers_each_line_and_saves_when_still(self, tmp_path):
+        cfg = tmp_path / "Hasler Tone.yml"
+        cfg.write_text(SHIPPED.read_text())
+        env = {"HASLER_DSP_CONFIG": str(cfg), "HASLER_DSP_WS": "ws://127.0.0.1:9", "PATH": "/usr/bin:/bin"}
+        proc = subprocess.Popen([sys.executable, str(HELPER), "serve"], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, text=True, env=env)
+        try:
+            def ask(line):
+                proc.stdin.write(line + "\n")
+                proc.stdin.flush()
+                return json.loads(proc.stdout.readline())
+
+            doc = ask(json.dumps({"filters": {"Presence": {"gain": 4}}}))
+            assert doc["ok"] and doc["master_db"] == -5.0 and doc["saved"] == "pending"
+            assert doc["live"] in ("not running", "no websocket module")
+            doc = ask(json.dumps({"filters": {"Tilt low": {"gain": -2}}}))      # merged over the last
+            assert doc["ok"] and doc["master_db"] < -5.0
+            bad = ask('{"filters": {"Nope": {}}}')
+            assert bad["ok"] is False and "Nope" in bad["error"]
+            assert "gain: -5.0" not in cfg.read_text()          # not yet: still turning
+            deadline = time.monotonic() + 5
+            while "Presence" not in hd.values_from_file(cfg.read_text())["filters"] or \
+                    hd.values_from_file(cfg.read_text())["filters"]["Presence"]["gain"] != 4.0:
+                assert time.monotonic() < deadline, "serve never saved"
+                time.sleep(0.05)
+            assert hd.values_from_file(cfg.read_text())["filters"]["Tilt low"]["gain"] == -2.0
+        finally:
+            proc.stdin.close()
+            assert proc.wait(timeout=5) == 0
+
+    def test_serve_saves_on_the_way_out(self, tmp_path):
+        cfg = tmp_path / "Hasler Tone.yml"
+        cfg.write_text(SHIPPED.read_text())
+        env = {"HASLER_DSP_CONFIG": str(cfg), "HASLER_DSP_WS": "ws://127.0.0.1:9", "PATH": "/usr/bin:/bin"}
+        done = subprocess.run([sys.executable, str(HELPER), "serve"], input='{"filters":{"Bass":{"gain":3}}}\n',
+                              capture_output=True, text=True, env=env, timeout=10)
+        assert done.returncode == 0 and json.loads(done.stdout)["ok"]
+        assert hd.values_from_file(cfg.read_text())["filters"]["Bass"]["gain"] == 3.0
+
+    def test_runner_keeps_one_helper(self, tmp_path):
+        cfg = tmp_path / "Hasler Tone.yml"
+        cfg.write_text(SHIPPED.read_text())
+        wrapper = tmp_path / "hasler-dsp"
+        wrapper.write_text(f"#!/bin/sh\nHASLER_DSP_CONFIG='{cfg}' HASLER_DSP_WS=ws://127.0.0.1:9 "
+                           f"exec {sys.executable} {HELPER} \"$@\"\n")
+        wrapper.chmod(0o755)
+        run = helper_runner(str(wrapper))
+        try:
+            first = run({"filters": {"Presence": {"gain": 4}}})
+            pid = run.proc.pid
+            for g in (1, 2, 3):
+                assert run({"replace": True, "filters": {"Tilt high": {"gain": g}}})["ok"]
+            assert run.proc.pid == pid and first["saved"] == "pending"
+        finally:
+            run.stop()
+        assert hd.values_from_file(cfg.read_text())["filters"]["Tilt high"]["gain"] == 3.0
+
+    def test_runner_falls_back_to_one_shot_on_an_old_helper(self, tmp_path):
+        log = tmp_path / "calls"
+        old = tmp_path / "hasler-dsp"
+        old.write_text(f"""#!/bin/sh
+echo "$1" >> '{log}'
+[ "$1" = set ] || {{ echo usage >&2; exit 2; }}
+echo '{{"ok": true, "master_db": 0.0, "saved": true}}'
+""")
+        old.chmod(0o755)
+        run = helper_runner(str(old))
+        assert run({"filters": {}})["saved"] is True
+        assert run({"filters": {}})["saved"] is True
+        assert log.read_text().split() == ["serve", "set", "set"]        # serve tried once
+
+    def test_runner_restarts_a_helper_that_died(self, tmp_path):
+        cfg = tmp_path / "Hasler Tone.yml"
+        cfg.write_text(SHIPPED.read_text())
+        wrapper = tmp_path / "hasler-dsp"
+        wrapper.write_text(f"#!/bin/sh\nHASLER_DSP_CONFIG='{cfg}' HASLER_DSP_WS=ws://127.0.0.1:9 "
+                           f"exec {sys.executable} {HELPER} \"$@\"\n")
+        wrapper.chmod(0o755)
+        run = helper_runner(str(wrapper))
+        try:
+            assert run({"filters": {"Bass": {"gain": 1}}})["ok"]
+            run.proc.kill()
+            run.proc.wait()
+            assert run({"filters": {"Bass": {"gain": 2}}})["ok"]
+            assert run.serve_ok and run.proc is not None and run.proc.poll() is None
+        finally:
+            run.stop()
 
 
 # -- assignment ---------------------------------------------------------------

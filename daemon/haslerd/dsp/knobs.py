@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import select
 import subprocess
 import threading
 import time
@@ -60,23 +62,141 @@ class Trial:
 
 
 def helper_runner(command: str, timeout: float = 5.0) -> Callable[[dict], dict | None]:
-    """``hasler-dsp set JSON`` as a runner: its printed JSON, or None."""
-    def run(payload: dict) -> dict | None:
+    """``hasler-dsp set JSON`` as a runner: its printed JSON, or None.
+
+    Kept running as ``hasler-dsp serve`` (one request per line), so a turning
+    knob costs a live patch per step rather than a whole Python start-up, a
+    YAML parse and a new websocket - about 0.5 s on a Pi 4, which made the
+    tone knob trail behind the hand. A helper without ``serve`` (or one that
+    keeps dying) gets the one-shot ``set`` instead.
+    """
+    return HelperRunner(command, timeout)
+
+
+class HelperRunner:
+    GIVE_UP_AFTER = 3          # serve processes lost before going one-shot for good
+
+    def __init__(self, command: str, timeout: float = 5.0) -> None:
+        self.command = command
+        self.timeout = timeout
+        self.proc: subprocess.Popen | None = None
+        self.serve_ok = True
+        self.lost = 0
+        self._buf = b""
+        self._lock = threading.Lock()
+
+    def __call__(self, payload: dict) -> dict | None:
+        with self._lock:
+            if self.serve_ok:
+                doc = self._served(payload)
+                if doc is not None:
+                    return self._checked(doc)
+            return self._once(payload)
+
+    # -- served ---------------------------------------------------------------
+
+    def _start(self) -> bool:
         try:
-            done = subprocess.run([command, "set", json.dumps(payload, separators=(",", ":"))],
-                                  capture_output=True, text=True, timeout=timeout)
+            self.proc = subprocess.Popen([self.command, "serve"], stdin=subprocess.PIPE,
+                                         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
         except Exception:
-            log.warning("dsp helper %s failed to run", command, exc_info=True)
+            log.warning("dsp helper %s failed to start", self.command, exc_info=True)
+            self.proc = None
+            return False
+        self._buf = b""
+        return True
+
+    def _served(self, payload: dict) -> dict | None:
+        if self.proc is None or self.proc.poll() is not None:
+            if self.proc is not None:
+                self._lost("exited")
+                if not self.serve_ok:
+                    return None
+            if not self._start():
+                self.serve_ok = False
+                return None
+        proc = self.proc
+        try:
+            proc.stdin.write(json.dumps(payload, separators=(",", ":")).encode() + b"\n")
+            proc.stdin.flush()
+            line = self._readline(proc)
+        except (OSError, ValueError):
+            line = None
+        if line is None:
+            try:
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            if proc.returncode == 2 and self.lost == 0:
+                # An older hasler-dsp: "serve" is a usage error. One-shot it is.
+                log.info("dsp helper has no serve mode: one process per knob step")
+                self.serve_ok = False
+                self.proc = None
+                return None
+            self._lost("no answer")
+            return None
+        try:
+            return json.loads(line)
+        except ValueError:
+            log.warning("dsp helper said nothing useful: %r", line[:200])
+            return None
+
+    def _readline(self, proc: subprocess.Popen) -> bytes | None:
+        fd = proc.stdout.fileno()
+        deadline = time.monotonic() + self.timeout
+        while b"\n" not in self._buf:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return None
+            ready, _w, _x = select.select([fd], [], [], left)
+            if not ready:
+                return None
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                return None
+            self._buf += chunk
+        line, self._buf = self._buf.split(b"\n", 1)
+        return line
+
+    def _lost(self, why: str) -> None:
+        self.lost += 1
+        log.warning("dsp helper (serve) %s; %s", why,
+                    "one process per knob step from now on" if self.lost >= self.GIVE_UP_AFTER else "starting it again")
+        self.stop()
+        if self.lost >= self.GIVE_UP_AFTER:
+            self.serve_ok = False
+
+    def stop(self) -> None:
+        proc, self.proc = self.proc, None
+        if proc is None:
+            return
+        try:
+            proc.stdin.close()          # serve saves what it holds and exits
+            proc.wait(timeout=3)
+        except Exception:
+            proc.kill()
+
+    # -- one-shot -------------------------------------------------------------
+
+    def _once(self, payload: dict) -> dict | None:
+        try:
+            done = subprocess.run([self.command, "set", json.dumps(payload, separators=(",", ":"))],
+                                  capture_output=True, text=True, timeout=self.timeout)
+        except Exception:
+            log.warning("dsp helper %s failed to run", self.command, exc_info=True)
             return None
         try:
             doc = json.loads(done.stdout.strip().splitlines()[-1])
         except (ValueError, IndexError):
             log.warning("dsp helper said nothing useful (exit %s): %s", done.returncode, done.stderr.strip())
             return None
+        return self._checked(doc)
+
+    @staticmethod
+    def _checked(doc: dict) -> dict:
         if not doc.get("ok"):
             log.warning("dsp helper: %s", doc.get("error"))
         return doc
-    return run
 
 
 class KnobFunctions:
@@ -422,6 +542,9 @@ class KnobFunctions:
         with self._wake:
             self._stop = True
             self._wake.notify()
+        stop = getattr(self.runner, "stop", None)
+        if callable(stop):
+            stop()
 
     # -- the API's document ----------------------------------------------
 

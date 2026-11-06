@@ -1189,6 +1189,8 @@ def main(argv=None) -> int:
             web.close()
         if keeper is not None:
             keeper.close()
+        if getattr(actions, "dsp", None) is not None:
+            actions.dsp.close()
         close = getattr(actions.player, "close", None)
         if callable(close):
             try:

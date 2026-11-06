@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.5 - 2026-11-06
+
+- The tone knob keeps up with your hand: each step reaches the sound in
+  about 0.13 s instead of 0.5-0.7 s, so turning it no longer trails behind
+  and catches up afterwards. The DSP helper now stays running instead of
+  starting afresh for every step, and saves the setting for the next stream
+  once the knob has been still for a second. The anti-clipping order (master
+  level down before a boost) is unchanged.
+- Bench-tested on the Hasler HAT (rev A): keys, PU, both knobs, the tone
+  end switch and USB-C power all work with `variant: hasler-hm-hat`.
+
 ## 1.1.4 - 2026-10-25
 
 - Fixed: switching away from an HLS radio station (RNE Radio 3, Onda Cero,
