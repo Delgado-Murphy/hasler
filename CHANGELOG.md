@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.7 - 2026-11-07
+
+- After "Allow this address", the change that was refused goes through by
+  itself: a key's Save is sent again (and its red "not this radio's address"
+  message goes), and any other refused change is re-sent and the page reads
+  the radio again. Nothing needs saving twice.
+
 ## 1.1.6 - 2026-11-07
 
 - Changes through your own address: when the key page is open through a name

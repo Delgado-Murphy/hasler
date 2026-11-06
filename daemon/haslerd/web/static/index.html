@@ -1005,7 +1005,7 @@ async function api(method, url, body, opts = {}){
       const txt = await r.text();
       let j = null;
       try { j = JSON.parse(txt); } catch (_) {}
-      if (r.status === 403 && j && j.allow_host) setTimeout(() => offerHost(j.allow_host), 0);
+      if (r.status === 403 && j && j.allow_host){ hostUi.refused = {method, url, body}; setTimeout(() => offerHost(j.allow_host), 0); }
       return {status:r.status, ok:r.ok, json:j};
     } catch (e) {
       if (n >= tries || (up && up.aborted)){ if (send && !(up && up.aborted)) netFails++; throw e; }
@@ -6424,7 +6424,7 @@ function joinHelp(wrap, slot){
 /* ---------- changes through another address (web/hosts.py) ---------- */
 // A change refused because the page is open at a name the radio doesn't know
 // (a home dashboard, a domain): offer to allow it, with a press on the radio.
-const hostUi = {asking:false, declined:false};
+const hostUi = {asking:false, declined:false, refused:null};
 function offerHost(host){
   const dlg = $('dlg');
   if (hostUi.asking || hostUi.declined || dlg.open) return;
@@ -6444,7 +6444,7 @@ function offerHost(host){
     if (token){
       try {
         const r = await api('POST', '/api/hosts', {confirm: token});
-        if (r.ok){ toast('Done. Changes from ' + host + ' now reach the radio — try that again.'); hosts = null; loadHosts(); }
+        if (r.ok){ hosts = null; loadHosts(); await redoRefused(host); }
         else toast((r.json && r.json.error) || 'The radio didn’t allow it.', true);
       } catch (_) { toast(NET_ERR, true); }
     }
@@ -6452,6 +6452,27 @@ function offerHost(host){
   };
   dlg.onclick = null;
   dlg.showModal();
+}
+// Allowed: the change that was refused goes again, so nothing needs saving twice.
+const ADDR_ERR = /not this radio.s address/;
+async function redoRefused(host){
+  const was = hostUi.refused; hostUi.refused = null;
+  const done = 'Changes from ' + host + ' now reach the radio';
+  // Edit keys: its own Save, so the sheet shows what happened.
+  if (view === 'edit' && general.some(g => ADDR_ERR.test(g))){
+    general = general.filter(g => !ADDR_ERR.test(g)); saveMsg = {text:'', bad:false};
+    toast(done + '. Saving your change…');
+    if (isDirty()) await save(); else rerender();
+    return;
+  }
+  if (!was){ toast(done + '.'); return; }
+  try {
+    const r = await api(was.method, was.url, was.body);
+    toast(r.ok ? done + ', and your change went through.' : done + '. Try your change again.', !r.ok);
+  } catch (_) { toast(done + '. Try your change again.'); }
+  // The page reads the radio again, so stale "not saved" lines go.
+  if (view === 'settings'){ const pg = SET_PAGE[curPage()]; if (pg && pg.load) pg.load(); rerender(); }
+  else rerender();
 }
 // This radio → Other addresses: GET /api/hosts.
 let hosts = null;
