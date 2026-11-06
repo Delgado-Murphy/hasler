@@ -111,6 +111,7 @@ from ..player.sources.radio import mpd_patience
 from . import keymap, stations
 from ..net import HOTSPOT_ADDRS
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
+from .hosts import AllowedHosts, valid_host
 from . import integration
 from .room import Room
 from .ytm_api import PREFIX as YTM_PREFIX, YtmApi
@@ -138,6 +139,9 @@ KEYS_STATE_PER_S = 10
 # Keys do nothing for this long after each such read (Panel.hush).
 KEYS_HUSH_S = 0.8
 CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
+HOST_ID = re.compile(r"^/api/hosts/([A-Za-z0-9.:-]{1,253})$")
+# Reached through an address the radio doesn't know: only asking to allow it gets through.
+ALLOW_HOST_PATHS = ("/api/confirm/request", "/api/hosts")
 # Names the box answers to besides its own hostname (+ web.hostnames in box.yaml).
 OWN_NAMES = ("localhost", "hasler", "hasler.local")
 LOOPBACK = ("127.0.0.1", "::1")
@@ -350,6 +354,8 @@ class WebApp:
         self.ytdlp_lane: Any = None
         # Extra Host names accepted for state-changing requests (box.yaml web.hostnames).
         self.allowed_hosts: set[str] = set()
+        # ... and the ones the owner allowed with a press on the radio (web/hosts.py).
+        self.hosts = AllowedHosts(settings_file.parent if settings_file is not None else None)
         # Local addresses that are the setup hotspot: Wi-Fi changes from a phone
         # joined to it need no key press (that phone is next to the radio, and
         # the radio has no other network then).
@@ -375,7 +381,7 @@ class WebApp:
     # -- who may change things ------------------------------------------------
 
     def own_names(self) -> set[str]:
-        names = set(OWN_NAMES) | set(LOOPBACK) | set(HOTSPOT_ADDRS) | self.allowed_hosts
+        names = set(OWN_NAMES) | set(LOOPBACK) | set(HOTSPOT_ADDRS) | self.allowed_hosts | self.hosts.names()
         try:
             host = socket.gethostname().lower().rstrip(".")
             if host:
@@ -415,6 +421,67 @@ class WebApp:
                 return f"cross-site request refused ({name}: {value.strip()[:80] or 'empty'})"
             break       # Origin decides when present; Referer only without it
         return None
+
+    @staticmethod
+    def request_host(headers: Any) -> str:
+        """The Host a request came through, as compared: no port, no brackets, lower case."""
+        host_header = (headers.get("Host") or "").strip().lower()
+        return plain_addr(_host_only(host_header).strip("[]").rstrip("."))
+
+    def allowable_host(self, headers: Any, local_addr: str | None) -> str | None:
+        """The address a refused request could be allowed from (web/hosts.py), or None.
+
+        Only a same-origin JSON request (an Origin, or a Referer without one,
+        that is this very Host) through a valid name the radio doesn't already
+        take changes from."""
+        if (headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+            return None
+        host_header = (headers.get("Host") or "").strip().lower()
+        host = self.request_host(headers)
+        if not host or host in self.own_names() or host == plain_addr(local_addr).lower():
+            return None
+        if not valid_host(host):
+            return None
+        value = headers.get("Origin")
+        if value is None:
+            value = headers.get("Referer")
+        if value is None:
+            return None
+        try:
+            netloc = urlparse(value.strip()).netloc.lower()
+        except ValueError:
+            return None
+        return host if netloc == host_header else None
+
+    def hosts_doc(self, headers: Any, local_addr: str | None) -> dict:
+        host = self.request_host(headers)
+        own = host in self.own_names() or host == plain_addr(local_addr).lower()
+        return {"saved": self.hosts.listing(), "box": sorted(self.allowed_hosts), "this": host,
+                "this_allowed": own, "this_allowable": not own and valid_host(host)}
+
+    def ask_allow_host(self, body: Any, headers: Any, local_addr: str | None) -> dict:
+        """POST /api/confirm/request with action "hostname": the address is the request's own."""
+        host = self.allowable_host(headers, local_addr)
+        if host is None:
+            raise ValueError("this address already takes changes")
+        return self.confirm.request("hostname", {"host": host})
+
+    def allow_host(self, body: Any, headers: Any, local_addr: str | None) -> dict:
+        body = body if isinstance(body, dict) else {}
+        host = self.allowable_host(headers, local_addr)
+        if host is None:
+            raise ValueError("this address already takes changes")
+        self.confirm.consume(body.get("confirm"), "hostname", {"host": host})
+        self.hosts.add(host)
+        return {"host": host}
+
+    def remove_host(self, host: str) -> dict:
+        host = host.lower()
+        if host in self.allowed_hosts:
+            raise ValueError(f"{host} is set in box.yaml (web.hostnames): remove it there")
+        if not self.hosts.remove(host):
+            raise ValueError(f"{host} isn't on the list")
+        return {"removed": host}
 
     def wifi_join(self, body: Any, local_addr: str | None) -> None:
         body = body if isinstance(body, dict) else {}
@@ -1768,6 +1835,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             why = app.request_refusal(self.command, self.headers, self._local_addr())
             if why is None:
                 return False
+            allow = app.allowable_host(self.headers, self._local_addr())
+            path = urlparse(self.path).path
+            if allow is not None and (
+                    (self.command == "POST" and path in ALLOW_HOST_PATHS)
+                    or (self.command == "DELETE" and CONFIRM_ID.match(path))):
+                # Asking to allow this address (web/hosts.py): a key press decides.
+                return False
             log.warning("web: refused %s %s from %s: %s", self.command, _log_path(self.path),
                         self._client() or "?", why)
             # Drain the body so the connection closes cleanly.
@@ -1777,7 +1851,10 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                     self.rfile.read(length)
             except (ValueError, OSError):
                 pass
-            self._json(403, {"ok": False, "errors": [], "error": why})
+            doc = {"ok": False, "errors": [], "error": why}
+            if allow is not None:
+                doc["allow_host"] = allow       # the page offers "Allow this address"
+            self._json(403, doc)
             return True
 
         def _extra(self, method: str) -> bool:
@@ -1828,6 +1905,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, app.config()))
             elif url.path == "/api/status":
                 self._guard(lambda: self._json(200, app.status()))
+            elif url.path == "/api/hosts":
+                self._guard(lambda: self._json(200, app.hosts_doc(self.headers, self._local_addr())))
             elif url.path == "/api/stations":
                 query = parse_qs(url.query)
                 q, scope = query.get("q", [""])[0], query.get("scope", [""])[0]
@@ -2036,8 +2115,18 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 def ask() -> None:
                     body = self._body()
                     body = body if isinstance(body, dict) else {}
-                    self._json(200, {"ok": True, **app.confirm.request(body.get("action"), body.get("args"))})
+                    if body.get("action") == "hostname":
+                        doc = app.ask_allow_host(body, self.headers, self._local_addr())
+                    elif app.request_refusal("POST", self.headers, self._local_addr()) is not None:
+                        # Let through only to allow this address: nothing else from here.
+                        raise ConfirmError("from this address the radio can only be asked to allow it")
+                    else:
+                        doc = app.confirm.request(body.get("action"), body.get("args"))
+                    self._json(200, {"ok": True, **doc})
                 self._guard(ask)
+            elif path == "/api/hosts":
+                self._guard(lambda: self._json(200, {"ok": True, **app.allow_host(
+                    self._body(), self.headers, self._local_addr())}))
             elif path == "/api/software/check":
                 self._guard(lambda: (self._body(), app.software.check(), self._json(200, {"ok": True})))
             elif path == "/api/software/install":
@@ -2079,6 +2168,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             path = urlparse(self.path).path
             if m := CONFIRM_ID.match(path):
                 self._guard(lambda: self._json(200, {"ok": app.confirm.cancel(m.group(1))}))
+            elif m := HOST_ID.match(path):
+                self._guard(lambda: self._json(200, {"ok": True, **app.remove_host(m.group(1))}))
             elif path == "/api/software/install":
                 self._guard(lambda: (app.software.cancel_install(), self._json(200, {"ok": True})))
             elif path == "/api/ytm/account":

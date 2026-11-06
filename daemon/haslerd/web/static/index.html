@@ -1005,6 +1005,7 @@ async function api(method, url, body, opts = {}){
       const txt = await r.text();
       let j = null;
       try { j = JSON.parse(txt); } catch (_) {}
+      if (r.status === 403 && j && j.allow_host) setTimeout(() => offerHost(j.allow_host), 0);
       return {status:r.status, ok:r.ok, json:j};
     } catch (e) {
       if (n >= tries || (up && up.aborted)){ if (send && !(up && up.aborted)) netFails++; throw e; }
@@ -4886,6 +4887,7 @@ function renderRadio(panel){
   panel.append(setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
     setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha'))));
   panel.append(setGroup('ytm', 'YouTube Music', accountCard(), ytExplicitRow()));
+  const og = hostsGroup(); if (og) panel.append(og);
   const hg = helpGroup(); if (hg) panel.append(hg);   // last: rarely needed
 }
 // The setup network (GET /api/wifi .setup): what the radio opens when it can't join the home Wi-Fi.
@@ -4926,7 +4928,7 @@ function haSummary(){
 }
 function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
-  loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp();
+  loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp(); loadHosts();
 }
 function loadUpdates(){ loadSoftware(); loadMusic(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
@@ -6417,6 +6419,71 @@ function joinHelp(wrap, slot){
     + again + ' to leave' + (grp && grp.follower_keys === 'leave' ? ' — or press a preset key.' : ', or use Leave on the front page.')));
   if (!mrOn()) wrap.append(h('p', {class:'note-warn'}, 'Play in several rooms is off on this radio, so this key won’t do anything yet.'),
     h('div', null, h('button', {type:'button', class:'link', onclick: () => go('settings/rooms')}, 'Switch it on in Settings → Rooms')));
+}
+
+/* ---------- changes through another address (web/hosts.py) ---------- */
+// A change refused because the page is open at a name the radio doesn't know
+// (a home dashboard, a domain): offer to allow it, with a press on the radio.
+const hostUi = {asking:false, declined:false};
+function offerHost(host){
+  const dlg = $('dlg');
+  if (hostUi.asking || hostUi.declined || dlg.open) return;
+  hostUi.asking = true;
+  dlg.textContent = '';
+  let go = false;
+  dlg.append(h('h2', {id:'dlgTitle'}, 'Allow changes from this address?'),
+    h('p', {class:'sub'}, 'You opened the radio at ', h('b', null, host), '. It only takes changes through its own addresses, '
+      + 'so a page somewhere else can’t change your keys. If this is your own dashboard or address, allow it once with a key press on the radio.'),
+    h('div', {style:'display:flex;justify-content:flex-end;gap:10px;margin-top:14px'},
+      h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Not now'),
+      h('button', {type:'button', class:'btn small primary', id:'hostAllow', onclick: () => { go = true; dlg.close(); }}, 'Allow this address')));
+  dlg.onclose = async () => {
+    dlg.onclose = null;
+    if (!go){ hostUi.declined = true; hostUi.asking = false; return; }
+    const token = await pressToConfirm('hostname', null, 'Allow ' + host, 'Then changes made here will reach the radio.');
+    if (token){
+      try {
+        const r = await api('POST', '/api/hosts', {confirm: token});
+        if (r.ok){ toast('Done. Changes from ' + host + ' now reach the radio — try that again.'); hosts = null; loadHosts(); }
+        else toast((r.json && r.json.error) || 'The radio didn’t allow it.', true);
+      } catch (_) { toast(NET_ERR, true); }
+    }
+    hostUi.asking = false;
+  };
+  dlg.onclick = null;
+  dlg.showModal();
+}
+// This radio → Other addresses: GET /api/hosts.
+let hosts = null;
+async function loadHosts(){
+  try { const r = await api('GET', '/api/hosts'); hosts = r.ok && r.json ? r.json : {missing: r.status === 404}; }
+  catch (_) { hosts = {err:true}; }
+  if (onPage('radio')) rerender();
+}
+async function removeHost(host){
+  try {
+    const r = await api('DELETE', '/api/hosts/' + encodeURIComponent(host));
+    if (r.ok) toast(host + ' can’t make changes any more.');
+    else toast((r.json && r.json.error) || 'The radio didn’t take that.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  loadHosts();
+}
+function hostsGroup(){
+  const d = hosts;
+  if (!d || d.missing || d.err) return null;
+  const rows = [];
+  for (const it of d.saved || []) rows.push(h('div', {class:'li'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, it.host),
+      h('span', {class:'li-sub'}, (it.host === d.this ? 'This page · ' : '') + 'allowed ' + (day(new Date(it.added * 1000).toISOString()) || 'with a key press'))),
+    h('button', {type:'button', class:'li-act', 'aria-label':'Remove ' + it.host, onclick: () => removeHost(it.host)}, 'Remove')));
+  for (const b of d.box || []) rows.push(h('div', {class:'li'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Set in the radio’s box.yaml'))));
+  if (!rows.length && !d.this_allowable) rows.push(h('div', {class:'li'}, h('span', {class:'li-sub'},
+    'Only the radio’s own addresses can change things. Open it through your own dashboard or address and the page offers to allow it.')));
+  if (d.this_allowable) rows.push(h('div', {class:'li'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, d.this), h('span', {class:'li-sub'}, 'This page’s address · can’t make changes yet')),
+    h('button', {type:'button', class:'li-act', onclick: () => { hostUi.declined = false; offerHost(d.this); }}, 'Allow')));
+  return setGroup('hosts', 'Other addresses', h('div', {class:'list'}, ...rows));
 }
 
 /* ---------- a press on the radio (web/confirm.py) ---------- */

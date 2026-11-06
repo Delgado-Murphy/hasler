@@ -4,7 +4,8 @@ docs/ota.md section 3, "LAN attacker": anybody on the Wi-Fi can talk to the key
 page, so installing or rolling back a release, changing the Wi-Fi, resetting
 the keys, moving to another release channel, starting remote help (Tailscale
 for 24 h, web/help_api.py) or signing the radio in to or out of Spotify
-(web/spotify_account_api.py) needs a hand on the cabinet.
+(web/spotify_account_api.py), or allowing changes through another address
+(web/hosts.py) needs a hand on the cabinet.
 
     POST /api/confirm/request {"action": "update", "args": {"version": "1.2.0"}}
         -> {"token": "...", "state": "pending", "expires_in": 30}
@@ -37,7 +38,11 @@ from typing import Any, Callable, Iterable
 log = logging.getLogger(__name__)
 
 ACTIONS = ("update", "rollback", "wifi", "reset", "channel", "help",   # help: web/help_api.py
-           "spotify")                                                   # web/spotify_account_api.py
+           "spotify",                                                   # web/spotify_account_api.py
+           "hostname")                                                  # web/hosts.py
+# Always a real press, even on a bench with web.allow_unconfirmed: the request
+# comes from an address the radio doesn't trust yet.
+ALWAYS_PRESS = ("hostname",)
 CONFIRM_S = 30.0         # to press a key after asking
 USE_S = 60.0             # to use a confirmed token
 ASK_EVERY_S = 5.0        # the lamp asks again this often while pending
@@ -126,7 +131,9 @@ class ConfirmBroker:
         if action not in ACTIONS:
             raise ValueError(f"action must be one of {', '.join(ACTIONS)}")
         args = _clean_args(args)
-        if not self.can_confirm:
+        unconfirmed = self.allow_unconfirmed and action not in ALWAYS_PRESS
+        has_keys = self.panel is not None and not getattr(self.panel, "absent", False) and bool(self._key_ids())
+        if not (unconfirmed or has_keys):
             raise ConfirmUnavailable(ABSENT_MESSAGE)
         now = self.clock()
         token = secrets.token_urlsafe(18)
@@ -137,15 +144,15 @@ class ConfirmBroker:
             for old in self._requests.values():
                 if old.state == "pending":
                     old.state = "cancelled"
-            if self.allow_unconfirmed:
+            if unconfirmed:
                 req.state, req.confirmed_at, req.by = "confirmed", now, "allow_unconfirmed"
             self._requests[token] = req
         log.info("confirm requested: %s %s%s", action, args,
-                 " (allowed unconfirmed)" if self.allow_unconfirmed else " - waiting for a key press")
-        if not self.allow_unconfirmed:
+                 " (allowed unconfirmed)" if unconfirmed else " - waiting for a key press")
+        if not unconfirmed:
             self._reply("ha")
         return {"token": token, "state": req.state, "action": action,
-                "expires_in": int(CONFIRM_S), "unconfirmed": self.allow_unconfirmed}
+                "expires_in": int(CONFIRM_S), "unconfirmed": unconfirmed}
 
     def poll(self, token: str) -> dict | None:
         with self._lock:
@@ -170,7 +177,7 @@ class ConfirmBroker:
     def consume(self, token: Any, action: str, args: dict | None = None) -> None:
         """Use a confirmed token for ``action``/``args``, once. Raises ConfirmError."""
         args = args or {}
-        if not token and self.allow_unconfirmed:
+        if not token and self.allow_unconfirmed and action not in ALWAYS_PRESS:
             return
         if not isinstance(token, str) or not token:
             raise ConfirmError(f"{action}: press a key on the radio to confirm first")

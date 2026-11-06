@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.6 - 2026-11-07
+
+- Changes through your own address: when the key page is open through a name
+  of yours - a home dashboard, Home Assistant's remote access, Tailscale, a
+  domain - and a change is refused because the radio doesn't know that
+  address, the page offers "Allow this address". One press of any key on the
+  radio confirms it (a page reached from outside can ask, but can't press),
+  and changes made there work from then on. Only the address the page is
+  open at can be allowed, and always with a real key press, even on a bench
+  radio. This radio -> Other addresses lists them, with Remove; box.yaml's
+  web.hostnames still works and is listed there too.
+
 ## 1.1.5 - 2026-11-06
 
 - The tone knob keeps up with your hand: each step reaches the sound in
