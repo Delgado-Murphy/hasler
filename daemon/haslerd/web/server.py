@@ -199,6 +199,9 @@ EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "
                   "/api/spotify",                             # web/spotify_account_api.py
                   "/api/sleep",                               # web/sleep_api.py
                   "/api/stations/try", "/api/stations/mine", "/api/stations/report",  # web/stations_api.py
+                  "/api/report",                              # web/report.py ("Tell the makers")
+                  "/api/notes",                               # web/notes_api.py ("From the makers")
+                  "/api/checkin",                             # web/checkin_api.py ("See what it sends")
                   "/api/fake")                                # web/fake_api.py (--fake only)
 
 # What a phone on AirPlay plays: moOde's aplmeta.py writes shairport-sync's
@@ -1192,6 +1195,9 @@ class WebApp:
         doc = integration.info(self.actions.variant.name, self._release_version(), self.machine_id_file)
         # When hasler-install finished: the page nags a new radio only for its first week.
         doc["installed_at"] = self._installed_at()
+        # Who built the radio and how to reach them (box.yaml makers.contact): the
+        # page's Help from the makers, "Tell the makers" and the welcome card.
+        doc["makers_contact"] = self.makers_contact()
         group = self.group
         try:
             doc["name"] = self.room.name()
@@ -1219,6 +1225,15 @@ class WebApp:
             return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(path.stat().st_mtime))
         except OSError:
             return None
+    def makers_contact(self) -> str:
+        """box.yaml ``makers.contact`` (an email or a phone), "" without one."""
+        if self.box_paths is None:
+            return ""
+        try:
+            return boxconfig.makers_contact(boxconfig.read_box_file(self.box_paths))
+        except Exception:
+            log.debug("no makers.contact", exc_info=True)
+            return ""
 
     def art_current(self) -> tuple[bytes, str, str] | None:
         """``GET /api/art/current``: (bytes, content type, etag), or None."""

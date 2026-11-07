@@ -1,0 +1,17 @@
+# Shipped in every release (integration/systemd); haslerd.service pulls it in
+# at boot (Wants=), so no `systemctl enable` is needed. docs/remote-help.md
+# "If nothing on the radio can be touched".
+[Unit]
+Description=Hasler: remote help from hasler-help.txt on the SD card's boot partition
+# Only when the file is there, and only once the network can carry Tailscale.
+ConditionPathExists=/boot/firmware/hasler-help.txt
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hasler-help-rescue
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

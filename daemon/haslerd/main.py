@@ -59,7 +59,10 @@ from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
 from .web.sleep_api import SleepApi
 from .sleep import SleepTimer
+from .web.checkin_api import CheckinApi
 from .web.help_api import MAKERS_TAILNET, HelpApi
+from .web.notes_api import NotesApi
+from .web.report import ReportApi
 from .web.spotify_account_api import SpotifyAccountApi
 from .web.stations_api import StationsApi
 from .web.sources_api import apply_saved as apply_sources
@@ -1268,6 +1271,11 @@ def build_web(
     app.extra_routes.append(BluetoothApi(app))  # /api/bluetooth
     # /api/help: "Let the makers help (24 h)" - off until the owner asks
     app.extra_routes.append(HelpApi(app, tailnet=spec.get("help_tailnet", MAKERS_TAILNET)))
+    # /api/report ("Tell the makers"), /api/notes ("From the makers"),
+    # /api/checkin/preview ("See what it sends"): support, all unprivileged.
+    app.extra_routes.append(ReportApi(app))
+    app.extra_routes.append(NotesApi(app, state_dir))
+    app.extra_routes.append(CheckinApi(app))
     app.extra_routes.append(app.spotify_account)
     # /api/stations/try, /mine, /report: the station browser (My stations in <state>/stations.json)
     app.stations_api = StationsApi(app, state_dir)

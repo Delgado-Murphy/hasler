@@ -65,7 +65,7 @@ As of 1.0.1 (October 2026):
 | Debian security updates at night: Debian-Security and Tailscale only, never kernel/firmware/moOde's packages, health check, the replaced versions put back if it fails ([§6](#6-debian-security-updates)) | built (after 1.0.3) |
 | Staged rollout (rings of radios inside a channel) | the format and the radio support it; our tools still open every ring at once |
 | `config.txt` changes through the Pi's tryboot | planned - today such a release is installed by hand (§4) |
-| Opt-in daily check-in | planned - the `box.yaml` key exists, nothing is sent |
+| Opt-in daily check-in | built (§5) - off by default; the owner's switch under Updates, "See what it sends" shows the payload |
 | A bundled Python in the release | planned - releases use Debian trixie's Python 3.13 |
 | Release key on a hardware key (YubiKey) | later |
 
@@ -135,9 +135,12 @@ reaches the radio.
 | `channel` | `stable` (everyone; the default) or `bench` (the makers' test radio; may break). Anything else, the retired `beta` included, reads as `stable`. |
 | `update_mode` | `auto` (the default: patch/minor at night in standby; major or migration releases still ask, and so does any release whose major number is above the running one - from 1.0.0 on, a 2.0.1 never slips in as a "patch" before 2.0.0 was accepted), `ask`, `off`. An unknown word reads as `ask`. |
 | `starter` | The built-in stations: the starter set on the keys out of the box, `config/presets/<starter>.yaml` in the release (`eclectic` when absent; `hasler-install` writes it from `hasler.txt`). The key page's own choice (`settings.json starter`) wins over it. |
-| `box_id` | A random UUID, made once by migration 001. Places the radio in a ring (and names it in a future check-in). |
-| `checkin` | Reserved for the planned opt-in daily check-in. Nothing is sent today. |
-| `metered` | `true`: never download in the background (phone hotspot, capped plans). The owner's switch under Settings → Updates ("This Wi-Fi is a phone hotspot or capped") writes it. |
+| `box_id` | A random UUID, made once by migration 001. Places the radio in a ring, and names it in the check-in. |
+| `checkin` | `true`: the opt-in daily check-in (§5). The owner's switch under Settings → Updates ("Tell the makers how the radio is") writes it; absent = off, nothing is sent. |
+| `checkin_url` | Where the check-in goes (`https://` only; the makers' Worker, `tools/checkin/`). Without it nothing is sent, whatever `checkin` says. `hasler-install` writes it from `hasler.txt`. |
+| `checkin_token` | Optional: a shared word sent as `X-Hasler-Token`, when the Worker asks for one. Never in a report or bundle. |
+| `makers` | `makers: {contact: hola@…}` - who built the radio and how to reach them (an email or a phone). Shown under Help from the makers and used by "Tell the makers" (`/api/info` `makers_contact`). `hasler-install` writes it from `hasler.txt` `makers_contact`. |
+| `metered` | `true`: never download in the background (phone hotspot, capped plans). The owner's switch under Settings → Updates ("This Wi-Fi is a phone hotspot or capped") writes it. The check-in is skipped too. |
 | `os_updates` | `on` (the default) or `off`: Debian security updates at night (§6). The maker's switch under Maker tools writes it (as `false`). |
 | `update_url` | Bench only: a local channel (`ota-bootstrap.sh --update-url`). Without it: the public channel. |
 | `migrations` | Written by `python -m haslerd.migrations --apply`: the ids applied here. Don't edit. |
@@ -348,9 +351,36 @@ leaves is marked bad, so auto mode won't reinstall it.
   stay on it until a new, higher release arrives - so ship the fix.
 - **Rings** inside a channel (a staged rollout) are in the index format and
   the radio obeys them; `channel.py` still opens every ring at once.
-- **Fleet check-in** (planned, opt-in): one daily
-  `{random box id, variant, version, channel, last result, health}` to a tiny
-  endpoint - no IPs, SSIDs, history or accounts.
+- **Fleet check-in** (opt-in, off by default - the promise kept): with
+  `checkin: true` in box.yaml (the owner's switch, Settings → This radio →
+  Updates → **Tell the makers how the radio is**) and a `checkin_url`, the
+  daily `hasler-update check --stage` ends with one HTTPS POST of about half
+  a kilobyte (`update/hasler_update/checkin.py`): `box_id`, the short id, variant,
+  version, channel, update mode, the last check's result, `last_result` (ok,
+  or rolled back and the raw reason), health ok and the failed checks, the
+  lamp's fault reasons, player restarts and stalls today, whether the yt-dlp
+  lane works, the OS updates' last result, uptime in days, how it was last
+  switched off, power cuts this month, free space, CPU °C and the throttle
+  bits. Never: an IP (the endpoint drops it), the SSID, the hostname, the
+  room, a place, what plays, the volume, standby, a phone, a station, an
+  account, a token - `checkin.FORBIDDEN_KEYS`, and a test walks every
+  payload. **See what it sends** on the page runs the same builder
+  (`hasler-update checkin --preview`) and shows today's payload verbatim.
+  Skipped on a metered connection; once a day however often the check runs;
+  a failed send is recorded (`/var/lib/hasler-update/checkin.json`, "Couldn't
+  send today" on the page) and never retried in a hurry. The endpoint is a
+  Cloudflare Worker + KV in the public repo, [`tools/checkin/`](../tools/checkin/README.md),
+  with a one-table dashboard sorted "needs a look first". The endpoint going
+  away costs nothing: the POST fails quietly. The hand-over switches the
+  check-in off; the new owner says yes themselves.
+- **A release from a USB stick** (the post-makers path): the updater takes
+  `file://` URLs, so a signed release on a stick - the `releases/`,
+  `channels/` and `keyring.json*` files of the site, copied - with
+  `update_url: file:///media/stick` in box.yaml installs against the trust
+  root on the radio like any other, as long as the channel index on the
+  stick is fresh (14 days) and the release under 120 days old. Nothing needs
+  the makers alive, only something they signed while they were.
+  `update/tests/test_checkin.py` drills it once.
 - **Remote help** ("Let the makers help (24 h)" on the key page): separate
   from updates; see [remote-help.md](remote-help.md).
 

@@ -191,4 +191,9 @@ def box_settings(layout: Layout) -> dict:
         "metered": bool(box.get("metered", False)),
         "variant": str(box.get("variant", "")),
         "update_url": str(os.environ.get("HASLER_UPDATE_URL") or box.get("update_url") or DEFAULT_BASE_URL).rstrip("/"),
+        # The opt-in daily check-in (checkin.py): off unless the owner said yes,
+        # and only ever to an https:// URL the makers put in box.yaml.
+        "checkin": box.get("checkin", False) is True,
+        "checkin_url": str(box.get("checkin_url") or "").strip(),
+        "checkin_token": str(box.get("checkin_token") or "").strip(),
     }

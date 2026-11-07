@@ -20,6 +20,9 @@ Wants=hasler-clean-shutdown.service
 Wants=hasler-bootcfg-guard.service hasler-bootcfg-save.timer
 # Wi-Fi from a file on the SD card (only runs when the file is there).
 Wants=hasler-wifi-rescue.service
+# Remote help: start again after a restart within the owner's 24-hour yes,
+# and from hasler-help.txt on the SD card (each only when its file is there).
+Wants=hasler-help-resume.service hasler-help-rescue.service
 # Debian security updates at night (docs/ota.md §6; the script decides when).
 Wants=hasler-os-update.timer
 # The early boot lamp (hasler-lamp-boot) breathes until haslerd takes the

@@ -91,6 +91,8 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/ota-bootstrap.sh", "app/setup/scripts/", mode=0o755),
     Rule("scripts/hasler-boot-report", "app/setup/scripts/", mode=0o755),
     Rule("scripts/hasler-wifi-rescue", "app/setup/scripts/", mode=0o755),   # bootstrap.sh installs it
+    Rule("scripts/hasler-help-rescue", "app/setup/scripts/", mode=0o755),   # bootstrap.sh installs it
+    Rule("scripts/hasler-note", "app/setup/scripts/", mode=0o755),          # bootstrap.sh installs it
     Rule("scripts/hasler-install", "app/setup/scripts/", mode=0o755),
     Rule("config/update/**", "app/setup/config/update/", strip="config/update"),
     Rule("config/firstboot/*", "app/setup/config/firstboot/"),
@@ -111,6 +113,8 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-bt-accept", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-help", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-timezone", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-help-rescue", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-note", "integration/bin/", mode=0o755),
     Rule("scripts/hasler-lamp-boot", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-ytdlp-update", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-os-update", "integration/sbin/", mode=0o755),

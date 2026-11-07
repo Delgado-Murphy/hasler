@@ -67,6 +67,48 @@ class NotInstalled(Exception):
 
 OS_STATUS = "/var/lib/hasler-os/status.json"
 OS_ACTIVE = "/run/hasler-os-update/active"
+# The daily check-in's record (update/hasler_update/checkin.py, written by the
+# unprivileged check): {"at", "ok", "error", "skipped", "short_id", "bytes"}.
+CHECKIN_STATUS = "/var/lib/hasler-update/checkin.json"
+
+# The updater's reasons for a rollback (update/hasler_update/health.py
+# ``problems``, apply.py ``_rollback``) in the owner's words. The raw string
+# stays in ``last_result.reason`` for the makers' report; the page shows ``why``.
+ROLLBACK_WORDS: tuple[tuple[str, str], ...] = (
+    (r"^check panel failed", "the keys weren’t answering after the switch"),
+    (r"^check mpd failed", "the player wasn’t answering after the switch"),
+    (r"^check audio_card failed", "the sound card wasn’t found after the switch"),
+    (r"^check lamp failed", "the lamp wasn’t answering after the switch"),
+    (r"^check web failed|/api/health not answering", "the page wasn’t answering after the switch"),
+    (r"^check \w+ failed", "a self-check failed after the switch"),
+    (r"^haslerd (failed|not active|restarted)", "the new version kept crashing"),
+    (r"^boot loop \(2 ", "the radio restarted twice in a row"),
+    (r"^boot loop", "the radio kept restarting"),
+    (r"^power cut during the switch", "the power went in the middle"),
+    (r"^rolled back by hand", "you went back from the page"),
+    (r"^sound card missing", "the sound card vanished"),
+    (r"^MPD not back within|^mpd lost", "the player didn’t come back in time"),
+    (r"^librespot lost", "Spotify’s helper stopped"),
+    (r"^moode_ui lost", "the player’s own page stopped answering"),
+    (r"^/api/health ok=false", "the radio’s self-check failed"),
+    (r"^/api/health reports", "the new version didn’t start"),
+    (r"selftest|self-test", "the new version failed its self-test"),
+    (r"^resumed rollback", "the radio finished going back after a restart"),
+)
+
+
+def rollback_words(reason: Any) -> str:
+    """``reason`` (one or several updater phrases joined by ``;``) in plain
+    words, each unknown phrase kept as it is; "" for none."""
+    text = str(reason or "").strip()
+    if not text:
+        return ""
+    out = []
+    for part in [p.strip() for p in text.split(";") if p.strip()]:
+        words = next((w for pattern, w in ROLLBACK_WORDS if re.search(pattern, part, re.I)), part)
+        if words not in out:
+            out.append(words)
+    return "; ".join(out)
 
 
 def _iso(ts: float) -> str:
@@ -206,6 +248,18 @@ class Software:
                 "metered": _flag(box.get("metered", False), False),
                 "os_updates": _flag(box.get("os_updates", True), True)}
 
+    def checkin_doc(self) -> dict:
+        """``status()["checkin"]``: the opt-in daily check-in (docs/ota.md §5) -
+        the owner's switch under Updates (box.yaml ``checkin``), whether the
+        makers put a ``checkin_url`` there (it only ever sends with one), and
+        the last attempt (CHECKIN_STATUS, left by update/hasler_update/checkin.py)."""
+        box = self._box()
+        last = _read_json(self._p(CHECKIN_STATUS))
+        last = last if isinstance(last, dict) else None
+        return {"enabled": _flag(box.get("checkin", False), False),
+                "url_set": bool(str(box.get("checkin_url") or "").strip()),
+                "last": {k: last.get(k) for k in ("at", "ok", "error", "skipped", "short_id", "bytes")} if last else None}
+
     # -- the status document -----------------------------------------------------
 
     def status(self) -> dict:
@@ -240,6 +294,7 @@ class Software:
             "approved": self._approval(),
             "busy": state.get("phase") == "trial",
             "os_updates": self.os_updates(),
+            "checkin": self.checkin_doc(),
         }
 
     def installing(self) -> bool:
@@ -347,8 +402,9 @@ class Software:
             return next((h.get("at") for h in reversed(history) if h.get("event") == event), None)
 
         if phase == "rolled_back":
+            reason = state.get("reason") or ""
             return {"ok": False, "version": state.get("failed") or state.get("to"),
-                    "back_to": state.get("from"), "reason": state.get("reason") or "",
+                    "back_to": state.get("from"), "reason": reason, "why": rollback_words(reason),
                     "at": last("rollback")}
         if phase in ("committed", "probation"):
             return {"ok": True, "version": state.get("to"), "reason": None, "at": last("commit"),
@@ -412,7 +468,7 @@ class Software:
             raise ValueError(f"{to} is already running")
         self._start(f"hasler-update-apply@rollback-{to}.service")
 
-    SETTING_KEYS = ("update_mode", "channel", "metered", "os_updates")
+    SETTING_KEYS = ("update_mode", "channel", "metered", "os_updates", "checkin")
 
     @staticmethod
     def check_settings(body: dict) -> None:
@@ -422,19 +478,19 @@ class Software:
             raise ValueError("update_mode must be auto, ask or off")
         if channel is not None and channel not in CHANNELS:
             raise ValueError("channel must be bench or stable")
-        for flag in ("metered", "os_updates"):
+        for flag in ("metered", "os_updates", "checkin"):
             if flag in body and not isinstance(body[flag], bool):
                 raise ValueError(f"{flag} must be true or false")
         if not any(k in body for k in Software.SETTING_KEYS):
-            raise ValueError("expected {\"update_mode\"}, {\"channel\"}, {\"metered\": true|false} "
-                             "and/or {\"os_updates\": true|false}")
+            raise ValueError("expected {\"update_mode\"}, {\"channel\"}, {\"metered\": true|false}, "
+                             "{\"os_updates\": true|false} and/or {\"checkin\": true|false}")
 
     def put_settings(self, body: dict) -> dict:
-        """``update_mode`` / ``channel`` / ``metered`` / ``os_updates`` into
-        box.yaml (channel is confirm-gated by the caller). The two flags are
-        written as plain ``true`` / ``false`` lines, and only when they differ
-        from the default: the updater and scripts/hasler-os-update read
-        box.yaml line by line, without YAML, and both take that word."""
+        """``update_mode`` / ``channel`` / ``metered`` / ``os_updates`` /
+        ``checkin`` into box.yaml (channel is confirm-gated by the caller). The
+        flags are written as plain ``true`` / ``false`` lines, and only when
+        they differ from the default: the updater and scripts/hasler-os-update
+        read box.yaml line by line, without YAML, and both take that word."""
         self.check_settings(body)
         mode, channel = body.get("update_mode"), body.get("channel")
         if self.box_paths is None:
@@ -458,6 +514,11 @@ class Software:
                 box.pop("os_updates", None)  # the default
             else:
                 box["os_updates"] = False
+        if "checkin" in body:
+            if body["checkin"]:
+                box["checkin"] = True       # the owner's yes, in the file the check reads
+            else:
+                box.pop("checkin", None)    # the default: nothing is sent
         try:
             boxconfig.write_box_file(self.box_paths, box)
         except PermissionError as exc:

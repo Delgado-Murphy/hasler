@@ -273,6 +273,12 @@ Like a valve radio: light comes first, and sound follows as the valves warm.
 - **Between two haslerds** (a restart, an update): the boot script breathes
   the same amber breath (`lamp/handover.py`; the note's mode is still called
   "ember" for old haslerds).
+- **haslerd never takes over** (a crash loop that systemd gave up on, a card
+  that lost its software): after ten minutes without the takeover note the
+  boot script turns the breath into the fault signal - SOS in red, the same
+  rhythm and levels as the engine's - so the lamp can still say "call a
+  maker" when haslerd can't (`scripts/hasler-lamp-boot` `SOS_AFTER_S`;
+  docs/using.md "The key page doesn't open").
 - **The keeper stops ticking** (haslerd stuck): after `watchdog(seconds)`
   without `show()`/`feed()` the engine falls back to the busy breath on its
   own and returns to the Look when fed again.

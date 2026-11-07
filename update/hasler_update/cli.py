@@ -1,7 +1,11 @@
 """``hasler-update`` - the one command.
 
-  check [--stage] [--force]       (hasler-update user) look for an update; --stage also downloads + extracts
+  check [--stage] [--force]       (hasler-update user) look for an update; --stage also downloads + extracts;
+                                  then the daily check-in, if the owner switched it on (checkin.py)
   stage [--force]                 (hasler-update user) = check --stage
+  checkin [--preview [--stdin]]   (anyone) --preview prints today's check-in and sends nothing (--stdin:
+                                  haslerd's /api/diagnostics + /api/health as {"diagnostics", "health"} on
+                                  stdin, for the key page's "See what it sends"); without it: send it now
   apply [--seq N] [--auto] [--now] [--force] [--allow-reboot]   (root)
   rollback [--to VERSION]         (root) go back to previous / a kept release
   commit                          (root) accept a trial now / end probation
@@ -26,6 +30,7 @@ import re
 import sys
 
 from . import boot as boot_mod
+from . import checkin as checkin_mod
 from .apply import Applier, ApplyError, Deferred
 from .check import Checker
 from .fetch import FetchError
@@ -68,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
     ip = sub.add_parser("integrate-pending")
     ip.add_argument("--locked", action="store_true",
                     help="internal: the calling commit holds the apply lock")
+    ci = sub.add_parser("checkin")
+    ci.add_argument("--preview", action="store_true", help="print today's check-in; send nothing")
+    ci.add_argument("--stdin", action="store_true", help="with --preview: haslerd's documents on stdin")
     args = ap.parse_args(argv)
     layout = Layout.from_env()
 
@@ -76,7 +84,22 @@ def main(argv: list[str] | None = None) -> int:
             ch = Checker(layout)
             out = ch.stage(force=args.force) if (args.cmd == "stage" or args.stage) else ch.check()
             print(json.dumps(out, indent=2))
+            # The opt-in check-in rides on the daily check; it never fails the check.
+            try:
+                checkin_mod.after_check(layout, ch.box)
+            except Exception as e:      # noqa: BLE001 - a check-in must never cost a check
+                print(f"check-in: {e}", file=sys.stderr)
             return 0 if out.get("result") == "ok" else 1
+        if args.cmd == "checkin":
+            if args.preview:
+                docs = json.load(sys.stdin) if args.stdin else None
+                print(json.dumps(checkin_mod.collect(layout, docs if isinstance(docs, dict) else None),
+                                 ensure_ascii=False))
+                return 0
+            box = {**Checker(layout).box, "checkin": True}      # asked for by hand: the switch is implied
+            rec = checkin_mod.after_check(layout, box) or {}
+            print(json.dumps(rec, indent=2))
+            return 0 if rec.get("ok") else 1
         if args.cmd == "status":
             print(json.dumps(Applier(layout).status(), indent=2, default=str))
             return 0

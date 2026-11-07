@@ -996,6 +996,12 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .ho-row .li-title{font-size:14px}
 .ho-mark{flex:none;width:18px;text-align:center;font:700 14px/18px var(--mono);color:var(--muted)}
 .ho-mark.ok{color:#8FCF9F}.ho-mark.bad{color:var(--amber)}
+/* the front page's "Remote help is waiting" (the owner is likely here, not in Settings) */
+.front-attn{display:flex;flex-direction:column;gap:2px;margin:0 0 10px;padding:10px 14px;border:1px solid rgba(233,179,92,.45);border-radius:12px;background:linear-gradient(180deg,#2A1D10,#21160D);color:#F3CF8C;text-decoration:none;font-size:13px}
+.front-attn span{color:var(--muted);font-size:12px}
+/* Something's wrong?: "Say this to the makers" (the report's first six lines, to read out) */
+pre.say{margin:0;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/18px var(--mono);color:var(--cream);background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px}
+.tell-wifi{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)}
 /* the same dot on the front page's gear while Settings has something that needs attention */
 .gear-dot{position:absolute;right:6px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px var(--ground),0 0 8px rgba(255,178,56,.6)}
 #pageTitle:focus{outline:none}
@@ -1166,6 +1172,7 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
       </div>
     </div>
     <p class="sr" id="nowLive" aria-live="polite"></p>
+    <a class="front-attn" id="frontAttn" href="#settings/radio/help" hidden></a>
     <div class="ytm-now" id="ytmNow" role="group" aria-label="YouTube Music: the song playing now" hidden></div>
 
     <div class="bank" id="bank" role="group" aria-label="Piano keys"></div>
@@ -1892,7 +1899,7 @@ function renderDial(){
   // at: the dial stop the needle points to; bold: it is what plays (the key, the phone, the page).
   let head = '', name = '', live = '', at = null, bold = false;
   if (!online){
-    head = 'Can’t reach the radio'; name = 'Hasler'; setSong('Is your phone on the home Wi-Fi? A guest network, or a router with client isolation, keeps phones apart. Trying again…', '', '', 'none');
+    head = 'Can’t reach the radio'; name = 'Hasler'; setSong('Is your phone on the home Wi-Fi? Trying again…', cantReachWords(), '', 'none');
   } else if (!status){
     head = 'Tuning…'; name = 'Hasler'; setSong('', '', '', 'none');
   } else if (status.standby){
@@ -2167,8 +2174,11 @@ function latchNote(sheet, k){
 }
 // The printed card's footer for keys that latch (the cabinet's own keys: pressed, not tapped).
 function latchCardHint(){ const f = fixedKeys()[0]; return 'Press a key to play' + (f && fixedWord(f) ? ' · ' + f.label + ' for standby' : ''); }
-// The cabinet's name under Settings: the descriptor's title (cfg.title).
-function modelLine(){ return ((cfg && cfg.title) || 'Hasler HM · Bern 1964') + ' · restored 2026'; }
+// The cabinet's name under Settings: the descriptor's title (cfg.title), then the radio's short id
+// (/api/info short_id: what the makers see as the tail of its name during remote help) for owners who phone.
+function modelLine(){ return ((cfg && cfg.title) || 'Hasler HM · Bern 1964') + ' · restored 2026' + (radioInfo && radioInfo.short_id ? ' · ' + radioInfo.short_id : ''); }
+// When the radio can't be reached this page is the only helper: the two things that usually explain it.
+function cantReachWords(){ return 'A guest network or a router with client isolation keeps phones apart. Try http://hasler.local/ without :8080 — the player’s own page.'; }
 function paintFixed(){
   const now = Date.now();
   for (const btn of $('bank').querySelectorAll('[data-fixed]')) btn.classList.toggle('down', (flashUntil[btn.dataset.key] || 0) > now);
@@ -5657,7 +5667,17 @@ function attnHaLost(){
 }
 function attnHelp(){
   if (!(help && help.available && help.state === 'waiting')) return null;
-  return {id:'attn-help', title:'Remote help is waiting', sub:'Send the link to the makers' + (help.approve_by ? ' · it works until ' + helpWhen(help.approve_by) : ''), href:'#settings/radio/help'};
+  // No internet: the link can't reach the makers' network however fast it is sent.
+  const sub = status && status.online === false ? 'No internet right now, so the makers can’t reach the radio until it’s back'
+    : 'Send the link to the makers' + (help.approve_by ? ' · it works until ' + helpWhen(help.approve_by) : '');
+  return {id:'attn-help', title: help.resumed ? 'The radio restarted — send the makers the help link again' : 'Remote help is waiting', sub, href:'#settings/radio/help'};
+}
+// The same row on the front page (the owner is likely there, not in Settings); painted with each help poll.
+function paintFrontAttn(){
+  const el = $('frontAttn'); if (!el) return;
+  const a = attnHelp();
+  el.hidden = !a;
+  if (a){ el.href = a.href; el.replaceChildren(h('b', null, a.title), h('span', null, a.sub)); }
 }
 function attnWifi(){
   return settings && settings.wifi && settings.wifi.hotspot ? {id:'attn-wifi', title:'Wi-Fi not set up yet', sub:'The radio is in setup mode — put it on your home Wi-Fi', href:'/wifi'} : null;
@@ -5734,7 +5754,7 @@ function renderSetHome(panel){
 function loadSetHome(){
   const again = () => { if (onPage('home')) rerender(); };
   loadSettings().then(again); loadSources().then(again); loadGroup().then(again); loadAccount().then(again); loadMusic().then(again);
-  loadSoftware(); refreshHa(); loadFx(); loadHelp();
+  loadSoftware(); refreshHa(); loadFx(); loadHelp(); loadInfo().then(again);
   if (makerOn() && !lchk.data && !lchk.loading) lchkLoad().then(again);   // the Maker tools row: "Lamp never checked"
 }
 
@@ -6505,6 +6525,7 @@ function renderRadio(panel){
   panel.append(radioMoveGroup());
   panel.append(radioSoftwareGroup());
   panel.append(howTheRadioIs());
+  const ng = makerNotesGroup(); if (ng) panel.append(ng);   // From the makers (web/notes_api.py)
   panel.append(radioHaGroup());
   const hg = helpGroup(); if (hg) panel.append(hg);
   const og = hostsGroup(); if (og) panel.append(og);   // last, folded: a maker's concern more than an owner's
@@ -6606,6 +6627,7 @@ function haSummary(){
 function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
   loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadHelp(); loadHosts(); loadHow();
+  loadNotes(); loadInfo().then(again);
 }
 function loadUpdates(){ loadSoftware(); loadSettings().then(() => { if (onPage('radio/updates')) rerender(); }); if (!help) loadHelp(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
@@ -6851,7 +6873,8 @@ async function loadHelp(){
 function helpSchedule(){
   clearTimeout(helpTimer); helpTimer = null;
   if (document.hidden || (help && (help.missing || help.available === false))) return;
-  const ms = onPage('radio') ? 3000 : onPage('home') ? 30000 : 0;
+  // The front page keeps an eye on a waiting link too (its "Remote help is waiting" row).
+  const ms = onPage('radio') ? 3000 : onPage('home') || (view === 'remote' && help && help.state === 'waiting') ? 30000 : 0;
   if (ms) helpTimer = setTimeout(loadHelp, ms);
 }
 function leaveHelp(){ clearTimeout(helpTimer); helpTimer = null; }
@@ -6866,6 +6889,7 @@ function helpKey(){
 // Repaint only when something changed (the 3 s poll must not steal focus or a text selection);
 // the "time left" line ticks in place. #helpLive stays put so a screen reader hears each change once.
 function paintHelp(){
+  paintFrontAttn();
   if (onPage('home')){
     const k = JSON.stringify([helpSummary(), help && help.state === 'waiting' && help.approve_by]);
     if (k !== helpSig){ helpSig = k; rerender(); }
@@ -6911,14 +6935,17 @@ function helpBody(){
     const field = h('input', {type:'text', id:'helpUrl', readonly:true, value:url, class:'help-url', 'aria-label':'Link for the makers',
       'aria-describedby':'helpWaitNote', autocomplete:'off', autocapitalize:'off', spellcheck:'false', onfocus: e => e.target.select()});
     return h('div', {class:'li col', style:'gap:10px'},
-      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Send this link to the makers'),
-        h('span', {class:'li-sub'}, 'Only to them: whoever opens it can connect this radio.')),
+      // After a restart within the owner's 24-hour yes the helper made a new link: no new key press, but it must be sent again.
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, d.resumed ? 'The radio restarted; send the makers this link again' : 'Send this link to the makers'),
+        h('span', {class:'li-sub'}, 'Send it to ' + makersWho() + ', and nobody else: whoever opens it can connect this radio.')),
       field,
       h('div', {class:'acts'},
         h('button', {type:'button', class:'btn small primary', id:'helpCopy', disabled: !url, onclick: helpCopy}, 'Copy link'),
         navigator.share ? h('button', {type:'button', class:'btn small', id:'helpShare', disabled: !url, onclick: helpShare}, 'Share…') : null,
         stopBtn()),
-      h('p', {class:'hint', id:'helpWaitNote'}, 'Waiting for the makers' + (d.approve_by ? ' — the link works until ' + helpWhen(d.approve_by) : '') + '. Stop cancels it.'),
+      h('p', {class:'hint', id:'helpWaitNote'}, 'Waiting for the makers' + (d.approve_by ? ' — the link works until ' + helpWhen(d.approve_by) : '')
+        + '. If nobody has come by then, nothing is lost: press Start again when they say they’re ready. Stop cancels it.'),
+      status && status.online === false ? h('p', {class:'note-warn'}, 'The radio has no internet right now, so the makers can’t reach it until it’s back.') : null,
       err);
   }
   if (st === 'connected'){
@@ -6936,14 +6963,21 @@ function helpBody(){
       h('div', {class:'acts'}, stopBtn('Stop help')), err);
   }
   // off
-  const last = d.last && d.last.text ? 'Last time: ' + d.last.text.replace(/\.$/, '') + (d.last.at ? ' · ' + ago(new Date(d.last.at * 1000).toISOString()) : '') : '';
+  // "A maker was on for 40 minutes; help ended at 18:02 when you pressed Stop." (newer software), else the reason alone.
+  const last = d.last && d.last.words ? 'Last time: ' + d.last.words.replace(/\.$/, '') + (d.last.at ? ' · ' + ago(new Date(d.last.at * 1000).toISOString()) : '')
+    : d.last && d.last.text ? 'Last time: ' + d.last.text.replace(/\.$/, '') + (d.last.at ? ' · ' + ago(new Date(d.last.at * 1000).toISOString()) : '') : '';
+  const offline = status && status.online === false;
+  const contact = radioInfo && radioInfo.makers_contact;
   return h('div', {class:'li col', style:'gap:10px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Remote help is off'),
-      h('span', {class:'li-sub', id:'helpWhat'}, 'The makers can see this page and log in to the radio to fix things, for 24 hours. You can stop any time.'),
-      h('span', {class:'li-sub'}, 'Nothing is sent until you press a key on the radio.')),
+      h('span', {class:'li-sub', id:'helpWhat'}, 'The makers can see this page and log in to the radio to fix things, for 24 hours, and you can stop at any time.'),
+      h('span', {class:'li-sub'}, 'Nothing happens until you press a key on the radio. Prefer to write first? Send them a report.')),
+    offline ? h('p', {class:'note-warn', id:'helpOffline'}, 'The radio has no internet right now, so the makers couldn’t reach it. Send a report instead.') : null,
     h('div', {class:'acts', style:'align-items:center'},
       h('button', {type:'button', class:'btn small primary', id:'helpStart', 'aria-describedby':'helpWhat', onclick: helpStart}, 'Let the makers help (24 h)'),
+      h('button', {type:'button', class:'btn small', id:'helpTell', onclick: tellMakers}, 'Tell the makers'),
       h('a', {class:'li-act', href:HELP_DOC, target:'_blank', rel:'noopener'}, 'How it works', IC.ext())),
+    contact ? h('p', {class:'hint', id:'helpContact'}, 'Delgado & Murphy · ' + contact) : null,
     last ? h('p', {class:'hint'}, last) : null, err);
 }
 async function helpStart(){
@@ -6987,6 +7021,243 @@ async function helpShare(){
   const url = help && help.login_url; if (!url || !navigator.share) return;
   try { await navigator.share({title:'Hasler remote help', text:'Here is the link to help with my Hasler radio:', url}); }
   catch (e) { if (!e || e.name !== 'AbortError') helpCopy(); }
+}
+
+/* ---- Support: Something's wrong? · Tell the makers · From the makers · the daily check-in ---- */
+// radioInfo: GET /api/info (short_id: the radio's four-letter name for the makers; makers_contact: box.yaml makers.contact).
+let radioInfo = null;
+async function loadInfo(){
+  try { const r = await api('GET', '/api/info'); if (r.ok && r.json) radioInfo = r.json; } catch (_) {}
+}
+// "Delgado & Murphy (hola@…)" when the makers left a contact, else the people who built the radio.
+function makersWho(){ const c = radioInfo && radioInfo.makers_contact; return c ? 'Delgado & Murphy (' + c + ')' : 'the people who built your radio'; }
+function contactIsEmail(){ const c = radioInfo && radioInfo.makers_contact; return !!(c && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c)); }
+// Copy a text: the clipboard, else a selection the owner can copy from.
+async function copyText(text, msg){
+  try { await navigator.clipboard.writeText(text); toast(msg || 'Copied'); return true; }
+  catch (_) {
+    const ta = h('textarea', {style:'position:fixed;left:-9999px;top:0', 'aria-hidden':'true'}); ta.value = text;
+    document.body.append(ta); ta.focus(); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (_) {}
+    ta.remove(); toast(ok ? (msg || 'Copied') : 'Couldn’t copy — try Share', !ok); return ok;
+  }
+}
+
+/* "Something's wrong?": a button on the Settings home above the page rows (after Needs attention and
+   anything a later page put before the rows), and its page: the lamp in words, the six lines to read out
+   to the makers, what the radio found (whatIsWrong), and Tell the makers at the bottom. */
+SET_ICONS.wrong = '<circle cx="8" cy="8" r="6"/><path d="M8 4.8v3.8M8 11.4v.2"/>';
+function setHomeWrong(panel){
+  panel.append(h('nav', {class:'set-list', id:'setWrong', 'aria-label':'Something’s wrong?'},
+    setRow('wrong', 'Something’s wrong?', 'The radio checks itself and says what it found.', '#settings/wrong', setIc(SET_ICONS.wrong))));
+}
+SET_HOME.splice(SET_HOME.indexOf(setHomeRows), 0, setHomeWrong);
+// The lamp's motion as a rhythm word, for "The lamp right now: red, tapping SOS — something needs a maker".
+const RHYTHM_WORDS = {steady:'steady', breath:'breathing', slow:'breathing slowly', kick:'a kick', beckon:'two kicks, again and again',
+  bloom:'a green bloom', eye:'a slow red eye', alert:'a double pulse every few seconds', none:'no light'};
+function lampLine(now){
+  const row = LAMP_MEANS.find(r => r[2] === (({offline:'no_internet', off:'dark'})[now.m] || now.m));
+  if (!row) return now.words;
+  const m = row[6], rhythm = m.startsWith('morse:') ? 'tapping ' + m.slice(6) : RHYTHM_WORDS[m] || m;
+  return (row[5] === 'off' ? 'dark' : row[5]) + ', ' + rhythm + ' — ' + now.words;
+}
+// The rules, in order of how much they matter; each card has a title, two sentences and one "try this".
+function whatIsWrong(){
+  const st = status || {}, d = radioHow && !radioHow.missing && !radioHow.err ? radioHow : null;
+  const faults = Array.isArray(st.fault_reasons) ? st.fault_reasons : (d && d.faults) || [];
+  const sw = software && !software.missing && !software.err ? software : null;
+  // The Wi-Fi name and setup mode, from whichever answered (/api/settings, or the diagnostics).
+  const sw_ = (settings && settings.wifi) || {}, dw = (d && d.wifi) || {};
+  const w = {ssid: sw_.ssid || dw.ssid || '', hotspot: !!(sw_.hotspot || dw.hotspot)};
+  const tell = {label:'Tell the makers', run: tellMakers}, has = f => faults.includes(f), out = [];
+  if (has('storage')) out.push({id:'storage', title:'The memory card is full, or won’t write',
+    body:'The radio keeps playing, but it can’t save settings or install updates. This needs a maker; nothing on this page will fix it.', try: tell});
+  if (has('panel')) out.push({id:'panel', title:'The keys aren’t answering',
+    body:'Music still plays from this page and from phones, but the keys and knobs on the radio are dead. Usually a cable inside has come loose. Because no key works, the makers can’t be let in from here: send them a report instead.', try: tell});
+  if (has('sound')) out.push({id:'sound', title:'The amplifier isn’t answering',
+    body:'The computer inside can’t see its sound card. Unplug the radio, wait ten seconds, plug it in. If the lamp taps SOS again, a maker needs to open the cabinet.', try: tell});
+  if (has('heat')) out.push({id:'heat', title:'Too hot inside',
+    body:'Over 80 °C. Switch the radio off (tone knob left for 5 seconds) and let it cool. Check nothing covers the vents at the back.'});
+  if (has('update')) out.push({id:'update', title:'An update got stuck half-way',
+    body:'The radio runs, but it couldn’t finish going back to the version before. Leave it plugged in and tell the makers. Don’t install anything from this page until they’ve looked.', try: tell});
+  if (st.recovering && (st.stalled_s || 0) > 120){
+    const cur = currentKey(), k = cur && cfg && cfg.keys.find(x => x.id === cur), p = k && k.tap && k.tap.n != null ? presetIn(cfg, k.tap.n) : null;
+    const mins = Math.max(1, Math.round(st.stalled_s / 60));
+    out.push({id:'stall', title:'The station stopped',
+      body:'The radio has been trying to bring back ' + (p ? p.name : 'the station') + ' for ' + mins + (mins === 1 ? ' minute' : ' minutes') + '. The station may be off the air. If every key does this, see “No internet”.',
+      try:{label:'Try another key', href:'#'}});
+  }
+  if (st.online === false && !st.standby && !w.hotspot) out.push({id:'offline', title:'No internet',
+    body:'The radio is on your Wi-Fi' + (w.ssid ? ' (' + w.ssid + ')' : '') + ' but nothing beyond the router answers. Restart the router. Bluetooth and AirPlay from a phone still work.'});
+  if (w.hotspot) out.push({id:'hotspot', title:'Not on your Wi-Fi',
+    body:'The radio made its own network, ' + ((setupNet && setupNet.ssid) || 'Hasler') + ', because it couldn’t find yours.', try:{label:'Set up Wi-Fi', href:'/wifi'}});
+  const res = sw && sw.last_result;
+  if (res && res.ok === false) out.push({id:'rollback', title:'An update didn’t work here',
+    body:'The radio went back to ' + (res.back_to || 'the version before') + ' by itself' + (res.at ? ' on ' + day(res.at) : '') + ', and it’s fine to keep using.'
+      + (res.why || res.reason ? ' Why: ' + (res.why || res.reason) + '.' : '') + ' The makers will want to know — the report has the details.', try: tell});
+  if (sw && sw.stale){
+    const t = Date.parse(sw.last_check || ''), days = t ? Math.round((Date.now() - t) / 86400000) : 0;
+    out.push({id:'stale', title:'No news from the makers for ' + (days >= 2 ? days + ' days' : 'a while'),
+      body:'The radio can’t reach the makers’ update server, or there’s nothing new. Everything plays as before.', try:{label:'Check now', run: swCheck}});
+  }
+  const pl = d && d.player;
+  if (pl && pl.restarts_last_hour >= 1) out.push({id:'restarts', title:'The player inside restarted',
+    body:'The radio restarted its player ' + (pl.restarts_last_hour === 1 ? 'once' : pl.restarts_last_hour + ' times') + ' in the last hour and carried on. Once is nothing; every day is worth telling the makers.'});
+  if (d && d.last_shutdown && d.last_shutdown.kind === 'power-cut') out.push({id:'powercut', title:'The power was cut',
+    body:'The radio came back by itself. If this happens often (a plug timer, a wall switch?), the tone knob is the kinder way to switch it off.'});
+  if (pl && pl.mpd === false && !st.recovering) out.push({id:'mpd', title:'The player isn’t answering',
+    body:'Unplug for ten seconds and plug in. If it happens again today, tell the makers.'});
+  return out;
+}
+let sayLines = null, sayTimer = null;   // the report's first six lines, for owners who phone
+async function loadSayLines(){
+  clearTimeout(sayTimer); sayTimer = null;
+  try {
+    const r = await api('GET', '/api/report?wifi=1', undefined, {timeout:15000});
+    sayLines = r.status === 404 ? {missing:true} : r.ok && r.json && r.json.text ? r.json.text.split('\n').slice(0, 6) : {err:true};
+  } catch (_) { sayLines = {err:true}; }
+  if (onPage('wrong')){ const el = $('sayLines'); if (el) el.textContent = sayText(); if (!document.hidden) sayTimer = setTimeout(loadSayLines, 30000); }
+}
+const sayText = () => !sayLines ? 'Checking…' : sayLines.missing ? 'This radio’s software can’t say yet. Updating it adds this.' : sayLines.err ? 'Couldn’t ask the radio.' : sayLines.join('\n');
+function loadWrong(){
+  const again = () => { if (onPage('wrong')) rerender(); };
+  loadSettings().then(again); loadSoftware(); loadHelp(); loadSetupNet().then(again); loadInfo().then(again);
+  loadHow().then(again); loadSayLines();
+}
+function leaveWrong(){ clearTimeout(sayTimer); sayTimer = null; clearTimeout(howTimer); howTimer = null; }
+function renderWrong(panel){
+  const now = lampNowWords();
+  panel.append(h('p', {class:'hint', style:'margin:0;padding:0 4px', id:'wrongLamp'}, 'The lamp right now: ',
+    h('b', null, now ? lampLine(now) : status ? 'this radio has no lamp' : 'checking…')));
+  panel.append(setGroup('say', 'Say this to the makers', h('pre', {class:'say', id:'sayLines'}, sayText()),
+    h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', id:'sayCopy', onclick: () => copyText(sayText(), 'Copied')}, 'Copy'))));
+  if (!status && !radioHow){ panel.append(setGroup('found', 'What the radio found', skel(2))); return; }
+  const cards = whatIsWrong();
+  const card = c => h('div', {class:'li col', id:'wrong-' + c.id, style:'gap:8px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, c.title), h('span', {class:'li-sub'}, c.body)),
+    c.try ? h('div', {class:'acts'}, c.try.href ? h('a', {class:'btn small', href: c.try.href}, c.try.label)
+      : h('button', {type:'button', class:'btn small', onclick: c.try.run}, c.try.label)) : null);
+  panel.append(setGroup('found', 'What the radio found', h('div', {class:'list'}, cards.length ? cards.map(card)
+    : h('div', {class:'li col', id:'wrong-none'}, h('span', {class:'li-sub'}, 'Everything answers. If it still sounds wrong, it’s usually one of these: the volume ceiling, mono, or what the tone knob does.'),
+        h('div', {class:'acts'}, h('a', {class:'btn small', href:'#settings/sound'}, 'Sound'))))));
+  panel.append(setGroup('tell', 'Tell the makers', h('div', {class:'list'}, h('div', {class:'li col', style:'gap:8px'},
+    h('span', {class:'li-sub'}, 'A few lines with what the makers usually ask first, to send by message. Nothing private.'),
+    h('div', {class:'acts'}, h('button', {type:'button', class:'btn small primary', id:'tellMakers', onclick: tellMakers}, 'Tell the makers'))))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'The makers can also look for themselves, with your say-so: ', h('a', {href:'#settings/radio/help'}, 'Help from the makers'), '.'));
+}
+/* "Tell the makers": the sheet. The report is assembled by the radio (GET /api/report, web/report.py: the
+   one place that keeps secrets out), with the owner's line and, unless unticked, the Wi-Fi name. */
+const tellUi = {note:'', wifi:true};
+async function reportText(){
+  const r = await api('GET', '/api/report?note=' + encodeURIComponent(tellUi.note) + '&wifi=' + (tellUi.wifi ? '1' : '0'), undefined, {timeout:15000});
+  if (!r.ok || !r.json || !r.json.text) throw new Error((r.json && r.json.error) || 'no report');
+  return r.json.text;
+}
+function tellMakers(){
+  const dlg = $('dlg'); if (dlg.open) return;
+  const from = document.activeElement;
+  dlg.textContent = '';
+  const ta = h('textarea', {id:'tellNote', rows:'3', 'aria-label':'What’s wrong, in your words', placeholder:'What’s wrong, in your words',
+    oninput: e => { tellUi.note = e.target.value; }}); ta.value = tellUi.note;
+  const cb = h('input', {type:'checkbox', id:'tellWifi', checked: tellUi.wifi, onchange: e => { tellUi.wifi = e.target.checked; }});
+  const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (_) { toast(NET_ERR, true); } btn.disabled = false; };
+  const copyBtn = h('button', {type:'button', class:'btn small', id:'tellCopy'}, 'Copy');
+  copyBtn.onclick = () => busy(copyBtn, async () => { await copyText(await reportText(), 'Report copied'); });
+  const shareBtn = navigator.share ? h('button', {type:'button', class:'btn small primary', id:'tellShare'}, 'Share…') : null;
+  if (shareBtn) shareBtn.onclick = () => busy(shareBtn, async () => {
+    const text = await reportText();
+    try { await navigator.share({title:'My Hasler radio', text}); } catch (e) { if (!e || e.name !== 'AbortError') await copyText(text, 'Report copied'); }
+  });
+  // With an email in box.yaml makers.contact, the report goes straight into a mail to them.
+  const mailBtn = contactIsEmail() ? h('button', {type:'button', class:'btn small' + (shareBtn ? '' : ' primary'), id:'tellMail'}, 'Email the makers') : null;
+  if (mailBtn) mailBtn.onclick = () => busy(mailBtn, async () => {
+    const text = await reportText(), subject = 'My Hasler radio' + (radioInfo && radioInfo.short_id ? ' (' + radioInfo.short_id + ')' : '');
+    location.href = 'mailto:' + encodeURIComponent(radioInfo.makers_contact) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
+  });
+  dlg.append(h('h2', {id:'dlgTitle'}, 'Tell the makers'),
+    h('p', {class:'sub'}, 'This puts together what the makers usually ask first: the version, what the lamp says, what’s playing, and the last few things that went wrong inside. Nothing private: no passwords, no accounts, no phone names. Add a line about what you noticed.'),
+    ta,
+    h('label', {class:'tell-wifi', for:'tellWifi'}, cb, 'Include my Wi-Fi name'),
+    h('p', {class:'hint', id:'tellWho'}, 'Send it to ' + makersWho() + ', and nobody else.'),
+    h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', id:'tellClose', onclick: () => dlg.close()}, 'Close'), copyBtn, mailBtn, shareBtn),
+    h('p', {class:'hint'}, 'The makers can also look for themselves, with your say-so: ', h('a', {href:'#settings/radio/help', onclick: () => dlg.close()}, 'Help from the makers'), '.'));
+  dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; if (from && from.isConnected && from.focus) from.focus({preventScroll:true}); };
+  dlg.onclick = null;
+  dlg.showModal();
+  ta.focus();
+}
+/* "From the makers": a maker's notes left on the radio (scripts/hasler-note; GET /api/notes), newest first,
+   with the date. Seen folds a note away; it stays readable under This radio. */
+let notes = null;   // null = loading, {missing} = older software, {err}, or GET /api/notes
+async function loadNotes(){
+  try { const r = await api('GET', '/api/notes'); notes = r.status === 404 ? {missing:true} : r.ok && r.json ? r.json : {err:true}; }
+  catch (_) { notes = {err:true}; }
+  if (onPage('radio')) rerender();
+}
+function makerNotesGroup(){
+  const n = notes; if (!n || n.missing || n.err || !Array.isArray(n.notes) || !n.notes.length) return null;
+  const fresh = n.notes.filter(x => !x.seen), old = n.notes.filter(x => x.seen);
+  const card = x => h('div', {class:'li col note-card', 'data-at': x.at, style:'gap:8px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'From the makers · ' + day(x.at)), h('span', {class:'li-sub'}, x.text)),
+    !x.seen ? h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', onclick: () => noteSeen(x.at)}, 'Seen')) : null);
+  return setGroup('notes', 'From the makers', h('div', {class:'list'}, fresh.map(card),
+    old.length ? h('details', {class:'how', id:'notesOld'}, h('summary', null, fresh.length ? 'Earlier notes' : 'Notes from the makers (' + old.length + ')'), old.map(card)) : null));
+}
+async function noteSeen(at){
+  try { const r = await api('POST', '/api/notes/seen', {at}); if (r.ok){ toast('Seen'); await loadNotes(); } else failToast(r); }
+  catch (_) { toast(NET_ERR, true); }
+}
+/* The opt-in daily check-in (box.yaml `checkin`, docs/ota.md §5): "Tell the makers how the radio is", under
+   Updates after the metered switch. Off to start; the switch only works once the makers set a checkin_url. */
+function sentWhen(iso){
+  const t = Date.parse(iso || ''); if (!t) return '';
+  const d = new Date(t), hm = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  return (d.toDateString() === new Date().toDateString() ? 'today ' : day(iso) + ' ') + hm;
+}
+function checkinRow(s){
+  const c = s.checkin; if (!c || typeof c !== 'object') return null;
+  const last = c.last, sid = (last && last.short_id) || (radioInfo && radioInfo.short_id) || '';
+  let sent = '';
+  if (!c.url_set) sent = 'The makers haven’t said where it should go yet, so nothing is sent.';
+  else if (!c.enabled) sent = '';
+  else if (!last) sent = 'Not sent yet: it goes after the next daily check.';
+  else if (last.ok) sent = 'Sent: ' + sentWhen(last.at) + (sid ? ' · the makers see this radio as ' + sid : '');
+  else if (last.skipped === 'metered') sent = 'Not sent: this Wi-Fi is a phone hotspot or capped.';
+  else sent = 'Couldn’t send ' + (sentWhen(last.at) || 'today') + (last.error ? ': ' + last.error : '') + '.';
+  return h('div', {class:'li col', style:'gap:8px'},
+    h('label', {class:'switch', for:'checkin', style:'flex:1'},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Tell the makers how the radio is'),
+        h('span', {class:'li-sub'}, 'Once a day, a few lines: the version, whether everything answers, and what went wrong inside. No names, no addresses, nothing about what you listen to.')),
+      h('input', {type:'checkbox', role:'switch', id:'checkin', checked: !!c.enabled, disabled: swBusy || !c.url_set, onchange: e => swCheckin(e.target.checked, true)})),
+    h('div', {class:'acts', style:'align-items:center'},
+      h('button', {type:'button', class:'link', id:'checkinSee', onclick: seeCheckin}, 'See what it sends'),
+      sent ? h('span', {class:'li-sub', id:'checkinSent'}, sent) : null));
+}
+async function swCheckin(on, undoable){
+  try {
+    const r = await api('PUT', '/api/software/settings', {checkin: on}, {retry:0});
+    if (r.ok){
+      if (software && software.checkin) software.checkin.enabled = on;
+      toast(on ? 'The radio tells the makers how it is, once a day' : 'The radio keeps to itself', undoable ? {undo: () => swCheckin(!on, false)} : null);
+    } else { toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that') + '.', true); rerender(); }
+  } catch (_) { toast(NET_ERR, true); rerender(); }
+}
+async function seeCheckin(){
+  const dlg = $('dlg'); if (dlg.open) return;
+  const from = document.activeElement;
+  dlg.textContent = '';
+  const body = h('pre', {class:'say', id:'checkinBody'}, 'Checking…');
+  dlg.append(h('h2', {id:'dlgTitle'}, 'What the check-in sends'),
+    h('p', {class:'sub', id:'checkinSub'}, 'Exactly this, once a day, after the radio has looked for updates. Nothing else.'),
+    body, h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', id:'checkinClose', onclick: () => dlg.close()}, 'Close')));
+  dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; if (from && from.isConnected && from.focus) from.focus({preventScroll:true}); };
+  dlg.onclick = null;
+  dlg.showModal();
+  try {
+    const r = await api('GET', '/api/checkin/preview', undefined, {timeout:25000});
+    if (r.ok && r.json && r.json.text){ body.textContent = r.json.text; $('checkinSub').textContent = 'Exactly this (' + r.json.bytes + ' bytes), once a day, after the radio has looked for updates. Nothing else.'; }
+    else body.textContent = r.status === 404 ? 'This radio’s software can’t show it yet.' : capFirst((r.json && r.json.error) || 'The radio couldn’t put it together') + '.';
+  } catch (_) { body.textContent = NET_ERR; }
 }
 
 /* ---- 7 · Maker tools (hidden until the version is tapped seven times) ---- */
@@ -7212,6 +7483,8 @@ const SET_PAGES = [
   {id:'radio/ha', title:'Home Assistant', parent:'radio', note: NOTE_INSTANT, render: renderHa, load: () => refreshHa()},
   {id:'radio/move', title:'Moving this radio', parent:'radio', note:'Forgetting a Wi-Fi network, or handing the radio over, asks for a press on the radio.',
     render: renderMove, load: loadMove},
+  // Not a row (no summary): reached from the "Something's wrong?" button on the home list (setHomeWrong).
+  {id:'wrong', title:'Something’s wrong?', render: renderWrong, load: loadWrong, leave: leaveWrong},
 ];
 const SET_PAGE = Object.fromEntries(SET_PAGES.map(p => [p.id, p]));
 /* ---- pilot lamp: night = sunset..sunrise where the radio stands (lamp/night.py) ---- */
@@ -9184,10 +9457,13 @@ function pressToConfirm(action, args, title, sub){
       } catch (_) {}
       if (!done) timer = setTimeout(tick, 600);
     };
-    dlg.append(h('h2', {id:'dlgTitle'}, title || 'Confirm on the radio'), sub ? h('p', {class:'sub'}, sub) : '',
+    // The keys dead but the knobs alive (web/confirm.py by_knob, for remote help): a turn of the volume knob says yes.
+    const byKnob = !!j.by_knob;
+    dlg.append(h('h2', {id:'dlgTitle'}, title || 'Confirm on the radio'), sub ? h('p', {class:'sub'}, byKnob ? sub.replace(/Press a key on the radio to say yes\.?/, 'Turn the volume knob a little to say yes.') : sub) : '',
       h('div', {class:'cf'}, ring, h('div', {class:'cf-txt'},
-        h('span', {class:'li-title'}, 'Press any key on the radio'),
-        h('span', {class:'li-sub'}, 'The pilot lamp brightens twice, again and again, while it waits. That press only confirms — it won’t change the station.'))),
+        h('span', {class:'li-title'}, byKnob ? 'Turn the volume knob a little' : 'Press any key on the radio'),
+        h('span', {class:'li-sub'}, byKnob ? 'The radio’s keys aren’t answering, so a turn of the knob is how it knows it’s you. The volume moves a little; that’s all.'
+          : 'The pilot lamp brightens twice, again and again, while it waits. That press only confirms — it won’t change the station.'))),
       h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
     dlg.onclose = () => {
       if (dlg.open) return;
@@ -9540,7 +9816,7 @@ function renderSoftwareUpdates(panel){
       h('span', {class:'li-title'}, 'Version ' + s.version),
       h('span', {class:'li-sub'}, (s.channel !== 'stable' ? chName(s.channel) + ' · ' : '')
         + (s.last_check ? 'Checked ' + ago(s.last_check) : 'Not checked yet')),
-      s.stale ? h('span', {class:'note-warn'}, s.check_error ? 'No fresh update information — the last check failed.' : 'No fresh update information for a while.') : null),
+      s.stale ? h('span', {class:'note-warn'}, (s.check_error ? 'No fresh update information — the last check failed.' : 'No fresh update information for a while.') + ' The radio keeps working as it is.') : null),
     h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: swCheck}, 'Check now')));
   if (s.busy) rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Installing ' + ((res && res.version) || '')),
     h('span', {class:'li-sub'}, 'The lamp holds its ember until it’s done. Leave the radio plugged in.'))));
@@ -9564,7 +9840,8 @@ function renderSoftwareUpdates(panel){
       h('span', {class:'li-sub'}, res.ok
         ? res.version + (res.manual ? ' — went back by hand' : ' installed') + (res.at ? ', ' + day(res.at) : '') + (res.probation ? ' · settling in' : '')
         : res.version + ' didn’t work here, so the radio went back to ' + (res.back_to || 'the version before') + (res.at ? ' (' + day(res.at) + ')' : '') + '. Tell the makers if it happens again.'),
-      !res.ok && res.reason ? h('span', {class:'li-sub sw-why'}, 'Why: ' + res.reason) : null)));
+      // The updater's reason in plain words (web/software.py rollback_words); older software only has the raw one.
+      !res.ok && (res.why || res.reason) ? h('span', {class:'li-sub sw-why'}, 'Why: ' + (res.why || res.reason)) : null)));
     if (!res.ok) markRollbackSeen();
   }
   const os = s.os_updates; if (os && os.enabled && (os.last_upgrade || os.paused)) rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Security updates'), h('span', {class:'li-sub'}, (os.last_upgrade ? os.last_upgrade.count + ' on ' + day(os.last_upgrade.at) : 'None yet') + (os.paused ? ' · paused after a problem' : '') + (os.reboot_advisable ? ' · finished at the next power-on' : '')))));
@@ -9575,6 +9852,7 @@ function renderSoftwareUpdates(panel){
   rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'When updates install'),
     h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
   const mt = meteredRow(s); if (mt) rows.push(mt);
+  const ck = checkinRow(s); if (ck) rows.push(ck);     // the opt-in daily check-in
   const cseg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Update channel'});
   CHANNELS.forEach(([k, name, l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
     onclick: () => { if (k !== s.channel) swChannel(k); },

@@ -65,7 +65,8 @@ class TestInfo:
         assert doc["variant"] == "hasler-hm" and doc["api"] == 1
         assert isinstance(doc["version"], str) and doc["version"]
         assert doc["name"] and "." not in doc["name"]
-        assert {"id", "name", "variant", "version", "api", "multiroom", "installed_at"} <= set(doc)
+        assert set(doc) == {"id", "name", "variant", "version", "api", "multiroom", "installed_at", "short_id", "makers_contact"}
+        assert doc["short_id"] == doc["id"][:4] and doc["makers_contact"] == ""   # support (web/report.py): no box.yaml here
         assert doc["multiroom"]["enabled"] is False and doc["multiroom"]["role"] == "alone"
 
     def test_id_without_machine_id_is_still_stable(self, tmp_path):

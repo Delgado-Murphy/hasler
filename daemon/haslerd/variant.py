@@ -210,9 +210,11 @@ def open_backends(
             digital = Mcp23017Digital(names, **digital_spec)
         except (OSError, RuntimeError) as exc:
             # No board on the header: keep the page and the music up rather
-            # than crash-looping. Controls stay unread until a restart.
+            # than crash-looping. The keys stay unread until a restart; the
+            # pots (on the ADC) are still tried below, so the volume knob
+            # works and can stand in for a key press (web/confirm.py).
             log.warning("panel board not found, running without controls: %s", exc)
-            return AbsentDigital(str(exc)), NullAnalog()
+            digital = AbsentDigital(str(exc))
     else:
         raise ValueError(f"unknown digital backend {dbackend!r}")
 
@@ -223,7 +225,13 @@ def open_backends(
     elif abackend == "ads1115":
         from .panel.io_ads1115 import Ads1115Analog
 
-        analog = Ads1115Analog(variant.channels(), **analog_spec)
+        try:
+            analog = Ads1115Analog(variant.channels(), **analog_spec)
+        except (OSError, RuntimeError, ImportError) as exc:
+            if not getattr(digital, "absent", False):
+                raise
+            log.warning("the knobs' ADC didn't answer either: %s", exc)
+            analog = NullAnalog()
     else:
         raise ValueError(f"unknown analog backend {abackend!r}")
 
@@ -306,6 +314,15 @@ class Panel:
         """True when the panel board was missing at start (see AbsentDigital)."""
         return getattr(self.digital, "absent", False)
 
+    @property
+    def knobs_answer(self) -> bool:
+        """The key board is dead but the pots are still read (they sit on the
+        ADC, not the MCP23017): ``poll`` then emits their ``change`` events
+        alone, so the volume knob still works and a turn of it can stand in for
+        a key press where that is allowed (web/confirm.py KNOB_ACTIONS)."""
+        return self.absent and type(self.analog).__name__ != "NullAnalog" and any(
+            getattr(c, "kind", None) == "pot" for c in self.controls)
+
     def set_combos(self, combos: list[dict]) -> None:
         """The key combinations to watch for (web/keymap.tune_combos)."""
         self._combo_list = list(combos or [])
@@ -320,7 +337,7 @@ class Panel:
 
     def poll(self, now: float) -> list[Event]:
         if self.absent:
-            return []
+            return self._poll_knobs(now) if self.knobs_answer else []
         try:
             digital = self.digital.read()
             analog = self.analog.read()
@@ -354,6 +371,20 @@ class Panel:
             downs = [e for e in downs if e.control not in self._hushed
                      and not (e.control in keys and now < self._hush_until)]
         self._downs.extend(downs)
+        return events
+
+    def _poll_knobs(self, now: float) -> list[Event]:
+        """The pots alone, with the key board dead (``knobs_answer``): an empty
+        digital reading never reaches a key or the tone knob's end switch (an
+        open contact would read as "shut down")."""
+        try:
+            analog = self.analog.read()
+        except OSError:
+            return []
+        events: list[Event] = []
+        for control in self.controls:
+            if getattr(control, "kind", None) == "pot":
+                events.extend(control.update(now, {}, analog))
         return events
 
     def take_downs(self) -> list[Event]:

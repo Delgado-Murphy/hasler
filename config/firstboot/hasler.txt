@@ -28,5 +28,18 @@ moode = yes
 # yes = may run without the cabinet's key board (a bare Pi on the bench).
 panel_optional = no
 
+# Who built the radio and how to reach them (an email or a phone number):
+# shown on the key page under Help from the makers and used by "Tell the
+# makers". Empty = "the people who built your radio".
+# makers_contact = hola@example.org
+
+# The opt-in daily check-in (docs/ota.md section 5): once a day, a few lines
+# about how the radio is - version, whether everything answers, what went
+# wrong inside - to the makers' own endpoint. No names, no addresses, nothing
+# about what plays. Off unless the owner says yes; the switch is on the key
+# page under Updates. checkin_url is where it goes (https only).
+checkin = no
+# checkin_url = https://hasler-checkin.example.workers.dev/v1/checkin
+
 # Makers only: a local test channel instead of the public one.
 # update_url = http://laptop.local:8000

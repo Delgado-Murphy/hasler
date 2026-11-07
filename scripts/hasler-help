@@ -6,15 +6,22 @@ Run as root by haslerd (sudoers allows exactly this file); docs/remote-help.md.
     hasler-help start HOSTNAME     HOSTNAME = hasler-<room>-<id>, [a-z0-9-], <= 63
     hasler-help status
     hasler-help stop [stopped|expired|unapproved|wrong-tailnet|failed]
+    hasler-help resume             at boot (hasler-help-resume.service): start again while
+                                   the owner's 24-hour yes (CONSENT) is unexpired - a new link
+    hasler-help rescue             hasler-help.txt on the SD card (hasler-help-rescue):
+                                   start with a hostname made here; the card is the consent
+    hasler-help watch              every minute while on (a transient timer): count the
+                                   minutes a maker is on; prints nothing
 
-Each prints one JSON object on stdout (the last line):
+Each (but watch) prints one JSON object on stdout (the last line):
 
     {"ok": true, "installed": bool, "active": bool, "backend": "NeedsLogin"|"Running"|...,
      "auth_url": str|null, "address": "100.x.y.z"|null, "dns_name": str|null,
      "tailnet": str|null, "hostname": str|null, "started_at": epoch|null,
      "expires_at": epoch|null, "approve_by": epoch|null, "stale": bool,
+     "resumed": bool, "maker_seconds": int,
      "peers_active": [{"name": str, "user": str|null}],
-     "last": {"at": epoch, "why": str}|null}
+     "last": {"at": epoch, "why": str, "started_at": epoch, "maker_seconds": int}|null}
 
 ``peers_active``: the tailnet devices talking to the radio right now - a
 WireGuard session Tailscale calls Active, or a handshake within PEER_RECENT_S
@@ -28,7 +35,8 @@ signed in to the makers' tailnet and the radio joins. The URL is never
 logged: ``tailscale up`` writes to /dev/null and tailscaled's lines that
 carry it are filtered out of the journal (LogFilterPatterns).
 
-Nothing about the tailnet touches the SD card and nothing survives a reboot:
+Nothing about the tailnet touches the SD card, and the session never
+survives a reboot; the owner's 24-hour yes does:
 
   - tailscaled runs as a transient unit (hasler-help-tailscaled.service, not
     the package's tailscaled.service, which stays disabled) with
@@ -38,10 +46,20 @@ Nothing about the tailnet touches the SD card and nothing survives a reboot:
   - The end is two transient timers started first, so they hold even if
     haslerd dies: hasler-help-end.timer (24 h, ``stop expired``) and
     hasler-help-unapproved.timer (1 h, ``stop unapproved``, which does
-    nothing once a maker has approved).
+    nothing once a maker has approved). A third, hasler-help-watch.timer,
+    runs ``watch`` every minute to count how long a maker is actually on
+    (``maker_seconds``, kept in session.json and carried into ``last``).
   - ``stop`` logs out (an ephemeral node is then removed from the tailnet),
     stops the units and removes /run/hasler-help. A reboot loses the
     transient units and /run, so it ends help as well.
+  - ``start`` also writes CONSENT (/var/lib/hasler-help/consent.json, root
+    0600: {started_at, expires_at, hostname} - no key material). At boot,
+    hasler-help-resume.service runs ``resume``: while that file is
+    unexpired, ``start`` runs again for the time left, which makes a NEW
+    login link a maker must approve again; the page shows "The radio
+    restarted; send the makers this link again" without another key press,
+    because the press that mattered was within the 24 hours. ``stop`` (any
+    why) and expiry delete the file.
 
 Tailscale SSH stays off (--ssh=false): makers reach the radio over the
 tailnet with ordinary ssh (pi, key auth) and the key page on :8080 - the
@@ -64,15 +82,21 @@ SYSTEMCTL = "/usr/bin/systemctl"
 SYSTEMD_RUN = "/usr/bin/systemd-run"
 RUN = "/run/hasler-help"
 LAST = "/run/hasler-help.last.json"     # outside RUN: survives a stop, not a reboot
+CONSENT_DIR = "/var/lib/hasler-help"    # the owner's yes: survives a reboot, never a stop
+CONSENT = CONSENT_DIR + "/consent.json"
 SOCK = "/run/tailscale/tailscaled.sock"
 SELF = "/usr/local/sbin/hasler-help"     # what the timers run
+SETTINGS = "/var/lib/haslerd/settings.json"   # the room name, for ``rescue``'s hostname
+MACHINE_ID = "/etc/machine-id"
 
 HELP_S = 24 * 3600
 APPROVE_S = 3600
+WATCH_S = 60
 DAEMON = "hasler-help-tailscaled"
 UP = "hasler-help-up"
 END = "hasler-help-end"
 UNAPPROVED = "hasler-help-unapproved"
+WATCH = "hasler-help-watch"
 PACKAGED = "tailscaled.service"
 
 PEER_RECENT_S = 120   # a handshake this recent counts as "a maker is here now"
@@ -177,8 +201,28 @@ def peers_active(ts, at=None):
     return out
 
 
-def report(ok=True, error=None):
-    session = read_json(os.path.join(RUN, "session.json")) or {}
+def count_maker(session, peers, at):
+    """Add the time since the last look to ``maker_seconds`` while a maker is
+    on (looks come every WATCH_S from the watch timer and from the page's
+    polls; a gap longer than two looks is nobody, not a long visit)."""
+    if not session:
+        return False
+    seen = session.get("maker_seen_at")
+    changed = False
+    if peers:
+        if isinstance(seen, (int, float)) and 0 <= at - seen <= 2 * WATCH_S + PEER_RECENT_S:
+            session["maker_seconds"] = int(session.get("maker_seconds") or 0) + int(at - seen)
+        session["maker_seen_at"] = int(at)
+        changed = True
+    elif seen is not None:
+        session.pop("maker_seen_at", None)
+        changed = True
+    return changed
+
+
+def report(ok=True, error=None, print_doc=True):
+    session_path = os.path.join(RUN, "session.json")
+    session = read_json(session_path) or {}
     up = active(DAEMON)
     ts = ts_status() if up else None
     backend = (ts or {}).get("BackendState") or None
@@ -187,6 +231,12 @@ def report(ok=True, error=None):
     v4 = [ip for ip in ips if ip.count(".") == 3]
     tailnet = ((ts or {}).get("CurrentTailnet") or {}).get("Name") or None
     running = backend == "Running"
+    peers = peers_active(ts) if running else []
+    if session and up and count_maker(session, peers, now()):
+        try:
+            write_json(session_path, session)
+        except OSError:
+            pass
     doc = {
         "ok": ok,
         "installed": installed(),
@@ -203,12 +253,16 @@ def report(ok=True, error=None):
         "approve_by": session.get("approve_by"),
         # a session on record but its tailscaled gone (crashed, or killed)
         "stale": bool(session) and not up,
-        "peers_active": peers_active(ts) if running else [],
+        # started again at boot from the owner's unexpired yes: a new link to send
+        "resumed": bool(session.get("resumed")),
+        "maker_seconds": int(session.get("maker_seconds") or 0),
+        "peers_active": peers,
         "last": read_json(LAST),
     }
     if error:
         doc["error"] = error
-    print(json.dumps(doc))
+    if print_doc:
+        print(json.dumps(doc))
     return 0 if ok else 1
 
 
@@ -220,12 +274,45 @@ def units_down(keep_timers=False):
     """Stop our transient units (and forget failed ones, so the names are free)."""
     units = [UP + ".service", DAEMON + ".service"]
     if not keep_timers:
-        units += [END + ".timer", UNAPPROVED + ".timer"]
+        units += [END + ".timer", UNAPPROVED + ".timer", WATCH + ".timer"]
     sh([SYSTEMCTL, "stop"] + units, 30)
-    sh([SYSTEMCTL, "reset-failed"] + units + [END + ".service", UNAPPROVED + ".service"], 10)
+    sh([SYSTEMCTL, "reset-failed"] + units + [END + ".service", UNAPPROVED + ".service", WATCH + ".service"], 10)
+
+
+def read_consent():
+    """The owner's yes on record, or None (missing, odd, or expired - then removed)."""
+    doc = read_json(CONSENT)
+    if not doc:
+        return None
+    try:
+        expires = float(doc.get("expires_at"))
+        hostname = str(doc.get("hostname") or "")
+    except (TypeError, ValueError):
+        expires, hostname = 0.0, ""
+    if expires <= now() or not HOSTNAME.match(hostname) or len(hostname) > 63:
+        forget_consent()
+        return None
+    return {"started_at": doc.get("started_at"), "expires_at": int(expires), "hostname": hostname}
+
+
+def write_consent(doc):
+    try:
+        os.makedirs(CONSENT_DIR, mode=0o700, exist_ok=True)
+        os.chmod(CONSENT_DIR, 0o700)
+        write_json(CONSENT, doc)
+    except OSError:
+        pass                              # the SD card refusing a write costs the resume, not help
+
+
+def forget_consent():
+    try:
+        os.remove(CONSENT)
+    except OSError:
+        pass
 
 
 def cleanup(why):
+    session = read_json(os.path.join(RUN, "session.json")) or {}
     if active(DAEMON):
         # An ephemeral node is removed from the tailnet at logout.
         sh([TAILSCALE, "--socket=" + SOCK, "logout"], 20)
@@ -236,10 +323,15 @@ def cleanup(why):
         sh([SYSTEMCTL, "disable", "--now", "--quiet", PACKAGED], 30)
     shutil.rmtree(RUN, ignore_errors=True)
     if why:
-        write_json(LAST, {"at": int(now()), "why": why})
+        # The session is over, whatever the reason: the owner's yes goes with it.
+        forget_consent()
+        write_json(LAST, {"at": int(now()), "why": why, "started_at": session.get("started_at"),
+                          "maker_seconds": int(session.get("maker_seconds") or 0)})
 
 
-def start(hostname):
+def start(hostname, consent=None):
+    """Start help as ``hostname``. With ``consent`` (resume): the time left on
+    the owner's earlier yes, and the session is marked ``resumed``."""
     if not installed():
         return fail("Tailscale isn't installed on this radio (scripts/bootstrap.sh installs it)")
     if active(DAEMON):
@@ -252,18 +344,29 @@ def start(hostname):
     except OSError:
         pass
     t = int(now())
+    help_s = max(1, int(consent["expires_at"]) - t) if consent else HELP_S
     os.makedirs(os.path.join(RUN, "tailscale"), mode=0o700, exist_ok=True)
     os.chmod(RUN, 0o700)
-    write_json(os.path.join(RUN, "session.json"),
-               {"hostname": hostname, "started_at": t, "expires_at": t + HELP_S, "approve_by": t + APPROVE_S})
+    session = {"hostname": hostname, "started_at": t, "expires_at": t + help_s,
+               "approve_by": t + min(APPROVE_S, help_s), "maker_seconds": 0, "resumed": bool(consent)}
+    if consent:
+        session["consent_at"] = consent.get("started_at")
+    write_json(os.path.join(RUN, "session.json"), session)
+    if not consent:
+        write_consent({"started_at": t, "expires_at": t + HELP_S, "hostname": hostname})
     # The end first: whatever happens next, help stops on time.
-    for unit, secs, why in ((END, HELP_S, "expired"), (UNAPPROVED, APPROVE_S, "unapproved")):
+    for unit, secs, why in ((END, help_s, "expired"), (UNAPPROVED, min(APPROVE_S, help_s), "unapproved")):
         rc, _ = sh([SYSTEMD_RUN, "--quiet", "--unit=" + unit, "--on-active=%ds" % secs,
                     "--timer-property=AccuracySec=30s", "--property=Type=oneshot",
                     "--description=Hasler remote help: end (%s)" % why, SELF, "stop", why], 20)
         if rc != 0:
             cleanup("failed")
             return fail("couldn't set the timer that ends remote help (%s)" % unit)
+    # Every minute while on: how long a maker is actually on (best effort).
+    sh([SYSTEMD_RUN, "--quiet", "--unit=" + WATCH, "--on-active=%ds" % WATCH_S,
+        "--timer-property=OnUnitActiveSec=%ds" % WATCH_S, "--timer-property=AccuracySec=10s",
+        "--property=Type=oneshot", "--description=Hasler remote help: count a maker's minutes",
+        SELF, "watch"], 20)
     daemon = [TAILSCALED, "--state=mem:", "--statedir=" + os.path.join(RUN, "tailscale"),
               "--socket=" + SOCK, "--port=0", "--no-logs-no-support"]
     base = [SYSTEMD_RUN, "--quiet", "--unit=" + DAEMON,
@@ -311,6 +414,46 @@ def stop(why):
     return report()
 
 
+def resume():
+    """At boot: the owner said yes within the last 24 hours and the radio
+    restarted mid-session - start again for the time left (a new link)."""
+    consent = read_consent()
+    if consent is None:
+        return report()
+    if active(DAEMON):
+        return report()
+    return start(consent["hostname"], consent)
+
+
+def own_hostname():
+    """hasler-<room>-<4 hex of the radio id>, made here for ``rescue`` (the
+    same rule as web/help_api.tailnet_hostname, without haslerd)."""
+    import hashlib
+    try:
+        with open(MACHINE_ID) as f:
+            seed = f.read().strip()
+    except OSError:
+        seed = ""
+    if not seed:
+        import socket
+        seed = "host:" + socket.gethostname()
+    short = hashlib.sha256(seed.encode()).hexdigest()[:4]
+    room = ""
+    doc = read_json(SETTINGS) or {}
+    name = (doc.get("room") or {}).get("name") if isinstance(doc.get("room"), dict) else None
+    if isinstance(name, str):
+        room = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-")
+        if room.startswith("hasler"):
+            room = room[len("hasler"):].strip("-")
+    return "-".join(p for p in ("hasler", room, short) if p)
+
+
+def rescue():
+    """hasler-help.txt on the SD card (scripts/hasler-help-rescue): physical
+    access to the card is the consent, so this is a fresh start."""
+    return start(own_hostname())
+
+
 def main(argv):
     if os.geteuid() != 0:
         print(json.dumps({"ok": False, "error": "must run as root"}))
@@ -319,10 +462,16 @@ def main(argv):
         return start(argv[1])
     if argv == ["status"]:
         return report()
+    if argv == ["watch"]:
+        return report(print_doc=False)
+    if argv == ["resume"]:
+        return resume()
+    if argv == ["rescue"]:
+        return rescue()
     if argv[:1] == ["stop"] and len(argv) <= 2 and (len(argv) == 1 or argv[1] in WHYS):
         return stop(argv[1] if len(argv) == 2 else "stopped")
     print(json.dumps({"ok": False, "error": "usage: hasler-help start hasler-<room>-<id> | status | "
-                      "stop [" + "|".join(WHYS) + "]"}))
+                      "stop [" + "|".join(WHYS) + "] | resume | rescue | watch"}))
     return 2
 
 

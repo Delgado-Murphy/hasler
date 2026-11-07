@@ -276,6 +276,10 @@ def load_helper(tmp_path, monkeypatch):
     loader.exec_module(mod)
     mod.RUN = str(tmp_path / "run" / "hasler-help")
     mod.LAST = str(tmp_path / "run" / "hasler-help.last.json")
+    mod.CONSENT_DIR = str(tmp_path / "lib" / "hasler-help")
+    mod.CONSENT = mod.CONSENT_DIR + "/consent.json"
+    mod.SETTINGS = str(tmp_path / "settings.json")
+    mod.MACHINE_ID = str(tmp_path / "machine-id")
     (tmp_path / "run").mkdir()
     sysd = FakeSystem()
     monkeypatch.setattr(mod, "sh", sysd.sh)
@@ -422,7 +426,7 @@ def test_helper_start_status_stop(tmp_path, monkeypatch, capsys):
 
     assert mod.main(["stop", "expired"]) == 0
     doc = last_json(capsys)
-    assert doc["active"] is False and doc["last"] == {"at": 5000, "why": "expired"}
+    assert doc["active"] is False and doc["last"] == {"at": 5000, "why": "expired", "started_at": 5000, "maker_seconds": 0}
     assert any("logout" in c for c in sysd.cmds)
     assert not Path(mod.RUN).exists()
     assert not any(u.startswith("hasler-help") for u in sysd.units)

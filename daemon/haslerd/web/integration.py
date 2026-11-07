@@ -65,9 +65,18 @@ def radio_name() -> str:
         return "hasler"
 
 
+def short_id(machine_id_file: Path = MACHINE_ID) -> str:
+    """The radio's short id: the first four hex digits of ``radio_id``. It is
+    what the makers already see as the tail of the radio's tailnet name during
+    remote help (``hasler-kitchen-ab12``, web/help_api.py), so the Settings
+    footer, a report (web/report.py) and the daily check-in all call the radio
+    the same thing. Four digits of a hash: nothing about a person."""
+    return radio_id(machine_id_file)[:4]
+
+
 def info(variant: str, version: str, machine_id_file: Path = MACHINE_ID) -> dict:
     return {"id": radio_id(machine_id_file), "name": radio_name(), "variant": variant,
-            "version": version, "api": API_VERSION}
+            "version": version, "api": API_VERSION, "short_id": short_id(machine_id_file)}
 
 
 def _default_fetch(url: str, timeout: float) -> tuple[bytes, str]:
