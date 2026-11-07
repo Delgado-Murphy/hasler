@@ -3170,7 +3170,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             # the room and the id's last four, as the makers see them.
             try:
                 wifi = {**wifi, "room": app.room.custom() or "",
-                        "short_id": integration.radio_id(app.machine_id_file)[-4:]}
+                        "short_id": integration.short_id(app.machine_id_file)}
             except Exception:
                 log.debug("wifi page identity failed", exc_info=True)
             html = wifi_page.render(page.read_text("utf-8"), wifi, lang, form=form, **kw)

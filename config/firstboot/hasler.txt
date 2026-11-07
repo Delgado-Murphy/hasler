@@ -26,6 +26,10 @@ user = pi
 # Bluetooth, UPnP, names "Hasler"). no = leave moOde as it is.
 moode = yes
 
+# An older moOde 10.x is brought up to the release the makers tested before
+# setup (moOde's own updater). no = keep the moOde on the card.
+moode_update = yes
+
 # yes = may run without the cabinet's key board (a bare Pi on the bench).
 panel_optional = no
 

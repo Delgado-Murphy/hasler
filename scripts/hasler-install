@@ -538,7 +538,7 @@ def fetch_release(base: str, channel: str, out: Path, root_pubs: list[str], now:
 # --- settings ----------------------------------------------------------------------------
 
 DEFAULTS = {"channel": "stable", "update_mode": "auto", "variant": "hasler-hm-hat", "user": "",
-            "moode": "yes", "panel_optional": "no", "update_url": "", "starter": "eclectic",
+            "moode": "yes", "moode_update": "yes", "panel_optional": "no", "update_url": "", "starter": "eclectic",
             # Support (docs/using.md "When something is wrong"): who built the radio
             # and how to reach them; the opt-in daily check-in and where it goes.
             "makers_contact": "", "checkin": "no", "checkin_url": ""}
@@ -583,7 +583,7 @@ def validate(s: dict) -> dict:
         raise InstallError(f"bad starter {s['starter']!r} (a starter set's name, like eclectic)")
     if s["user"] and not re.fullmatch(r"[a-z_][a-z0-9_-]*", s["user"]):
         raise InstallError(f"bad user {s['user']!r}")
-    for k in ("moode", "panel_optional"):
+    for k in ("moode", "moode_update", "panel_optional"):
         if s[k].lower() not in ("yes", "no", "true", "false", "1", "0", "on", "off"):
             raise InstallError(f"{k} must be yes or no")
         s[k] = "yes" if s[k].lower() in ("yes", "true", "1", "on") else "no"

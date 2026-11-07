@@ -369,3 +369,9 @@ def test_unit_never_holds_the_boot():
                                        ("9.4.2", False), ("11.0.1", False), (None, False)])
 def test_moode_is_brought_up_to_the_tested_release_within_its_series(have, want):
     assert hi.moode_needs_update(have, "10.3.7") is want
+
+
+def test_moode_update_can_be_switched_off_in_hasler_txt():
+    s = hi.validate({**hi.DEFAULTS, "moode_update": "no"})
+    assert s["moode_update"] == "no"
+    assert hi.validate(dict(hi.DEFAULTS))["moode_update"] == "yes"
