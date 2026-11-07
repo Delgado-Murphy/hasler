@@ -9,7 +9,7 @@ from pathlib import Path
 DEFAULT_BASE_URL = "https://delgado-murphy.github.io/hasler-releases"
 HEALTH_URL = "http://127.0.0.1:8080/api/health"
 KEEP_RELEASES = 3
-CHANNELS = ("bench", "stable")   # bench: the makers' test radio; stable: everyone
+CHANNELS = ("bench", "stable")   # bench: new versions first, makers' radios, may break; stable: everyone
 
 
 @dataclass(frozen=True)

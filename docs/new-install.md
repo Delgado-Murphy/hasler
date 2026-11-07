@@ -30,8 +30,8 @@ It takes about **20 minutes**, most of it waiting.
 1. Open Raspberry Pi Imager.
 2. **Device:** Raspberry Pi 4. **Operating system:** *Media player OS* →
    **moOde audio player** → the **64-bit Trixie** release (tested: 10.3.7, with MPD 0.24.17). If Imager offers an older
-   10.x image, take moOde's **Software update** once the install is done,
-   then re-run our setup (see [build guide](build-guide.md#updating-the-player-underneath)).
+   10.x image, take it: the install runs moOde's own update to 10.3.7 first
+   (a few minutes more; see [build guide](build-guide.md#updating-the-player-underneath)).
    **Storage:** your card.
 3. When Imager offers **OS customisation**, choose **Edit settings** and fill in:
    - **Hostname:** `hasler` (the radio is then `hasler.local`; the install
@@ -82,7 +82,7 @@ them for moOde, so this should not happen.
 
 | Setting | Default | Other choices |
 |---|---|---|
-| `channel` | `stable` | `bench` only for the makers' test radio. Stable has been live since 1.0.5 (2026-10-23). |
+| `channel` | `stable` | `bench` (Bench: new versions first; may break) only for the makers' own radios. Stable has been live since 1.0.5 (2026-10-23). |
 | `update_mode` | `auto` (small updates at night, big ones ask) | `ask`, `off` |
 | `variant` | `hasler-hm-hat` (a Hasler HM on the Hasler HAT: every new one) | `hasler-hm` (the prototype's stripboard) \| `excelsior` (keys that spring back on a modified unit: see [hardware.md](hardware.md#excelsior-latching-or-not)) |
 | `starter` | `eclectic` (the built-in stations: the starter set on the keys) | `little`, `family`, `teens`, `indie`, `classical`, `jazz`, `oldies`, `espana`, `world` (`config/presets/`; 1.5's `pop` and `raices` mean `espana`); the owner can pick another on the key page |
@@ -106,7 +106,7 @@ minutes.** It restarts several times by itself:
 |---|---|---|
 | 1 | Imager's settings: user, name, Wi-Fi, SSH; restart | 2 min |
 | 2 | moOde's first start; it restarts once or twice more | 3 min |
-| 3 | **Hasler setup:** downloads the release and checks its signatures, installs packages (AirPlay, multiroom, remote help, yt-dlp), the updater and its trust, writes this radio's settings, hands moOde its audio settings; restart | 8-12 min |
+| 3 | **Hasler setup:** downloads the release and checks its signatures, updates an older moOde 10.x to 10.3.7 (a few minutes more), installs packages (AirPlay, multiroom, remote help, yt-dlp), the updater and its trust, writes this radio's settings, hands moOde its audio settings; restart | 8-12 min |
 | 4 | moOde takes the audio settings (Amp4 Pro, AirPlay, Bluetooth, UPnP, names "Hasler"); restart | 1 min |
 | 5 | **The release:** the updater installs it and restarts into it | 2 min |
 | 6 | The updater checks the radio is healthy and keeps the release | 1 min |
@@ -205,7 +205,7 @@ curl -fsSLO https://delgado-murphy.github.io/hasler-releases/install/hasler-inst
 curl -fsSLO https://delgado-murphy.github.io/hasler-releases/install/hasler-install.sig
 echo 'hasler-root namespaces="hasler-install" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIF9gmAm746rpYzKa24jKiAZyiAiMw0bEuj30vRw38Cv7' > hasler-root.allowed
 ssh-keygen -Y verify -f hasler-root.allowed -I hasler-root -n hasler-install -s hasler-install.sig < hasler-install \
-  && sudo python3 -I hasler-install install          # stable; --channel bench for a test radio
+  && sudo python3 -I hasler-install install          # stable; --channel bench for a makers' Bench radio
 ```
 
 `ssh-keygen` prints `Good "hasler-install" signature for hasler-root` and only
@@ -380,8 +380,8 @@ The kit files on the boot partition can stay; cloud-init runs them only once
   hasler-install`), zip the six files, and put `hasler-firstboot.zip`,
   `hasler-install`, `hasler-install.sig` and `SHA256SUMS` into `install/` on
   the gh-pages branch of hasler-releases.
-- Raspberry Pi Imager lists moOde 10.3.6 with `init_format: systemd`
-  (firstrun.sh). If a later moOde image switches to cloud-init, Imager writes
+- Raspberry Pi Imager listed moOde 10.3.6 with `init_format: systemd`
+  (firstrun.sh) on 2026-11-07; `hasler-install` updates it to 10.3.7. If a later moOde image switches to cloud-init, Imager writes
   its own `meta-data` / `user-data` / `network-config`: then copy only
   `hasler-install`, `hasler.txt` and `vendor-data`.
 

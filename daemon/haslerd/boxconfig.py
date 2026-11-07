@@ -41,7 +41,7 @@ SCHEMA = 1   # of box.yaml and the overlay files; bumped with a migration
 # The box.yaml keys that are not haslerd settings: the updater's and the
 # migrations' own. Everything else in box.yaml is a haslerd override block in
 # the shape the old config/haslerd.yaml had (moode:, web:, connectivity: ...).
-# channel: bench (the makers' test radio) | stable (everyone; also what a
+# channel: bench (new versions first, on the makers' radios; may break) | stable (everyone; also what a
 # missing or retired value such as "beta" reads as). update_mode: auto (the
 # default for new radios: patch/minor at night in standby, major/migration
 # still ask) | ask | off. os_updates: on (the default: Debian security

@@ -40,7 +40,8 @@ from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
-# Two update channels: bench (the makers' test radio) and stable (everyone).
+# Two update channels: bench (new versions first, on the makers' radios; may
+# break) and stable (everyone).
 CHANNELS = ("bench", "stable")
 RETIRED_CHANNELS = ("beta",)      # read as stable (the updater does the same)
 MODES = ("auto", "ask", "off")

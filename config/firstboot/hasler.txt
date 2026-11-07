@@ -2,8 +2,8 @@
 # partition (the drive called "bootfs") with the other files from this folder.
 # docs/new-install.md. Lines starting with # are notes; nothing here is secret.
 #
-# Which releases the radio follows: stable (everyone) or bench (the makers'
-# test radio - it gets every release first).
+# Which releases the radio follows: stable (everyone) or bench (the
+# makers' radios: every new version comes here first, and may break).
 channel = stable
 
 # Updates: auto (small ones at night, big ones ask first), ask, or off.
@@ -42,5 +42,5 @@ panel_optional = no
 checkin = no
 # checkin_url = https://hasler-checkin.example.workers.dev/v1/checkin
 
-# Makers only: a local test channel instead of the public one.
+# Makers only: a local release site (a dev build) instead of the public one.
 # update_url = http://laptop.local:8000

@@ -9714,11 +9714,11 @@ function swMode(mode, from){
 // Channels (docs/ota.md §5). The updater only installs a release whose seq is
 // above the highest one this radio has run (update/hasler_update check.py), so a
 // channel that is behind leaves the radio where it is until it catches up.
-// Two channels only: Stable (everyone) and Bench (the makers' test radio).
+// Two channels only: Stable (everyone) and Bench (new versions first, on the makers' radios; may break).
 // [id, name, picker label]
-const CHANNELS = [['stable','Stable','recommended'], ['bench','Test versions','makers']];
+const CHANNELS = [['stable','Stable','recommended'], ['bench','Bench','may break']];
 const CHANNEL_TEXT = {stable:'Recommended. Each version is tested on the makers’ radio first.',
-  bench:'Test versions (makers): they reach the makers’ radio first and may break.'};
+  bench:'Bench: new versions reach the makers’ radios first and may break.'};
 const chName = c => (CHANNELS.find(x => x[0] === c) || [c, c])[1];
 const chRank = c => ({bench:0, stable:1})[c] ?? 1;
 // After a switch: {channel, behind} until the next check, so "Check now" sits by it.
@@ -9728,7 +9728,7 @@ function swChannel(ch){
   const behind = chRank(ch) > chRank(from);   // a channel that usually trails the one we're on
   swAction(async () => {
     const token = await pressToConfirm('channel', {channel:ch}, 'Switch to ' + chName(ch),
-      ch === 'bench' ? 'Test versions reach this radio before anyone else’s, and they may break. The radio still asks before installing unless updates are Automatic.'
+      ch === 'bench' ? 'Bench versions reach this radio before anyone else’s, and they may break. The radio still asks before installing unless updates are Automatic.'
         : behind ? 'If ' + chName(ch) + ' is behind ' + v + ', the radio keeps ' + v + ' until ' + chName(ch) + ' catches up. It never goes back to an older version on its own.'
         : 'The next check looks at ' + chName(ch) + ' for updates.');
     if (!token) return;
@@ -9980,7 +9980,7 @@ function renderSoftwareUpdates(panel){
     onkeydown: e => { const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
       if (d){ e.preventDefault(); const b = cseg.children[(i + d + CHANNELS.length) % CHANNELS.length]; b.focus(); } }}, name, h('small', null, l))));
   const sw = swSwitched && swSwitched.channel === s.channel ? swSwitched : null;
-  // The test channel is for makers: the picker shows with Maker tools on (or to get back from it).
+  // Bench is for makers: the picker shows with Maker tools on (or to get back from it).
   if (makerOn() || s.channel !== 'stable') rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Update channel'),
       h('span', {class:'li-sub'}, CHANNEL_TEXT[s.channel] || '')), cseg,
     sw ? h('div', {class:'sw-row'}, h('span', {class:'li-sub', style:'flex:1 1 200px'}, 'The next check looks at ' + chName(sw.channel) + '.'

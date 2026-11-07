@@ -132,7 +132,7 @@ reaches the radio.
 |---|---|
 | `schema` | Of this file (1). A release that changes it ships a migration. |
 | `variant` | Which cabinet: `config/variants/<variant>.yaml` in the release. |
-| `channel` | `stable` (everyone; the default) or `bench` (the makers' test radio; may break). Anything else, the retired `beta` included, reads as `stable`. |
+| `channel` | `stable` (everyone; the default) or `bench` (Bench: new versions first, on the makers' radios; may break). Anything else, the retired `beta` included, reads as `stable`. |
 | `update_mode` | `auto` (the default: patch/minor at night in standby; major or migration releases still ask, and so does any release whose major number is above the running one - from 1.0.0 on, a 2.0.1 never slips in as a "patch" before 2.0.0 was accepted), `ask`, `off`. An unknown word reads as `ask`. |
 | `starter` | The built-in stations: the starter set on the keys out of the box, `config/presets/<starter>.yaml` in the release (`eclectic` when absent; `hasler-install` writes it from `hasler.txt`). The key page's own choice (`settings.json starter`) wins over it. |
 | `box_id` | A random UUID, made once by migration 001. Places the radio in a ring, and names it in the check-in. |
@@ -340,8 +340,8 @@ leaves is marked bad, so auto mode won't reinstall it.
 
 ## 5. Channels and the fleet
 
-- **Two channels:** `bench` (the makers' test radio - may break) and `stable`
-  (everyone). Each is a signed `channels/<channel>.json` naming its `current`
+- **Two channels:** `bench` (**Bench**: new versions first, on the makers' radios; may break) and `stable`
+  (**Stable**: everyone). Each is a signed `channels/<channel>.json` naming its `current`
   release, the `halted` ones and optional rings.
 - The key page's **Update channel** picker (Settings → This radio → Updates)
   shows when Maker tools are on (tap the version number seven times) or when
