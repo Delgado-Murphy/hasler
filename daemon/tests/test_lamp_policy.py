@@ -272,6 +272,31 @@ class TestKeeper:
         assert "play_preset" not in player.verbs()
         assert driver.shows[-1] == (policy.CASTING, policy.STANDARD)
 
+    def test_standby_while_a_phone_plays_is_ember_at_once(self, box):
+        clock, player, actions, driver, _, keeper, _ = box
+        player.source = "airplay"
+        keeper.source = "airplay"
+        keeper.tick(clock())
+        assert last(driver) == policy.CASTING
+        clock.t += 0.1
+        actions.dispatch(Event("power", "off"))         # standby, the phone plays on
+        assert actions.standby and actions.keeps_asleep("airplay")
+        keeper.tick(clock())
+        assert last(driver) == policy.STANDBY            # not 3 s more of blue
+        clock.t += 3.5
+        keeper.tick(clock())
+        assert last(driver) == policy.STANDBY
+
+    def test_standby_starting_ends_the_blue_grace(self, box):
+        clock, player, actions, driver, _, keeper, _ = box
+        player.source = "bluetooth"
+        keeper.tick(clock())
+        player.source = keeper.source = "radio"          # the phone let go ...
+        clock.t += 0.5
+        actions.dispatch(Event("power", "off"))          # ... and standby starts within the grace
+        keeper.tick(clock())
+        assert last(driver) == policy.STANDBY
+
     def test_knob_on_after_a_phone_woke_it_leaves_the_phone_alone(self, box):
         _, player, actions, _, _, _, _ = box
         actions.dispatch(Event("power", "off"))

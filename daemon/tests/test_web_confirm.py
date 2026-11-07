@@ -246,6 +246,21 @@ class TestConfirm:
         c.tick()
         assert replies == ["ha", "ha"]                 # expired: quiet
 
+    def test_no_ha_kicks_over_the_lamps_own_beckon(self, rig):
+        app, *_, replies = rig
+        c = app.confirm
+        c.lamp_beckons = True                          # the LampKeeper draws BoxState.confirming
+        c.request("reset")
+        for _ in range(4):
+            c.tick()
+            c.clock.t += confirm_mod.ASK_EVERY_S
+        assert replies == []                           # the beckon's rhythm is the engine's alone
+        assert c.pending()                             # still asking - by the lamp's beckon
+        req = c.request("reset")
+        c.intercept([Event("k1", "tap")])
+        assert replies == ["confirmed"]                # the answering kick still comes
+        assert c.poll(req["token"])["state"] == "confirmed"
+
     def test_absent_panel_refuses(self, rig):
         app, _, _, panel, _ = rig
         panel.digital = AbsentDigital("no MCP23017")

@@ -377,7 +377,35 @@ def test_excelsior_key_0_tapped_is_standby_and_cancels_the_countdown():
         keeper.tick(clock.t)
         clock.t = round(clock.t + 0.05, 3)
     assert actions.standby and not actions.shutting_down
-    assert driver.counts[-1] is None and max(c for c in driver.counts if c is not None) < 0.15
+    # Under 0.5 s held: no countdown at all, so the key-down kick plays out whole.
+    assert driver.counts == []
+
+
+def test_excelsior_key_0_countdown_starts_after_half_a_second_and_cancels():
+    from haslerd.variant import Panel
+
+    variant = load_variant(VARIANTS / "excelsior.yaml")
+    clock = Clock(0.0)
+    panel = Panel.from_variant(variant, fake=True)
+    actions = Actions(variant, FakePlayer(), clock=clock)
+    driver = FakeDriver()
+    keeper = LampKeeper(driver, actions, panel, FakeNet(), None, clock=clock, night=lambda w, s: False)
+    keeper.boot_done()
+    keeper.arm()
+    first = None
+    for i in range(60):
+        panel.digital.set("d0", 2 <= i < 40)                 # held 1.9 s
+        events = panel.poll(clock.t)
+        actions.dispatch_all(panel.take_downs())
+        actions.dispatch_all(events)
+        keeper.tick(clock.t)
+        if first is None and any(c is not None for c in driver.counts):
+            first = clock.t
+        clock.t = round(clock.t + 0.05, 3)
+    assert first is not None and 0.55 <= first <= 0.7         # down at 0.1, countdown from ~0.6
+    counts = [c for c in driver.counts if c is not None]
+    assert counts[0] < 0.05 and max(counts) < 0.4             # 1.4 s of the remaining 4.5 s
+    assert driver.counts[-1] is None and not actions.shutting_down
 
 
 # -- scripts/hasler-lamp-boot ------------------------------------------------

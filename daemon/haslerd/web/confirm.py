@@ -12,13 +12,20 @@ for 24 h, web/help_api.py) or signing the radio in to or out of Spotify
     GET  /api/confirm/<token>  -> {"state": "pending" | "confirmed" | "expired" | "used"}
     DELETE /api/confirm/<token>   (the page's Cancel)
 
-While a request is pending the lamp asks - two soft dips (the existing "ha"
-reply, a double ack), again every few seconds - and the **next press of any
+While a request is pending the lamp asks - the engine's confirming beckon
+(two kicks, a rest, in the colour on show: ``BoxState.confirming``, which the
+LampKeeper reads from ``pending()``) - and the **next press of any
 panel key** within 30 s confirms it. That press is swallowed: it does not also
 play a preset (``intercept`` runs in the main loop *before* dispatch, and the
 web's own ``/api/press`` never reaches it, so the page cannot press for
 itself). The action itself then takes the token (``consume``), once, with the
 same action and arguments it was asked for, within a minute.
+
+``lamp_beckons`` (set by main when a LampKeeper draws the beckon): the
+broker sends no "ha" replies of its own then - a kick at the request and
+every ASK_EVERY_S on top of the beckon broke its rhythm. Without a keeper
+(an older wiring, a test) it still asks with "ha" kicks; a radio without a
+lamp has nobody listening to them, which is fine.
 
 No panel board (``AbsentDigital``): nobody can press, so requests are refused
 with a clear message - security beats convenience. ``web.allow_unconfirmed:
@@ -112,6 +119,9 @@ class ConfirmBroker:
         self.clock = clock
         self._lock = threading.Lock()
         self._requests: dict[str, Request] = {}
+        # True when the lamp draws the confirming beckon itself (main.py sets
+        # it with the LampKeeper): no "ha" kicks of our own on top of it.
+        self.lamp_beckons = False
 
     # -- what can confirm --------------------------------------------------
 
@@ -150,7 +160,7 @@ class ConfirmBroker:
         log.info("confirm requested: %s %s%s", action, args,
                  " (allowed unconfirmed)" if unconfirmed else " - waiting for a key press")
         if not unconfirmed:
-            self._reply("ha")
+            self._ask()
         return {"token": token, "state": req.state, "action": action,
                 "expires_in": int(CONFIRM_S), "unconfirmed": unconfirmed}
 
@@ -228,7 +238,8 @@ class ConfirmBroker:
         return rest
 
     def tick(self, now: float | None = None) -> None:
-        """The lamp asks again every ASK_EVERY_S while a request waits."""
+        """The lamp asks again every ASK_EVERY_S while a request waits (not
+        when it beckons by itself: ``lamp_beckons``)."""
         if not self._requests:
             return
         ask = False
@@ -240,7 +251,7 @@ class ConfirmBroker:
                     req.next_ask = now + ASK_EVERY_S
                     ask = True
         if ask:
-            self._reply("ha")
+            self._ask()
 
     # -- internals -------------------------------------------------------------
 
@@ -253,6 +264,11 @@ class ConfirmBroker:
                 req.state = "expired"
             if req.state != "pending" and now - req.asked > KEEP_S:
                 del self._requests[token]
+
+    def _ask(self) -> None:
+        """The lamp asks for a press - unless it beckons on its own (``lamp_beckons``)."""
+        if not self.lamp_beckons:
+            self._reply("ha")
 
     def _reply(self, name: str) -> None:
         if self.reply is None:

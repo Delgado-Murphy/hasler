@@ -123,6 +123,7 @@ BOOT_SETTLE_S = 0.15
 LOADING_POLL_S = 0.5    # "has the preset made a sound yet?", while loading
 LOADING_FAIL_S = 20.0   # no sound this long after a start: red pulses
 CAST_GRACE_S = 3.0      # blue stays this long after a phone lets go
+KEY_COUNTDOWN_AFTER_S = 0.5     # a shutdown key (Excelsior key 0) held this long starts the countdown
 NIGHT_CHECK_S = 60.0    # sunset is not a thing to poll at 20 Hz
 UPDATE_POLL_S = 5.0     # "is an update being installed?" (one small file read)
 BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest...
@@ -265,6 +266,7 @@ class LampKeeper:
         self._silent: Preset | None = None
         self._next_loading_poll = 0.0
         self._cast_seen: float | None = None
+        self._was_standby = False
         self._next_source_poll = 0.0
         self._next_renderer_poll = 0.0
         self._renderer_flags: dict | None = None
@@ -540,7 +542,14 @@ class LampKeeper:
                 since = getattr(key, "down_since", None)
                 if since is None or since < self._armed_at or getattr(key, "hold_fired", False):
                     continue
-                progress = max(0.0, min(1.0, (now - since) / max(key.hold_s, 1e-3)))
+                # Not on key-down: a tap's kick must play out whole (the
+                # countdown outranks replies). After KEY_COUNTDOWN_AFTER_S the
+                # glow runs down to land with the hold at hold_s.
+                held = now - since
+                if held < KEY_COUNTDOWN_AFTER_S:
+                    continue
+                span = max(key.hold_s - KEY_COUNTDOWN_AFTER_S, 1e-3)
+                progress = max(0.0, min(1.0, (held - KEY_COUNTDOWN_AFTER_S) / span))
                 break
         if progress is None and not self._counting:
             return
@@ -570,9 +579,15 @@ class LampKeeper:
         actions, player, state = self.actions, self.actions.player, self.state
         sleep = self.sleep
         phone = actions.phone_has_it(self.source)
+        if actions.standby and not self._was_standby:
+            # Standby just started: the phone's blue grace is over now, or
+            # casting (which outranks standby) would keep the lamp blue 3 s.
+            self._cast_seen = None
+        self._was_standby = actions.standby
         if phone and (actions.keeps_asleep(self.source)
                       or (actions.standby and sleep is not None and sleep.keeps_asleep(self.source))):
             phone = False
+            self._cast_seen = None      # a phone the radio sleeps through is not blue, not even 3 s
         if phone:
             self._cast_seen = now
         casting = self._cast_seen is not None and now - self._cast_seen < CAST_GRACE_S
@@ -1343,6 +1358,8 @@ def main(argv=None) -> int:
     watchdog = Watchdog()
     if keeper is not None:
         keeper.confirm = confirm    # a pending press request: the lamp beckons
+        if confirm is not None and hasattr(keeper.state, "confirming"):
+            confirm.lamp_beckons = True     # ... so the broker sends no "ha" kicks on top
         keeper.take_over()      # before READY: ExecStartPost's stop is the fallback
     # Ready before resuming: starting a playlist can take seconds (yt-dlp),
     # and systemd should not count that against the start timeout.
