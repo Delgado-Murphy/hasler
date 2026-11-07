@@ -38,13 +38,29 @@ def test_adc_and_lamp_on_the_hats_pins():
 
 
 def test_calibration_and_lamp_follow_the_stripboard_descriptor():
-    # Same cabinet, same pots: only the pins differ. Catches one file being
-    # re-calibrated and the other forgotten.
+    # Same cabinet, same pots: only the pins differ - and the tone pot's
+    # scaling, which the HAT lands the other way round (see below). Catches
+    # one file being re-calibrated and the other forgotten.
     hat, proto = load_variant(HAT), load_variant(VARIANTS / "hasler-hm.yaml")
+    SCALING = ("curve", "range", "taper", "hysteresis_counts", "direction")
 
     def strip(c):
-        return {k: v for k, v in c.items() if k not in ("pin", "pins", "end_switch")}
+        skip = ("pin", "pins", "end_switch") + (SCALING if c.get("id") == "tone" else ())
+        return {k: v for k, v in c.items() if k not in skip}
 
     assert [strip(c) for c in hat.controls] == [strip(c) for c in proto.controls]
     assert hat.io["lamp"] == proto.io["lamp"]
     assert hat.actions == proto.actions
+
+
+def test_both_pots_read_backwards_on_the_hat():
+    # Metered 2026-11-07: volume ~26 fully clockwise, ~26 300 at the left end;
+    # tone 724 fully clockwise, 26 258 just above the off click. Clockwise is
+    # louder and brighter, so both curves fall with the count.
+    pots = {c["id"]: c for c in load_variant(HAT).controls if c.get("kind") == "pot"}
+    for cid in ("volume", "tone"):
+        curve = pots[cid]["curve"]
+        assert curve[0][1] == 100 and curve[-1][1] == 0, cid
+        assert [p[0] for p in curve] == sorted(p[0] for p in curve), cid
+    assert pots["tone"]["curve"][0][0] > 700          # the clockwise end, inside the measured 724
+    assert "range" not in pots["tone"]                 # the stripboard's rising range is gone

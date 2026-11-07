@@ -196,7 +196,11 @@ On the bench radio (Pi 4B 8 GB + Amp4 Pro, the HM cabinet on J2), software 1.1.4
 - **Step 5, the cabinet:** `variant: hasler-hm-hat` in box.yaml; the stripboard's calibration
   overlay applied unchanged (it had no `io.digital.addr`). Raw readings on 3V3A match the
   stripboard's: volume ~26 (right end) to ~26 300 (left end), tone ~3 to ~26 300, wiper noise
-  about +-1 count at rest.
+  about +-1 count at rest. **The tone pot reads the other way round from the stripboard**
+  (metered 7 Nov: 26 258 just above the off click, 724 fully clockwise - the same way as the
+  volume pot), so the stripboard's rising tone curve made the page's tone dot run backwards.
+  hasler-hm-hat.yaml now ships a falling curve; a radio that kept the old overlay needs its
+  tone curve replaced (or Calibrate re-run).
 - **Working:** keys 1-6 and PU, the tone end switch (standby, resume), both knobs over their
   full range, and the lamp's red, green, blue and amber.
 

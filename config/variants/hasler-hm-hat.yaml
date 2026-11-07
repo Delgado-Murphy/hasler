@@ -93,10 +93,15 @@ controls:
   - id: tone
     kind: pot
     channel: 0   # tone wiper, J2-9 -> A0
-    taper: linear   # 2026-10-13 sweep: even, 0 .. ~25500
-    # TODO(phase-0): first value is the ADC count AT THE DETENT. The switch
-    # eats the bottom of the sweep, so the usable range starts above it.
-    range: [0, 25500]
+    # Measured on the HAT 2026-11-07 (bench HM): the pot reads HIGH at the
+    # anticlockwise end (26,258 just above the off click) and LOW fully
+    # clockwise (724), so the curve falls - clockwise is brighter - like the
+    # volume pot. The 19 Oct stripboard curve ran the other way; a radio that
+    # kept it in variant.d has its tone backwards until Calibrate is re-run.
+    # The ends sit a little inside the measured extremes so 0 and 100 are
+    # reachable through the wiper's noise (+-7 counts on the HAT's 3V3A).
+    hysteresis_counts: 30
+    curve: [[740, 100], [26240, 0]]
     # Tilt: left warmer, right brighter, pivoting at 800 Hz (hasler-hm.yaml).
     effect: tilt
     effect_params: {range_db: 6, pivot: 800}

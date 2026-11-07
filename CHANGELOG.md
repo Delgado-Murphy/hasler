@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.1 - unreleased
+
+- The pilot lamp's standard calibration is the bench LED's Lamp check (floors,
+  balance, palette, green gain, ember levels), shipped in every model's file,
+  so a radio with the same LED starts calibrated and "Back to standard" in the
+  Lamp check returns to it.
+- HAT: the tone pot reads the other way round from the stripboard (high at the
+  anticlockwise end, low fully clockwise). hasler-hm-hat.yaml now ships a
+  falling curve, so clockwise is brighter and the page's tone dot follows the
+  knob. A radio that kept the 19 Oct stripboard curve in variant.d has its tone
+  backwards until Calibrate is re-run (or the overlay's tone curve replaced).
+
 ## 1.4.0 - 2026-11-07
 
 The pilot lamp, light language v2.
