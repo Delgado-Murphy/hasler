@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Shortcuts for your phone** (Settings → Phones): Louder, Quieter, keys
+  1–6, Standby, Play/pause and Next song. iPhone: add them from our site, then
+  use Siri, Back Tap, the Action button, Control Center or the Lock Screen.
+  Android: put the radio's own links on the home screen. No app.
+- A one-time hint on phones: put the page on your Home Screen.
+- New `POST /api/playpause`; the phone shortcuts API is documented as stable.
+
 ## 1.7.1 - 2026-11-07
 
 - Lyrics land on time: the radio now allows for the 1.7 s its sound takes to

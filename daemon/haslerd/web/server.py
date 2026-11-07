@@ -29,6 +29,11 @@ lamp's ``location`` and ``night`` mode live there too (lamp/night.py); GET adds
 today's sunrise/sunset and the night being dimmed, and ``WebApp.lamp_listeners``
 hear a change at once.
 
+Phone shortcuts (web/phone_api.py) call a stable subset of these: ``/api/volume``
+``{"delta"}``, ``/api/press``, ``/api/standby``, ``/api/next`` and
+``/api/playpause``. ``GET /do/<action>`` is a tiny page for Android's "Add to
+Home screen" whose own script makes that POST; the GET itself changes nothing.
+
 The lamp's colours (Settings -> Pilot lamp -> Lamp colours): ``GET
 /api/lamp/palette`` is ``{defaults, saved, effective, levels, lamp,
 preview_s}`` (names from the engine's palette, never "off"); ``PUT`` (or POST)
@@ -143,6 +148,7 @@ from ..net import HOTSPOT_ADDRS
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
 from .hosts import AllowedHosts, valid_host
 from . import integration
+from . import phone_api
 from .room import Room
 from .ytm_api import PREFIX as YTM_PREFIX, YtmApi
 from .software import NotInstalled, Software, SoftwareError
@@ -1426,6 +1432,19 @@ class WebApp:
     def next(self) -> None:
         with self.lock:
             self.actions.player.next_track()
+
+    def play_pause(self) -> bool:
+        """``POST /api/playpause`` (phone shortcuts): playing stops, quiet plays the
+        last key's station again, standby wakes. Returns whether it plays now."""
+        with self.lock:
+            actions = self.actions
+            if actions.standby:
+                actions._standby_toggle(None, {})   # wake, persist, resume_last
+                return True
+            if actions.player.current() is not None:
+                actions.player.stop()
+                return False
+            return actions.resume_last(wait=False) and actions.player.current() is not None
 
     def set_standby(self, body: Any) -> bool:
         """Sleep, wake (and resume the last preset), or toggle with no "on"."""
@@ -3123,6 +3142,18 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif url.path == "/api/keys/state":
                 client = self._client()
                 self._guard(lambda: self._json(*app.keys_state(client)))
+            elif url.path.startswith("/do/"):
+                # Phone shortcuts for Android's "Add to Home screen" (web/phone_api.py):
+                # GET changes nothing; the page's own same-origin POST does it.
+                body = phone_api.action_page(url.path[len("/do/"):].rstrip("/"))
+                if body is None:
+                    self._send(404, b"not found", "text/plain")
+                else:
+                    self._send(200, body, "text/html; charset=utf-8")
+            elif url.path == "/api/phone-shortcuts":
+                host = (self.headers.get("Host") or "").strip().lower()
+                host = host if _host_only(host) else "hasler.local"     # kept with its port: the links go there
+                self._guard(lambda: self._json(200, {"actions": phone_api.listing(host), "step": phone_api.STEP}))
             elif url.path == "/api/front":
                 # web/front.py's probe: did this come through port 80's front?
                 self._json(200, {"ok": True, "via_front": self._fwd is not None})
@@ -3312,6 +3343,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, "volume": app.volume(self._body())}))
             elif path == "/api/next":
                 self._guard(lambda: (app.next(), self._json(200, {"ok": True})))
+            elif path == "/api/playpause":
+                self._guard(lambda: self._json(200, {"ok": True, "playing": app.play_pause()}))
             elif path == "/api/standby":
                 self._guard(lambda: self._json(200, {"ok": True, "standby": app.set_standby(self._body())}))
             elif path == "/api/play":

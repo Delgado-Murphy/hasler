@@ -242,6 +242,29 @@ If you have more than one Hasler, give each a room name and switch on **Use
 the room name on phones** (**Settings → Rooms → This room**). Phones then show
 *Hasler Kitchen*, *Hasler Study* and so on. Renaming takes a minute or two.
 
+### Shortcuts for your phone
+
+Louder, quieter, a key, standby, play/pause or the next song, without
+opening the page: **Settings → Phones → Shortcuts for your phone**.
+
+- **iPhone:** tap **Add** beside one, then **Add Shortcut** (the first time,
+  allow it to connect to hasler.local). Say its name to Siri ("Hasler
+  louder"), or put it on Back Tap (**Settings → Accessibility → Touch → Back
+  Tap**), the Action button, Control Center or the Lock Screen. The
+  shortcuts come from our site, [delgado-murphy.github.io/shortcuts.html](https://delgado-murphy.github.io/shortcuts.html),
+  once; after that the phone talks only to the radio.
+- **Android:** tap **Open** beside one, then in Chrome **⋮ → Add to Home
+  screen**. The icon does it with one tap. A Quick Settings tile or the
+  volume buttons would need an app; these use none.
+
+They work on the home Wi-Fi. With more than one Hasler, change hasler.local
+in the shortcut to the radio's own name.
+
+**Phone volume buttons already work** while the phone plays to the radio:
+over AirPlay and Bluetooth on any phone, and from the Spotify app on Android
+(not on iPhone: Apple took that away from Spotify in 2024). Never past the
+ceiling.
+
 ## Music in several rooms
 
 Two or more Haslers on the same Wi-Fi can play the same music, in step. One
