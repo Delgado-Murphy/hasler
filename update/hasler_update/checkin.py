@@ -45,6 +45,9 @@ from .state import iso, parse_iso, read_json, write_json
 
 SCHEMA = 1
 DIAGNOSTICS_URL = HEALTH_URL.rsplit("/", 1)[0] + "/diagnostics"
+# After a check-in: haslerd fetches the makers' replies to the owner's requests
+# ("Send to the makers", haslerd/web/support_api.py) - only if one was sent.
+REPLIES_URL = HEALTH_URL.rsplit("/", 1)[0] + "/support/replies"
 TIMEOUT_S = 15
 MAX_BYTES = 2048                 # the Worker refuses more; ours is about 400
 MIN_GAP_S = 20 * 3600            # once a day, however often the check runs
@@ -198,13 +201,25 @@ def post_json(url: str, payload: dict, token: str = "", timeout: float = TIMEOUT
         return int(r.status)
 
 
+def poke_replies(url: str = REPLIES_URL, timeout: float = 30) -> None:
+    """Ask haslerd (loopback) to fetch the makers' replies; never raises."""
+    try:
+        req = urllib.request.Request(url, data=b"{}", method="POST", headers={
+            "User-Agent": USER_AGENT, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            r.read(4096)
+    except (urllib.error.URLError, OSError, ValueError):
+        pass
+
+
 def status_path(layout: Layout) -> Path:
     return layout.upd / STATUS_FILE
 
 
 def after_check(layout: Layout, box: dict | None = None, now: float | None = None,
                 fetch: Callable[[str], dict] = fetch_json,
-                post: Callable[..., int] = post_json) -> dict | None:
+                post: Callable[..., int] = post_json,
+                poke: Callable[[], None] | None = None) -> dict | None:
     """After the daily check: send today's check-in if the owner said yes.
 
     Returns the record written to ``checkin.json`` ({"at", "ok", "error",
@@ -248,4 +263,6 @@ def after_check(layout: Layout, box: dict | None = None, now: float | None = Non
         write_json(status_path(layout), rec, 0o644)
     except OSError:
         pass
+    if rec["ok"]:
+        (poke or poke_replies)()    # the makers' replies ride on the daily check-in
     return rec

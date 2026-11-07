@@ -615,6 +615,14 @@ address on the radio, the page names them and **Email the makers** writes the
 mail for you. Send it to them, and nobody else. If you only phone, the top of
 Something's wrong? shows **Say this to the makers**: six lines to read out.
 
+On a radio whose makers have set it up, the sheet also has **Send to the
+makers**: the same report, with your line, goes straight to Delgado &
+Murphy's private support list (nowhere public, and you need no account
+anywhere). The sheet then says **Sent · request #12** and the date; mention
+the number if you phone them. Their answer comes back to the radio and shows
+under **This radio → From the makers**, like a note left after a repair. A
+radio sends at most five a day; **Share…** and **Copy** always work.
+
 If the person who built your radio then wants to look at it from afar:
 **Settings → This radio → Help from the makers** (at the bottom) → **Let the
 makers help (24 h)**, then press a key on the radio. The page shows a link:

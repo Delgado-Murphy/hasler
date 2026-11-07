@@ -32,8 +32,15 @@ curl -i -X POST https://hasler-checkin.<account>.workers.dev/v1/checkin \
 open 'https://hasler-checkin.<account>.workers.dev/dashboard?key=<the key>'
 ```
 
-`node --test worker.test.mjs` runs the Worker's validation and the
-dashboard's order against a fake KV (Node 18+; no Cloudflare, no network).
+`node --test` (in this directory) runs the Worker's validation, the
+dashboard's order and the support routes against a fake KV and a mocked
+GitHub (Node 18+; no Cloudflare, no network).
+
+**Send to the makers** (owners' requests as issues in a private GitHub repo,
+and the makers' `/owner` replies back to the radio) is the same Worker's
+`support.js`; [SUPPORT.md](SUPPORT.md) has its setup. Without the `SUPPORT`
+binding and the GitHub secrets those routes answer 503 and nothing else
+changes.
 
 ## On a radio
 

@@ -163,6 +163,42 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await page.close();
     });
 
+    await check('Send to the makers: with the makers\' server set up, the report goes to their private list and the number shows', async () => {
+      const page = await ctx.newPage();
+      page.on('pageerror', e => errors.push('send: ' + e.message));
+      await trouble(page, null);
+      let sendBody = null, refuse = false, replies = 0;
+      const sup = {available: true, requests: []};
+      await page.route('**/api/support', r => r.fulfill({json: sup}));
+      await page.route('**/api/support/send', r => {
+        sendBody = r.request().postDataJSON();
+        if (refuse) return r.fulfill({status: 429, json: {ok: false, error: 'You’ve sent several today already. The makers have them; use Share or Copy for anything more.'}});
+        sup.requests = [{number: 12, at: '2026-11-07T18:00:00+01:00', deduped: false}];
+        r.fulfill({json: {ok: true, number: 12, at: '2026-11-07T18:00:00+01:00', deduped: false, requests: sup.requests}});
+      });
+      await page.route('**/api/support/replies', r => { replies++; r.fulfill({json: {ok: true, added: 0}}); });
+      await page.goto(radio.base + '/#settings/wrong');
+      await until(() => page.isVisible('#tellMakers'), 8000, 'the button');
+      await page.click('#tellMakers');
+      await until(() => page.isVisible('#tellSend'), 4000, 'Send to the makers');
+      assert(/private support list, nowhere public/.test(await text(page, '#tellWho')), 'honest about where: ' + await text(page, '#tellWho'));
+      assert(await page.isVisible('#tellCopy'), 'Copy stays');
+      await page.fill('#tellNote', 'It goes quiet after a few minutes');
+      await page.click('#tellSend');
+      await until(async () => sendBody != null, 4000, 'the send request');
+      assert(sendBody.note === 'It goes quiet after a few minutes' && sendBody.wifi === true, 'body ' + JSON.stringify(sendBody));
+      await until(async () => /Sent · request #12 · (7 Nov|Nov 7)/.test(await text(page, '#tellSent')), 4000, 'the request number');
+      refuse = true;
+      await page.click('#tellSend');
+      await until(() => page.isVisible('#tellSendErr'), 4000, 'the refusal');
+      assert(/Share or Copy/.test(await text(page, '#tellSendErr')), 'says what to do instead');
+      await page.click('#tellClose');
+      // with a request sent, opening This radio asks the radio for the makers' replies
+      await page.goto(radio.base + '/#settings/radio');
+      await until(async () => replies >= 1, 8000, 'the replies fetch');
+      await page.close();
+    });
+
     await check('nothing wrong: the "Everything answers" fallback', async () => {
       const page = await ctx.newPage();
       page.on('pageerror', e => errors.push('fine: ' + e.message));

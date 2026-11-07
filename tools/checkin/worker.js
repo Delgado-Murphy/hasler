@@ -13,10 +13,17 @@
 //                      open /dashboard?key=... . A radio not heard from is "not seen",
 //                      never "broken": the dashboard can't tell off from offline.
 //   GET  /v1/radios    the same rows as JSON (same gate as the dashboard).
+//   POST /v1/report, POST /v1/github, GET /v1/replies, POST /v1/replies/ack:
+//                      "Send to the makers" - an owner's report becomes an issue in the
+//                      makers' private GitHub repo, and a "/owner ..." comment comes back to
+//                      the radio. support.js has the routes; SUPPORT.md the setup.
 //
 // Bindings (wrangler.toml): CHECKINS (KV). Vars/secrets: CHECKIN_TOKEN (optional,
 // the shared word radios send in X-Hasler-Token; box.yaml checkin_token),
 // DASHBOARD_KEY (optional, the dashboard's ?key=). README.md has the steps.
+// Support (optional): SUPPORT (KV), GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, SUPPORT_REPO.
+
+import { handleReport, handleGithub, handleReplies, issuesFor, repoOf } from "./support.js";
 
 const MAX_BODY = 2048;
 const MAX_ID = 64;
@@ -95,7 +102,10 @@ function ago(days) {
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-export function renderDashboard(rows, now) {
+export function renderDashboard(rows, now, repo = "") {
+  const req = r => (r.requests || []).length && repo
+    ? r.requests.slice(0, 3).map(i => `<a href="https://github.com/${esc(repo)}/issues/${esc(i.number)}">#${esc(i.number)}</a>`).join(" ")
+    : "—";
   const tr = rows.map(r => {
     const cls = r.days > GREY_DAYS ? "grey" : r.days > AMBER_DAYS ? "amber" : "";
     const look = r.needsLook ? " look" : "";
@@ -103,7 +113,7 @@ export function renderDashboard(rows, now) {
       `<td title="${esc(r.seen || "")}">${esc(ago(r.days))}</td><td>${esc(r.health)}${r.failed ? " " + esc(r.failed) : ""}</td>` +
       `<td>${esc(r.faults || "—")}</td><td title="${esc(r.reason)}">${esc(r.rollback || "—")}</td><td>${esc(r.cuts)}</td>` +
       `<td>${esc(r.stalls)}</td><td>${esc(r.restarts)}</td><td>${esc(size(r.free))}</td><td>${esc(r.temp)}${r.throttled && r.throttled !== "0x0" ? " " + esc(r.throttled) : ""}</td>` +
-      `<td>${esc(r.ytdlp)}</td><td>${esc(r.uptime)}</td><td>${esc(r.shutdown)}</td><td>${esc(r.mode)}</td></tr>`;
+      `<td>${esc(r.ytdlp)}</td><td>${esc(r.uptime)}</td><td>${esc(r.shutdown)}</td><td>${esc(r.mode)}</td><td>${req(r)}</td></tr>`;
   }).join("\n");
   const stamp = new Date(now).toISOString().replace("T", " ").slice(0, 16);
   return `<!doctype html>
@@ -114,12 +124,12 @@ body{margin:0;padding:24px;background:#1B140C;color:#F2E6D0;font:14px/1.45 ui-mo
 h1{font-size:18px;font-weight:600;margin:0 0 4px}p{margin:0 0 16px;color:#B29F80}
 table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:6px 10px;border-bottom:1px solid #3A2C1C;white-space:nowrap}
 th{color:#B29F80;font-weight:500}tr.look td:first-child{color:#F3CF8C;font-weight:600}
-tr.amber td{color:#E9B35C}tr.grey td{color:#7A6A52}
+tr.amber td{color:#E9B35C}a{color:#F3CF8C}tr.grey td{color:#7A6A52}
 .key{margin-top:16px;color:#7A6A52;font-size:12px}
 </style></head><body>
 <h1>Hasler radios</h1>
 <p>${rows.length} radio${rows.length === 1 ? "" : "s"} have checked in · ${esc(stamp)} UTC · needs a look first, then the longest unseen.</p>
-<table><thead><tr><th>radio</th><th>variant</th><th>version</th><th>ch</th><th>seen</th><th>health</th><th>faults</th><th>rollback</th><th>cuts</th><th>stalls</th><th>restarts</th><th>free</th><th>temp</th><th>yt-dlp</th><th>up (d)</th><th>last off</th><th>mode</th></tr></thead>
+<table><thead><tr><th>radio</th><th>variant</th><th>version</th><th>ch</th><th>seen</th><th>health</th><th>faults</th><th>rollback</th><th>cuts</th><th>stalls</th><th>restarts</th><th>free</th><th>temp</th><th>yt-dlp</th><th>up (d)</th><th>last off</th><th>mode</th><th>requests</th></tr></thead>
 <tbody>
 ${tr}
 </tbody></table>
@@ -161,10 +171,22 @@ export default {
     if (request.method === "GET" && (url.pathname === "/dashboard" || url.pathname === "/v1/radios")) {
       if (!dashboardOk(url, request, env)) return new Response("no", { status: 403 });
       const rows = sortRows((await listAll(env.CHECKINS)).map(({ id, rec }) => rowOf(id, rec, now)));
+      for (const r of rows) r.requests = await issuesFor(env, r.id);
       if (url.pathname === "/v1/radios") {
         return new Response(JSON.stringify(rows, null, 1), { headers: { "content-type": "application/json; charset=utf-8" } });
       }
-      return new Response(renderDashboard(rows, now), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+      return new Response(renderDashboard(rows, now, env.SUPPORT ? repoOf(env) : ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
+    }
+    if (request.method === "POST" && url.pathname === "/v1/report") {
+      if (!tokenOk(request, env)) return new Response("no", { status: 403 });
+      return handleReport(request, env, now);
+    }
+    if (request.method === "POST" && url.pathname === "/v1/github") {
+      return handleGithub(request, env);        // GitHub signs it; the radios' token isn't GitHub's
+    }
+    if ((request.method === "GET" && url.pathname === "/v1/replies") || (request.method === "POST" && url.pathname === "/v1/replies/ack")) {
+      if (!tokenOk(request, env)) return new Response("no", { status: 403 });
+      return handleReplies(request, env, url);
     }
     if (request.method === "GET" && url.pathname === "/") {
       return new Response("hasler check-in: POST /v1/checkin\n", { headers: { "content-type": "text/plain" } });

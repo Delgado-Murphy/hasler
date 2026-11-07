@@ -373,6 +373,20 @@ leaves is marked bad, so auto mode won't reinstall it.
   with a one-table dashboard sorted "needs a look first". The endpoint going
   away costs nothing: the POST fails quietly. The hand-over switches the
   check-in off; the new owner says yes themselves.
+- **Owner requests** ("Send to the makers", the owner's press, not the
+  check-in's switch; it needs only the `checkin_url`): the Tell the makers
+  sheet POSTs the report (text + JSON twin, secrets stripped by
+  `web/report.py`) and the owner's line to the same Worker's `/v1/report`
+  with the same token (`haslerd/web/support_api.py`). The Worker files it as
+  an issue in the makers' private GitHub repo (`Delgado-Murphy/hasler-support`;
+  labels `owner-report`, `fault:<reason>`, `version:<v>`, `model:<variant>`),
+  at most five a day per radio, the same note within ten minutes a comment
+  on the same issue, and answers the number, which the radio keeps in
+  `<state>/support-requests.json` ("Sent · request #12"). A maker's comment
+  with a line starting `/owner ` comes back (GitHub webhook, HMAC-verified)
+  and the radio fetches it - when the owner opens This radio, and after the
+  daily check-in - into `maker-notes.jsonl` as a note `by: "makers"`. Owners
+  never need a GitHub account. Setup: [`tools/checkin/SUPPORT.md`](../tools/checkin/SUPPORT.md).
 - **A release from a USB stick** (the post-makers path): the updater takes
   `file://` URLs, so a signed release on a stick - the `releases/`,
   `channels/` and `keyring.json*` files of the site, copied - with
