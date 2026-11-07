@@ -156,8 +156,8 @@ def test_a_failed_join_leaves_no_marker(tmp_path):
 # -- the setup network's name ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("room, name", [(None, "Hasler"), ("", "Hasler"), ("Kitchen", "Hasler Kitchen"),
-                                        ("Hasler Study", "Hasler Study"), ("x" * 40, "Hasler " + "x" * 25)])
+@pytest.mark.parametrize("room, name", [(None, "Hasler"), ("", "Hasler"), ("Kitchen", "Hasler-Kitchen"),
+                                        ("Hasler Study", "Hasler-Study"), ("x" * 40, "Hasler-" + "x" * 25), ("Living  room", "Hasler-Living-room")])
 def test_hotspot_name_follows_the_room(room, name):
     assert Wifi.hotspot_name_for(room) == name
 
@@ -170,11 +170,11 @@ def test_room_name_renames_the_hotspot_only_with_a_known_password(tmp_path):
     assert w.apply_hotspot_name() is None and helper.calls == []       # no password known: nothing sent
     (tmp_path / "hotspot.txt").write_text("ssid=Hasler\npassword=abcd-efgh-jkmn\n")
     reply = w.apply_hotspot_name()
-    assert reply["ssid"] == "Hasler Kitchen"
-    assert helper.calls == [{"action": "hotspot", "password": "abcd-efgh-jkmn", "ssid": "Hasler Kitchen"}]
+    assert reply["ssid"] == "Hasler-Kitchen"
+    assert helper.calls == [{"action": "hotspot", "password": "abcd-efgh-jkmn", "ssid": "Hasler-Kitchen"}]
     # hotspot.txt follows, so the key page still shows the password under the new name.
-    assert "ssid=Hasler Kitchen" in (tmp_path / "hotspot.txt").read_text()
-    w.hotspot_ssid = lambda: "Hasler Kitchen"
+    assert "ssid=Hasler-Kitchen" in (tmp_path / "hotspot.txt").read_text()
+    w.hotspot_ssid = lambda: "Hasler-Kitchen"
     assert w.apply_hotspot_name() is None                               # already right: nothing sent
     assert len(helper.calls) == 1
 
@@ -185,7 +185,7 @@ def test_ensure_hotspot_applies_the_rooms_name_after_its_check(tmp_path):
     w = wifi_with(tmp_path, helper)
     w.room_name = lambda: "Study"
     w.ensure_hotspot()
-    assert [c.get("ssid") for c in helper.calls] == [None, "Hasler Study"]
+    assert [c.get("ssid") for c in helper.calls] == [None, "Hasler-Study"]
     assert helper.calls[1]["password"] == helper.calls[0]["password"]   # the one ensure just chose
 
 

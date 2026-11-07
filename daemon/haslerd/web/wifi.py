@@ -370,6 +370,9 @@ class Wifi:
             name = room
         else:
             name = f"{HOTSPOT_SSID} {room}"
+        # No spaces: moOde's worker passes the name to `nmcli c up` unquoted, so
+        # "Hasler Kitchen" never came up. "Hasler-Kitchen" does.
+        name = re.sub(r"\s+", "-", name)
         name = name[:HOTSPOT_NAME_MAX].rstrip(" .-")
         return re.sub(r"[\x00-\x1f\x7f/\\]", "", name) or HOTSPOT_SSID
 

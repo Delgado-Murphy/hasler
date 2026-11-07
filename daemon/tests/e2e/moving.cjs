@@ -61,7 +61,7 @@ const shot = async (page, name) => { if (SHOTS){ fs.mkdirSync(SHOTS, {recursive:
 const get = async (base, url) => (await fetch(base + url)).json();
 const WIFI = {hotspot: false, current: 'Casa Nueva', networks: [], saved: ['Casa Nueva', 'Casa Vieja'],
   known: [{ssid: 'Casa Nueva', current: true}, {ssid: 'Casa Vieja', current: false}],
-  setup: {ssid: 'Hasler Kitchen', password_set: true, password: 'abcd-efgh-jkmn', address: '172.24.1.1', page: 'http://172.24.1.1:8080/wifi'}};
+  setup: {ssid: 'Hasler-Kitchen', password_set: true, password: 'abcd-efgh-jkmn', address: '172.24.1.1', page: 'http://172.24.1.1:8080/wifi'}};
 
 (async () => {
   const radio = await startRadio();
