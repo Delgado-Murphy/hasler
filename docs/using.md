@@ -433,11 +433,14 @@ If the radio can't find a Wi-Fi network it knows:
 3. A page opens by itself. If not, open **http://172.24.1.1:8080/wifi** (or
    any `http://` address, like **http://neverssl.com**).
 4. Choose your home network, type its password, press **Connect**.
-5. The radio restarts. Put your phone back on your home Wi-Fi. The lamp
-   blooms green and taps OK; the music comes back by itself.
+5. The radio restarts. Put your phone back on your home Wi-Fi. While it
+   connects the lamp breathes amber; then it blooms green and taps OK, and
+   the music comes back by itself.
 
-If the lamp glows red and taps CQ again, the password was wrong: try once
-more.
+If the lamp shows one slow red eye and then taps CQ again, the password was
+wrong: try once more. Typing the password of the network the radio is
+already on just saves it - the radio says "Saved - the radio stays
+connected" and doesn't restart.
 
 **After a power cut** the radio may start before your router and make its
 own network. You don't need to do anything: it keeps looking for your Wi-Fi

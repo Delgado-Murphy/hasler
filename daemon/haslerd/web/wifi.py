@@ -23,6 +23,8 @@ haslerd's next start, once, so the lamp can say OK on the new network.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -167,6 +169,27 @@ def parse_iw_scan(output: str, skip: str = HOTSPOT_SSID) -> list[dict]:
     return sorted(best.values(), key=lambda n: -n["signal"])
 
 
+# Setup passwords worth recognising when moOde holds only their key: moOde's own
+# default for its hotspot.
+KNOWN_HOTSPOT_PASSWORDS = ("moodeaudio",)
+
+
+def wpa_psk(password: str, ssid: str) -> str:
+    """The WPA2 key NetworkManager and moOde store (wpa_passphrase: PBKDF2-SHA1)."""
+    return hashlib.pbkdf2_hmac("sha1", password.encode(), ssid.encode(), 4096, 32).hex()
+
+
+def recognise_psk(psk: str, ssid: str, candidates) -> str:
+    """The candidate whose key is ``psk`` for ``ssid``, or ""."""
+    psk = (psk or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", psk):
+        return ""
+    for c in candidates:
+        if c and 8 <= len(c) <= 63 and hmac.compare_digest(wpa_psk(c, ssid), psk):
+            return c
+    return ""
+
+
 def read_hotspot_file(path: str | Path = HOTSPOT_FILE) -> dict:
     out: dict[str, str] = {}
     try:
@@ -205,6 +228,8 @@ class Wifi:
         self._next_helper_scan = 0.0
         # The watchdog (haslerd/wifiwatch.py) sets this; its status() joins ours.
         self.watch: Any = None
+        # take_joined(): the network the radio was on before that join (None: unknown).
+        self.joined_from: str | None = None
         # The room's name (web/room.py custom()), for the setup network's name;
         # main.build_wifiwatch wires it. None: plain "Hasler".
         self.room_name: Callable[[], str | None] | None = None
@@ -407,7 +432,7 @@ class Wifi:
         if not reply.get("result"):
             reply["result"] = "error"
         if reply["result"] == "joined":
-            self.mark_joined(str(reply.get("ssid") or ""))
+            self.mark_joined(str(reply.get("ssid") or ""), self.current_ssid())
         return reply
 
     def _query(self, sql: str) -> list[tuple]:
@@ -446,15 +471,42 @@ class Wifi:
         saved = read_hotspot_file(self.hotspot_file)
         if saved.get("password") and saved.get("ssid", ssid) == ssid:
             info["password"] = saved["password"]
+        elif rows and rows[0][1]:
+            # Set elsewhere (moOde's page, an older Hasler): moOde keeps only the
+            # key derived from it, so the password itself can't be read back - but
+            # a password we can name (moOde's default, the one Hasler chose under
+            # another name) is recognised by its key, and then shown.
+            known = recognise_psk(str(rows[0][1]), ssid, [saved.get("password", ""), *KNOWN_HOTSPOT_PASSWORDS])
+            if known:
+                info["password"] = known
         return info
+
+    def new_setup_password(self) -> dict:
+        """Settings / Handover's "Make a new one": a setup password Hasler
+        chose and keeps, so the page and the cards can show it. The network
+        keeps its name (the room's, if Hasler named it). {"ssid", "password"}."""
+        password = self.new_password()
+        ssid = self.hotspot_ssid()
+        reply = self._helper({"action": "hotspot", "password": password}, timeout=60)
+        if not reply.get("ok"):
+            raise ValueError(reply.get("error") or "the Wi-Fi helper failed")
+        ssid = str(reply.get("ssid") or ssid)
+        self._keep_hotspot(ssid, password)
+        log.warning("setup network %r has a new password (from the page)", ssid)
+        return {"ssid": ssid, "password": password}
 
     def current_ssid(self) -> str:
         rows = self._query("SELECT wlanssid FROM cfg_network WHERE iface='wlan0'")
         ssid = (rows[0][0] if rows else "") or ""
         return "" if ssid in RESERVED else ssid
 
-    def join(self, ssid: str, password: str, security: str = "auto") -> None:
-        """Hand the network to the root helper. Raises ValueError with its reason."""
+    def join(self, ssid: str, password: str, security: str = "auto") -> dict:
+        """Hand the network to the root helper. Raises ValueError with its reason.
+
+        Another network: the helper restarts the radio onto it (``restarting``).
+        The one it is on now, chosen again (its password re-typed): the key is
+        stored in place, nothing restarts - ``same_network`` and ``changed`` (a
+        new key, tried at once; the old one stays if the network refuses it)."""
         ssid = (ssid or "").strip()
         if not 1 <= len(ssid.encode()) <= 32:
             raise ValueError("network name must be 1–32 characters")
@@ -462,11 +514,19 @@ class Wifi:
             raise ValueError("unknown security type")
         if security in ("wpa-psk", "sae") and not 8 <= len(password) <= 64:
             raise ValueError("a Wi-Fi password is 8–63 characters")
-        reply = self._helper({"ssid": ssid, "password": password, "security": security}, timeout=30)
+        # A key re-typed for the network it is on is tried at once (up to 45 s,
+        # twice if the network refuses it): room for that, not just the save.
+        before = self.current_ssid()
+        reply = self._helper({"ssid": ssid, "password": password, "security": security}, timeout=120)
         if not reply.get("ok"):
             raise ValueError(reply.get("error") or "the Wi-Fi helper failed")
-        self.mark_joined(ssid)
+        if reply.get("same_network"):
+            log.warning("Wi-Fi %r chosen again: %s - no restart", ssid,
+                        "new password in use" if reply.get("changed") else "the password it had")
+            return {"ssid": ssid, "same_network": True, "changed": bool(reply.get("changed")), "restarting": False}
+        self.mark_joined(ssid, before)
         log.warning("joining Wi-Fi %r - restarting", ssid)
+        return {"ssid": ssid, "same_network": False, "changed": True, "restarting": True}
 
     # -- the networks it knows: forgetting -------------------------------------------
 
@@ -504,28 +564,42 @@ class Wifi:
 
     # -- the marker for the next start ---------------------------------------------------
 
-    def mark_joined(self, ssid: str) -> None:
-        """Leave the SSID just joined for the next start (``take_joined``). Never raises."""
+    def mark_joined(self, ssid: str, previous: str | None = None) -> None:
+        """Leave the SSID just joined for the next start (``take_joined``), and
+        the one it was on before (``from=``: "New Wi-Fi" only when they differ).
+        Never raises."""
         if self.joined_file is None:
             return
         try:
             path = Path(self.joined_file)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(ssid + "\n", encoding="utf-8")
+            path.write_text(ssid + "\n" + (f"from={previous}\n" if previous is not None else ""), encoding="utf-8")
         except OSError:
             log.debug("could not write %s", self.joined_file, exc_info=True)
 
+    def joined_pending(self) -> bool:
+        """A join's note is waiting for this start (the radio restarted onto a
+        network it may not be on yet); ``take_joined`` reads it once online."""
+        return self.joined_file is not None and Path(self.joined_file).is_file()
+
     def take_joined(self) -> str | None:
-        """The SSID a join left for this start, and the marker is gone; None if none."""
+        """The SSID a join left for this start, and the marker is gone; None if
+        none. ``joined_from`` is then the network it was on before (None: not
+        recorded - an older note)."""
         if self.joined_file is None:
             return None
         path = Path(self.joined_file)
+        self.joined_from = None
         try:
-            ssid = path.read_text(encoding="utf-8").strip()
+            lines = path.read_text(encoding="utf-8").splitlines()
         except FileNotFoundError:
             return None
         except (OSError, UnicodeDecodeError):
-            ssid = ""
+            lines = []
+        ssid = lines[0].strip() if lines else ""
+        for line in lines[1:]:
+            if line.startswith("from="):
+                self.joined_from = line[5:].strip()
         try:
             path.unlink()
         except OSError:

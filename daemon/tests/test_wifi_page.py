@@ -154,6 +154,26 @@ def test_form_post_from_the_hotspot_joins(hotspot):
     assert 'data-state="done"' in page and "Guardado" in page and "Casa" in page
 
 
+def test_the_network_it_is_on_again_says_saved_and_stays(hotspot):
+    """Re-typing the password of the Wi-Fi it is on: no restart, and the page says so."""
+    hp, app, joined = hotspot
+    app.wifi.join = lambda ssid, pwd, sec: joined.append(ssid) or {
+        "ssid": ssid, "same_network": True, "changed": False, "restarting": False}
+    status, page = post_form(hp, {"net": "wpa-psk:Vieja", "password": "12345678"})
+    assert status == 200 and joined == ["Vieja"]
+    assert 'data-state="kept"' in page and "the radio stays connected to <b>Vieja</b>" in page
+    status, page = post_form(hp, {"net": "wpa-psk:Vieja", "password": "12345678", "lang": "es"})
+    assert "sigue conectada" in page
+
+
+def test_api_wifi_answers_whether_it_restarts(hotspot):
+    hp, app, _ = hotspot
+    app.wifi.join = lambda ssid, pwd, sec: {"ssid": ssid, "same_network": True, "changed": True, "restarting": False}
+    status, doc = call(hp, "POST", "/api/wifi", {"ssid": "Vieja", "password": "12345678", "security": "wpa-psk"},
+                       {"Origin": f"http://{hp}"})
+    assert status == 200 and doc["ok"] and doc["restarting"] is False and doc["changed"] is True
+
+
 def test_form_mistake_keeps_the_choice_not_the_password(hotspot):
     hp, _, joined = hotspot
     status, page = post_form(hp, {"net": "wpa-psk:Casa", "password": "short"})

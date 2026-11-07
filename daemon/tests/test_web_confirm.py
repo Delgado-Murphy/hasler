@@ -330,6 +330,23 @@ class TestConfirmHttp:
         status, _ = call(hp, "POST", "/api/wifi", {"ssid": "Home", "password": "12345678", "confirm": token})
         assert status == 200 and joined == ["Home"]
 
+    def test_a_new_setup_password_needs_a_press_and_answers_it(self, base):
+        hp, app = base
+        made = []
+        app.wifi.new_setup_password = lambda: made.append(1) or {"ssid": "Hasler", "password": "abcd-efgh-jkmn"}
+        status, doc = call(hp, "POST", "/api/wifi/setup-password", {})
+        assert status == 403 and doc["confirm_required"] and made == []
+        token = call(hp, "POST", "/api/confirm/request", {"action": "wifi", "args": {"setup_password": True}})[1]["token"]
+        app.confirm.intercept([Event("k1", "tap")])
+        status, doc = call(hp, "POST", "/api/wifi/setup-password", {"confirm": token})
+        assert status == 200 and doc == {"ok": True, "ssid": "Hasler", "password": "abcd-efgh-jkmn"} and made == [1]
+
+    def test_settings_say_setup_mode_and_internet_for_the_handover_line(self, base):
+        hp, app = base
+        app.connectivity = type("C", (), {"online": False, "hotspot": True})()
+        status, doc = call(hp, "GET", "/api/settings")
+        assert status == 200 and doc["wifi"]["hotspot"] is True and doc["wifi"]["online"] is False
+
     def test_wifi_from_a_phone_on_the_hotspot_just_works(self, base):
         hp, app = base
         joined = []

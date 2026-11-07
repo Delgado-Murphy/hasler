@@ -101,13 +101,14 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
     await page.route('**/api/report*', r => { if (reportHits) reportHits.push(new URL(r.request().url())); r.fulfill({json: {ok: true, text: REPORT_TEXT, json: {}}}); });
   };
   try {
-    await check('Settings home: "Something’s wrong?" above the page rows; the footer carries the short id', async () => {
+    await check('Settings home: "Something’s wrong?" its own card below the page rows; the footer carries the short id', async () => {
       const page = await fresh('#settings');
       await until(() => page.isVisible('#setrow-wrong'), 6000, 'the button');
       assert((await text(page, '#setrow-wrong .li-title')) === 'Something’s wrong?', 'title');
       assert(/checks itself/.test(await text(page, '#setrow-wrong .li-sub')), 'sub');
       const order = await page.$$eval('#panel nav', ns => ns.map(n => n.id));
-      assert(order.indexOf('setWrong') < order.indexOf('setRows'), 'order: ' + order.join());
+      assert(order.indexOf('setWrong') === order.indexOf('setRows') + 1, 'order: ' + order.join());
+      assert(await page.$eval('#setWrong', n => n.nextElementSibling && n.nextElementSibling.classList.contains('about')), 'not just above the footer');
       const info = await (await fetch(radio.base + '/api/info')).json();
       assert(info.short_id && info.short_id.length === 4 && info.makers_contact === 'hola@example.org', 'info: ' + JSON.stringify(info));
       await until(async () => (await text(page, '.about p')).includes(' · ' + info.short_id), 6000, 'the short id in the footer');

@@ -121,6 +121,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-ytdlp-update", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-os-update", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-bootcfg-guard", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-journal-disk", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-tone", "integration/bin/", mode=0o755),
     Rule("scripts/hasler-dsp", "integration/bin/", mode=0o755),
     Rule("scripts/hasler-lamp-halt", "integration/shutdown/", mode=0o755),
@@ -129,6 +130,8 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("config/systemd-dropins/bluealsa-aplay@.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay@.service.d/"),
     Rule("config/systemd-dropins/bluealsa-aplay.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay.service.d/"),
     Rule("config/systemd-dropins/mpd.service.d/hasler-*.conf", "integration/systemd/mpd.service.d/"),
+    Rule("config/systemd-dropins/systemd-journal-flush.service.d/hasler-*.conf",
+         "integration/systemd/systemd-journal-flush.service.d/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
     Rule("config/avahi/hasler.service", "integration/avahi/"),
     # licensing, at the top next to bin/ and wheelhouse/ it describes: our MIT

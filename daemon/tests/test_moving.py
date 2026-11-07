@@ -102,11 +102,48 @@ def test_join_and_retry_leave_the_marker_and_take_joined_reads_it_once(tmp_path)
     helper = Helper({"retry": {"ok": True, "result": "joined", "ssid": "Casa Nueva"}})
     w = wifi_with(tmp_path, helper)
     w.join("Casa Nueva", "longenough", "wpa-psk")
-    assert (tmp_path / "wifi-joined").read_text() == "Casa Nueva\n"
-    assert w.take_joined() == "Casa Nueva"
+    assert (tmp_path / "wifi-joined").read_text() == "Casa Nueva\nfrom=Casa Vieja\n"
+    assert w.joined_pending()
+    assert w.take_joined() == "Casa Nueva" and w.joined_from == "Casa Vieja"
+    assert not w.joined_pending()
     assert w.take_joined() is None and not (tmp_path / "wifi-joined").exists()
     w.retry()
     assert w.take_joined() == "Casa Nueva"
+
+
+def test_an_old_marker_without_from_still_reads(tmp_path):
+    w = wifi_with(tmp_path, Helper())
+    (tmp_path / "wifi-joined").write_text("Casa Nueva\n")      # the helper before 1.6.4
+    assert w.take_joined() == "Casa Nueva" and w.joined_from is None
+
+
+def test_the_network_it_is_on_chosen_again_saves_without_a_restart(tmp_path):
+    """The owner re-typed the password of the Wi-Fi the radio is on (Handover sent
+    them to the Wi-Fi page): the helper stores the key in place - no restart, no
+    marker, so no "New Wi-Fi" and no join breath at a next start."""
+    helper = Helper({"join": {"ok": True, "same_network": True, "changed": False, "restarting": False}})
+    w = wifi_with(tmp_path, helper)
+    assert w.join("Casa Vieja", "longenough", "wpa-psk") == {
+        "ssid": "Casa Vieja", "same_network": True, "changed": False, "restarting": False}
+    assert not (tmp_path / "wifi-joined").exists()
+    helper.replies["join"] = {"ok": True, "same_network": True, "changed": True, "restarting": False}
+    assert w.join("Casa Vieja", "longenough2", "wpa-psk")["changed"] is True
+    assert not (tmp_path / "wifi-joined").exists()
+
+
+def test_a_new_password_the_network_refuses_is_said_and_nothing_restarts(tmp_path):
+    helper = Helper({"join": {"ok": False, "same_network": True, "refused": True, "restarting": False,
+                              "error": "the network refused that password - the radio kept the one that works"}})
+    w = wifi_with(tmp_path, helper)
+    with pytest.raises(ValueError, match="kept the one that works"):
+        w.join("Casa Vieja", "wrongpassword", "wpa-psk")
+    assert not (tmp_path / "wifi-joined").exists()
+
+
+def test_another_network_still_restarts_and_leaves_the_marker(tmp_path):
+    w = wifi_with(tmp_path, Helper())
+    assert w.join("Casa Nueva", "longenough", "wpa-psk")["restarting"] is True
+    assert w.joined_pending()
 
 
 def test_a_failed_join_leaves_no_marker(tmp_path):
@@ -238,6 +275,22 @@ def test_consume_wifi_joined_does_what_the_guide_promises(tmp_path):
     assert note["ssid"] == "Casa Nueva" and abs(note["at"] - time.time()) < 5
     assert app.settings()["wifi_joined"]["ssid"] == "Casa Nueva"
     assert main_mod.consume_wifi_joined(app, keeper) is None            # once
+
+
+def test_the_same_network_again_is_no_new_wifi(tmp_path):
+    """A restart onto the network it was already on (a join from before this
+    release, the watchdog back on the home Wi-Fi): the lamp still says OK, but
+    Settings doesn't ask "New Wi-Fi: … Moved house?"."""
+    app = make_app(tmp_path)
+    keeper = Keeper()
+    app.wifi.mark_joined("Casa Vieja", "Casa Vieja")
+    assert main_mod.consume_wifi_joined(app, keeper) == "Casa Vieja"
+    assert keeper.celebrated == 1
+    assert "wifi_joined" not in load_settings(tmp_path / "settings.json")
+    assert app.settings()["wifi_joined"] is None
+    app.wifi.mark_joined("Casa Nueva", "Casa Vieja")               # a different one: said
+    assert main_mod.consume_wifi_joined(app, keeper) == "Casa Nueva"
+    assert app.settings()["wifi_joined"]["ssid"] == "Casa Nueva"
 
 
 def test_consume_wifi_joined_leaves_peers_alone_when_multiroom_is_off(tmp_path):

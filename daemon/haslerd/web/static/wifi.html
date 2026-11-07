@@ -102,6 +102,7 @@ form:has(.net input[data-sec=none]:checked) .opennet{display:block}
 /* after saving: only the steps stay */
 .doneonly{display:none}
 body[data-state=done] .formonly{display:none}
+body[data-state=kept] .formonly,body[data-state=kept] .next-step{display:none}
 body[data-state=done] .doneonly{display:flex}
 body[data-state=done] .step.next-step{padding:16px;border:2px solid var(--amber);border-radius:10px;background:#FFB2380D}
 /* footer */
@@ -212,8 +213,9 @@ body[data-state=done] .step.next-step{padding:16px;border:2px solid var(--amber)
   "back": "‹ Back to the key page",
   "lede_first": "Welcome. Tell the radio which Wi-Fi to use — three steps, about two minutes. After that, everything else happens on the key page.",
   "lede_retry": "The radio couldn’t join <b>{v}</b>. Most often the password was mistyped, or the network is out of reach. Try again below. If your router is still starting after a power cut, you can also just wait: the radio tries again by itself every few minutes.",
-  "lede_change": "The radio is on <b>{v}</b>. Choosing another network restarts it onto that one.",
+  "lede_change": "The radio is on <b>{v}</b>. Choosing another network restarts it onto that one; typing this one’s password again just saves it.",
   "lede_done": "Saved. In about a minute the radio is on <b>{v}</b>.",
+  "lede_kept": "Saved — the radio stays connected to <b>{v}</b>. Nothing restarts.",
   "s_network": "Network",
   "s_password": "Password",
   "s_next": "What happens next",
@@ -263,6 +265,7 @@ body[data-state=done] .step.next-step{padding:16px;border:2px solid var(--amber)
   "lede_retry": "La radio no pudo conectarse a <b>{v}</b>. Casi siempre es una contraseña mal escrita o una red fuera de alcance. Vuelve a intentarlo abajo. Si el router aún está arrancando tras un corte de luz, también puedes esperar: la radio lo intenta sola cada pocos minutos.",
   "lede_change": "La radio está en <b>{v}</b>. Si eliges otra red, se reinicia y se conecta a esa.",
   "lede_done": "Guardado. En un minuto la radio estará en <b>{v}</b>.",
+  "lede_kept": "Guardado: la radio sigue conectada a <b>{v}</b>. No se reinicia.",
   "s_network": "Red",
   "s_password": "Contraseña",
   "s_next": "Qué pasa después",
@@ -391,7 +394,8 @@ body[data-state=done] .step.next-step{padding:16px;border:2px solid var(--amber)
   }
   function post(url, data) {
     var ctl = window.AbortController ? new AbortController() : null;
-    var timer = ctl && setTimeout(function () { ctl.abort(); }, 40000);
+    // 100 s: a password re-typed for the network it is on is tried at once (up to 45 s, twice if refused).
+    var timer = ctl && setTimeout(function () { ctl.abort(); }, 100000);
     return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data), signal: ctl ? ctl.signal : undefined})
       .then(function (r) { clearTimeout(timer); return r.json().catch(function () { return {}; }).then(function (j) { j.status = r.status; return j; }); });
   }
@@ -411,12 +415,15 @@ body[data-state=done] .step.next-step{padding:16px;border:2px solid var(--amber)
     }
   }
   function plain(msg) { var e = new Error(msg); e.plain = true; return e; }
-  function done(ssid) {
-    body.setAttribute('data-state', 'done');
+  // kept: the network it is on, chosen again - the password saved, nothing restarts.
+  function done(ssid, kept) {
+    var key = kept ? 'lede_kept' : 'lede_done';
+    body.setAttribute('data-state', kept ? 'kept' : 'done');
     var lede = $('#lede');
-    lede.setAttribute('data-t', 'lede_done'); lede.setAttribute('data-v', ssid);
-    lede.innerHTML = t('lede_done', {v: esc(ssid)});
-    var back = $('.back'); if (back) back.hidden = true;
+    lede.setAttribute('data-t', key); lede.setAttribute('data-v', ssid);
+    lede.innerHTML = t(key, {v: esc(ssid)});
+    var back = $('.back'); if (back) back.hidden = !kept;
+    go.disabled = false; go.textContent = t('save');
     window.scrollTo(0, 0);
   }
 
@@ -440,7 +447,7 @@ body[data-state=done] .step.next-step{padding:16px;border:2px solid var(--amber)
         j = await post('/api/wifi', data);
       }
       if (!j.ok) return fail('err_save', {error: j.error || j.status});
-      done(n.ssid);
+      done(n.ssid, j.restarting === false);
     } catch (e) {
       if (e.plain) { fail('err_save', {error: ''}); err.textContent = e.message; return; }
       // No answer at all: the radio may already be restarting.

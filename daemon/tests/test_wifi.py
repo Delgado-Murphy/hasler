@@ -213,3 +213,37 @@ def test_ensure_hotspot_keeps_a_password_it_chose_and_only_that(tmp_path):
     run.replies["hotspot"] = {"ok": True, "changed": False, "password_used": False}
     w.ensure_hotspot()
     assert not keep.exists()                                  # it had one: nothing to keep
+
+
+# -- a setup password set on moOde's page: recognised by its key, or made anew --------------
+
+
+def test_a_password_moode_keeps_only_as_a_key_is_recognised_when_it_is_a_known_one(tmp_path):
+    from haslerd.web.wifi import recognise_psk, wpa_psk
+    key = wpa_psk("moodeaudio", "Hasler")
+    assert recognise_psk(key, "Hasler", ["", "moodeaudio"]) == "moodeaudio"
+    assert recognise_psk(key, "Hasler Kitchen", ["moodeaudio"]) == ""           # the key is per name
+    assert recognise_psk("not-a-key", "Hasler", ["moodeaudio"]) == ""
+    w = Wifi(db=make_db(tmp_path, apd=("Hasler", key)), hotspot_file=tmp_path / "none")
+    assert w.hotspot_info()["password"] == "moodeaudio"
+    # Hasler's own password, kept under the room's old name, still matches its key.
+    mine = wpa_psk("abcd-efgh-jkmn", "Hasler")
+    pw = tmp_path / "hotspot.txt"
+    pw.write_text("ssid=Hasler Study\npassword=abcd-efgh-jkmn\n")
+    w = Wifi(db=make_db(tmp_path, apd=("Hasler", mine), name="m3.db"), hotspot_file=pw)
+    assert w.hotspot_info()["password"] == "abcd-efgh-jkmn"
+    # Anything else: set, but not readable.
+    w = Wifi(db=make_db(tmp_path, apd=("Hasler", "ab" * 32), name="m4.db"), hotspot_file=tmp_path / "none")
+    info = w.hotspot_info()
+    assert info["password_set"] is True and "password" not in info
+
+
+def test_a_new_setup_password_is_kept_and_shown(tmp_path):
+    run = HelperRun({"hotspot": {"ok": True, "ssid": "Hasler", "password_set": True}})
+    pw = tmp_path / "hotspot.txt"
+    w = Wifi(runner=run, hotspot=lambda: False, db=make_db(tmp_path), hotspot_file=pw)
+    doc = w.new_setup_password()
+    sent = json.loads(run.calls[-1][1]["input"])
+    assert sent["action"] == "hotspot" and sent["password"] == doc["password"] and "ssid" not in sent
+    assert doc["ssid"] == "Hasler" and f"password={doc['password']}" in pw.read_text()
+    assert w.hotspot_info()["password"] == doc["password"]

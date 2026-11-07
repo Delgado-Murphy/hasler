@@ -14,7 +14,8 @@ the designed signals come from the signal table, lamp/signals.py):
 
  1. halted: dark - safe to unplug
  2. a fault that needs a maker: SOS in red (even in standby)
- 3. busy - shutting down, installing, starting, loading, joining: the amber breath
+ 3. busy - shutting down, installing, starting, loading, joining a group or a
+    Wi-Fi just chosen (never the red alert while it connects): the amber breath
     (the knob-off countdown itself is ``LampDriver.countdown``, drawn by the engine)
  4. setup needed (the hotspot): CQ in amber Morse
  5. a confirm request: the beckon
@@ -97,9 +98,11 @@ def reply_for(text: str, phone_there: bool = False) -> str:
 
 def _busy(state: BoxState) -> bool:
     """Busy - don't unplug / wait: shutting down, installing, starting (also with the
-    knob off), loading a preset or joining a group (not in standby or while a phone
+    knob off), connecting to a Wi-Fi just chosen (BoxState.joining), loading a
+    preset or joining a group (not in standby or while a phone
     plays: then nothing of ours is loading)."""
     return (state.shutting_down or state.updating or (state.boot != "done" and not state.playing)
+            or (state.joining and not state.hotspot and not state.playing and not state.casting)
             or ((state.loading or state.group == "joining") and not state.standby and not state.casting))
 
 

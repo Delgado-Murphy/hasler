@@ -206,7 +206,7 @@ class TestSettings:
         app, *_ = rig
         monkeypatch.setattr(app.wifi, "current_ssid", lambda: "Casa")
         doc = app.settings("hasler.local:8080")
-        assert doc["volume_limit"] == 70 and doc["wifi"] == {"ssid": "Casa"}
+        assert doc["volume_limit"] == 70 and doc["wifi"]["ssid"] == "Casa" and doc["wifi"]["hotspot"] is False
         assert doc["version"].startswith("haslerd ")
         assert doc["moode_url"] == "http://hasler.local/"
 

@@ -178,7 +178,7 @@ replies and overlays are drawn over whatever Look is on show.
 |---|---|---|
 | Halted | dark - safe to unplug | the halt hook |
 | A fault that needs a maker: rollback failed, SD read-only or full, no sound card, panel board missing, overheating | **SOS** in red, persistent, even in standby | Look (`BoxState.fault`, `panel_missing`) |
-| Shutting down; installing an update; starting; loading a preset; joining a group | the amber **breath** | Look - busy, don't unplug |
+| Shutting down; installing an update; starting; loading a preset; joining a group; connecting to a Wi-Fi just chosen (after the join's restart, until online - then the green OK - or setup mode - then the HAL eye and CQ; never the red alert) | the amber **breath** | Look - busy, don't unplug |
 | Knob held off (5 s countdown to shutdown) | glides from the Look down to the night ember; snaps back (0.4 s) on release | `countdown(progress)` |
 | Setup needed (hotspot) | **CQ** in amber | Look (`hotspot` or `setup`) |
 | Confirm request (the page wants a press) | **beckon** until a key is pressed (amber over ember: asleep never moves), then a green bloom | Look (`confirming`) + reply `confirmed` |

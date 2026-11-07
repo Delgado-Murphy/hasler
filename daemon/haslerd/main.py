@@ -140,6 +140,10 @@ NIGHT_CHECK_S = 60.0    # sunset is not a thing to poll at 20 Hz
 UPDATE_POLL_S = 5.0     # "is an update being installed?" (one small file read)
 BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest...
 BOOT_RESUME_MAX_S = RESUME_WINDOW_S + 5.0   # ...unless a boot resume is still on its way
+# Restarted onto a Wi-Fi just chosen (web/wifi.py's wifi-joined note): busy while
+# it connects, at most this long - by then it is online (the green OK) or in setup
+# mode (the HAL eye, then CQ); the usual rules after that.
+JOIN_MAX_S = 300.0
 
 
 def preset_sounding(player, preset: Preset) -> bool:
@@ -277,6 +281,7 @@ class LampKeeper:
         self._resume_done = False
         self._resume_outcome: str | None = None
         self._offline_since: float | None = None
+        self._joining_since: float | None = None     # joining(): connecting to a Wi-Fi just chosen
         self._loading: Preset | None = None
         self._loading_since = 0.0
         # Started, then silent for LOADING_FAIL_S: not "playing" whatever the
@@ -422,6 +427,14 @@ class LampKeeper:
         green bloom and Morse OK (BoxState.update_ok) for UPDATE_OK_S."""
         now = self.clock() if now is None else now
         self._ok_until = now + UPDATE_OK_S
+        self._joining_since = None          # a join's restart that got online ends here too
+
+    def joining(self, now: float | None = None) -> None:
+        """This start follows a Wi-Fi join (main.py, Wifi.joined_pending): the
+        amber breath while it connects, never the red alert. Online ->
+        consume_wifi_joined -> ``celebrate`` (the green OK, then music); setup
+        mode instead -> the HAL eye once, then CQ (docs/using.md "Wi-Fi")."""
+        self._joining_since = self.clock() if now is None else now
 
     def egg(self) -> bool:
         """The hidden key combination (or the page): an Easter egg, in geek mode only."""
@@ -538,6 +551,17 @@ class LampKeeper:
                 log.info("lamp: setup done - the radio joined the Wi-Fi")
                 self.celebrate(now)
             self._was_hotspot = hot
+            if self._joining_since is not None:
+                if hot:
+                    log.warning("lamp: the Wi-Fi just chosen didn't answer - setup mode (HAL eye, then CQ)")
+                    self._joining_since = None
+                    try:
+                        self.driver.reply(self._word("refuse"))   # not a key reply: always shown
+                    except Exception:
+                        log.debug("lamp reply failed", exc_info=True)
+                elif now - self._joining_since >= JOIN_MAX_S:
+                    log.warning("lamp: still not on the Wi-Fi just chosen after %.0f s", JOIN_MAX_S)
+                    self._joining_since = None
         if self.faults is not None and now >= self._next_fault_poll:
             self._next_fault_poll = now + lamp_faults.FAULT_POLL_S
             try:
@@ -728,6 +752,8 @@ class LampKeeper:
         state.casting = casting
         state.cast_paused = paused
         state.offline_s = 0.0 if self._offline_since is None else now - self._offline_since
+        if hasattr(state, "joining"):
+            state.joining = self._joining_since is not None
         watchdog = self.watchdog
         stalled = watchdog is not None and watchdog.silent
         state.loading = self._loading is not None or (watchdog is not None and watchdog.breathing)
@@ -1430,7 +1456,8 @@ def build_wifiwatch(app: Any, conn: Connectivity, fake: bool = False) -> Hotspot
     idle = getattr(app, "_idle", None)
     watch = HotspotWatchdog(wifi, hotspot=lambda: conn.hotspot,
                             idle=idle if callable(idle) else (lambda: True),
-                            offline=lambda: not conn.online)
+                            offline=lambda: not conn.online,
+                            linked=lambda: getattr(conn, "linked", None))
     wifi.watch = watch
     return watch
 
@@ -1482,6 +1509,16 @@ def network_up(actions: Actions) -> None:
             log.exception("YouTube Music network_up failed")
 
 
+def wifi_join_pending(app: Any) -> bool:
+    """Did a Wi-Fi join restart the radio onto a network it is not yet on (the
+    wifi-joined note is there, unread)? Never raises."""
+    peek = getattr(getattr(app, "wifi", None), "joined_pending", None)
+    try:
+        return bool(peek()) if callable(peek) else False
+    except Exception:
+        return False
+
+
 def consume_wifi_joined(app: Any, keeper: Any) -> str | None:
     """The network is up: did a Wi-Fi join (the setup page, the rescue file,
     the watchdog) restart the radio onto it? web/wifi.py left its SSID in
@@ -1519,6 +1556,12 @@ def consume_wifi_joined(app: Any, keeper: Any) -> str | None:
             hook()
         except Exception:
             log.debug("Home Assistant check after the join failed", exc_info=True)
+    before = getattr(wifi, "joined_from", None)
+    if isinstance(before, str) and before == ssid:
+        # The same network again (a password re-typed, the watchdog back on the
+        # home Wi-Fi after setup mode): no "New Wi-Fi: … Moved house?".
+        log.info("Wi-Fi %r was the network before too - no 'New Wi-Fi' note", ssid)
+        return ssid
     note = getattr(app, "note_wifi_joined", None)
     if callable(note):
         try:
@@ -1665,6 +1708,9 @@ def main(argv=None) -> int:
                     and lamp_faults.update_phase(update_state) in (None, "committed", "probation")):
                 log.info("lamp: first start of %s - an update installed", release)
                 keeper.celebrate()              # the green bloom and Morse OK, once
+            if wifi_join_pending(app):
+                log.info("lamp: started after a Wi-Fi join - busy until it is on it")
+                keeper.joining()                # amber while it connects, never the red alert
         app.lamp = driver       # the Lamp colours page's preview (web/server.py)
         app.lamp_meaning = keeper.meaning    # /api/status "lamp"
         app.lamp_keeper = keeper             # /api/status "fault_reasons", "fault_cleared_at"
@@ -1738,6 +1784,10 @@ def main(argv=None) -> int:
                 net_announced = True
                 network_up(actions)
                 consume_wifi_joined(app, keeper)   # a join's restart: the lamp says OK
+            if resume.pending and getattr(connectivity, "hotspot", False):
+                # Setup mode (a join that didn't work, no Wi-Fi at all): nothing
+                # to resume until a phone sets it up - CQ, never the resume's red.
+                resume.cancel("setup mode")
             resume.tick(now)
             if sleep is not None:
                 sleep.tick(now)                     # the sleep timer: fade, then standby

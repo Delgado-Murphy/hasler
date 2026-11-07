@@ -212,11 +212,18 @@ const get = async (base, url) => (await fetch(base + url)).json();
       await page.close();
     });
 
-    await check('Maker tools: Handover first, each line marked, the ! lines open where they are fixed; Copy handover note; Print welcome card', async () => {
+    await check('Maker tools: Handover first, folded until Prepare for handover; then each line marked (! blockers, ○ to check), the lines open where they are fixed; Copy handover note; Print welcome card', async () => {
       const maker = await browser.newContext({viewport: {width: 390, height: 844}});
       await maker.grantPermissions(['clipboard-read', 'clipboard-write'], {origin: radio.base});
       await maker.addInitScript(() => { try { localStorage.setItem('hasler.maker', '1'); } catch (_) {} });
+      // A maker's own radio in daily use: phones paired and accounts signed in are fine - nothing shouts.
+      await maker.route('**/api/hosts', r => r.request().method() === 'GET'
+        ? r.fulfill({json: {ok: true, saved: [{host: 'hasler.example.net'}], allowed: []}}) : r.continue());
       const page = await fresh('#settings/maker', null, maker);
+      await until(() => page.isVisible('#hoOpen'), 8000, 'the folded Handover group');
+      assert(!(await page.$('#hoList')) && !(await page.$('#sec-handover .ho-mark.bad')), 'the list shows before it was asked for');
+      assert(/Getting it ready for its owner/.test(await page.textContent('#sec-handover')), 'fold copy: ' + await page.textContent('#sec-handover'));
+      await page.click('#hoOpen');
       await until(() => page.isVisible('#hoList'), 8000, 'the Handover group');
       await until(async () => !(await page.$$eval('#hoList .li-sub', ss => ss.some(s => /Checking/.test(s.textContent)))), 8000, 'every line answered');
       assert((await page.$eval('#panel .grp-sec', s => s.id)) === 'sec-handover', 'Handover is not the first group');
@@ -228,12 +235,18 @@ const get = async (base, url) => (await fetch(base + url)).json();
       assert(by['ho-lamp'].mark === 'bad' && by['ho-lamp'].href === '#settings/maker/colours', 'lamp: ' + JSON.stringify(by['ho-lamp']));
       assert(by['ho-keys'].mark === 'ok' && /factory set · After Hours/.test(by['ho-keys'].sub), 'keys: ' + JSON.stringify(by['ho-keys']));
       assert(by['ho-setup-network'].mark === 'ok' && /^Hasler · open, no password/.test(by['ho-setup-network'].sub) && by['ho-setup-network'].href === '#print/welcome', 'setup network: ' + JSON.stringify(by['ho-setup-network']));
-      assert(by['ho-other-addresses'].mark === 'ok' && by['ho-remote-help'].mark === 'dot' && by['ho-spotify'].mark === 'dot', 'marks: ' + JSON.stringify(rows.map(r => r.id + ':' + r.mark)));
-      assert(/things to see to before the radio leaves the bench/.test(await page.textContent('#hoNote')), 'note: ' + await page.textContent('#hoNote'));
+      assert(by['ho-other-addresses'].mark === 'look' && /hasler\.example\.net/.test(by['ho-other-addresses'].sub)
+        && by['ho-remote-help'].mark === 'dot' && by['ho-spotify'].mark === 'dot', 'marks: ' + JSON.stringify(rows.map(r => r.id + ':' + r.mark)));
+      assert(by['ho-wi-fi'].mark !== 'dot' && !/owner’s network\?/.test(by['ho-wi-fi'].sub), 'wi-fi: ' + JSON.stringify(by['ho-wi-fi']));
+      assert(await page.$eval('#ho-other-addresses .ho-mark', m => m.textContent === '○' && getComputedStyle(m).color !== getComputedStyle(document.querySelector('#ho-software .ho-mark')).color), 'the to-check mark is quiet, not amber');
+      const bads = rows.filter(r => r.mark === 'bad').length, looks = rows.filter(r => r.mark === 'look').length;
+      const note = await page.textContent('#hoNote');
+      assert(note.startsWith(bads + ' things to fix and ' + looks + ' to check before it leaves the bench'), 'note: ' + note);
       await page.click('#hoCopy');
       await until(async () => /Handover note copied/.test(await page.textContent('#toast')), 4000, 'the copied toast');
       const text = await page.evaluate(() => navigator.clipboard.readText());
-      assert(/^Hasler · Study · handover · /.test(text) && /\nok Volume ceiling: 62\n/.test(text) && /\n! Software: updates not set up/.test(text), 'note text:\n' + text);
+      assert(/^Hasler · Study · handover · /.test(text) && /\nok Volume ceiling: 62\n/.test(text) && /\n! Software: updates not set up/.test(text)
+        && /\n\? Other addresses: hasler\.example\.net\n/.test(text), 'note text:\n' + text);
       await page.click('#hoCard');
       await until(() => page.isVisible('.kc-welcome'), 6000, 'the welcome card');
       assert(page.url().endsWith('#print'), 'url: ' + page.url());

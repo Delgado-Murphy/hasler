@@ -1,0 +1,58 @@
+#!/bin/sh
+# hasler-journal-disk - keep the journal on the card, so the previous boot can
+# be read after a restart or a power cut (`journalctl -b -1`).
+#
+# moOde puts /var/log in RAM (log2ram: a tmpfs, copied to the card's
+# /var/hdd.log only at a clean shutdown and once a day at 23:55, and then only
+# the journal's rotated files). A boot that ends in a pulled plug - the very
+# boot worth reading - left nothing. Here, early in the boot (hasler-journal-
+# disk.service, before systemd-journal-flush), the card's own journal directory
+# (/var/hdd.log/journal, the /var/log/journal under log2ram's tmpfs) is bound
+# over the tmpfs one, so journald writes it straight to the card.
+#
+# Card wear stays small: journald's cap (16 MB, zz-hasler-persistent.conf, put
+# here if missing) and a sync every 2 min (SyncIntervalSec), not per line.
+# log2ram's own copy then finds the same files on both sides and writes nothing.
+# Without log2ram (or with /var/log on the card) there is nothing to do.
+# Never fails the boot. Run as root; no arguments.
+set -u
+
+CONF_DIR=/etc/systemd/journald.conf.d
+CONF="$CONF_DIR/zz-hasler-persistent.conf"
+RAM=/var/log/journal
+CARD=/var/hdd.log/journal
+
+if [ ! -s "$CONF" ]; then
+  mkdir -p "$CONF_DIR" 2>/dev/null
+  cat > "$CONF.tmp" 2>/dev/null <<'EOF' && mv -f "$CONF.tmp" "$CONF"
+[Journal]
+# Hasler: a small log on the card, so the last boot can be read after a restart
+# (scripts/hasler-journal-disk keeps it out of log2ram's RAM).
+Storage=persistent
+SystemMaxUse=16M
+SystemKeepFree=200M
+SyncIntervalSec=2m
+EOF
+fi
+
+fstype=$(findmnt -n -o FSTYPE --target /var/log 2>/dev/null)
+if [ "$fstype" != "tmpfs" ] || ! mountpoint -q /var/hdd.log 2>/dev/null; then
+  exit 0      # no log2ram here: /var/log/journal is on the card already
+fi
+if mountpoint -q "$RAM" 2>/dev/null; then
+  exit 0      # done already this boot
+fi
+
+# journald onto /run for a moment, so nothing it holds open is in the way.
+journalctl --relinquish-var >/dev/null 2>&1
+mkdir -p "$CARD" "$RAM"
+chgrp systemd-journal "$CARD" 2>/dev/null
+chmod 2755 "$CARD" 2>/dev/null
+# log2ram copied the card's journal into RAM at its start: free that RAM (the
+# tmpfs copy only - the card's files are in $CARD, which is not under $RAM yet).
+find "$RAM" -mindepth 1 -delete 2>/dev/null
+if mount --bind "$CARD" "$RAM"; then
+  systemd-tmpfiles --create --prefix "$RAM" >/dev/null 2>&1
+fi
+journalctl --flush >/dev/null 2>&1
+exit 0

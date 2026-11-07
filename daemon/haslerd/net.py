@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import logging
 import socket
+import struct
+import sys
 import threading
 from typing import Callable
 
@@ -62,6 +64,31 @@ def hotspot_probe(addrs: str | tuple[str, ...] = HOTSPOT_ADDRS) -> bool:
     return bool(hotspot_address(addrs))
 
 
+LINK_IFACES = ("wlan0", "eth0")
+SIOCGIFADDR = 0x8915
+
+
+def iface_ipv4(iface: str) -> str:
+    """The IPv4 address on ``iface`` (Linux; one ioctl, no process), or ""."""
+    try:
+        import fcntl
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            raw = fcntl.ioctl(sock.fileno(), SIOCGIFADDR, struct.pack("256s", iface.encode()[:15]))
+        return socket.inet_ntoa(raw[20:24])
+    except (OSError, ImportError, ValueError):
+        return ""
+
+
+def link_probe(ifaces: tuple[str, ...] = LINK_IFACES) -> bool | None:
+    """Is the Pi on a network at all - an address on Wi-Fi or the cable that is
+    not the setup hotspot's? None off Linux (not ours to judge). "No internet"
+    with a link is the router's problem; without one the radio isn't on any
+    network (a join that didn't take, the hotspot that didn't start)."""
+    if not sys.platform.startswith("linux"):
+        return None
+    return any((addr := iface_ipv4(i)) and addr not in HOTSPOT_ADDRS for i in ifaces)
+
+
 class Connectivity:
     """Polled from the main loop; probes at most every ``interval_s``.
 
@@ -79,11 +106,15 @@ class Connectivity:
         probe: Callable[[], bool] | None = None,
         threaded: bool = True,
         hotspot: Callable[[], bool] | None = None,
+        link: Callable[[], bool | None] | None = None,
     ) -> None:
         self.interval_s = interval_s
         self.online = True
         self.hotspot = False
+        # On a network at all (link_probe): True/False, None = not known.
+        self.linked: bool | None = None
         self._hotspot = hotspot or hotspot_probe
+        self._link = link or link_probe
         self._probe = probe or (lambda: tcp_probe(host, port, timeout_s))
         self._threaded = threaded
         self._next = 0.0
@@ -116,5 +147,12 @@ class Connectivity:
             if hotspot != self.hotspot:
                 log.info("Wi-Fi hotspot %s", "up - setup mode: join its Wi-Fi, the page is http://172.24.1.1:8080/wifi" if hotspot else "down")
             self.hotspot = hotspot
+            try:
+                linked = self._link()
+            except Exception:
+                linked = None
+            if linked is not None and linked != self.linked:
+                log.info("network link %s", "up" if linked else "down - no address on Wi-Fi or the cable")
+            self.linked = None if linked is None else bool(linked)
         finally:
             self._busy.release()

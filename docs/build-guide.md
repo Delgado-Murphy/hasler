@@ -740,11 +740,22 @@ look: *Settings → Something's wrong? → Tell the makers*, or remote help.
 said otherwise): the owner's report; `hasler-boot-report`; `hasler-update
 status`; `hasler-os-update status`; `hasler-help status`;
 `/var/lib/haslerd/stream-events.jsonl` and `/opt/yt-dlp/events.jsonl`;
-`journalctl -b -1` (the previous boot, if log2ram synced); `vcgencmd
+`journalctl -b -1` (the previous boot - see below); `vcgencmd
 get_throttled`; `hasler-bootcfg-guard check`. Before it goes back: a maker
 note (below); the Lamp check if the LED was touched; Calibrate if a pot was
 touched; `box.yaml` unchanged; the volume ceiling as it was (it lives in
 `settings.json`, which a new card loses - a paired spare keeps it).
+
+**The previous boot's log.** `journalctl -b -1` (and `journalctl
+--list-boots`) reads the boot before this one, even one that ended in a
+pulled plug: moOde keeps `/var/log` in RAM (log2ram), so the release's
+`hasler-journal-disk.service` binds the card's `/var/hdd.log/journal` over
+`/var/log/journal` early in each boot, before journald moves its log there.
+Card wear stays small: 16 MB at most (`journald.conf.d/zz-hasler-persistent.conf`)
+and a write every 2 minutes (`SyncIntervalSec`), so the last minute or two
+before a power cut may be missing. `findmnt /var/log/journal` shows the bind;
+`journalctl -b -1 -u haslerd` is usually the place to start (the lamp's
+decisions are logged as `lamp: ...`, Wi-Fi as `wifi`/`setup mode`).
 
 **Maker notes on the radio.** `hasler-note "Replaced the memory card and put
 your keys back. The SOS is gone."` (as pi or root, over remote help or on

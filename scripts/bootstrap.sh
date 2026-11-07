@@ -565,8 +565,9 @@ fi
 
 # Shutdowns: a stuck service may hold a reboot 20 s, not systemd's 90 s each
 # (2026-10-21: a reboot hung ~6 min until the power was cut). And a small
-# persistent journal (moOde keeps it in RAM), so the last shutdown can be read
-# after a restart. Both apply without a reboot.
+# persistent journal (moOde keeps /var/log in RAM, log2ram), so the last boot
+# can be read after a restart; the release's hasler-journal-disk.service puts
+# it on the card from the next boot on. Both apply without a reboot.
 if (( SYSTEMD )); then
   put_text /etc/systemd/system.conf.d/hasler-stop-timeout.conf 0644 <<'EOF' || true
 [Manager]
@@ -575,11 +576,12 @@ DefaultTimeoutStopSec=20s
 EOF
   put_text /etc/systemd/journald.conf.d/zz-hasler-persistent.conf 0644 <<'EOF' || true
 [Journal]
-# Hasler: a small log on the card, so the last shutdown can be read after a restart.
+# Hasler: a small log on the card, so the last boot can be read after a restart
+# (scripts/hasler-journal-disk keeps it out of log2ram's RAM).
 Storage=persistent
 SystemMaxUse=16M
 SystemKeepFree=200M
-SyncIntervalSec=5m
+SyncIntervalSec=2m
 EOF
   if (( ! DRY )); then
     mkdir -p /var/log/journal && systemd-tmpfiles --create --prefix /var/log/journal 2>/dev/null || true
