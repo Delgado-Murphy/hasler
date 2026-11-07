@@ -242,7 +242,7 @@ const get = async (base, url) => (await fetch(base + url)).json();
       await maker.close();
     });
 
-    await check('the welcome card: both sides on one sheet; the setup password only when ticked', async () => {
+    await check('the welcome card: both sides on one sheet; the setup password on it unless unticked', async () => {
       const page = await ctx.newPage();
       page.on('pageerror', e => errors.push('welcome: ' + e.message));
       await page.route('**/api/wifi', r => r.request().method() === 'GET'
@@ -253,13 +253,14 @@ const get = async (base, url) => (await fetch(base + url)).json();
       await until(async () => /Study/.test(await page.textContent('.wc-front')), 6000, 'the room on the card');   // once the settings have landed
       const front = await page.textContent('.wc-front'), back = await page.textContent('.wc-back');
       assert(/Hasler/.test(front) && /Study/.test(front) && /Press 1\./.test(front) && /http:\/\/[\w.-]+:8080/.test(front), 'front: ' + front);
-      assert(/join the Wi-Fi network Hasler, password from the makers, and a page opens\./.test(front), 'front setup line: ' + front);
+      assert(/join the Wi-Fi network Hasler, password abcd-efgh-jkmn, and a page opens\./.test(front), 'front setup line: ' + front);
       assert(/Switching off/.test(front) && /Dark means safe to unplug/.test(front) && /tone knob/.test(front), 'front off lines: ' + front);
       assert(/What the lamp says/.test(back) && /set me up/.test(back) && /Make it yours/.test(back) && /1how loud2your keys3the room’s name/.test(back), 'back: ' + back);
       assert((await page.$$('.kc-welcome .kc-mark')).length === 2, 'a maker’s mark on each side');
-      await page.check('#cardPw');
-      await until(() => page.isVisible('#wcPw'), 4000, 'the password on the card');
-      assert((await page.textContent('#wcPw')) === 'abcd-efgh-jkmn', 'pw: ' + await page.textContent('#wcPw'));
+      assert(await page.isChecked('#cardPw') && (await page.textContent('#wcPw')) === 'abcd-efgh-jkmn', 'ticked, the password on the card');
+      await page.uncheck('#cardPw');
+      await until(async () => !(await page.$('#wcPw')), 4000, 'the password off the card');
+      assert(/join the Wi-Fi network Hasler, password from the makers, and a page opens\./.test(await page.textContent('.wc-front')), 'unticked: from the makers');
       // The three sizes stay on offer; the key card is still the default from Edit keys' link.
       const sizes = await page.$$eval('[data-size]', bs => bs.map(b => b.dataset.size + ':' + b.getAttribute('aria-checked')));
       assert(sizes.join() === 'a6:false,strip:false,welcome:true', 'sizes: ' + sizes.join());

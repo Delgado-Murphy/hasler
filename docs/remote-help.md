@@ -28,6 +28,10 @@ lines; never a password, token or cookie).
 
 ### What it does
 
+Prefer to write first? **Tell the makers** sends them a report and their answer
+comes back to the radio, under **Your requests** ([Help from the makers](using.md#help-from-the-makers);
+how the makers answer: [tools/checkin/SUPPORT.md](../tools/checkin/SUPPORT.md)).
+
 1. On the key page: **Settings → This radio → Help from the makers** (at the
    bottom), then **Let the makers help (24 h)**.
 2. The lamp brightens twice, again and again: press any key on the radio within 30 seconds. That

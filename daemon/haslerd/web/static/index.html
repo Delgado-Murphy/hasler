@@ -1019,6 +1019,21 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 /* Something's wrong?: "Say this to the makers" (the report's first six lines, to read out) */
 pre.say{margin:0;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;font:12.5px/18px var(--mono);color:var(--cream);background:rgba(0,0,0,.18);border:1px solid var(--line);border-radius:10px}
 .tell-wifi{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)}
+/* Tell the makers: what's sent (folded), the way round, the number once sent; Your requests' cards */
+.tell-what{margin:6px 0 0}.tell-what .hint{margin:0 0 8px}
+.tell-pre{max-height:220px;overflow:auto;font-size:11.5px;line-height:16px}
+.tell-other{margin:14px 0 6px}.tell-alt{justify-content:flex-end}
+.tell-done-t{margin:6px 0 4px;color:var(--title);font:600 18px/24px var(--serif)}
+#tellReqs{display:inline;min-height:0;padding:0}
+.help-v.sel{-webkit-user-select:all;user-select:all;font-family:var(--mono);letter-spacing:.02em}
+.req-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.req-state{flex:none;padding:2px 8px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font:600 11.5px/16px var(--sans)}
+.req-state.st-seen{color:#F3CF8C;border-color:rgba(233,179,92,.45)}.req-state.st-done{color:#8FCF9F;border-color:rgba(143,207,159,.4)}
+.req-thread{list-style:none;margin:2px 0 0;padding:0 0 0 12px;border-left:2px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.req-reply{display:flex;flex-direction:column;gap:2px;font-size:13.5px;color:var(--cream)}
+.req-reply.st{color:var(--muted);font-size:12.5px}
+.req-who{color:var(--muted);font:12px/16px var(--sans)}
+.req-new{margin-left:8px;color:var(--amber);font:700 10.5px/14px var(--mono);letter-spacing:.08em;text-transform:uppercase}
 /* the same dot on the front page's gear while Settings has something that needs attention */
 .gear-dot{position:absolute;right:6px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px var(--ground),0 0 8px rgba(255,178,56,.6)}
 #pageTitle:focus{outline:none}
@@ -2277,7 +2292,7 @@ history.replaceState(null, '');
 // Music accounts, knob calibration to Sound).
 const SET_ALIAS = {sources:'phones', multiroom:'rooms', about:'radio', knobs:'keys'};
 const SET_SEC_ALIAS = {'radio/name':'rooms/name', 'radio/ytm':'accounts/ytm', 'keys/knobs':'sound/knobs', 'updates/music':'accounts/ytm'};
-const SET_SUBS = {radio:['updates', 'ha', 'move']};
+const SET_SUBS = {radio:['updates', 'ha', 'move', 'requests']};
 function parseHash(){
   let p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   let fixed = false;
@@ -5797,7 +5812,7 @@ function setAttention(){ return ATTENTION.flatMap(f => f() || []); }
 // The front page's gear carries a dot while the list has rows.
 function paintGearDot(){ const d = $('gearDot'); if (d) d.hidden = !setAttention().length; }
 // What the dot needs, asked once at start (each is a small read; nothing polls from here).
-function loadAttention(){ Promise.all([loadSoftware(), loadHelp(), loadMusic()]).then(paintGearDot).catch(() => {}); }
+function loadAttention(){ Promise.all([loadSoftware(), loadHelp(), loadMusic(), loadSupport()]).then(paintGearDot).catch(() => {}); }
 
 /* the list: sections in order, so a later page can add one (SET_HOME.splice) */
 function setHomeAttention(panel){
@@ -6673,8 +6688,8 @@ async function restartRadio(){
 }
 // The setup network (GET /api/wifi .setup): what the radio opens when it can't join the home Wi-Fi.
 // The password is there only when Hasler set it; one set on the player's own page is stored as a key.
+// Shown as it is (only someone next to the radio can use it), to select or copy.
 let setupNet = null;
-const setupUi = {show:false};
 async function loadSetupNet(){
   try { const r = await api('GET', '/api/wifi'); if (r.ok && r.json && r.json.setup) setupNet = r.json.setup; } catch (_) {}
 }
@@ -6682,14 +6697,14 @@ function setupNetRow(){
   const s = setupNet; if (!s || !s.ssid) return null;
   const pw = s.password_set ? s.password || '' : null;
   const kv = (k, v, extra) => h('div', {class:'chk', style:'align-items:center'}, h('span', null, k),
-    h('span', {style:'display:flex;align-items:center;gap:8px;min-width:0'}, h('b', {class:'help-v', id: extra ? 'setupPw' : null}, v), extra || null));
+    h('span', {style:'display:flex;align-items:center;gap:8px;min-width:0'}, h('b', {class:'help-v' + (extra ? ' sel' : ''), id: extra ? 'setupPw' : null}, v), extra || null));
   return h('div', {class:'li col', style:'gap:8px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Setup network'),
       h('span', {class:'li-sub'}, 'Opens when the radio can’t join your Wi-Fi. Worth writing down.')),
     h('div', null, kv('Name', s.ssid),
-      kv('Password', pw === null ? 'None — it’s an open network' : !pw ? 'Not shown here' : setupUi.show ? pw : '••••••••',
-        pw ? h('button', {type:'button', class:'li-act', id:'setupPwShow', 'aria-label': (setupUi.show ? 'Hide' : 'Show') + ' the setup password',
-          onclick: () => { setupUi.show = !setupUi.show; rerender(); }}, setupUi.show ? 'Hide' : 'Show') : null)),
+      kv('Password', pw === null ? 'None — it’s an open network' : !pw ? 'Not shown here' : pw,
+        pw ? h('button', {type:'button', class:'li-act', id:'setupPwCopy', 'aria-label':'Copy the setup password',
+          onclick: () => copyText(pw, 'Password copied')}, 'Copy') : null)),
     pw === '' ? h('p', {class:'hint', style:'margin:0'}, 'It was set on the player’s own page, so the radio can’t show it.') : null);
 }
 function updatesSummary(){
@@ -6710,7 +6725,7 @@ function haSummary(){
 function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
   loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadHelp(); loadHosts(); loadHow();
-  loadNotes(); loadInfo().then(again);
+  loadNotes().then(() => loadSupport()).then(again); loadInfo().then(again);
 }
 function loadUpdates(){ loadSoftware(); loadSettings().then(() => { if (onPage('radio/updates')) rerender(); }); if (!help) loadHelp(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
@@ -6885,12 +6900,12 @@ async function offerClock(){
   try { const r = await api('PUT', '/api/settings', {dismissed: {clock_offer: key}}); if (r.ok && r.json) settings = Object.assign(settings || {}, r.json); } catch (_) {}
 }
 // The key card's "If it moves" block (keyCard). printOpts.password (shared with the print page's
-// welcome card, if that defined it; ours otherwise) puts the real password on the card.
+// welcome card, if that defined it; ours otherwise) puts the real password on the card - on to start.
 function printOptsRef(){
   // The print page's own flag (cardUi.pw, the welcome card's "Include the setup password") when it has one.
   if (typeof cardUi === 'object' && cardUi) return {get password(){ return !!cardUi.pw; }, set password(v){ cardUi.pw = !!v; }};
   if (typeof printOpts !== 'undefined' && printOpts) return printOpts;
-  window.printOpts = window.printOpts || {password:false};
+  window.printOpts = window.printOpts || {password:true};
   return window.printOpts;
 }
 function cardMoveBlock(){
@@ -6911,7 +6926,7 @@ function movePrintOption(){
   const o = printOptsRef();
   return h('label', {for:'printPw', style:'display:flex;align-items:center;gap:10px;min-height:44px;color:var(--cream);font-size:14px;cursor:pointer'},
     h('input', {type:'checkbox', id:'printPw', checked: !!o.password, onchange: e => { o.password = e.target.checked; renderPrint(); }}),
-    'Include the setup password on the card (off: a blank to fill in by hand; on for a card that goes to a new owner)');
+    'Include the setup password on the card (untick for a blank to fill in by hand)');
 }
 
 /* ---- This radio → Help from the makers: remote help for 24 h (web/help_api.py, docs/remote-help.md) ---- */
@@ -6997,8 +7012,10 @@ function helpLiveText(){
     connected:(help && help.status_text) || 'Connected to ' + ((help && help.network) || 'the makers’ network'), off:'Remote help is off'}[st] || '';
 }
 function helpGroup(){
-  if (help && help.missing) return null;
+  const req = requestsRow();
+  if (help && help.missing) return req ? setGroup('help', 'Help from the makers', h('div', {class:'set-list', id:'helpReqs'}, req)) : null;
   const sec = setGroup('help', 'Help from the makers', h('div', {class:'list', id:'helpList'}, helpBody()),
+    req ? h('div', {class:'set-list', id:'helpReqs', style:'margin-top:8px'}, req) : null,
     h('p', {class:'sr', id:'helpLive', role:'status'}));
   sec.dataset.sig = helpKey();
   return sec;
@@ -7203,7 +7220,7 @@ const sayText = () => !sayLines ? 'Checking…' : sayLines.missing ? 'This radio
 function loadWrong(){
   const again = () => { if (onPage('wrong')) rerender(); };
   loadSettings().then(again); loadSoftware(); loadHelp(); loadSetupNet().then(again); loadInfo().then(again);
-  loadHow().then(again); loadSayLines();
+  loadHow().then(again); loadSayLines(); loadSupport().then(again);
 }
 function leaveWrong(){ clearTimeout(sayTimer); sayTimer = null; clearTimeout(howTimer); howTimer = null; }
 function renderWrong(panel){
@@ -7221,17 +7238,21 @@ function renderWrong(panel){
   panel.append(setGroup('found', 'What the radio found', h('div', {class:'list'}, cards.length ? cards.map(card)
     : h('div', {class:'li col', id:'wrong-none'}, h('span', {class:'li-sub'}, 'Everything answers. If it still sounds wrong, it’s usually one of these: the volume ceiling, mono, or what the tone knob does.'),
         h('div', {class:'acts'}, h('a', {class:'btn small', href:'#settings/sound'}, 'Sound'))))));
+  const req = requestsRow();
   panel.append(setGroup('tell', 'Tell the makers', h('div', {class:'list'}, h('div', {class:'li col', style:'gap:8px'},
-    h('span', {class:'li-sub'}, 'A few lines with what the makers usually ask first, to send by message. Nothing private.'),
-    h('div', {class:'acts'}, h('button', {type:'button', class:'btn small primary', id:'tellMakers', onclick: tellMakers}, 'Tell the makers'))))),
+    h('span', {class:'li-sub', id:'tellWhy'}, canSend() ? 'Opens a request with Delgado & Murphy: what they usually ask first, and your words. Nothing private. Their answer comes back here.'
+      : 'A few lines with what the makers usually ask first, to send by message. Nothing private.'),
+    h('div', {class:'acts'}, h('button', {type:'button', class:'btn small primary', id:'tellMakers', onclick: tellMakers}, 'Tell the makers')))),
+    req ? h('div', {class:'set-list', id:'wrongReqs', style:'margin-top:8px'}, req) : null),
     h('p', {class:'hint', style:'padding:0 4px'}, 'The makers can also look for themselves, with your say-so: ', h('a', {href:'#settings/radio/help'}, 'Help from the makers'), '.'));
 }
 /* "Tell the makers": the sheet. The report is assembled by the radio (GET /api/report, web/report.py: the
    one place that keeps secrets out), with the owner's line and, unless unticked, the Wi-Fi name. */
 const tellUi = {note:'', wifi:true};
-/* "Send to the makers" (GET /api/support, web/support_api.py): when the makers set up their check-in server
-   (box.yaml checkin_url), the report goes straight to Delgado & Murphy's private support list and comes back
-   with a request number; their reply arrives as a note under From the makers. */
+/* "Send to the makers" (GET /api/support, web/support_api.py): every radio can, out of the box (the makers'
+   server is the release's default; box.yaml checkin_url: "" switches it off). The report goes to Delgado &
+   Murphy's private support list and comes back with a request number; their replies arrive as notes and in
+   the request's thread under This radio → Your requests. Offline, it waits on the radio and goes by itself. */
 let support = null;   // null = not asked yet, {missing} = older software, {err}, or GET /api/support
 async function loadSupport(){
   try { const r = await api('GET', '/api/support'); support = r.status === 404 ? {missing:true} : r.ok && r.json ? r.json : {err:true}; }
@@ -7239,22 +7260,44 @@ async function loadSupport(){
   return support;
 }
 const canSend = () => !!(support && support.available);
+const supReqs = () => (support && Array.isArray(support.requests) ? support.requests : []);
+const supPending = () => (support && Array.isArray(support.pending) ? support.pending : []);
+const STATE_WORD = {sent:'Sent', seen:'Seen by the makers', done:'Done'};
 // "Sent · request #12 · 7 Nov", then "Seen by the makers · …" (their seen label, or reopened) and "Done · …" (closed).
 function sentWords(req){
   if (!req) return '';
-  const lead = req.state === 'done' ? 'Done' : req.state === 'seen' ? 'Seen by the makers' : 'Sent';
+  const lead = STATE_WORD[req.state] || 'Sent';
   return lead + ' · request #' + req.number + ' · ' + (req.state === 'done' || req.state === 'seen' ? 'sent ' : '') + day(req.at);
 }
-// The makers' replies to a request, fetched into the notes (POST /api/support/replies) - at most every 10 minutes,
-// and only once a request has gone.
+// The makers' replies to a request, fetched into the notes (POST /api/support/replies) - at most every 10 minutes
+// (Your requests asks at once), and only once a request has gone. The radio also asks by itself every half hour.
 let repliesAt = 0;
-async function pullReplies(){
-  if (Date.now() - repliesAt < 600000) return;
-  if (!support) await loadSupport();
-  if (!canSend() || !(support.requests || []).length) return;
+async function pullReplies(force){
+  if (!force && Date.now() - repliesAt < 600000) return;
+  if (!support || force) await loadSupport();
+  if (!canSend() || !supReqs().length) return;
   repliesAt = Date.now();
   try { await api('POST', '/api/support/replies', {}, {timeout:20000}); await loadSupport(); } catch (_) {}
 }
+// "Your requests": the row under Help from the makers and on Something's wrong?, with what's new.
+function requestsRow(){
+  if (!support || support.missing || support.err) return null;
+  const reqs = supReqs(), wait = supPending();
+  if (!canSend() && !reqs.length && !wait.length) return null;
+  const sub = support.unseen_replies ? 'New reply from the makers'
+    : wait.length ? 'Waiting to send · ' + (wait.length === 1 ? 'one request' : wait.length + ' requests')
+    : reqs.length ? sentWords(reqs[0]) : 'Nothing sent yet';
+  return setRow('requests', 'Your requests' + (reqs.length > 1 ? ' (' + reqs.length + ')' : ''), sub, '#settings/radio/requests',
+    support.unseen_replies ? h('span', {class:'attn-dot', 'aria-hidden':'true'}) : null);
+}
+// Needs attention (and the gear's dot): a reply the owner hasn't read, quietly.
+function attnReplies(){
+  const n = support && support.unseen_replies; if (!n) return null;
+  const req = supReqs().find(r => r.unseen);
+  return {id:'attn-replies', title: n === 1 ? 'New reply from the makers' : n + ' new replies from the makers',
+    sub: req ? 'About request #' + req.number + (req.title ? ': ' + req.title : '') : 'Open Your requests', href:'#settings/radio/requests'};
+}
+ATTENTION.push(attnReplies);
 async function reportText(){
   const r = await api('GET', '/api/report?note=' + encodeURIComponent(tellUi.note) + '&wifi=' + (tellUi.wifi ? '1' : '0'), undefined, {timeout:15000});
   if (!r.ok || !r.json || !r.json.text) throw new Error((r.json && r.json.error) || 'no report');
@@ -7264,64 +7307,172 @@ function tellMakers(){
   const dlg = $('dlg'); if (dlg.open) return;
   const from = document.activeElement;
   dlg.textContent = '';
+  // What's sent, word for word (folded): the radio's own report, refreshed as the note or the tick changes.
+  const pre = h('pre', {class:'say tell-pre', id:'tellPreview'}, 'Putting it together…');
+  let previewTimer = null;
+  const preview = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(async () => {
+      if (!what.open) return;
+      try { pre.textContent = await reportText(); } catch (_) { pre.textContent = 'Couldn’t ask the radio for it just now.'; }
+    }, 250);
+  };
+  const what = h('details', {class:'how tell-what', id:'tellWhat', ontoggle: preview}, h('summary', null, 'What’s sent'),
+    h('p', {class:'hint', id:'tellPrivate'}, 'These lines and nothing more, to the makers’ private list, nowhere public. Nothing private: no passwords, no accounts, no phone names.'), pre);
   const ta = h('textarea', {id:'tellNote', rows:'3', 'aria-label':'What’s wrong, in your words', placeholder:'What’s wrong, in your words',
-    oninput: e => { tellUi.note = e.target.value; }}); ta.value = tellUi.note;
-  const cb = h('input', {type:'checkbox', id:'tellWifi', checked: tellUi.wifi, onchange: e => { tellUi.wifi = e.target.checked; }});
+    oninput: e => { tellUi.note = e.target.value; preview(); }}); ta.value = tellUi.note;
+  const cb = h('input', {type:'checkbox', id:'tellWifi', checked: tellUi.wifi, onchange: e => { tellUi.wifi = e.target.checked; preview(); }});
   const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); } catch (_) { toast(NET_ERR, true); } btn.disabled = false; };
   const copyBtn = h('button', {type:'button', class:'btn small', id:'tellCopy'}, 'Copy');
   copyBtn.onclick = () => busy(copyBtn, async () => { await copyText(await reportText(), 'Report copied'); });
-  const shareBtn = navigator.share ? h('button', {type:'button', class:'btn small primary', id:'tellShare'}, 'Share…') : null;
+  const shareBtn = navigator.share ? h('button', {type:'button', class:'btn small', id:'tellShare'}, 'Share…') : null;
   if (shareBtn) shareBtn.onclick = () => busy(shareBtn, async () => {
     const text = await reportText();
     try { await navigator.share({title:'My Hasler radio', text}); } catch (e) { if (!e || e.name !== 'AbortError') await copyText(text, 'Report copied'); }
   });
   // With an email in box.yaml makers.contact, the report goes straight into a mail to them.
-  const mailBtn = contactIsEmail() ? h('button', {type:'button', class:'btn small' + (shareBtn ? '' : ' primary'), id:'tellMail'}, 'Email the makers') : null;
+  const mailBtn = contactIsEmail() ? h('button', {type:'button', class:'btn small', id:'tellMail'}, 'Email') : null;
   if (mailBtn) mailBtn.onclick = () => busy(mailBtn, async () => {
     const text = await reportText(), subject = 'My Hasler radio' + (radioInfo && radioInfo.short_id ? ' (' + radioInfo.short_id + ')' : '');
     location.href = 'mailto:' + encodeURIComponent(radioInfo.makers_contact) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
   });
-  // Send to the makers: only with the makers' server set up (support.available); the other buttons stay.
-  const sent = h('p', {class:'hint', id:'tellSent', role:'status'}), sendErr = h('p', {class:'note-bad', id:'tellSendErr', hidden:true});
+  // Send to the makers: the main button whenever the radio can (support.available); the others are the way round.
+  const sub = h('p', {class:'sub', id:'tellSub'});
+  const sent = h('p', {class:'hint', id:'tellSent', role:'status'}), sendErr = h('p', {class:'note-bad', id:'tellSendErr', role:'alert', hidden:true});
   const sendBtn = h('button', {type:'button', class:'btn small primary', id:'tellSend', hidden:true}, 'Send to the makers');
   const who = h('p', {class:'hint', id:'tellWho'});
+  const other = h('p', {class:'hint tell-other', id:'tellOther', hidden:true}, 'Or send it yourself:');
+  const otherActs = h('div', {class:'acts tell-alt', id:'tellAlt'});
+  const acts = h('div', {class:'dlg-acts'});
+  const reqLink = h('a', {class:'li-act', id:'tellReqs', href:'#settings/radio/requests', hidden:true, onclick: () => dlg.close()}, 'Your requests');
+  const form = h('div', {id:'tellForm'}, ta, h('label', {class:'tell-wifi', for:'tellWifi'}, cb, 'Include my Wi-Fi name'), what);
+  const done = h('div', {id:'tellDone', role:'status', hidden:true});
+  const closeBtn = h('button', {type:'button', class:'btn small', id:'tellClose', onclick: () => dlg.close()}, 'Close');
   const paintSend = () => {
     const on = canSend();
-    sendBtn.hidden = !on;
-    if (on && shareBtn) shareBtn.classList.remove('primary');
-    if (on && mailBtn) mailBtn.classList.remove('primary');
-    who.textContent = on ? 'Send to the makers puts it on Delgado & Murphy’s private support list, nowhere public, and their answer comes back here under From the makers. Or share it yourself.'
-      : 'Send it to ' + makersWho() + ', and nobody else.';
-    const last = on && support.requests && support.requests[0];
-    sent.textContent = sentWords(last); sent.hidden = !last;
+    sendBtn.hidden = !on; other.hidden = !on;
+    sub.textContent = on ? 'This opens a request with Delgado & Murphy. You’ll see their answer here, under Your requests.'
+      : 'This puts together what the makers usually ask first: the version, what the lamp says, what’s playing, and the last few things that went wrong inside. Nothing private. Add a line about what you noticed.';
+    who.textContent = on ? '' : 'Send it to ' + makersWho() + ', and nobody else.';
+    who.hidden = on;
+    // With Send: it leads, and the others sit below, "Or send it yourself". Without: the others are the buttons.
+    const alts = [shareBtn, copyBtn, mailBtn].filter(Boolean);
+    const first = !on && (shareBtn || mailBtn || copyBtn);
+    alts.forEach(b => b.classList.toggle('primary', b === first));
+    if (on){ acts.replaceChildren(closeBtn, sendBtn); otherActs.replaceChildren(...alts); }
+    else { acts.replaceChildren(closeBtn, copyBtn, ...[mailBtn, shareBtn].filter(Boolean)); otherActs.replaceChildren(); }
+    otherActs.hidden = !on;
+    const last = supReqs()[0], wait = supPending().length;
+    sent.textContent = wait ? 'Waiting to send · the radio sends it when it’s back online' : sentWords(last);
+    sent.hidden = !(last || wait);
+    reqLink.hidden = !(supReqs().length || wait);
+  };
+  // After a send: the number, and where the answer will be.
+  const finish = (title, words) => {
+    form.hidden = true; other.hidden = true; otherActs.hidden = true; sent.hidden = true; sendErr.hidden = true; who.hidden = true;
+    acts.replaceChildren(closeBtn);
+    sub.textContent = '';
+    done.replaceChildren(h('p', {class:'tell-done-t', id:'tellDoneTitle'}, title), h('p', {class:'hint'}, words),
+      h('div', {class:'acts'}, h('a', {class:'btn small', id:'tellSeeReqs', href:'#settings/radio/requests', onclick: () => dlg.close()}, 'See your requests')));
+    done.hidden = false; tellUi.note = '';
+    closeBtn.textContent = 'Done'; closeBtn.classList.add('primary');
+    const t = $('tellDoneTitle'); if (t){ t.tabIndex = -1; t.focus({preventScroll:true}); }
   };
   sendBtn.onclick = async () => {
     sendBtn.disabled = true; sendErr.hidden = true;
+    const label = sendBtn.textContent; sendBtn.textContent = 'Sending…';
     let r = null;
-    try { r = await api('POST', '/api/support/send', {note: tellUi.note, wifi: tellUi.wifi}, {timeout:30000}); } catch (_) {}
-    sendBtn.disabled = false;
+    try { r = await api('POST', '/api/support/send', {note: tellUi.note, wifi: tellUi.wifi}, {timeout:45000}); } catch (_) {}
+    sendBtn.disabled = false; sendBtn.textContent = label;
     if (r && r.ok && r.json && r.json.number){
-      support = {...(support || {}), available: true, requests: r.json.requests || [{number: r.json.number, at: r.json.at}]};
-      paintSend(); toast('Sent to the makers · request #' + r.json.number);
+      support = {...(support || {}), available: true, requests: r.json.requests || [{number: r.json.number, at: r.json.at, state:'sent'}]};
+      loadSupport().then(paintGearDot);
+      finish('Sent. Your request is #' + r.json.number + '.', 'Delgado & Murphy have it. Their answer comes back to this radio: under This radio → Your requests, and the gear shows a dot.');
+    } else if (r && r.ok && r.json && r.json.queued){
+      support = {...(support || {}), pending: r.json.pending || []};
+      finish('Saved on the radio.', 'The radio can’t reach the internet right now. It sends this by itself as soon as it can, and the number shows under Your requests.');
     } else {
-      sendErr.textContent = !r ? NET_ERR : (r.json && r.json.error) || 'Couldn’t send it. Use Share or Copy instead.';
+      sendErr.textContent = !r ? 'The radio didn’t answer. Check you’re on the same Wi-Fi, then try again.'
+        : (r.json && r.json.error) || 'Couldn’t send it. Try again, or send it yourself below.';
       sendErr.hidden = false;
+      sendBtn.textContent = r && (r.status === 429 || r.status === 409 || r.status === 502) ? 'Send to the makers' : 'Try again';
     }
   };
   paintSend();
-  loadSupport().then(() => { if (dlg.open) paintSend(); });   // fresh: the request's state may have moved
-  dlg.append(h('h2', {id:'dlgTitle'}, 'Tell the makers'),
-    h('p', {class:'sub'}, 'This puts together what the makers usually ask first: the version, what the lamp says, what’s playing, and the last few things that went wrong inside. Nothing private: no passwords, no accounts, no phone names. Add a line about what you noticed.'),
-    ta,
-    h('label', {class:'tell-wifi', for:'tellWifi'}, cb, 'Include my Wi-Fi name'),
-    who, sent, sendErr,
-    h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', id:'tellClose', onclick: () => dlg.close()}, 'Close'), copyBtn, mailBtn, shareBtn, sendBtn),
-    h('p', {class:'hint'}, 'The makers can also look for themselves, with your say-so: ', h('a', {href:'#settings/radio/help', onclick: () => dlg.close()}, 'Help from the makers'), '.'));
-  dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; if (from && from.isConnected && from.focus) from.focus({preventScroll:true}); };
+  loadSupport().then(() => { if (dlg.open && done.hidden && !sendBtn.disabled) paintSend(); });   // fresh: the request's state may have moved
+  dlg.append(h('h2', {id:'dlgTitle'}, 'Tell the makers'), sub, form, who, sent, sendErr, done,
+    acts, other, otherActs,
+    h('p', {class:'hint'}, reqLink, ' The makers can also look for themselves, with your say-so: ', h('a', {href:'#settings/radio/help', onclick: () => dlg.close()}, 'Help from the makers'), '.'));
+  dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; clearTimeout(previewTimer); if (from && from.isConnected && from.focus) from.focus({preventScroll:true}); };
   dlg.onclick = null;
   dlg.showModal();
   // A phone: no keyboard over the sheet before it is read (the heading takes focus); a computer: straight to the note.
   if (matchMedia('(hover:hover) and (pointer:fine)').matches) ta.focus(); else { const t = $('dlgTitle'); t.tabIndex = -1; t.focus(); }
+}
+/* ---- This radio → Your requests (#settings/radio/requests): what the owner sent and the makers' answers ----
+   Newest first; each request its number, date, first line, state and the replies in order. Opening it reads
+   the replies (POST /api/notes/seen), so the dot on the gear goes. Waiting ones can go now or not at all. */
+let reqUi = {busy:false, fresh:new Set()};
+async function loadRequests(){
+  await pullReplies(true);
+  if (!support || support.err) await loadSupport();
+  // What was new when the page opened stays marked "New" until the owner leaves; the radio counts it read.
+  reqUi.fresh = new Set();
+  supReqs().forEach(r => (r.replies || []).forEach((x, i) => { if (!x.seen) reqUi.fresh.add(r.number + ':' + i); }));
+  if (support && support.unseen_replies){
+    try { await api('POST', '/api/notes/seen', {}); } catch (_) {}
+    await loadSupport(); notes = null;
+  }
+  paintGearDot();
+  if (onPage('radio/requests')) rerender();
+}
+function renderRequests(panel){
+  const s = support;
+  if (!s){ panel.append(setGroup('reqs', 'Your requests', skel(2))); return; }
+  if (s.missing || s.err){
+    panel.append(setGroup('reqs', 'Your requests', h('div', {class:'list'}, h('div', {class:'li'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, s.missing ? 'This radio’s software can’t keep requests yet' : 'Couldn’t ask the radio'),
+        h('span', {class:'li-sub'}, s.missing ? 'Updating it adds this. Tell the makers still works.' : NET_ERR)),
+      s.err ? h('button', {type:'button', class:'li-act', id:'reqRetry', onclick: () => { support = null; rerender(); loadRequests(); }}, 'Try again') : null))));
+    return;
+  }
+  const wait = supPending(), reqs = supReqs();
+  panel.append(h('p', {class:'hint', style:'margin:0;padding:0 4px'}, 'What you sent to Delgado & Murphy from this radio, and their answers. Only you and the makers see them.'));
+  if (wait.length) panel.append(setGroup('reqwait', 'Waiting to send', h('div', {class:'list'}, wait.map(p =>
+    h('div', {class:'li col', id:'wait-' + p.id, style:'gap:8px'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, p.title || 'A report without a note'),
+        h('span', {class:'li-sub'}, p.error ? 'Not sent: ' + p.error : 'Saved ' + day(p.at) + ' · the radio sends it by itself once it’s online')),
+      h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn small', disabled: reqUi.busy, onclick: reqRetry}, 'Send now'),
+        h('button', {type:'button', class:'btn small', disabled: reqUi.busy, onclick: () => reqForget(p.id)}, 'Don’t send')))))));
+  const card = r => h('div', {class:'li col req-card', id:'req-' + r.number, style:'gap:8px'},
+    h('div', {class:'req-head'}, h('span', {class:'li-title'}, 'Request #' + r.number + ' · ' + day(r.at)),
+      h('span', {class:'req-state st-' + r.state, id:'reqState-' + r.number}, STATE_WORD[r.state] || 'Sent')),
+    h('span', {class:'li-sub req-first'}, r.title ? '“' + r.title + '”' : 'A report without a note'),
+    (r.replies || []).length ? h('ol', {class:'req-thread', 'aria-label':'The makers’ replies'}, r.replies.map((x, i) =>
+      h('li', {class:'req-reply' + (x.state ? ' st' : '')},
+        h('span', {class:'req-who'}, 'From the makers · ' + day(x.at), reqUi.fresh.has(r.number + ':' + i) ? h('b', {class:'req-new'}, 'New') : null),
+        h('span', null, x.text)))) : h('span', {class:'hint'}, r.state === 'done' ? 'Done.' : 'No answer yet. It comes here, and the gear shows a dot.'));
+  panel.append(setGroup('reqs', 'Your requests', h('div', {class:'list', id:'reqList'}, reqs.length ? reqs.map(card)
+    : h('div', {class:'li col', id:'req-none'}, h('span', {class:'li-sub'}, canSend() ? 'Nothing sent yet. When something’s wrong, Tell the makers sends it here.' : 'Nothing sent from this radio.'))),
+    h('div', {class:'acts', style:'padding:4px'}, h('button', {type:'button', class:'btn small primary', id:'reqNew', onclick: tellMakers}, 'Tell the makers'))));
+}
+async function reqRetry(){
+  if (reqUi.busy) return; reqUi.busy = true; rerender();
+  let r = null;
+  try { r = await api('POST', '/api/support/retry', {}, {timeout:60000}); } catch (_) {}
+  reqUi.busy = false;
+  if (r && r.ok && r.json){ toast(r.json.sent ? 'Sent to the makers' : 'Still can’t reach the makers. The radio keeps trying.', !r.json.sent); }
+  else toast(NET_ERR, true);
+  await loadSupport(); paintGearDot(); rerender();
+}
+async function reqForget(id){
+  if (reqUi.busy) return; reqUi.busy = true;
+  let r = null;
+  try { r = await api('POST', '/api/support/forget', {id}); } catch (_) {}
+  reqUi.busy = false;
+  if (r && r.ok) toast('Not sent'); else toast(NET_ERR, true);
+  await loadSupport(); rerender();
 }
 /* "From the makers": a maker's notes left on the radio (scripts/hasler-note; GET /api/notes), newest first,
    with the date. Seen folds a note away; it stays readable under This radio. */
@@ -7346,7 +7497,7 @@ async function noteSeen(at){
   catch (_) { toast(NET_ERR, true); }
 }
 /* The opt-in daily check-in (box.yaml `checkin`, docs/ota.md §5): "Tell the makers how the radio is", under
-   Updates after the metered switch. Off to start; the switch only works once the makers set a checkin_url. */
+   Updates after the metered switch. Off to start; it goes to the makers' own server unless box.yaml says otherwise. */
 function sentWhen(iso){
   const t = Date.parse(iso || ''); if (!t) return '';
   const d = new Date(t), hm = d.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
@@ -7621,6 +7772,8 @@ const SET_PAGES = [
   {id:'radio/ha', title:'Home Assistant', parent:'radio', note: NOTE_INSTANT, render: renderHa, load: () => refreshHa()},
   {id:'radio/move', title:'Moving this radio', parent:'radio', note:'Forgetting a network or handing over asks for a press on the radio.',
     render: renderMove, load: loadMove},
+  // Reached from Help from the makers, Something's wrong? and Needs attention (requestsRow, attnReplies).
+  {id:'radio/requests', title:'Your requests', parent:'radio', render: renderRequests, load: loadRequests},
   // Not a row (no summary): reached from the "Something's wrong?" button on the home list (setHomeWrong).
   {id:'wrong', title:'Something’s wrong?', render: renderWrong, load: loadWrong, leave: leaveWrong},
 ];
@@ -11122,8 +11275,8 @@ function cardLampLegend(){
 }
 /* ---- the welcome card: A6, both sides on one A5 sheet, printed by the maker and left with the radio ----
    Front: press 1, the key page, what to do if the lamp taps CQ (the setup network, its password when the
-   box is ticked), switching off. Back: what the lamp says, the first three of Make it yours, the makers. */
-const cardUi = {pw:false};
+   box is ticked, as it is to start), switching off. Back: what the lamp says, the first three of Make it yours, the makers. */
+const cardUi = {pw:true};
 function welcomeCard(){
   const r = settings && settings.room, room = roomNow(), info = radioInfo || {};
   const addr = ((r && r.address) || 'hasler.local') + pagePort();

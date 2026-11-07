@@ -166,15 +166,15 @@ const WIFI = {hotspot: false, current: 'Casa Nueva', networks: [], saved: ['Casa
       await page.close();
     });
 
-    await check('the key card leaves a blank for the password unless asked; the Include box is on the print page', async () => {
+    await check('the key card carries the setup password to start; unticking the Include box leaves a blank', async () => {
       const page = await fresh('#print');
       await until(() => page.isVisible('#kcMove'), 6000, 'the block');
-      assert((await page.textContent('#kcPw')) === '________', 'blank: ' + await page.textContent('#kcPw'));
+      await until(async () => (await page.textContent('#kcPw')) === 'abcd-efgh-jkmn', 6000, 'the password on the card: ' + await page.textContent('#kcPw'));
       assert(/Page: \S+:8080/.test(await page.textContent('#kcMove')), 'the address line: ' + await page.textContent('#kcMove'));
-      if (await page.$('#printPw')){
-        await page.click('#printPw');
-        await until(async () => (await page.textContent('#kcPw')) === 'abcd-efgh-jkmn', 3000, 'the password on the card');
-      }
+      await until(() => page.$('#printPw'), 4000, 'the Include box');
+      assert(await page.isChecked('#printPw'), 'ticked to start');
+      await page.click('#printPw');
+      await until(async () => (await page.textContent('#kcPw')) === '________', 3000, 'the blank');
       await page.close();
     });
 

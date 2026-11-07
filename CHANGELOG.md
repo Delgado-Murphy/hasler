@@ -8,6 +8,15 @@
   the closest new one; keys you changed stay yours.
 - Lyrics is a small button beside the song; "Start a radio" and "Put on a key"
   live behind ⋯ next to it, so the keys sit higher on a phone.
+- **Send to the makers** opens a request with us on every radio, and
+  **Your requests** shows its state and our replies.
+- Without internet, a request waits on the radio and goes by itself.
+- The setup network's password shows on This radio, and the printed key card
+  and welcome card carry it unless you untick it.
+
+For makers
+- Radios enrol their own support token on first send; the shared token
+  still works. `checkin_url` defaults to the support server; `""` turns it off.
 
 ## 1.6.2 - 2026-11-07
 

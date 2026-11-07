@@ -2,7 +2,10 @@
 
 Off by default (``checkin: true`` in box.yaml is the owner's switch on the key
 page's Updates). After the daily ``check --stage`` (cli.py), and only then,
-one HTTPS POST of about 400 bytes to ``checkin_url`` - what a maker would ask
+one HTTPS POST of about 400 bytes to ``checkin_url`` (the makers' own server,
+layout.DEFAULT_CHECKIN_URL, unless box.yaml names another; ``""`` means
+nowhere), with box.yaml's ``checkin_token`` or else the radio's own word
+(``own_token``) - what a maker would ask
 in the first minute on the phone, pseudonymous, and nothing that says where
 the radio is or when someone is home:
 
@@ -33,6 +36,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import socket
 import time
 import urllib.error
@@ -212,6 +216,29 @@ def poke_replies(url: str = REPLIES_URL, timeout: float = 30) -> None:
         pass
 
 
+def server_root(url: str) -> str:
+    """box.yaml's ``checkin_url`` as the server's root: it may be the root itself or the full
+    ``…/v1/checkin`` (haslerd's web/support_api.base_url reads it the same way)."""
+    return re.sub(r"/v1/checkin$", "", str(url or "").strip().rstrip("/"))
+
+
+def checkin_endpoint(url: str) -> str:
+    """Where the check-in goes: ``<root>/v1/checkin``, whichever form box.yaml gave."""
+    root = server_root(url)
+    return root + "/v1/checkin" if root else ""
+
+
+def own_token(layout: Layout, url: str) -> str:
+    """The radio's own word with the makers' server (haslerd asked for it at the owner's first
+    "Send to the makers": <haslerd state>/secrets/support.json), when it is for this server."""
+    base = server_root(url)
+    for path in (layout.haslerd_state / "secrets" / "support.json", layout.haslerd_state / "support.json"):
+        doc = read_json(path, None)
+        if isinstance(doc, dict) and doc.get("server") == base and doc.get("token"):
+            return str(doc["token"])
+    return ""
+
+
 def status_path(layout: Layout) -> Path:
     return layout.upd / STATUS_FILE
 
@@ -240,7 +267,7 @@ def after_check(layout: Layout, box: dict | None = None, now: float | None = Non
         last_at = None
     url = str(box.get("checkin_url") or "")
     if not url:
-        rec["error"] = "no checkin_url in box.yaml"
+        rec["error"] = "checkin_url is switched off in box.yaml"
     elif box.get("metered"):
         rec["skipped"] = "metered"
     elif last_at is not None and now - last_at < MIN_GAP_S:
@@ -250,7 +277,7 @@ def after_check(layout: Layout, box: dict | None = None, now: float | None = Non
             payload = collect(layout, fetch=fetch, now=now)
             body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
             rec["bytes"] = len(body)
-            status = post(url, payload, str(box.get("checkin_token") or ""))
+            status = post(checkin_endpoint(url), payload, str(box.get("checkin_token") or "") or own_token(layout, url))
             if 200 <= status < 300:
                 rec["ok"] = True
             else:

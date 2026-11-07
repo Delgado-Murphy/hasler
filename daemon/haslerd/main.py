@@ -1109,6 +1109,9 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
         # POST /api/fake/phone: a page test's phone taking the speaker (web/fake_api.py).
         from .web.fake_api import FakeApi
         app.extra_routes.append(FakeApi(app))
+        # Never the makers' real support server from a fake radio (a page test); box.yaml may name one.
+        if getattr(app, "support", None) is not None:
+            app.support.default_url = ""
         # A fake radio's install mark lives in its state dir (a page test writes
         # it to make the radio "new": /api/info installed_at); none without one.
         state_dir = Path(state.path).parent if state.path is not None else None
@@ -1277,8 +1280,10 @@ def build_web(
     # /api/checkin/preview ("See what it sends"): support, all unprivileged.
     app.extra_routes.append(ReportApi(app))
     app.extra_routes.append(NotesApi(app, state_dir))
-    # /api/support: "Send to the makers" (the makers' private support list) and their replies
-    app.extra_routes.append(SupportApi(app, state_dir))
+    # /api/support: "Send to the makers" (the makers' private support list) and their replies;
+    # ticked by the main loop (a request that waited for the internet, the replies)
+    app.support = SupportApi(app, state_dir)
+    app.extra_routes.append(app.support)
     app.extra_routes.append(CheckinApi(app))
     app.extra_routes.append(app.spotify_account)
     # /api/stations/try, /mine, /report: the station browser (My stations in <state>/stations.json)
@@ -1608,6 +1613,7 @@ def main(argv=None) -> int:
     publisher = HaPublisher(app)
     confirm = getattr(app, "confirm", None)
     software = getattr(app, "software", None)
+    support = getattr(app, "support", None)
     ytdlp_lane = None if args.fake else getattr(app, "ytdlp_lane", None)
     connectivity = build_connectivity(config)
     # For /api/status (online) and /api/diagnostics (web/diagnostics.py).
@@ -1763,6 +1769,8 @@ def main(argv=None) -> int:
             if software is not None:
                 software.tick(now)                  # an approved update, once the radio rests
             publisher.tick(now)
+            if support is not None:                 # Send to the makers: what waited for the internet, replies
+                support.tick(now, bool(getattr(connectivity, "seen_up", False) and connectivity.online))
             watchdog.ping(now)
             time.sleep(max(0.0, period - (time.monotonic() - now)))
     finally:

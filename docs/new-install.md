@@ -160,7 +160,7 @@ your records, **Print welcome card** for the owner.
    help. **Reset keys to defaults**, or **Start from a set…** with the set the
    owner asked for, and play every key once.
 9. Print the **welcome card** (Handover → Print welcome card, or Edit keys →
-   Print a key card → Welcome card; tick *Include the setup password*) and the
+   Print a key card → Welcome card; *Include the setup password* is ticked to start) and the
    key card. The welcome card carries the key page's address, the setup
    network, what the lamp says, and the first three things to do.
 10. Tell the owner how to reach you, and how [Help from the makers](using.md#help-from-the-makers)
@@ -225,8 +225,9 @@ instead, and check that it pins the root key below.
 Three settings for after the install, all optional: `makers_contact =
 hola@…` (an email or a phone; the key page names you under Help from the
 makers and "Tell the makers" writes the mail), `checkin_url = https://…`
-(where the owner's opt-in daily check-in would go, [tools/checkin](../tools/checkin/README.md);
-without it nothing can be sent) and `checkin = no` (leave it: the switch is
+(another server for **Send to the makers** and the owner's opt-in daily check-in; leave it
+out for Delgado & Murphy's own, [tools/checkin](../tools/checkin/README.md); `checkin_url = ""`
+switches both off) and `checkin = no` (leave it: the switch is
 the owner's, on the key page under Updates). They become `makers:`,
 `checkin_url:` and `checkin:` in `/etc/hasler/box.yaml`.
 

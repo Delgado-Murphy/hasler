@@ -1,31 +1,49 @@
 """``/api/support``: "Send to the makers" - the report, straight to the makers' private support list.
 
-"Tell the makers" (web/report.py) is a few lines the owner shares or copies.
-When the makers have set up their check-in server (box.yaml ``checkin_url``),
-the sheet also has **Send to the makers**: the same report - the text and its
-JSON twin, both already stripped of secrets by ``report.build`` - plus the
-owner's note, POSTed to that server's ``/v1/report`` with the check-in's
-``X-Hasler-Token``. The server (tools/checkin/support.js) files it as an
-issue in Delgado & Murphy's PRIVATE GitHub repo and answers the request's
-number; owners never need a GitHub account, and nothing lands anywhere
-public. A maker's ``/owner ...`` comment on that issue - and the issue's
-state: seen, done, reopened - comes back as a note
-from the makers (``<state>/maker-notes.jsonl``, ``by: "makers"``; the page's
-**From the makers**, web/notes_api.py), fetched when the page opens (and
-after the daily check-in, update/hasler_update/checkin.py), only while a
-request has been sent.
+"Tell the makers" (web/report.py) is a few lines the owner can share or copy;
+**Send to the makers** is the sheet's main button: the same report - the text
+and its JSON twin, both already stripped of secrets by ``report.build`` - plus
+the owner's note, POSTed to the makers' server's ``/v1/report``. The server
+(tools/checkin/support.js) files it as an issue in Delgado & Murphy's PRIVATE
+GitHub repo and answers the request's number; owners never need a GitHub
+account, and nothing lands anywhere public. A maker's ``/owner ...`` comment
+on that issue - and the issue's state: seen, done, reopened - comes back as a
+note from the makers (``<state>/maker-notes.jsonl``, ``by: "makers"``, with
+the issue's number; the page's **From the makers** and **Your requests**).
 
-    GET  /api/support          -> {"available", "requests": [{"number", "at", "deduped", "state"}, ...newest first]}
+Where it goes: every radio can send out of the box. The makers' server is
+``DEFAULT_URL`` unless box.yaml says otherwise (``checkin_url: https://…``
+another server; ``checkin_url: ""`` switches sending off). ``--fake`` has no
+default, so a page test never reaches the real server.
+
+The radio's word (tools/checkin/enrol.js): box.yaml ``checkin_token`` (the
+makers' shared word) when set, as before; otherwise the radio's own token,
+asked for once with ``POST /v1/enrol {box_id}`` at the first send and kept in
+``<state>/secrets/support.json`` (0600, kept by the hand-over: it is the
+cabinet's, not the owner's). A server that no longer knows the token (403)
+gets one fresh enrolment; one that knows the radio already (409) means a maker
+has to clear it, and the sheet says so.
+
+Offline: a send that can't reach the server waits in ``<state>/support-outbox.json``
+and goes by itself once the radio is online (``tick``, from the main loop, with
+a growing pause between tries); the page says "Waiting to send". The main loop
+also fetches the makers' replies every half hour while a request is open.
+
+    GET  /api/support          -> {"available", "requests": [{"number", "at", "deduped", "state", "title",
+                                    "replies": [{"at", "text", "state", "seen"}...oldest first], "unseen"}...newest first],
+                                   "pending": [{"id", "at", "title", "error"}], "unseen_replies"}
                                state: sent | seen (the makers' "seen" label, or reopened) | done (closed)
     POST /api/support/send     {"note", "wifi"} -> {"ok", "number", "at", "deduped", "requests"}
-                               409 without a checkin_url, 429 after the server's daily limit,
-                               503 when the server can't be reached.
+                               or {"ok", "queued": true, "pending"} when the server can't be reached;
+                               409 with sending off, 429 after the server's daily limit, 502 refused,
+                               503 the server answered but couldn't take it (try again).
+    POST /api/support/retry    {} -> {"ok", "sent": n, "pending"}: the waiting ones, now.
+    POST /api/support/forget   {"id"} -> {"ok", "pending"}: a waiting one, not sent after all.
     POST /api/support/replies  {} -> {"ok", "added"}: fetch the makers' replies into the notes.
 
-Sending is the owner's press, not the daily check-in's switch: it needs only
-the makers' ``checkin_url``. The requests sent are kept in
-``<state>/support-requests.json`` (number and time; the hand-over clears
-the state with everything else the owner did).
+The requests sent are kept in ``<state>/support-requests.json`` (number, time,
+the note's first line; the hand-over clears it and the outbox with
+everything else the owner did).
 """
 
 from __future__ import annotations
@@ -33,10 +51,13 @@ from __future__ import annotations
 import json
 import logging
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -45,17 +66,33 @@ from .server import Unavailable
 
 log = logging.getLogger(__name__)
 
-PATHS = ("/api/support", "/api/support/send", "/api/support/replies")
+# The makers' server, for every radio whose box.yaml doesn't name another (update/hasler_update/layout.py
+# has the same default for the daily check-in; a test keeps the two equal).
+DEFAULT_URL = "https://hasler-checkin.delgado-murphy.workers.dev"   # the root; /v1/... are derived (base_url, endpoint)
+PATHS = ("/api/support", "/api/support/send", "/api/support/retry", "/api/support/forget", "/api/support/replies")
 REQUESTS_FILE = "support-requests.json"
+OUTBOX_FILE = "support-outbox.json"
+TOKEN_FILE = "support.json"               # under secrets/: the radio's own word
 NOTES_FILE = "maker-notes.jsonl"          # web/notes_api.py reads it
+SEEN_FILE = "maker-notes.seen"
 NOTES_KEEP = 200                          # as scripts/hasler-note trims it
 REQUESTS_KEPT = 20
+OUTBOX_KEPT = 5
 STATES = ("sent", "seen", "done")         # a request: sent, the makers have seen it, done (the issue closed)
 MAX_BYTES = 16384                         # the server refuses more
 TIMEOUT_S = 15.0
 TOKEN_HEADER = "X-Hasler-Token"
 USER_AGENT = "hasler-support/1"
 TEXT_MAX = 600
+TITLE_MAX = 120
+RETRY_FIRST_S = 60.0                      # the outbox: a minute, then twice as long each time...
+RETRY_MAX_S = 1800.0                      # ...up to half an hour
+REPLIES_EVERY_S = 1800.0                  # the makers' replies, while a request is open
+OPEN_DAYS = 14                            # a done request is still asked about this long (it may be reopened)
+
+OFF_WORDS = "Sending from the radio is switched off here. Use Share, Copy or Email instead."
+NOT_KNOWN_WORDS = ("The makers’ server doesn’t know this radio any more. Use Email or Share for now, "
+                   "and mention it: they can reset the radio’s line.")
 
 
 class Refused(Exception):
@@ -66,10 +103,21 @@ class Refused(Exception):
         self.status = status
 
 
+class Offline(Exception):
+    """The makers' server couldn't be reached at all: the request waits."""
+
+
 def base_url(checkin_url: str) -> str:
-    """The server's root, from box.yaml ``checkin_url`` (``https://…/v1/checkin``)."""
+    """The server's root, from box.yaml ``checkin_url``: the root itself or the full
+    ``https://…/v1/checkin`` - both forms work (update/hasler_update/checkin.py agrees)."""
     url = str(checkin_url or "").strip().rstrip("/")
     return re.sub(r"/v1/checkin$", "", url)
+
+
+def endpoint(checkin_url: str, route: str) -> str:
+    """``/v1/<route>`` on the server ``checkin_url`` names (either form); "" when it names none."""
+    base = base_url(checkin_url)
+    return f"{base}/v1/{route}" if base else ""
 
 
 def http(method: str, url: str, body: dict | None, token: str, timeout: float = TIMEOUT_S) -> tuple[int, Any]:
@@ -95,11 +143,25 @@ def http(method: str, url: str, body: dict | None, token: str, timeout: float = 
     return status, doc
 
 
+def first_line(note: str) -> str:
+    line = next((x for x in str(note or "").splitlines() if x.strip()), "")
+    line = " ".join(line.split())
+    return line if len(line) <= TITLE_MAX else line[:TITLE_MAX - 1] + "…"
+
+
+def _epoch(stamp: Any) -> float:
+    try:
+        return datetime.fromisoformat(str(stamp).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return 0.0
+
+
 class SupportApi:
-    """The routes above, for ``WebApp.extra_routes``."""
+    """The routes above, for ``WebApp.extra_routes``; ``tick`` for the main loop."""
 
     def __init__(self, app: Any, state_dir: Path | None = None, box: Callable[[], dict] | None = None,
-                 transport: Callable[..., tuple[int, Any]] = http, clock: Callable[[], float] = time.time) -> None:
+                 transport: Callable[..., tuple[int, Any]] = http, clock: Callable[[], float] = time.time,
+                 default_url: str = DEFAULT_URL) -> None:
         self.app = app
         settings_file = getattr(app, "settings_file", None)
         self.state_dir = Path(state_dir) if state_dir is not None else (
@@ -107,6 +169,12 @@ class SupportApi:
         self._box_fn = box
         self.transport = transport
         self.clock = clock
+        self.default_url = default_url
+        self._lock = threading.RLock()
+        self._thread: threading.Thread | None = None
+        self._next_try = 0.0
+        self._pause = RETRY_FIRST_S
+        self._next_replies = 0.0
 
     # -- routing ------------------------------------------------------------
 
@@ -117,16 +185,20 @@ class SupportApi:
         method = method.upper()
         if p == "/api/support" and method == "GET":
             return 200, self.doc()
-        if p == "/api/support/send" and method == "POST":
+        if method != "POST":
+            return 405, {"ok": False, "errors": [], "error": f"{method} not allowed here"}
+        if p == "/api/support/send":
             try:
                 return 200, {"ok": True, **self.send(body)}
             except Refused as exc:
                 return exc.status, {"ok": False, "errors": [], "error": str(exc)}
-        if p == "/api/support/replies" and method == "POST":
-            return 200, {"ok": True, **self.pull_replies()}
-        return 405, {"ok": False, "errors": [], "error": f"{method} not allowed here"}
+        if p == "/api/support/retry":
+            return 200, {"ok": True, **self.flush(force=True)}
+        if p == "/api/support/forget":
+            return 200, {"ok": True, **self.forget(body)}
+        return 200, {"ok": True, **self.pull_replies()}
 
-    # -- box.yaml -------------------------------------------------------------
+    # -- box.yaml and the radio's word ----------------------------------------
 
     def _box(self) -> dict:
         if self._box_fn is not None:
@@ -142,61 +214,169 @@ class SupportApi:
             return {}
 
     def _server(self) -> tuple[str, str, str]:
+        """(the server's root or "" when sending is off, the shared word or "", box_id)."""
         box = self._box()
-        return (base_url(str(box.get("checkin_url") or "")), str(box.get("checkin_token") or "").strip(),
+        url = box.get("checkin_url")
+        url = self.default_url if url is None else url     # absent: the makers' own; "" switches it off
+        return (base_url(str(url or "")), str(box.get("checkin_token") or "").strip(),
                 str(box.get("box_id") or "").strip())
+
+    def _token_file(self) -> Path | None:
+        if self.state_dir is None:
+            return None
+        from ..boxconfig import secret_file
+        return secret_file(self.state_dir, TOKEN_FILE)
+
+    def _stored_token(self, base: str, box_id: str) -> str:
+        path = self._token_file()
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8")) if path is not None else None
+        except (OSError, ValueError):
+            return ""
+        if isinstance(doc, dict) and doc.get("server") == base and doc.get("box_id") == box_id:
+            return str(doc.get("token") or "")
+        return ""
+
+    def _forget_token(self) -> None:
+        path = self._token_file()
+        if path is not None:
+            path.unlink(missing_ok=True)
+
+    def _enrol(self, base: str, box_id: str) -> str:
+        """Ask the server for this radio's own word, once; keep it. Raises Offline / Refused."""
+        try:
+            status, doc = self.transport("POST", endpoint(base, "enrol"), {"schema": 1, "box_id": box_id}, "")
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise Offline(str(exc)) from None
+        if status == 409:
+            log.warning("support: the makers' server already knows box %s… - a maker has to clear it", box_id[:8])
+            raise Refused(502, NOT_KNOWN_WORDS)
+        if status == 404:
+            return ""                     # an older server without enrolment: send without a word, as before
+        if status != 200 or not isinstance(doc, dict) or not isinstance(doc.get("token"), str) or not doc["token"]:
+            log.info("support: enrolment refused: %s %s", status, doc)
+            raise Unavailable("The makers’ server couldn’t take it just now. Try again in a while, or use Share or Email.")
+        path = self._token_file()
+        if path is not None:
+            from ..boxconfig import atomic_write_text
+            atomic_write_text(path, json.dumps({"schema": 1, "server": base, "box_id": box_id, "token": doc["token"],
+                                                "at": self._now_iso()}) + "\n", mode=0o600)
+        log.info("support: this radio has its own word with the makers' server now")
+        return doc["token"]
+
+    def _word(self, base: str, shared: str, box_id: str, enrol: bool = True) -> tuple[str, str]:
+        """(token, kind): the shared word, the radio's own, or ("", "none")."""
+        if shared:
+            return shared, "shared"
+        own = self._stored_token(base, box_id)
+        if own:
+            return own, "own"
+        if enrol:
+            own = self._enrol(base, box_id)
+            return (own, "own") if own else ("", "none")
+        return "", "none"
 
     # -- the requests sent ----------------------------------------------------
 
-    def requests(self) -> list[dict]:
+    def _read(self, name: str, key: str) -> list:
         if self.state_dir is None:
             return []
         try:
-            doc = json.loads((self.state_dir / REQUESTS_FILE).read_text(encoding="utf-8"))
+            doc = json.loads((self.state_dir / name).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return []
+        items = doc.get(key) if isinstance(doc, dict) else None
+        return items if isinstance(items, list) else []
+
+    def requests(self) -> list[dict]:
         out = []
-        for r in (doc.get("requests") if isinstance(doc, dict) else None) or []:
+        for r in self._read(REQUESTS_FILE, "requests"):
             if isinstance(r, dict) and isinstance(r.get("number"), int):
                 state = r.get("state") if r.get("state") in STATES else "sent"
                 out.append({"number": r["number"], "at": str(r.get("at") or "")[:40], "deduped": bool(r.get("deduped")),
-                            "state": state})
+                            "state": state, "title": str(r.get("title") or "")[:TITLE_MAX]})
         return out
 
-    def _write_requests(self, kept: list[dict]) -> None:
+    def _write(self, name: str, key: str, items: list) -> None:
         if self.state_dir is not None:
             from ..boxconfig import atomic_write_text
-            atomic_write_text(self.state_dir / REQUESTS_FILE, json.dumps({"schema": 1, "requests": kept}, indent=1) + "\n")
+            atomic_write_text(self.state_dir / name, json.dumps({"schema": 1, key: items}, indent=1, ensure_ascii=False) + "\n")
 
-    def _remember(self, number: int, at: str, deduped: bool) -> list[dict]:
-        old = next((r for r in self.requests() if r["number"] == number), None)
-        kept = [r for r in self.requests() if r["number"] != number]
-        # sent again (the same issue): keep what the makers already said about it
-        kept = ([{"number": number, "at": at, "deduped": deduped, "state": old["state"] if old else "sent"}] + kept)[:REQUESTS_KEPT]
-        self._write_requests(kept)
-        return kept
+    def _write_requests(self, kept: list[dict]) -> None:
+        self._write(REQUESTS_FILE, "requests", kept)
+
+    def _remember(self, number: int, at: str, deduped: bool, title: str) -> list[dict]:
+        with self._lock:
+            old = next((r for r in self.requests() if r["number"] == number), None)
+            kept = [r for r in self.requests() if r["number"] != number]
+            # sent again (the same issue): keep what the makers already said about it, and its first words
+            kept = ([{"number": number, "at": at, "deduped": deduped, "state": old["state"] if old else "sent",
+                      "title": (old and old["title"]) or title}] + kept)[:REQUESTS_KEPT]
+            self._write_requests(kept)
+            return kept
 
     def _set_states(self, replies: list) -> None:
         """A request's state from the makers' replies, in order: "seen" (the label, or reopened)
         and "done" (closed). A late "seen" label never undoes "done"; reopening does."""
-        kept, changed = self.requests(), False
-        for r in replies:
-            if not isinstance(r, dict) or r.get("state") not in STATES or not isinstance(r.get("issue"), int):
+        with self._lock:
+            kept, changed = self.requests(), False
+            for r in replies:
+                if not isinstance(r, dict) or r.get("state") not in STATES or not isinstance(r.get("issue"), int):
+                    continue
+                req = next((x for x in kept if x["number"] == r["issue"]), None)
+                if req is None:
+                    continue
+                new = r["state"]
+                if new == "seen" and req["state"] == "done" and not str(r.get("id")).startswith("reopened:"):
+                    continue
+                if req["state"] != new:
+                    req["state"], changed = new, True
+            if changed:
+                self._write_requests(kept)
+
+    # -- the makers' replies, as the page shows them --------------------------
+
+    def _note_lines(self) -> list[dict]:
+        if self.state_dir is None:
+            return []
+        try:
+            lines = (self.state_dir / NOTES_FILE).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return []
+        out = []
+        for line in lines:
+            try:
+                d = json.loads(line)
+            except ValueError:
                 continue
-            req = next((x for x in kept if x["number"] == r["issue"]), None)
-            if req is None:
-                continue
-            new = r["state"]
-            if new == "seen" and req["state"] == "done" and not str(r.get("id")).startswith("reopened:"):
-                continue
-            if req["state"] != new:
-                req["state"], changed = new, True
-        if changed:
-            self._write_requests(kept)
+            if isinstance(d, dict):
+                out.append(d)
+        return out
+
+    def _seen_at(self) -> float:
+        try:
+            return _epoch((self.state_dir / SEEN_FILE).read_text().strip()) if self.state_dir is not None else 0.0
+        except OSError:
+            return 0.0
 
     def doc(self) -> dict:
         base, _, box_id = self._server()
-        return {"available": bool(base and box_id), "requests": self.requests()}
+        seen_at = self._seen_at()
+        threads: dict[int, list] = {}
+        for n in self._note_lines():
+            if n.get("by") != "makers" or not isinstance(n.get("issue"), int) or not str(n.get("text") or "").strip():
+                continue
+            threads.setdefault(n["issue"], []).append({
+                "at": str(n.get("replied_at") or n.get("at") or "")[:40],
+                "text": " ".join(str(n["text"]).split())[:TEXT_MAX],
+                "state": n.get("state") if n.get("state") in STATES else None,
+                "seen": _epoch(n.get("at")) <= seen_at})
+        reqs = []
+        for r in self.requests():
+            replies = threads.get(r["number"], [])
+            reqs.append({**r, "replies": replies, "unseen": sum(1 for x in replies if not x["seen"])})
+        return {"available": bool(base and box_id), "requests": reqs, "pending": self.pending(),
+                "unseen_replies": sum(r["unseen"] for r in reqs)}
 
     # -- sending --------------------------------------------------------------
 
@@ -212,61 +392,150 @@ class SupportApi:
             body["json"] = None                   # the text alone says it all; never more than the server takes
         return body
 
+    def _deliver(self, payload: dict) -> dict:
+        """POST one report; the server's {"number", "deduped"}. Raises Offline, Refused, Unavailable."""
+        base, shared, box_id = self._server()
+        if not base or not box_id:
+            raise Refused(409, OFF_WORDS)
+        payload = {**payload, "box_id": box_id}
+        token, kind = self._word(base, shared, box_id)
+        for attempt in (1, 2):
+            try:
+                status, doc = self.transport("POST", endpoint(base, "report"), payload, token)
+            except (urllib.error.URLError, OSError, ValueError) as exc:
+                raise Offline(str(exc)) from None
+            if status == 403 and kind == "own" and attempt == 1:
+                # the server lost or cleared this radio's word: ask once more, then try again
+                self._forget_token()
+                token, kind = self._word(base, shared, box_id)
+                continue
+            break
+        if status == 429:
+            raise Refused(429, "You’ve sent several today already. The makers have them; use Share or Email for anything more.")
+        if status == 403:
+            raise Refused(502, NOT_KNOWN_WORDS if kind != "shared" else
+                          "The makers’ server didn’t accept this radio. Use Share or Email instead.")
+        if status == 400 or status == 413:
+            log.info("support request refused: %s %s", status, doc)
+            raise Refused(502, "The makers’ server couldn’t read this report. Use Share or Email instead.")
+        if not (200 <= status < 300) or not isinstance(doc, dict) or not isinstance(doc.get("number"), int):
+            log.info("support request not taken: %s %s", status, doc)
+            raise Unavailable("The makers’ server couldn’t take it just now. Try again in a while, or use Share or Email.")
+        return doc
+
     def send(self, body: Any) -> dict:
         body = body if isinstance(body, dict) else {}
-        base, token, box_id = self._server()
+        base, _, box_id = self._server()
         if not base or not box_id:
-            raise Refused(409, "The makers haven’t set up sending from the radio. Use Share or Copy instead.")
+            raise Refused(409, OFF_WORDS)
         wifi = body.get("wifi", True) not in (False, 0, "0", "false", "no", "off")
-        payload = self.payload(str(body.get("note") or ""), wifi)
+        note = str(body.get("note") or "")
+        payload = self.payload(note, wifi)
         try:
-            status, doc = self.transport("POST", base + "/v1/report", payload, token)
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            log.info("support request not sent: %s", exc)
-            raise Unavailable("Couldn’t reach the makers just now. Try again later, or use Share or Copy.") from None
-        if status == 429:
-            raise Refused(429, "You’ve sent several today already. The makers have them; use Share or Copy for anything more.")
-        if status == 403:
-            raise Refused(502, "The makers’ server didn’t accept this radio. Use Share or Copy instead.")
-        if not (200 <= status < 300) or not isinstance(doc, dict) or not isinstance(doc.get("number"), int):
-            log.info("support request refused: %s %s", status, doc)
-            raise Unavailable("The makers’ server couldn’t take it just now. Try again later, or use Share or Copy.")
+            doc = self._deliver(payload)
+        except Offline as exc:
+            log.info("support request waits to be sent: %s", exc)
+            return {"queued": True, "pending": self._queue(payload, first_line(note))}
         at = self._now_iso()
         number, deduped = doc["number"], bool(doc.get("deduped"))
-        kept = self._remember(number, at, deduped)
+        kept = self._remember(number, at, deduped, first_line(note))
         log.info("support request sent: #%s%s", number, " (again)" if deduped else "")
         return {"number": number, "at": at, "deduped": deduped, "requests": kept}
 
     def _now_iso(self) -> str:
-        from datetime import datetime
         return datetime.fromtimestamp(self.clock()).astimezone().isoformat(timespec="seconds")
 
-    # -- replies --------------------------------------------------------------
+    # -- the outbox: sent once the radio is online again -----------------------
 
-    def _known_reply_ids(self) -> set:
-        ids = set()
-        try:
-            lines = (self.state_dir / NOTES_FILE).read_text(encoding="utf-8").splitlines()
-        except (OSError, TypeError):
-            return ids
-        for line in lines:
+    def pending(self) -> list[dict]:
+        return [{"id": str(x.get("id")), "at": str(x.get("at") or "")[:40], "title": str(x.get("title") or "")[:TITLE_MAX],
+                 "error": str(x.get("error") or "") or None}
+                for x in self._read(OUTBOX_FILE, "items") if isinstance(x, dict) and isinstance(x.get("payload"), dict)]
+
+    def _queue(self, payload: dict, title: str) -> list[dict]:
+        with self._lock:
+            items = [x for x in self._read(OUTBOX_FILE, "items") if isinstance(x, dict)]
+            items.append({"id": uuid.uuid4().hex[:12], "at": self._now_iso(), "title": title, "payload": payload, "error": None})
+            self._write(OUTBOX_FILE, "items", items[-OUTBOX_KEPT:])
+            self._next_try, self._pause = 0.0, RETRY_FIRST_S
+        return self.pending()
+
+    def forget(self, body: Any) -> dict:
+        want = str((body or {}).get("id") or "") if isinstance(body, dict) else ""
+        with self._lock:
+            items = [x for x in self._read(OUTBOX_FILE, "items") if isinstance(x, dict) and str(x.get("id")) != want]
+            self._write(OUTBOX_FILE, "items", items)
+        return {"pending": self.pending()}
+
+    def flush(self, force: bool = False) -> dict:
+        """Send what waits, oldest first; stop at the first that can't reach the server.
+        A refusal (the server said no) stays with its words and isn't tried again by itself."""
+        sent = 0
+        with self._lock:
+            items = [x for x in self._read(OUTBOX_FILE, "items") if isinstance(x, dict) and isinstance(x.get("payload"), dict)]
+            for item in list(items):
+                if item.get("error") and not force:
+                    continue
+                try:
+                    doc = self._deliver(item["payload"])
+                except (Offline, Unavailable):
+                    break                         # not reached, or busy: later
+                except Refused as exc:
+                    item["error"] = str(exc)
+                    continue
+                self._remember(doc["number"], self._now_iso(), bool(doc.get("deduped")), str(item.get("title") or ""))
+                items.remove(item)
+                sent += 1
+                log.info("support request sent after waiting: #%s", doc["number"])
+            self._write(OUTBOX_FILE, "items", items)
+        return {"sent": sent, "pending": self.pending()}
+
+    def _open_requests(self) -> bool:
+        now = self.clock()
+        return any(r["state"] != "done" or now - _epoch(r["at"]) < OPEN_DAYS * 86400 for r in self.requests())
+
+    def tick(self, now: float, online: bool = True) -> None:
+        """From the main loop: the outbox once online (a minute, two, four… up to half an hour
+        apart), and the makers' replies every half hour while a request is open. Never raises."""
+        if not online or (self._thread is not None and self._thread.is_alive()):
+            return
+        waiting = any(not x["error"] for x in self.pending())
+        due_send = waiting and now >= self._next_try
+        due_replies = now >= self._next_replies and self._open_requests()
+        if not (due_send or due_replies):
+            return
+        if due_replies:
+            self._next_replies = now + REPLIES_EVERY_S
+
+        def run() -> None:
             try:
-                d = json.loads(line)
-            except ValueError:
-                continue
-            if isinstance(d, dict) and d.get("reply_id") is not None:
-                ids.add(str(d["reply_id"]))
-        return ids
+                if due_send:
+                    left = any(not x["error"] for x in self.flush()["pending"])
+                    if left:
+                        self._next_try, self._pause = now + self._pause, min(RETRY_MAX_S, self._pause * 2)
+                    else:
+                        self._next_try, self._pause = 0.0, RETRY_FIRST_S
+                if due_replies:
+                    self.pull_replies()
+            except Exception:
+                log.debug("support tick failed", exc_info=True)
+
+        self._thread = threading.Thread(target=run, name="support", daemon=True)
+        self._thread.start()
+
+    # -- replies --------------------------------------------------------------
 
     def pull_replies(self) -> dict:
         """The makers' ``/owner`` replies, into the notes; then tell the server they're kept.
 
-        Only while a request has been sent (nothing to ask otherwise). Never raises
-        over the network: an unreachable server is ``{"added": 0, "error"}``."""
-        base, token, box_id = self._server()
+        Only while a request has been sent (nothing to ask otherwise), and only replies about
+        this owner's requests become notes. Never raises over the network: an unreachable
+        server is ``{"added": 0, "error"}``."""
+        base, shared, box_id = self._server()
         if not base or not box_id or self.state_dir is None or not self.requests():
             return {"added": 0}
-        url = base + "/v1/replies?" + urllib.parse.urlencode({"box_id": box_id})
+        token, _ = self._word(base, shared, box_id, enrol=False)
+        url = endpoint(base, "replies") + "?" + urllib.parse.urlencode({"box_id": box_id})
         try:
             status, doc = self.transport("GET", url, None, token)
         except (urllib.error.URLError, OSError, ValueError) as exc:
@@ -274,34 +543,40 @@ class SupportApi:
         replies = doc.get("replies") if status == 200 and isinstance(doc, dict) else None
         if not isinstance(replies, list):
             return {"added": 0, "error": f"the makers' server answered {status}"}
-        known, lines, ids = self._known_reply_ids(), [], []
-        for r in replies:
-            if not isinstance(r, dict) or r.get("id") is None:
-                continue
-            ids.append(r["id"])
-            text = " ".join(str(r.get("text") or "").split())[:TEXT_MAX]
-            if not text or str(r["id"]) in known:
-                continue
-            known.add(str(r["id"]))
-            # "at" is when it reached the radio, so it shows as new even after an older note was seen
-            note = {"at": self._now_iso(), "by": "makers", "text": text, "reply_id": r["id"],
-                    "replied_at": str(r.get("at") or "")[:40]}
-            if isinstance(r.get("issue"), int):
-                note["issue"] = r["issue"]
-            lines.append(json.dumps(note, ensure_ascii=False))
-        if lines:
-            path = self.state_dir / NOTES_FILE
-            try:
-                old = path.read_text(encoding="utf-8").splitlines()
-            except OSError:
-                old = []
-            from ..boxconfig import atomic_write_text
-            atomic_write_text(path, "\n".join((old + lines)[-NOTES_KEEP:]) + "\n")
-            log.info("%d note(s) from the makers' replies", len(lines))
-        self._set_states(replies)
+        with self._lock:
+            mine = {r["number"] for r in self.requests()}
+            known = {str(d["reply_id"]) for d in self._note_lines() if d.get("reply_id") is not None}
+            lines, ids = [], []
+            for r in replies:
+                if not isinstance(r, dict) or r.get("id") is None:
+                    continue
+                ids.append(r["id"])
+                text = " ".join(str(r.get("text") or "").split())[:TEXT_MAX]
+                issue = r.get("issue") if isinstance(r.get("issue"), int) else None
+                if not text or str(r["id"]) in known or (issue is not None and issue not in mine):
+                    continue                      # said already, or about a request of the radio's last owner
+                known.add(str(r["id"]))
+                # "at" is when it reached the radio, so it shows as new even after an older note was seen
+                note = {"at": self._now_iso(), "by": "makers", "text": text, "reply_id": r["id"],
+                        "replied_at": str(r.get("at") or "")[:40]}
+                if issue is not None:
+                    note["issue"] = issue
+                if r.get("state") in STATES:
+                    note["state"] = r["state"]
+                lines.append(json.dumps(note, ensure_ascii=False))
+            if lines:
+                path = self.state_dir / NOTES_FILE
+                try:
+                    old = path.read_text(encoding="utf-8").splitlines()
+                except OSError:
+                    old = []
+                from ..boxconfig import atomic_write_text
+                atomic_write_text(path, "\n".join((old + lines)[-NOTES_KEEP:]) + "\n")
+                log.info("%d note(s) from the makers' replies", len(lines))
+            self._set_states(replies)
         if ids:
             try:
-                self.transport("POST", base + "/v1/replies/ack", {"box_id": box_id, "ids": ids}, token)
+                self.transport("POST", endpoint(base, "replies") + "/ack", {"box_id": box_id, "ids": ids}, token)
             except (urllib.error.URLError, OSError, ValueError):
                 pass                              # asked again next time; the ids keep it single
         return {"added": len(lines)}

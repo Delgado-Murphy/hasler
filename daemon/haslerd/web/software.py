@@ -251,14 +251,16 @@ class Software:
 
     def checkin_doc(self) -> dict:
         """``status()["checkin"]``: the opt-in daily check-in (docs/ota.md §5) -
-        the owner's switch under Updates (box.yaml ``checkin``), whether the
-        makers put a ``checkin_url`` there (it only ever sends with one), and
-        the last attempt (CHECKIN_STATUS, left by update/hasler_update/checkin.py)."""
+        the owner's switch under Updates (box.yaml ``checkin``), whether it has
+        somewhere to go (the makers' own server unless box.yaml's ``checkin_url``
+        names another, or ``""`` switches it off), and the last attempt (CHECKIN_STATUS, left by update/hasler_update/checkin.py)."""
+        from .support_api import DEFAULT_URL
         box = self._box()
         last = _read_json(self._p(CHECKIN_STATUS))
         last = last if isinstance(last, dict) else None
         return {"enabled": _flag(box.get("checkin", False), False),
-                "url_set": bool(str(box.get("checkin_url") or "").strip()),
+                "url_set": bool(str(box.get("checkin_url") if box.get("checkin_url") is not None
+                                    else DEFAULT_URL).strip()),
                 "last": {k: last.get(k) for k in ("at", "ok", "error", "skipped", "short_id", "bytes")} if last else None}
 
     # -- the status document -----------------------------------------------------

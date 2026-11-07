@@ -232,9 +232,9 @@ flowchart LR
 ```
 
 - **Tell the makers** builds a short report with nothing private in it
-  (`web/report.py`). Where the makers have a check-in server, **Send to the
-  makers** posts it to the Worker, which files it as an issue in the private
-  `hasler-support` repo. A maker's `/owner ...` comment comes back to the
+  (`web/report.py`). **Send to the makers** (every radio, out of the box)
+  posts it to the Worker with the radio's own token, which files it as an
+  issue in the private `hasler-support` repo. A maker's `/owner ...` comment comes back to the
   radio as a note; owners never need a GitHub account.
 - **The daily check-in** (off until the owner turns it on) sends about half a
   kilobyte of health facts and nothing about where the radio is or what it

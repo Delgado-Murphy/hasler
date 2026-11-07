@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_BASE_URL = "https://delgado-murphy.github.io/hasler-releases"
+# The makers' check-in and support server (tools/checkin), when box.yaml names no other;
+# ``checkin_url: ""`` there means nowhere. The root: checkin.checkin_endpoint derives /v1/checkin
+# (box.yaml may give either form). haslerd's web/support_api.py has the same default.
+DEFAULT_CHECKIN_URL = "https://hasler-checkin.delgado-murphy.workers.dev"
 HEALTH_URL = "http://127.0.0.1:8080/api/health"
 KEEP_RELEASES = 3
 CHANNELS = ("bench", "stable")   # bench: new versions first, makers' radios, may break; stable: everyone
@@ -177,6 +181,19 @@ def read_box_yaml(path: Path) -> dict:
     return out
 
 
+def _checkin_url(path: Path, box: dict) -> str:
+    """box.yaml's ``checkin_url``; the makers' own when the key isn't there at all.
+    (read_box_yaml drops an empty value, so look for the key itself.)"""
+    if "checkin_url" in box:
+        return str(box.get("checkin_url") or "").strip()
+    try:
+        named = any(line.split(":", 1)[0].strip() == "checkin_url" for line in path.read_text(encoding="utf-8").splitlines()
+                    if line and line[0] not in " \t#")
+    except OSError:
+        named = False
+    return "" if named else DEFAULT_CHECKIN_URL
+
+
 def box_settings(layout: Layout) -> dict:
     box = read_box_yaml(layout.box_yaml)
     # A box.yaml without update_mode is a new radio: patch/minor install at
@@ -192,8 +209,9 @@ def box_settings(layout: Layout) -> dict:
         "variant": str(box.get("variant", "")),
         "update_url": str(os.environ.get("HASLER_UPDATE_URL") or box.get("update_url") or DEFAULT_BASE_URL).rstrip("/"),
         # The opt-in daily check-in (checkin.py): off unless the owner said yes,
-        # and only ever to an https:// URL the makers put in box.yaml.
+        # and only ever to an https:// URL: the makers' own unless box.yaml names
+        # another (an empty ``checkin_url:`` line, or "", means nowhere).
         "checkin": box.get("checkin", False) is True,
-        "checkin_url": str(box.get("checkin_url") or "").strip(),
+        "checkin_url": _checkin_url(layout.box_yaml, box),
         "checkin_token": str(box.get("checkin_token") or "").strip(),
     }

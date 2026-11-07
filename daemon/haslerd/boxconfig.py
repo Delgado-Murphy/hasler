@@ -50,7 +50,9 @@ SCHEMA = 1   # of box.yaml and the overlay files; bumped with a migration
 # dial when absent; the key page's own choice (settings.json) wins over it.
 # checkin: true = the opt-in daily check-in (docs/ota.md §5; update/hasler_update/
 # checkin.py sends it after the daily check, to checkin_url, with checkin_token
-# as a header when set); off when absent. makers: {contact: "hola@…"} - who built
+# as a header when set); off when absent. checkin_url: the makers' server, also
+# for "Send to the makers" (web/support_api.py); absent = the release default,
+# "" = nowhere. Without checkin_token the radio enrols its own word. makers: {contact: "hola@…"} - who built
 # the radio and how to reach them, shown under Help from the makers and used by
 # "Tell the makers" (web/report.py); written by hasler-install from hasler.txt.
 BOX_KEYS = ("schema", "variant", "channel", "update_mode", "box_id", "checkin", "checkin_url", "checkin_token",

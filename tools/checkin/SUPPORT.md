@@ -1,21 +1,30 @@
 # Send to the makers: owners' requests as GitHub issues
 
-Owners don't have GitHub accounts and never need one. On a radio with a
-`checkin_url`, the **Tell the makers** sheet has **Send to the makers**:
-the radio POSTs its report (the same text and JSON twin as Share/Copy,
+Owners don't have GitHub accounts and never need one. On every radio the
+**Tell the makers** sheet leads with **Send to the makers** ("This opens a
+request with Delgado & Murphy. You'll see their answer here."): the radio
+POSTs its report (the same text and JSON twin as Share/Copy,
 secrets already stripped by `daemon/haslerd/web/report.py`) and the owner's
 line to this Worker's `/v1/report`. The Worker opens an issue in a
 **private** repo, and a maker's reply comes back to the radio as a note
 under **From the makers**.
 
 ```
+radio ──POST /v1/enrol {box_id} (first send only)──▶ Worker ──▶ its own token
 radio ──POST /v1/report (X-Hasler-Token)──▶ Worker ──REST──▶ private repo: issue #12
-radio ◀─"Sent · request #12"───────────────┘
+radio ◀─"Sent. Your request is #12."──────┘
 maker comments "/owner A new card is in the post." on #12
 maker labels #12 "seen" … closes #12
 GitHub ──webhook issue_comment, issues (HMAC)──▶ Worker /v1/github ──▶ KV replies:<box_id>
-radio (page opens This radio, or after the daily check-in) ──GET /v1/replies──▶ note "by: makers" ──ack──▶ Worker
+radio (every half hour while a request is open; when the page opens) ──GET /v1/replies──▶ note "by: makers" ──ack──▶ Worker
 ```
+
+On the radio the owner sees **Your requests** (This radio → Help from the
+makers, and Something's wrong?): each request's number, date, first line,
+state (Sent / Seen by the makers / Done) and your `/owner` replies in order.
+A new reply also shows as **New reply from the makers** under Needs attention
+and as a dot on the front page's gear. A send without internet waits on the
+radio and goes by itself once it's back.
 
 What the Worker does (`support.js`, read it - it is short):
 
@@ -25,7 +34,9 @@ What the Worker does (`support.js`, read it - it is short):
 - **Labels**: `owner-report`, `fault:<reason>` per lamp fault,
   `version:<v>`, `model:<variant>`. If GitHub refuses a label (422) the
   issue is opened without labels rather than lost.
-- **At most 5 a day per radio** (429 after; the page says to use Share/Copy).
+- **At most 5 a day per radio** (429 after; the page says to use Share/Email),
+  at most `REPORTS_ALL_PER_DAY` (200) a day across radios using their own
+  token, and at most `ENROL_PER_HOUR` (30) new radios an hour.
 - **De-dup**: the same radio sending the same note within 10 minutes adds a
   comment ("Sent again from the radio") to the issue it already made, and
   the radio shows the same number.
@@ -89,7 +100,9 @@ What the Worker does (`support.js`, read it - it is short):
    wrangler deploy
    ```
 
-   `CHECKIN_TOKEN` (README.md) gates `/v1/report` and `/v1/replies` too.
+   `CHECKIN_TOKEN` (README.md), the makers' shared word, still opens
+   `/v1/checkin`, `/v1/report` and `/v1/replies` for any radio that has it in
+   box.yaml; every other radio uses its own token (below).
 
 5. **The webhook** (hasler-support → Settings → Webhooks → Add webhook):
    payload URL `https://hasler-checkin.<account>.workers.dev/v1/github`,
@@ -99,9 +112,43 @@ What the Worker does (`support.js`, read it - it is short):
    GitHub's ping should show a green tick (the Worker answers 204). By API:
    `gh api -X PATCH repos/Delgado-Murphy/hasler-support/hooks/<id> -f 'events[]=issue_comment' -f 'events[]=issues'`.
 
-6. **Radios**: nothing new. Any radio with `checkin_url` (and
-   `checkin_token`) in `/etc/hasler/box.yaml` and a `box_id` shows **Send to
-   the makers**. The daily check-in switch doesn't need to be on.
+6. **Radios**: nothing to do. Every release points at this Worker (the
+   default `checkin_url`, `https://hasler-checkin.delgado-murphy.workers.dev`),
+   so every radio with a `box_id` shows **Send to the makers**. box.yaml can
+   name another server (the root or `…/v1/checkin`, either works) or switch
+   it off with `checkin_url: ""`. The daily check-in switch doesn't need to be on.
+
+## How a radio gets its line
+
+A single token in the public repo would be no secret, so each radio gets its
+own ("trust on first use", `enrol.js`):
+
+- At the owner's first **Send to the makers** the radio POSTs
+  `/v1/enrol {"schema": 1, "box_id": "<its UUID>"}`. The Worker mints 32
+  random bytes, keeps only their SHA-256 under `radio:<box_id>` in the
+  SUPPORT namespace, and answers the token once. The radio keeps it in
+  `/var/lib/haslerd/secrets/support.json` (0600; the hand-over keeps it, it
+  is the cabinet's) and sends it as `X-Hasler-Token` for reports, replies
+  and the daily check-in.
+- From then on that radio's routes need its token (or the shared word):
+  nobody else can read its replies or report as it, even with no
+  `CHECKIN_TOKEN` set.
+- `box_id` is a random UUID written by `hasler-install`; a new card is a new
+  radio and enrols afresh. An id that's already enrolled is refused (409),
+  and the owner reads "The makers' server doesn't know this radio any more…
+  they can reset the radio's line". That happens when a radio was
+  reinstalled with its old `box.yaml` (the spare card's memory) but without
+  its secrets. **To reset**: `wrangler kv key delete --binding SUPPORT
+  "radio:<box_id>"` (the box_id is in the issue's hidden marker); the radio
+  enrols again at its next send. A radio whose token the Worker no longer
+  knows (403) asks once more by itself.
+- Abuse: the IP is still never read. Minting ids is capped by
+  `ENROL_PER_HOUR`, reports by each radio's 5 a day and the fleet's
+  `REPORTS_ALL_PER_DAY`. If that's ever not enough, add a Cloudflare rate
+  limiting rule on `/v1/enrol` and `/v1/report` (it counts IPs at the edge,
+  not in the Worker).
+- The makers' own radios can keep `checkin_token` (the shared word) in
+  box.yaml; it works exactly as before and isn't counted in the fleet cap.
 
 ## Try it
 
@@ -111,6 +158,9 @@ curl -s -X POST $W/v1/report -H 'content-type: application/json' -H 'X-Hasler-To
   -d '{"schema":1,"box_id":"test-0001","short_id":"t001","note":"A test from the bench","text":"Hasler · bench · radio t001\n"}'
 # -> {"ok":true,"number":1,"deduped":false}; comment "/owner It works." on issue #1, then:
 curl -s "$W/v1/replies?box_id=test-0001" -H 'X-Hasler-Token: <the word>'
+# A radio's own word (a throwaway UUID; delete radio:<it> afterwards):
+curl -s -X POST $W/v1/enrol -H 'content-type: application/json' -d '{"schema":1,"box_id":"00000000-0000-4000-8000-000000000001"}'
+# -> {"ok":true,"token":"…"}; the same again -> 409 {"ok":false,"error":"already enrolled"}
 ```
 
 `node --test` in this directory runs the routes against a fake KV and a
@@ -120,8 +170,9 @@ mocked GitHub.
 
 - Read the issue; the first six lines are what you'd ask on the phone.
 - Reply to the owner with `/owner …` in plain words (the rule for notes:
-  name parts and settings, never people). It reaches the radio the next
-  time the owner opens This radio, or after its daily check-in.
+  name parts and settings, never people). It reaches the radio within half
+  an hour (sooner when the owner opens the page) and shows in the request's
+  thread under Your requests, with a dot on the gear until it's read.
 - Read it but can't answer yet? Add the **`seen`** label: the owner reads
   "The makers have seen your request #12".
 - Everything else in the thread is yours. **Close** the issue when done: the

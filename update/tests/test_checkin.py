@@ -15,7 +15,7 @@ from conftest import ROOT, World
 
 from hasler_update import checkin
 from hasler_update.check import Checker
-from hasler_update.layout import box_settings
+from hasler_update.layout import DEFAULT_CHECKIN_URL, box_settings
 
 
 @pytest.fixture(autouse=True)
@@ -137,9 +137,9 @@ def test_after_check_posts_once_a_day_skips_metered_and_records_failures(world: 
     # metered: skipped, said so
     rec = checkin.after_check(world.layout, _box(metered=True), NOW + 50 * 3600, fetch, post)
     assert rec["ok"] is False and rec["skipped"] == "metered" and len(posted) == 2
-    # no URL: nothing can go
+    # switched off in box.yaml (checkin_url: ""): nothing can go
     rec = checkin.after_check(world.layout, _box(checkin_url=""), NOW + 75 * 3600, fetch, post)
-    assert rec["error"] == "no checkin_url in box.yaml" and len(posted) == 2
+    assert rec["error"] == "checkin_url is switched off in box.yaml" and len(posted) == 2
     # the makers' server gone: recorded, never raised
 
     def down(url, payload, token="", timeout=15):
@@ -165,9 +165,44 @@ def test_box_settings_read_the_checkin_keys(tmp_path):
     lay.box_yaml.write_text("schema: 1\nvariant: hasler-hm\ncheckin: true\ncheckin_url: https://ci.example/v1/checkin\ncheckin_token: w\n")
     b = box_settings(lay)
     assert b["checkin"] is True and b["checkin_url"] == "https://ci.example/v1/checkin" and b["checkin_token"] == "w"
+    # nothing said: the makers' own server (the switch is still the owner's, off)
     lay.box_yaml.write_text("schema: 1\nvariant: hasler-hm\n")
     b = box_settings(lay)
-    assert b["checkin"] is False and b["checkin_url"] == ""
+    assert b["checkin"] is False and b["checkin_url"] == DEFAULT_CHECKIN_URL
+    # an empty value, quoted or not, means nowhere
+    for line in ('checkin_url: ""', "checkin_url:", "checkin_url: ''"):
+        lay.box_yaml.write_text("schema: 1\nvariant: hasler-hm\n" + line + "\n")
+        assert box_settings(lay)["checkin_url"] == "", line
+
+
+def test_the_checkin_goes_with_the_radios_own_word_when_there_is_no_shared_one(world: World):
+    from hasler_update.layout import DEFAULT_CHECKIN_URL as url
+    secrets = world.layout.haslerd_state / "secrets"
+    secrets.mkdir(parents=True, exist_ok=True)
+    (secrets / "support.json").write_text(json.dumps({"server": url, "box_id": "box-1", "token": "own"}))
+    assert checkin.own_token(world.layout, url) == "own" and checkin.own_token(world.layout, url + "/v1/checkin") == "own"
+    assert checkin.own_token(world.layout, "https://other.example/v1/checkin") == ""
+    posted = []
+
+    def post(u, payload, token="", timeout=15):
+        posted.append((u, token))
+        return 204
+    checkin.after_check(world.layout, _box(checkin_url=url), NOW, lambda u: DIAG if "diagnostics" in u else HEALTH, post)
+    checkin.after_check(world.layout, _box(checkin_url=url, checkin_token="shared"), NOW + 25 * 3600,
+                        lambda u: DIAG if "diagnostics" in u else HEALTH, post)
+    assert posted == [(url + "/v1/checkin", "own"), (url + "/v1/checkin", "shared")]
+
+
+@pytest.mark.parametrize("given", ["https://ci.example", "https://ci.example/", "https://ci.example/v1/checkin", "https://ci.example/v1/checkin/"])
+def test_the_checkin_url_may_be_the_root_or_the_full_route(world: World, given):
+    assert checkin.checkin_endpoint(given) == "https://ci.example/v1/checkin"
+    posted = []
+
+    def post(u, payload, token="", timeout=15):
+        posted.append(u)
+        return 204
+    checkin.after_check(world.layout, _box(checkin_url=given), NOW, lambda u: DIAG if "diagnostics" in u else HEALTH, post)
+    assert posted == ["https://ci.example/v1/checkin"]
 
 
 def test_the_daily_check_never_fails_over_the_checkin(world: World, capsys):
