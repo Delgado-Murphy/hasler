@@ -620,6 +620,12 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     variant, config = load_config(args, paths)
 
     panel = Panel.from_variant(variant, fake=args.fake)
+    if args.fake and os.environ.get("HASLER_FAKE_CLOSED"):
+        # --fake only: contacts that start closed (HASLER_FAKE_CLOSED=d10,d2),
+        # so a page test sees a latched key, a switch on, a selector position.
+        for pin in os.environ["HASLER_FAKE_CLOSED"].split(","):
+            if pin.strip():
+                panel.digital.set(pin.strip(), True)
 
     if args.fake:
         # In-memory unless a state file is asked for: a dry run on a laptop

@@ -16,6 +16,7 @@
 # Calibration below is the stripboard's (hasler-hm.yaml, 19 Oct): the same pots
 # on the same ADS channels, 3V3A instead of the Pi's 3.3 V - re-check on the HAT.
 variant: hasler-hm
+title: "Hasler HM · Bern 1964"
 
 io:
   digital:
