@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.7.1 - 2026-11-07
 
+- Lyrics land on time: the radio now allows for the 1.7 s its sound takes to
+  reach the speaker, Earlier/Later move a quarter second and show the value,
+  and **Sync** sets it with one tap on the line being sung.
+- Lyrics timed for a different recording are no longer used.
 - A new radio's setup network has the password **haslerhm**, easy to say and
   printed on the card. A hand-over goes back to it; "Make a new one" still
   makes a random one.
