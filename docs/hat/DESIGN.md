@@ -355,6 +355,10 @@ guided calibration). Rev B fixes it in hardware:
   PC-amber die - amber, ember and the warm glow come from one broad-spectrum channel that dims
   without hue drift and barely moves with temperature; RGB is left for the moon blue. Avoid
   addressable WS2812/SK6812 parts (8-bit at ~1 kHz can't dim to ember smoothly).
+  Candidate: a non-addressable **5050 SMD RGBWW bead** (four separate chips, R+G+B+warm white,
+  usually 8 pins, ~20 mA per colour), e.g. AliExpress item 32804477609 - choose the warmest
+  white offered (2700-3000 K), check the pinout, mount it on a small board right behind the
+  diffuser, all anodes to the 5 V lamp rail, each cathode to a TLC59711 channel.
 - **Light behind the lens:** 1-2 mm opal acrylic or diffuser film, a 5-10 mm white-lined mixing
   cavity, black foam sealing the chamber so no light spills onto the keys. Check the lens tint
   with a torch first (an amber lens eats blue).
