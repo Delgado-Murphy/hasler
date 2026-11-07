@@ -164,7 +164,7 @@ class SourcesApi:
             if not t["available"] and not t.get("reason"):
                 # The owner sees this under each switch; the cause (moOde's
                 # renderers unreadable) is for the log.
-                t["reason"] = "Not running right now - try again in a minute"
+                t["reason"] = "Not running right now — try again in a minute"
         sources = getattr(self.actions.player, "sources", None)
         spotify = sources is None or "spotify" in sources
         try:
@@ -264,7 +264,7 @@ class SourcesApi:
             if not enabled:
                 log.warning("Bluetooth pairing refused: moOde's renderer settings can't be read")
                 raise Unavailable("Bluetooth isn't ready right now, so a phone can't pair yet "
-                                  "- try again in a minute")
+                                  "— try again in a minute")
         else:
             enabled = {}   # no moOde at all (a laptop, --fake): the fake player pairs
         if enabled and not enabled.get("bluetooth"):

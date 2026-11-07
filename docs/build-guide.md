@@ -264,8 +264,8 @@ top is loud but clean.
         the `curve:` points into `config/variants/hasler-hm.yaml`
         ([variants/hasler-hm.md, section 6](variants/hasler-hm.md#6-pot-calibration--phase-3b-once-the-ads1115-is-fitted)).
         The move to releases (Phase 4b) carries them over.
-      - **On the key page, after Phase 4b:** Settings → **Keys & knobs** →
-        **Calibrate**. It asks you to turn each knob to a few positions and
+      - **On the key page, after Phase 4b:** Settings → **Sound** → **If a knob
+        feels off** → **Calibrate**. It asks you to turn each knob to a few positions and
         saves the curve in `/etc/hasler/variant.d/`, so updates keep it.
 - [ ] Check the volume ceiling again, now with the knob turned fully up.
 
@@ -306,7 +306,7 @@ Steps:
       moodeutl -q "select value from cfg_system where param='spotifysvc'"   # expect 0
       ```
 - [ ] **Sign the radio in to Spotify.** No laptop, no tunnel: key page →
-      **Settings → Phones & casting → Spotify Connect → Sign in**, press any key
+      **Settings → Music accounts → Spotify → Sign in**, press any key
       on the radio to confirm, then on a phone go to **spotify.com/pair**, sign
       in with the **Premium** account and enter the code the page shows. The
       page switches to *Signed in as jd······fe* by itself.
@@ -390,7 +390,7 @@ last key (`cat /var/lib/haslerd/state.json` shows it).
 
 - [ ] The **PU** key: a tap goes to the next source (by default radio →
       Bluetooth → AirPlay → Spotify → radio; the owner can change the list on
-      the key page, Settings → Keys & knobs). Holding it opens Bluetooth
+      the key page, Settings → Keys). Holding it opens Bluetooth
       pairing for 120 s. On the building layout nothing says yes to the
       phone's code yet: confirm it on moOde's own page, or leave this check
       for after Phase 4b, where the radio does it by itself.
@@ -537,7 +537,7 @@ details are in [multiroom.md](multiroom.md).*
       The units and the `hasler-multiroom` helper came with the release in
       Phase 4b. (A radio set up before 0.4.0 needs `sudo scripts/bootstrap.sh`
       once more: a release can't install Debian packages.)
-- [ ] **Casting.** Key page → **Settings → Phones & casting**: AirPlay,
+- [ ] **Casting.** Key page → **Settings → Phones**: AirPlay,
       Bluetooth and *Other music apps* (UPnP / DLNA) each show *on* and running. A
       target whose program is missing says so and can't be switched on.
       Spotify Connect shows the radio's account (sign in or out there, Phase
@@ -545,7 +545,7 @@ details are in [multiroom.md](multiroom.md).*
 - [ ] **Room name.** Settings → **This radio** → room name (*Kitchen*).
       The page title changes; `hasler.local` does not. With two radios, the
       second answers at `hasler-2.local` by itself. **Use the room name on
-      phones** (Settings → Phones & casting) renames AirPlay, UPnP, Bluetooth and Spotify to *Hasler
+      phones** (Settings → Rooms → This room) renames AirPlay, UPnP, Bluetooth and Spotify to *Hasler
       Kitchen* one by one (a minute or two; Spotify blinks once).
 - [ ] **Multiroom** (needs two Haslers). On both: Settings → **Rooms** →
       *Play in several rooms*. On one, front page → **Also play on…** → tick the
@@ -645,7 +645,7 @@ owner should not stumble on:
 - **Lamp colours**: each colour of the pilot lamp, set by eye at night on the
   real lamp (see [lamp.md](lamp.md#palette));
 - **Knob curve details**: the calibration points behind each knob (the owner's
-  **Calibrate** is in Settings → Keys & knobs);
+  **Calibrate** is in Settings → Sound → If a knob feels off);
 - **Inside the player (moOde)**: a link to moOde's own pages;
 - **Diagnostics**: what answers and what doesn't, with details to copy into a
   bug report.

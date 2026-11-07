@@ -358,7 +358,7 @@ class StationsApi:
             while self._reports and now - self._reports[0] > 3600:
                 self._reports.popleft()
             if len(self._reports) >= REPORTS_PER_HOUR:
-                return 429, {"ok": False, "error": "that's a lot of reports - try again in an hour"}
+                return 429, {"ok": False, "error": "that's a lot of reports — try again in an hour"}
             self._reports.append(now)
             station = stations.by_id(sid, self.collection) if sid else None
             entry = {"t": int(now), "id": sid or stations.id_for_url(url, self.collection),

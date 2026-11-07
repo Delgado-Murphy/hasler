@@ -201,7 +201,7 @@ The host name never changes. The first radio is `hasler.local`; avahi gives a
 second one `hasler-2.local` by itself, and the page shows the address really
 in use.
 
-**Use the room name on phones** (Settings → *Phones & casting*, off by default) renames the casting targets
+**Use the room name on phones** (Settings → *Rooms* → *This room*, off by default) renames the casting targets
 to *Hasler Kitchen*: AirPlay, UPnP and Bluetooth through moOde's own Renderers
 form, Spotify Connect through go-librespot's `device_name`. moOde's worker takes
 one job at a time and can take a minute, so the radio applies them one by one
@@ -213,7 +213,7 @@ Switching it off puts *Hasler* back everywhere. The code is
 
 ## Casting
 
-Settings → **Phones & casting** on the key page.
+Settings → **Phones** on the key page.
 
 | Target | What plays it | Notes |
 |---|---|---|
