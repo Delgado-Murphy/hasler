@@ -62,6 +62,7 @@ from .sleep import SleepTimer
 from .web.checkin_api import CheckinApi
 from .web.help_api import MAKERS_TAILNET, HelpApi
 from .web.notes_api import NotesApi
+from .web.support_api import SupportApi
 from .web.report import ReportApi
 from .web.spotify_account_api import SpotifyAccountApi
 from .web.stations_api import StationsApi
@@ -1275,6 +1276,8 @@ def build_web(
     # /api/checkin/preview ("See what it sends"): support, all unprivileged.
     app.extra_routes.append(ReportApi(app))
     app.extra_routes.append(NotesApi(app, state_dir))
+    # /api/support: "Send to the makers" (the makers' private support list) and their replies
+    app.extra_routes.append(SupportApi(app, state_dir))
     app.extra_routes.append(CheckinApi(app))
     app.extra_routes.append(app.spotify_account)
     # /api/stations/try, /mine, /report: the station browser (My stations in <state>/stations.json)

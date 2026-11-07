@@ -615,7 +615,9 @@ radio puts together what they usually ask: the version, what the lamp says,
 what's playing, what went wrong inside. Nothing private (untick **Include my
 Wi-Fi name** if you like). Add a line, then **Share…** or **Copy**, or
 **Email the makers**. If you only phone, read out the six lines under **Say
-this to the makers**.
+this to the makers**. Where the makers have set it up, **Send to the makers**
+sends it straight to their private support list (you need no account), and
+their answer comes back under **This radio → From the makers**.
 
 **Let them look from afar.** **Settings → This radio → Help from the makers →
 Let the makers help (24 h)**, then press a key on the radio. Send the link the

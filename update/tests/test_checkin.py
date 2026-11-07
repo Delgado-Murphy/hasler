@@ -17,6 +17,14 @@ from hasler_update import checkin
 from hasler_update.check import Checker
 from hasler_update.layout import box_settings
 
+
+@pytest.fixture(autouse=True)
+def pokes(monkeypatch):
+    """Never knock on a real haslerd: the replies poke after a send, recorded."""
+    calls = []
+    monkeypatch.setattr(checkin, "poke_replies", lambda *a, **k: calls.append(a))
+    return calls
+
 DIAG = {
     "wifi": {"ssid": "Casa", "signal": 82, "hotspot": False, "words": "On Casa, good signal"},
     "online": True,
@@ -187,3 +195,16 @@ def test_a_release_from_a_usb_stick_installs_against_the_trust_on_the_radio(worl
     assert box_settings(world.layout)["update_url"].startswith("file://")
     st = Checker(world.layout, now=world.now, facts={"arch": "aarch64", "os": "trixie", "moode": "10.0.2", "python_abi": "cp313"}).stage()
     assert st["result"] == "ok" and st["available"]["version"] == "1.0.0" and st["staged"]
+
+
+def test_a_sent_check_in_asks_haslerd_for_the_makers_replies_and_a_failed_one_does_not(world: World, pokes):
+    (world.root / "etc/machine-id").write_text("0123456789abcdef0123456789abcdef\n")
+    world.layout.upd.mkdir(parents=True, exist_ok=True)
+    fetch = lambda url: DIAG if url.endswith("/diagnostics") else HEALTH   # noqa: E731
+    checkin.after_check(world.layout, _box(), NOW, fetch, lambda *a, **k: 500)
+    assert pokes == []
+    checkin.after_check(world.layout, _box(), NOW, fetch, lambda *a, **k: 204)
+    assert len(pokes) == 1
+    assert checkin.REPLIES_URL == "http://127.0.0.1:8080/api/support/replies"
+    checkin.after_check(world.layout, _box(), NOW, fetch, lambda *a, **k: 204, poke=lambda: pokes.append("own"))
+    assert len(pokes) == 1          # sent today already: nothing new to ask

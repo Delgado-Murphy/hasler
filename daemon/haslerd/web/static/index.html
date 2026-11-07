@@ -7145,6 +7145,27 @@ function renderWrong(panel){
 /* "Tell the makers": the sheet. The report is assembled by the radio (GET /api/report, web/report.py: the
    one place that keeps secrets out), with the owner's line and, unless unticked, the Wi-Fi name. */
 const tellUi = {note:'', wifi:true};
+/* "Send to the makers" (GET /api/support, web/support_api.py): when the makers set up their check-in server
+   (box.yaml checkin_url), the report goes straight to Delgado & Murphy's private support list and comes back
+   with a request number; their reply arrives as a note under From the makers. */
+let support = null;   // null = not asked yet, {missing} = older software, {err}, or GET /api/support
+async function loadSupport(){
+  try { const r = await api('GET', '/api/support'); support = r.status === 404 ? {missing:true} : r.ok && r.json ? r.json : {err:true}; }
+  catch (_) { support = {err:true}; }
+  return support;
+}
+const canSend = () => !!(support && support.available);
+function sentWords(req){ return req ? 'Sent · request #' + req.number + ' · ' + day(req.at) : ''; }
+// The makers' replies to a request, fetched into the notes (POST /api/support/replies) - at most every 10 minutes,
+// and only once a request has gone.
+let repliesAt = 0;
+async function pullReplies(){
+  if (Date.now() - repliesAt < 600000) return;
+  if (!support) await loadSupport();
+  if (!canSend() || !(support.requests || []).length) return;
+  repliesAt = Date.now();
+  try { await api('POST', '/api/support/replies', {}, {timeout:20000}); } catch (_) {}
+}
 async function reportText(){
   const r = await api('GET', '/api/report?note=' + encodeURIComponent(tellUi.note) + '&wifi=' + (tellUi.wifi ? '1' : '0'), undefined, {timeout:15000});
   if (!r.ok || !r.json || !r.json.text) throw new Error((r.json && r.json.error) || 'no report');
@@ -7171,12 +7192,41 @@ function tellMakers(){
     const text = await reportText(), subject = 'My Hasler radio' + (radioInfo && radioInfo.short_id ? ' (' + radioInfo.short_id + ')' : '');
     location.href = 'mailto:' + encodeURIComponent(radioInfo.makers_contact) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(text);
   });
+  // Send to the makers: only with the makers' server set up (support.available); the other buttons stay.
+  const sent = h('p', {class:'hint', id:'tellSent', role:'status'}), sendErr = h('p', {class:'note-bad', id:'tellSendErr', hidden:true});
+  const sendBtn = h('button', {type:'button', class:'btn small primary', id:'tellSend', hidden:true}, 'Send to the makers');
+  const who = h('p', {class:'hint', id:'tellWho'});
+  const paintSend = () => {
+    const on = canSend();
+    sendBtn.hidden = !on;
+    if (on && shareBtn) shareBtn.classList.remove('primary');
+    if (on && mailBtn) mailBtn.classList.remove('primary');
+    who.textContent = on ? 'Send to the makers puts it on Delgado & Murphy’s private support list, nowhere public, and their answer comes back here under From the makers. Or share it yourself.'
+      : 'Send it to ' + makersWho() + ', and nobody else.';
+    const last = on && support.requests && support.requests[0];
+    sent.textContent = sentWords(last); sent.hidden = !last;
+  };
+  sendBtn.onclick = async () => {
+    sendBtn.disabled = true; sendErr.hidden = true;
+    let r = null;
+    try { r = await api('POST', '/api/support/send', {note: tellUi.note, wifi: tellUi.wifi}, {timeout:30000}); } catch (_) {}
+    sendBtn.disabled = false;
+    if (r && r.ok && r.json && r.json.number){
+      support = {...(support || {}), available: true, requests: r.json.requests || [{number: r.json.number, at: r.json.at}]};
+      paintSend(); toast('Sent to the makers · request #' + r.json.number);
+    } else {
+      sendErr.textContent = !r ? NET_ERR : (r.json && r.json.error) || 'Couldn’t send it. Use Share or Copy instead.';
+      sendErr.hidden = false;
+    }
+  };
+  paintSend();
+  if (!support || support.err) loadSupport().then(() => { if (dlg.open) paintSend(); });
   dlg.append(h('h2', {id:'dlgTitle'}, 'Tell the makers'),
     h('p', {class:'sub'}, 'This puts together what the makers usually ask first: the version, what the lamp says, what’s playing, and the last few things that went wrong inside. Nothing private: no passwords, no accounts, no phone names. Add a line about what you noticed.'),
     ta,
     h('label', {class:'tell-wifi', for:'tellWifi'}, cb, 'Include my Wi-Fi name'),
-    h('p', {class:'hint', id:'tellWho'}, 'Send it to ' + makersWho() + ', and nobody else.'),
-    h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', id:'tellClose', onclick: () => dlg.close()}, 'Close'), copyBtn, mailBtn, shareBtn),
+    who, sent, sendErr,
+    h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', id:'tellClose', onclick: () => dlg.close()}, 'Close'), copyBtn, mailBtn, shareBtn, sendBtn),
     h('p', {class:'hint'}, 'The makers can also look for themselves, with your say-so: ', h('a', {href:'#settings/radio/help', onclick: () => dlg.close()}, 'Help from the makers'), '.'));
   dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; if (from && from.isConnected && from.focus) from.focus({preventScroll:true}); };
   dlg.onclick = null;
@@ -7187,6 +7237,7 @@ function tellMakers(){
    with the date. Seen folds a note away; it stays readable under This radio. */
 let notes = null;   // null = loading, {missing} = older software, {err}, or GET /api/notes
 async function loadNotes(){
+  await pullReplies();   // the makers' answers to a request sent from Tell the makers, if any
   try { const r = await api('GET', '/api/notes'); notes = r.status === 404 ? {missing:true} : r.ok && r.json ? r.json : {err:true}; }
   catch (_) { notes = {err:true}; }
   if (onPage('radio')) rerender();

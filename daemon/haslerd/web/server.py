@@ -201,6 +201,7 @@ EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "
                   "/api/stations/try", "/api/stations/mine", "/api/stations/report",  # web/stations_api.py
                   "/api/report",                              # web/report.py ("Tell the makers")
                   "/api/notes",                               # web/notes_api.py ("From the makers")
+                  "/api/support",                             # web/support_api.py ("Send to the makers")
                   "/api/checkin",                             # web/checkin_api.py ("See what it sends")
                   "/api/fake")                                # web/fake_api.py (--fake only)
 
