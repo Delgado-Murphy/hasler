@@ -18,9 +18,10 @@ side ($208.02 with shipping). PCB Y3-4278125A, PCBA SMT026101460923.
   That changed only the top silkscreen; the boards being built have the old Phoenix outline.
 - The commits after 37161f0 change only fab data for a reorder, not the boards on order.
 
-**When the boards arrive:** break off the rails (below), solder J1, then follow "Bring-up". Still
-untested on real hardware: everything, in particular the eFuse start-up with the Amp4 and Pi
-attached (step 4) and whether the CH224A falls back to 12 or 15 V when a charger offers no 20 V.
+**When the boards arrive:** break off the rails (below), solder J1, then follow "Bring-up". The
+first board was brought up on 6-7 November 2026 (see "Bring-up results, rev A"): the eFuse start-up
+with the Amp4 and Pi attached works. Still untested: whether the CH224A falls back to 12 or 15 V
+when a charger offers no 20 V.
 
 ## Breaking off the rails
 
@@ -182,6 +183,38 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
 7. **If it won't start** (20V blinking with nothing shorted, the Pi rebooting at power-up): check
    JP11 is open. The other way round, if you'd rather never feed the amp 5 V or 9 V and the amp
    turns out to start late enough, bridge JP11 for a 10.3 V turn-on (see DESIGN.md first).
+
+## Bring-up results, rev A (first board, 6-7 November 2026)
+
+On the bench radio (Pi 4B 8 GB + Amp4 Pro, the HM cabinet on J2), software 1.1.4-1.1.7.
+
+- **Rails and J1:** broken off, soldered and checked by the owner before power.
+- **Step 4, start-up:** booted on the first plug of a USB-C PD charger with the amp and Pi
+  attached. `vcgencmd get_throttled` = `0x0` (no under-voltage) through the session.
+  `i2cdetect -y 1`: `20` (MCP23017), `48` (ADS1115), `4d` as `UU` (amp driver). The CH224A is
+  not on the bus, as expected with JP9/JP10 open.
+- **Step 5, the cabinet:** `variant: hasler-hm-hat` in box.yaml; the stripboard's calibration
+  overlay applied unchanged (it had no `io.digital.addr`). Raw readings on 3V3A match the
+  stripboard's: volume ~26 (right end) to ~26 300 (left end), tone ~3 to ~26 300, wiper noise
+  about +-1 count at rest.
+- **Working:** keys 1-6 and PU, the tone end switch (standby, resume), both knobs over their
+  full range, and the lamp's red, green, blue and amber.
+
+Two faults, both in the re-crimped cabinet ribbon, not on the HAT:
+
+- **Volume wiper wire loose.** Its signature: the reading crept slowly with the knob still (the
+  100 nF filter cap holding a floating input), followed the tone knob (the neighbouring wire),
+  jumped by half the scale while turning, and once sat at full scale - **full volume** - for
+  15 s when PU was pressed. Keep the volume low until the knobs read cleanly.
+- **Blue lamp dark** although GPIO 27 was driven fully on (red and green fine): a wiring fault
+  on the blue line, found and fixed by the owner.
+
+Lesson for the next cabinet: after re-crimping, check every wire for continuity from its J2 pin
+to the cabinet end before power, and wiggle the ribbon at both ends with a meter on the wipers.
+
+Not covered by this bring-up: the step 1 measurements on a bench supply (OVLO, PG, scope
+traces), the CH224A's fallback on a 12 V, 15 V or 5 V-only charger, and the eFuse's temperature
+after hours at full volume.
 
 ## Debug aids on the board
 

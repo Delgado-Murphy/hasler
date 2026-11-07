@@ -4,6 +4,11 @@ Companion to `BRIEF.md`. Decided 2026-10-13. The KiCad project is in `hardware/h
 everything there is generated from `hardware/hat/gen/design.py`, which is the single
 source for the netlist below.
 
+**Status (7 November 2026):** the first rev A board is brought up and runs the bench radio:
+USB-C start-up with the Amp4 and Pi, the MCP23017, the ADS1115, the lamp and every cabinet
+control work. Results, the two cabinet-wiring faults found and what is still untested:
+`hardware/hat/ORDERING.md`, "Bring-up results, rev A".
+
 ## The stack
 
 Measured from HiFiBerry's own STEP model (`amp4.step`, board 65 × 56, origin at its centre),
