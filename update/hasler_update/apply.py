@@ -19,6 +19,7 @@ from __future__ import annotations
 import fcntl
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -324,13 +325,26 @@ def sync_tree(src: Path, dst: Path, exclude: tuple[str, ...] = ()) -> None:
                 shutil.rmtree(Path(dirpath) / d, ignore_errors=True)
 
 
+def _special(path: Path) -> bool:
+    """A named pipe, socket or device: copytree can't copy it (it would block or
+    raise), and a snapshot has no use for it. lgpio leaves a ``.lgd-nfy0`` pipe
+    in haslerd's working directory - the state dir - on a radio with a GPIO
+    interrupt line (the HAT), which is how 1.5.0's switch first failed."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return stat.S_ISFIFO(st.st_mode) or stat.S_ISSOCK(st.st_mode) or stat.S_ISCHR(st.st_mode) or stat.S_ISBLK(st.st_mode)
+
+
 def copy_tree(src: Path, dst: Path, exclude: tuple[str, ...] = ()) -> None:
     if dst.exists():
         shutil.rmtree(dst)
     if src.is_dir():
         shutil.copytree(src, dst, symlinks=True,
                         ignore=lambda d, names: [n for n in names
-                                                 if (Path(d) / n).relative_to(src).as_posix() in exclude])
+                                                 if (Path(d) / n).relative_to(src).as_posix() in exclude
+                                                 or _special(Path(d) / n)])
     else:
         dst.mkdir(parents=True)
 

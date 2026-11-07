@@ -93,3 +93,17 @@ def test_box_settings_two_channels_and_auto_default(tmp_path):
         assert box_settings(layout)["update_mode"] == "ask"
     layout.box_yaml.write_text("schema: 1\nchannel: bench\nupdate_mode: bogus\n")
     assert box_settings(layout) == {**box_settings(layout), "channel": "bench", "update_mode": "ask"}
+
+
+def test_copy_tree_skips_named_pipes_and_sockets(tmp_path):
+    """lgpio leaves a .lgd-nfy0 FIFO in haslerd's state dir (its cwd); a snapshot must step over it."""
+    import os
+    from hasler_update.apply import copy_tree
+    src = tmp_path / "state"
+    src.mkdir()
+    (src / "settings.json").write_text("{}")
+    os.mkfifo(src / ".lgd-nfy0")
+    dst = tmp_path / "snap"
+    copy_tree(src, dst)
+    assert (dst / "settings.json").read_text() == "{}"
+    assert not (dst / ".lgd-nfy0").exists()

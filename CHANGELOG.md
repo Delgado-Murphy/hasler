@@ -1,153 +1,86 @@
 # Changelog
 
+## 1.5.1 - unreleased
+
+- Updating no longer trips over a stray named pipe in the radio's state folder
+  (it stopped the switch to 1.5.0 on the bench radio).
+- The 1.5.0 notes below, rewritten so they can be read.
+
 ## 1.5.0 - 2026-11-07
 
-The owner's round: Settings, the first setup, moving the radio, what a radio
-ships with, and support. Seven expert reviews (UX, UI, onboarding, moving,
-hardware, defaults, support) turned into one release.
+Settings, the first setup, moving the radio, what a radio ships with, and
+getting help - all reviewed, all reworked.
 
-- **The front page tells the truth.** The dial's needle has two end stops:
-  "Phone" (the phone's name) and "From the page" (the station or playlist
-  started from Browse), so it never parks on the last key when the music isn't
-  from a key. A key is drawn *down* (pressed, or latched on the Excelsior)
-  separately from *lit* (its preset plays); PU is lit only when PU chose the
-  source. AirPlay and Spotify Connect show their song title like Bluetooth
-  does; "waiting for a phone" only while PU parked the radio and none came;
-  after a phone stops, the needle holds for the 20 s grace, then slides to the
-  resumed key or parks un-bolded. After two minutes of a dead stream: "The
-  station may be off the air - try another key".
-- **Settings, reorganised.** Sound · Keys · Phones · Music accounts · Rooms ·
-  Pilot lamp · This radio (and the hidden Maker tools). The Spotify and
-  YouTube Music accounts live together under Music accounts; the room name and
-  Identify under Rooms; knob calibration at the bottom of Sound ("If a knob
-  feels off"); one "What phones call the radio" row; the pilot lamp's settings
-  before its glossary (now folded); the other addresses folded at the bottom of
-  This radio. Old links still work. Each page says once how its changes are
-  kept; the seven browser pop-ups are the page's own sheet; an instant change
-  the radio refused shows the reason next to the control; Undo toasts say the
-  old value; "Needs attention" also lists a Spotify key with no account, a
-  sign-in code waiting, an update that rolled back, Home Assistant out of
-  reach, the YouTube Music helper down, a fault - and a dot on the front page's
-  gear while it has rows. Declining "Allow this address" leaves an Allow in the
-  toast. Many small things: disclosure chevrons, real checkboxes, skeleton
-  rows, an opaque save bar, the wizard's Cancel in reach, Show/Hide on the Home
-  Assistant token, friendly names, an empty state for the other Haslers,
-  em dashes everywhere.
-- **Make it yours.** A new radio shows, on the Settings home, the choices
-  that are still untouched - how loud it may go (first: the 1964 speaker),
-  what's on the keys, the room's name, where it stands, a phone, Spotify,
-  YouTube Music, Home Assistant, a printed card - computed from what the radio
-  knows (`volume_limit_set`, `factory`, `installed_at`), with Skip and Hide
-  kept on the radio; done rows fold into one line; when it's all done, "That's
-  it. It's yours." and a green OK from the lamp. The front page carries one
-  quiet line for the first week, and says so when the radio is on its setup
-  hotspot. The Sound page explains the key-6 recipe while the ceiling is
-  unset. The Wi-Fi page finally describes the lamp it has (amber CQ, green OK,
-  red then CQ), in both languages, with errors next to the field, a real
-  "waiting for the key press" state and "Look again". Maker tools gets a
-  **Handover** readiness list and a printable **welcome card** (address,
-  setup network and - if ticked - its password, the lamp legend, off/asleep,
-  "dark after plugging in", the makers' contact, the radio's short id).
-- **Starter sets.** The keys ship from a set chosen by taste, not by region:
-  Eclectic (the default), Classical & calm, Jazz & soul, Pop & hits · España,
-  Raíces, Family kitchen - each six stations and YouTube Music playlists that
-  play on a signed-out radio, named by catalogue id so a stream fix reaches
-  every radio (`config/presets/`), with a seventh for the Excelsior's Tape.
-  "Start from a set" at the bottom of Edit keys and from Make it yours; Reset
-  keys goes back to the chosen set; `starter` in hasler.txt/box.yaml
-  preselects. Keys you never touched follow the release (`defaults_rev`; a
-  migration moves old URL presets to ids). A `sleep` verb for holds and
-  combinations. New Hasler HMs default to `hasler-hm-hat`, which now inherits
-  its behaviour from `hasler-hm.yaml` (`extends`). The lamp's place comes from
-  the clock's time zone until you choose one. The Excelsior owner has a
-  section of their own in the guide.
-- **Moving this radio** (This radio): another room, another home, a new
-  owner. Networks the radio knows, each with **Forget** (a key press from the
-  home network); the setup network's name and password to write down, or
-  print; **Hand over to a new owner** (a key press): forgets your Wi-Fi
-  networks and makes a new setup password shown once, your Spotify, YouTube
-  Music and Home Assistant sign-ins, phones, keys, stations, the room's name
-  and the allowed addresses; keeps the calibration, the lamp, the volume
-  ceiling and the updates; restarts into setup mode. After joining a new
-  Wi-Fi the lamp blooms green and taps OK (as the guide always said), the
-  other rooms and Home Assistant are told at once, and "New Wi-Fi" shows for a
-  day. The setup network is named after the room ("Hasler Kitchen") and its
-  page says which radio it is and can blink its lamp; a new radio gets a
-  stable name (`hasler-ab12`) and its IP shows beside it. **Clock and place**
-  (offered once from Home Assistant). A key can open the setup network
-  (`wifi_setup`, unbound by default). Reset keys keeps a day's backup with
-  Undo. "If it moves" on the key card.
-- **Hardware guards.** The volume ceiling has a top the maker sets per model
-  (`audio.volume_limit_max`, 90 on the HM; box.yaml lowers it per radio) that
-  the page can't exceed; mono, the defaults and the amp card come from the
-  model's `audio:` block. The lamp's SOS now says why (card full, keys dead,
-  no sound card, too hot, update stuck) on the Lamp page and This radio, and
-  says when it cleared. **How the radio is** on This radio: Wi-Fi and signal,
-  internet, temperature and throttling, the memory card, how it was last
-  switched off and how often the power was cut, running since, player and
-  tone DSP, the last update - with **Restart the radio** (a key press). Maker
-  tools: which descriptor file is loaded, what the panel found on the bus, a
-  copyable support bundle with the secrets out, "Lamp never checked on this
-  radio", the LED's part id stamped into the check, an `os_updates` switch; a
-  "This Wi-Fi is a phone hotspot or capped" switch under Updates; "Back to as
-  shipped" on an owner's calibrated knob; a knob that reads past its
-  calibration or wanders while still says so (and a volume excursion to full
-  scale is held back for that poll).
-- The pilot lamp's standard calibration is the bench LED's Lamp check (floors,
-  balance, palette, green gain, ember levels), shipped in every model's file,
-  so a radio with the same LED starts calibrated and "Back to standard" in the
-  Lamp check returns to it.
-- HAT: the tone pot reads the other way round from the stripboard (high at the
-  anticlockwise end, low fully clockwise). hasler-hm-hat.yaml now ships a
-  falling curve, so clockwise is brighter and the page's tone dot follows the
-  knob. A radio that kept the 19 Oct stripboard curve in variant.d has its tone
-  backwards until Calibrate is re-run (or the overlay's tone curve replaced).
+The front page
+- The needle no longer parks on the last key: it points to "Phone" or "From
+  the page" when the music isn't from a key.
+- A key shows "pressed" and "playing" separately (the Excelsior's latched keys
+  included); PU lights only when PU chose the source.
+- AirPlay and Spotify Connect show the song title, like Bluetooth.
+- After two minutes of a dead stream: "The station may be off the air".
 
-Support: from "something's wrong" to "it's fixed, and stays fixed".
+Settings
+- Seven rows: Sound · Keys · Phones · Music accounts · Rooms · Pilot lamp ·
+  This radio. Old links still work.
+- Spotify and YouTube Music accounts together; the room name and Identify
+  under Rooms; knob calibration under Sound; one "What phones call the radio".
+- The pilot lamp's settings first, its glossary folded.
+- Every page says once how its changes are kept; the browser's grey pop-ups
+  are gone; a refused change says why, next to the control.
+- "Needs attention" also lists a Spotify key with no account, an update that
+  went back, Home Assistant out of reach, and the lamp's SOS - with a dot on
+  the front page's gear.
 
-- **Something's wrong?** on the Settings home: the radio checks itself and
-  says what it found, in plain words - the lamp right now (colour, rhythm,
-  meaning, with the fault named), six lines to read out to the makers on the
-  phone, a card for each thing wrong (a full memory card, dead keys, no sound
-  card, heat, a stuck update, a stalled station, no internet, the setup
-  hotspot, a rollback, stale updates, player restarts, a power cut, a player
-  not answering) with one thing to try, and "Everything answers" when it does.
-  A rollback's reason is now in the owner's words on the Updates page ("the
-  keys weren't answering after the switch"); the raw string stays for the
-  makers. The front page's "Can't reach the radio" says the two things that
-  usually explain it; the stale-updates line says the radio keeps working.
-- **Tell the makers**: a report (`GET /api/report`) with what the makers ask
-  first and the last few things that went wrong inside, assembled by the radio
-  with no password, account, phone name or login link in it (the Wi-Fi name
-  only with the tick), plus the owner's own line; Share…, Copy, or Email the
-  makers when `makers.contact` is in box.yaml (`makers_contact` in hasler.txt;
-  `/api/info` `makers_contact`). The radio's short id (`/api/info` `short_id`)
-  is at the bottom of Settings.
-- **From the makers**: `hasler-note "…" [--ok]` leaves a note on the radio
-  (`maker-notes.jsonl`, capped), shown under This radio with the date; Seen
-  folds it away. `--ok` makes the lamp bloom green and tap OK.
-- **Remote help's edges**: the owner's 24-hour yes survives a restart (a new
-  link after boot, no second key press: `hasler-help-resume.service`,
-  `/var/lib/hasler-help/consent.json`); "Remote help is waiting" also on the
-  front page, and "no internet" when there is none; the waiting copy says what
-  to do after the hour; afterwards, how long a maker was on. With the key
-  board dead but the knobs alive, a turn of the volume knob says yes for help;
-  with nothing to touch, `hasler-help.txt` on the card's boot partition with
-  the line `start` (`hasler-help-rescue`). The no-panel message is for the
-  owner now.
-- **Tell the makers how the radio is**: the opt-in daily check-in, off by
-  default, under Updates - about half a kilobyte after the daily check to the
-  makers' own endpoint (`checkin_url`; `tools/checkin/`: a Cloudflare Worker +
-  KV with a one-table dashboard), with "See what it sends" showing today's
-  payload verbatim. Nothing about the network, names, the room, a place or
-  what plays - a test keeps the forbidden keys out. Skipped on a metered
-  connection; "Couldn't send today" when it couldn't.
-- The boot lamp taps SOS after ten minutes without haslerd. A paired spare
-  card: `hasler-install memory DIR` on the radio, `hasler-memory/` on the new
-  card (box.yaml with the same box_id, calibration, trust, settings, keys,
-  stations; never secrets). Docs: "If the radio has to come back", "If the
-  makers can't be reached", the three "boots but no page" signatures, "Dark
-  after plugging in?", the makers' phone script and bench order.
+Make it yours
+- A new radio lists what is still to choose: how loud, the keys, the room,
+  where it stands, a phone, the accounts, a card - and ticks them off itself.
+- The Wi-Fi setup page describes the lamp it has (amber CQ, green OK).
+- The Sound page explains how to set the ceiling while it is unset.
+- For makers: a Handover list and a printable welcome card.
+
+Keys
+- Starter sets by taste: Eclectic, Classical & calm, Jazz & soul, Pop & hits
+  · España, Raíces, Family kitchen - stations and YouTube Music playlists
+  that play on a fresh radio. "Start from a set" is at the bottom of Edit
+  keys; Reset keys goes back to the chosen set.
+- Keys you never changed follow the release when a station moves.
+- A "sleep" job for a held key or a combination.
+- The Excelsior has its own section in the guide.
+
+Moving this radio
+- A page for the three cases: another room, another home, a new owner.
+- Forget a Wi-Fi network; the setup network's name and password, to write
+  down or print; the lamp blooms green when it joins a new Wi-Fi.
+- Hand over to a new owner: forgets everything that was yours, keeps what
+  belongs to the cabinet, and restarts into setup mode.
+- The setup network carries the room's name; a key can open it.
+
+Sound and health
+- The volume ceiling has a top the maker sets for the speaker (90 on the HM).
+- The lamp's SOS says why: a full card, dead keys, no sound card, heat, a
+  stuck update.
+- "How the radio is": Wi-Fi, internet, temperature, the card, the last
+  switch-off, power cuts, the player - and "Restart the radio".
+
+Help
+- "Something's wrong?" checks the radio and says what it found, in plain
+  words, with one thing to try.
+- "Tell the makers": a report to share or copy, with nothing private in it;
+  the makers' address when they left one.
+- "From the makers": a note the makers leave on the radio after a repair.
+- Remote help survives a restart; a knob turn can say yes when the keys are
+  dead.
+- Optional, off to start: "Tell the makers how the radio is" once a day,
+  with "See what it sends".
+
+For makers
+- The HAT is the default model for new HMs; its tone pot ships the right way
+  round.
+- The bench LED's Lamp check is every model's standard calibration.
+- A paired spare card (`hasler-install memory`); a support bundle; "Lamp never
+  checked on this radio"; a knob that drifts says so.
+- The check-in's server lives in `tools/checkin/` (a Cloudflare Worker);
+  `makers.contact`, `checkin_url` and `starter` in box.yaml / hasler.txt.
 
 ## 1.4.0 - 2026-11-07
 
