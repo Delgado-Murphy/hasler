@@ -22,15 +22,17 @@
 //   cron (wrangler.toml [triggers], daily 06:00 UTC): yesterday's anonymous fleet roll-up as
 //                      fleet:<date> (counts only, no box ids; kept 400 days), records not seen for
 //                      90 days deleted, and the quiet / YouTube / trend alerts.
-//   POST /v1/report, POST /v1/github, GET /v1/replies, POST /v1/replies/ack:
-//                      "Send to the makers" (support.js; SUPPORT.md).
+//   POST /v1/report, POST /v1/reply, POST /v1/github, GET /v1/replies, POST /v1/replies/ack:
+//                      "Write to the makers": an owner's request becomes an issue in the makers'
+//                      private GitHub repo, a write-back a comment on it, and a "/owner ..." comment
+//                      comes back to the radio (support.js; SUPPORT.md).
 //
 // Bindings (wrangler.toml): CHECKINS (KV). Vars/secrets: CHECKIN_TOKEN (optional, the shared word),
 // DASHBOARD_KEY (optional), DASHBOARD_URL (the alerts' links), ALERTS ("off" mutes them).
 // Support (optional): SUPPORT (KV), GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, SUPPORT_REPO,
 // ENROL_PER_HOUR, REPORTS_ALL_PER_DAY (enrol.js; defaults 30 and 200). README.md has the steps.
 
-import { handleReport, handleGithub, handleReplies, issuesFor, repoOf } from "./support.js";
+import { handleReport, handleFollowup, handleGithub, handleReplies, issuesFor, repoOf } from "./support.js";
 import { handleEnrol, authFor } from "./enrol.js";
 import { normalize, dayRow, withDay } from "./model.js";
 import { rollup } from "./fleet.js";
@@ -205,6 +207,9 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/v1/report") {
       return handleReport(request, env, now);   // checks the radio's word itself, once it knows the radio
+    }
+    if (request.method === "POST" && url.pathname === "/v1/reply") {
+      return handleFollowup(request, env, now); // the owner writes back on a request (the same word)
     }
     if (request.method === "POST" && url.pathname === "/v1/github") {
       return handleGithub(request, env);        // GitHub signs it; the radios' token isn't GitHub's

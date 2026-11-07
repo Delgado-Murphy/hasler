@@ -7,9 +7,16 @@
 //                            16 KB. At most PER_DAY a day per box_id (429 after). The same box_id with
 //                            the same note within DEDUP_S is a comment on the issue it made, not a new
 //                            one. Answers {ok, number, deduped}. The IP is never read or stored.
+//   POST /v1/reply           the owner writes back on a request: {schema: 1, box_id, issue, note}, same
+//                            token as a report. Only for an issue this radio opened (issue:<n>); a
+//                            comment on it, the owner's lines quoted (so none can start "/owner"); a
+//                            closed issue opens again, quietly (no "reopened" note goes back). At most
+//                            FOLLOWUPS_PER_DAY a day per box_id. Answers {ok, number, reopened}.
 //   POST /v1/github          GitHub's webhook (issue_comment, issues), HMAC-SHA256 verified with
 //                            GITHUB_WEBHOOK_SECRET (refused when unset). A comment with a line that
-//                            starts "/owner " is queued for that issue's radio; so are the issue's
+//                            starts "/owner " is queued for that issue's radio, everything after
+//                            "/owner" with its line breaks (MAX_REPLY); editing that comment queues the
+//                            new words under the same id ({edited: true}); so are the issue's
 //                            states: closed ("done", folding in a /owner reply not yet fetched),
 //                            reopened, and the label "seen" (once). Those replies carry state: seen|done.
 //   GET  /v1/replies?box_id= the radio's queued replies (the shared word or that radio's own token): {replies: [{id, at, text, issue}]}
@@ -19,8 +26,9 @@
 // Secrets: GITHUB_TOKEN (fine-grained, Issues read/write on the support repo only),
 // GITHUB_WEBHOOK_SECRET. Var: SUPPORT_REPO (default Delgado-Murphy/hasler-support).
 //
-// KV keys (SUPPORT): rate:<box>:<day> (a count, 2 days), last:<box> (the last note's hash and
-// issue, DEDUP_S), issue:<n> (which radio, kept), issues:<box> (its last few issue numbers and their state, open / seen / done, for the
+// KV keys (SUPPORT): rate:<box>:<day> (a count, 2 days), rate:reply:<box>:<day> (the same, for write-backs),
+// quiet:reopen:<n> (the owner's write-back opened it again: no "reopened" note, an hour), last:<box> (the last note's hash and
+// issue, DEDUP_S), issue:<n> (which radio, kept), issues:<box> (its last few issue numbers and their state, open / seen / answered / done, for the
 // dashboard), replies:<box> (the queue, at most MAX_REPLIES), said:seen:<n> ("seen" said once).
 // Who may report for, or read the replies of, a radio: enrol.js authFor (the shared CHECKIN_TOKEN, or
 // that radio's own token from POST /v1/enrol).
@@ -34,13 +42,18 @@ export const DEDUP_S = 600;
 export const DEFAULT_REPO = "Delgado-Murphy/hasler-support";
 const MAX_TEXT = 12000;
 const MAX_NOTE = 600;
-const MAX_REPLY = 600;
+const MAX_REPLY = 2000;
+const MAX_FOLLOWUP = 2000;
+export const FOLLOWUPS_PER_DAY = 20;
 const MAX_REPLIES = 20;
 const ISSUES_KEPT = 10;
 const BOX_RE = /^[A-Za-z0-9._-]{1,64}$/;
 
 const json = (doc, status = 200) => new Response(JSON.stringify(doc), { status, headers: { "content-type": "application/json; charset=utf-8" } });
 const oneLine = s => String(s ?? "").replace(/\s+/g, " ").trim();
+// Line breaks kept: spaces squeezed within each line, at most one blank line in a row.
+export const tidyLines = s => String(s ?? "").replace(/\r\n?/g, "\n").split("\n").map(l => l.replace(/[ \t\f\v]+/g, " ").trim())
+  .filter((l, i, a) => l || (i > 0 && a[i - 1])).join("\n").trim();
 
 export function repoOf(env) {
   const r = String((env && env.SUPPORT_REPO) || DEFAULT_REPO).trim();
@@ -90,7 +103,7 @@ const fence = s => String(s).replace(/`{3,}/g, m => "'".repeat(m.length));
 
 export function bodyFor(doc) {
   const parts = [
-    "From a radio's **Tell the makers** sheet. Reply to the owner with a comment that starts `/owner ` " +
+    "From a radio's **Write to the makers** sheet. Reply to the owner with a comment that starts `/owner ` " +
     "(the rest of the comment goes to the radio as a note from the makers; it's all the owner sees).",
     "", "```text", fence(doc.text.trimEnd()), "```",
   ];
@@ -166,6 +179,46 @@ export async function handleReport(request, env, now) {
   return json({ ok: true, number, deduped: false });
 }
 
+// --- the owner writes back on a request ------------------------------------------------------------
+
+export function followupBody(note) {
+  const quoted = tidyLines(note).slice(0, MAX_FOLLOWUP).split("\n").map(l => l ? "> " + l : ">").join("\n");
+  return "**The owner wrote back** from the radio:\n\n" + quoted;
+}
+
+export async function handleFollowup(request, env, now) {
+  if (!env.SUPPORT || !env.GITHUB_TOKEN) return json({ ok: false, error: "support isn't set up on this server" }, 503);
+  const text = await request.text();
+  if (new TextEncoder().encode(text).length > MAX_REPORT) return json({ ok: false, error: "too large" }, 413);
+  let doc;
+  try { doc = JSON.parse(text); } catch (_) { return json({ ok: false, error: "not JSON" }, 400); }
+  if (!doc || typeof doc !== "object" || typeof doc.box_id !== "string" || !BOX_RE.test(doc.box_id)) return json({ ok: false, error: "box_id must be a short plain string" }, 400);
+  if (!Number.isInteger(doc.issue) || doc.issue < 1) return json({ ok: false, error: "issue must be a number" }, 400);
+  if (typeof doc.note !== "string" || !tidyLines(doc.note)) return json({ ok: false, error: "note missing" }, 400);
+  const id = doc.box_id, number = doc.issue;
+  const auth = await authFor(request, env, id);
+  if (!auth.ok) return json({ ok: false, error: "this radio isn't known here" }, 403);
+  const rec = await env.SUPPORT.get(`issue:${number}`, "json");
+  if (!rec || rec.box_id !== id) return json({ ok: false, error: "not this radio's request" }, 404);
+  const day = new Date(now).toISOString().slice(0, 10);
+  const rateKey = `rate:reply:${id}:${day}`;
+  const count = Number(await env.SUPPORT.get(rateKey)) || 0;
+  if (count >= FOLLOWUPS_PER_DAY) return json({ ok: false, error: `at most ${FOLLOWUPS_PER_DAY} a day`, limit: FOLLOWUPS_PER_DAY }, 429);
+  await env.SUPPORT.put(rateKey, String(count + 1), { expirationTtl: 2 * 86400 });
+  const repo = repoOf(env);
+  const c = await github(env, "POST", `/repos/${repo}/issues/${number}/comments`, { body: followupBody(doc.note) });
+  if (c.status >= 300) return json({ ok: false, error: `GitHub answered ${c.status}` }, 502);
+  let reopened = false;
+  const i = await github(env, "GET", `/repos/${repo}/issues/${number}`);
+  if (i.status < 300 && i.doc && i.doc.state === "closed") {
+    await env.SUPPORT.put(`quiet:reopen:${number}`, "1", { expirationTtl: 3600 });
+    const r = await github(env, "PATCH", `/repos/${repo}/issues/${number}`, { state: "open" });
+    reopened = r.status < 300;
+  }
+  await setIssueState(env, id, number, "open");    // the makers owe a reply again (the radio: "sent")
+  return json({ ok: true, number, reopened });
+}
+
 // --- GitHub's webhook -----------------------------------------------------------------------------
 
 function hexToBytes(hex) {
@@ -186,8 +239,8 @@ export async function signatureOk(secret, body, header) {
 export function ownerReply(commentBody) {
   const m = /^\/owner[ \t]+(\S[\s\S]*)$/m.exec(String(commentBody || ""));
   if (!m) return null;
-  const text = oneLine(m[1]);
-  return text ? text.slice(0, MAX_REPLY) : null;
+  const text = tidyLines(m[1]).slice(0, MAX_REPLY).trim();
+  return text || null;
 }
 
 export const SEEN_LABEL = "seen";
@@ -219,6 +272,7 @@ export function stateReply(p, queue, now) {
     const text = STATE_WORDS.done(n) + (last ? " " + last.text : "");
     return { id: `closed:${n}:${p.issue.closed_at || at}`, text: text.slice(0, MAX_REPLY), state: "done", fold: pending.map(r => r.id) };
   }
+  if (p.action === "reopened" && p.quiet) return null;       // the owner wrote back: they know
   if (p.action === "reopened") return { id: `reopened:${n}:${p.issue.updated_at || at}`, text: STATE_WORDS.reopened(n), state: "seen" };   // open again, and looked at
   if (p.action === "labeled" && p.label && String(p.label.name).toLowerCase() === SEEN_LABEL) {
     return { id: `seen:${n}`, text: STATE_WORDS.seen(n), state: "seen", once: true };
@@ -245,15 +299,20 @@ export async function handleGithub(request, env, now = Date.now()) {
   let item = null;
   const number = p.issue.number;
   if (event === "issue_comment") {
-    if (p.action !== "created" || !p.comment || (p.comment.user && p.comment.user.type === "Bot")) return new Response(null, { status: 204 });
+    if ((p.action !== "created" && p.action !== "edited") || !p.comment || (p.comment.user && p.comment.user.type === "Bot")) return new Response(null, { status: 204 });
     const text = ownerReply(p.comment.body);
     if (!text) return new Response(null, { status: 204 });
     item = { id: p.comment.id, at: p.comment.created_at || new Date(now).toISOString(), text, issue: number };
+    if (p.action === "edited") item.edited = true;     // the radio puts the new words in place of the old
   }
   const box = await boxOf(env, p.issue);
   if (!box) return json({ stored: false, why: "not a radio's issue" }, 200);
   let queue = (await env.SUPPORT.get(`replies:${box}`, "json")) || [];
   if (event === "issues") {
+    if (p.action === "reopened" && await env.SUPPORT.get(`quiet:reopen:${number}`)) {
+      await env.SUPPORT.delete(`quiet:reopen:${number}`);
+      p.quiet = true;
+    }
     const s = stateReply(p, queue, now);
     if (!s) return new Response(null, { status: 204 });
     if (s.once) {                               // "seen" says so once per issue, however often it's relabelled
@@ -262,8 +321,11 @@ export async function handleGithub(request, env, now = Date.now()) {
     }
     if (s.fold) queue = queue.filter(r => !s.fold.includes(r.id));
     item = { id: s.id, at: new Date(now).toISOString(), text: s.text, issue: number, state: s.state };
-    await setIssueState(env, box, number, p.action === "reopened" ? "open" : s.state);   // the dashboard's "#12 seen"
+    await setIssueState(env, box, number, s.state);   // the dashboard's "#12 seen"; reopened by the makers: seen
+  } else if (!item.edited) {
+    await setIssueState(env, box, number, "answered", { unless: "done" });   // a /owner reply: "#12 answered"
   }
+  if (item.edited) queue = queue.filter(r => r.id !== item.id);    // an edit replaces what waits
   if (!queue.some(r => r.id === item.id)) queue.push(item);
   await env.SUPPORT.put(`replies:${box}`, JSON.stringify(queue.slice(-MAX_REPLIES)));
   return json({ stored: true, box: box.slice(0, 8), state: item.state || null }, 200);
@@ -291,11 +353,14 @@ export async function handleReplies(request, env, url) {
   return new Response(null, { status: 204 });
 }
 
-// The issue's state (open / seen / done) beside its number in issues:<box>, for the dashboard.
-export async function setIssueState(env, box, number, state) {
+// The issue's state beside its number in issues:<box>, for the dashboard. One model, the radio's too:
+//   open (sent) -> seen (the "seen" label) -> answered (a /owner reply) -> done (closed).
+//   Reopened by the makers: seen. The owner writes back (POST /v1/reply, reopening a closed issue
+//   quietly): open again - the makers owe a reply.
+export async function setIssueState(env, box, number, state, { unless } = {}) {
   const kept = (await env.SUPPORT.get(`issues:${box}`, "json")) || [];
   const i = kept.findIndex(x => x && x.number === number);
-  if (i < 0 || kept[i].state === state) return;
+  if (i < 0 || kept[i].state === state || (unless && (kept[i].state || "open") === unless)) return;
   kept[i] = { ...kept[i], state };
   await env.SUPPORT.put(`issues:${box}`, JSON.stringify(kept));
 }

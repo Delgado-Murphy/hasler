@@ -283,8 +283,10 @@ const get = async (base, url) => (await fetch(base + url)).json();
     await check('setup mode: the front page says so and points at the Wi-Fi page; an older radio gets no new-radio line', async () => {
       const page = await ctx.newPage();
       page.on('pageerror', e => errors.push('setup: ' + e.message));
-      await page.route('**/api/status', async r => { const j = await (await r.fetch()).json(); j.lamp = 'setup'; r.fulfill({json: j}); });
-      await page.route('**/api/settings', async r => { if (r.request().method() !== 'GET') return r.continue(); const j = await (await r.fetch()).json(); j.volume_limit_set = false; j.made_mine = {skipped: [], hidden_at: null}; r.fulfill({json: j}); });
+      // a poll still in flight when the page closes must not fail the run (Route is already handled)
+      const quiet = fn => async r => { try { await fn(r); } catch (_) {} };
+      await page.route('**/api/status', quiet(async r => { const j = await (await r.fetch()).json(); j.lamp = 'setup'; await r.fulfill({json: j}); }));
+      await page.route('**/api/settings', quiet(async r => { if (r.request().method() !== 'GET') return r.continue(); const j = await (await r.fetch()).json(); j.volume_limit_set = false; j.made_mine = {skipped: [], hidden_at: null}; await r.fulfill({json: j}); }));
       await page.goto(radio.base + '/#');
       await until(() => page.isVisible('#setupLine'), 8000, 'the setup line');
       assert((await page.textContent('#setupLine')) === 'Not on your Wi-Fi yet. Set it up — this page only works from the Hasler network until then, or wait: it tries again by itself.', 'line: ' + await page.textContent('#setupLine'));
@@ -293,8 +295,8 @@ const get = async (base, url) => (await fetch(base + url)).json();
       await page.close();
       const old = await ctx.newPage();
       old.on('pageerror', e => errors.push('old: ' + e.message));
-      await old.route('**/api/info', async r => { const j = await (await r.fetch()).json(); j.installed_at = new Date(Date.now() - 30 * 864e5).toISOString(); r.fulfill({json: j}); });
-      await old.route('**/api/settings', async r => { if (r.request().method() !== 'GET') return r.continue(); const j = await (await r.fetch()).json(); j.volume_limit_set = false; j.made_mine = {skipped: [], hidden_at: null}; r.fulfill({json: j}); });
+      await old.route('**/api/info', quiet(async r => { const j = await (await r.fetch()).json(); j.installed_at = new Date(Date.now() - 30 * 864e5).toISOString(); await r.fulfill({json: j}); }));
+      await old.route('**/api/settings', quiet(async r => { if (r.request().method() !== 'GET') return r.continue(); const j = await (await r.fetch()).json(); j.volume_limit_set = false; j.made_mine = {skipped: [], hidden_at: null}; await r.fulfill({json: j}); }));
       await old.goto(radio.base + '/#');
       await sleep(1500);
       assert(!(await old.isVisible('#newLine')), 'a new-radio line on a month-old radio');

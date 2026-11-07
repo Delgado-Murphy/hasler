@@ -46,6 +46,10 @@ class Server:
             return 200, {"ok": True, "number": n, "deduped": False}
         if "/v1/replies?" in url:
             return 200, {"replies": list(self.replies)}
+        if url.endswith("/v1/reply"):
+            if self.status != 200:
+                return self.status, {"ok": False}
+            return 200, {"ok": True, "number": body["issue"], "reopened": False}
         if url.endswith("/v1/replies/ack"):
             self.replies = [r for r in self.replies if r["id"] not in body["ids"]]
             return 204, None
@@ -111,7 +115,7 @@ def test_send_refusals_say_what_to_do_instead(sendable):
     app.box_paths.box_file.write_text('schema: 1\nvariant: hasler-hm\nbox_id: b-1\ncheckin_url: ""\n')
     assert api.doc()["available"] is False
     status, doc = api.route("POST", "/api/support/send", {})
-    assert status == 409 and "switched off" in doc["error"]
+    assert status == 409 and "is off here" in doc["error"]
     assert api.route("GET", "/api/support/send", None)[0] == 405
 
 
@@ -133,7 +137,7 @@ def test_replies_become_notes_from_the_makers_once(sendable):
     assert srv.calls[-1][1:3] == ("https://ci.example/v1/replies/ack", {"box_id": "0f3a7b1e-1111-4222-8333-444455556666", "ids": [901]})
     notes = notes_api.NotesApi(app, state).doc()
     assert notes["unseen"] == 1
-    assert notes["notes"][0]["by"] == "makers" and notes["notes"][0]["text"] == "A new card is in the post. Leave it plugged in."
+    assert notes["notes"][0]["by"] == "makers" and notes["notes"][0]["text"] == "A new card is in the post.\nLeave it plugged in."
     # the server didn't get the ack and serves it again: still one note
     srv.replies = [{"id": 901, "at": "2026-11-07T10:00:00Z", "text": "A new card is in the post.", "issue": 12}]
     assert api.pull_replies()["added"] == 0
@@ -377,3 +381,48 @@ def test_switching_the_checkin_off_asks_the_server_to_forget_this_radio_once(sen
     app.box_paths.box_file.write_text(BOX_YAML.replace("checkin_url: https://ci.example/v1/checkin\n", 'checkin_url: ""\n'))
     n = len(srv.calls)
     assert api.forget_checkin(background=False) is False and len(srv.calls) == n   # nowhere to send: nothing
+
+
+def test_an_edited_reply_takes_the_old_ones_place_with_its_line_breaks(sendable):
+    app, api, srv, state = sendable
+    api.send({"note": "x"})
+    srv.replies = [{"id": 901, "at": "2026-11-07T10:00:00Z", "text": "First   go", "issue": 12}]
+    assert api.pull_replies() == {"added": 1}
+    srv.replies = [{"id": 901, "at": "2026-11-07T10:00:00Z", "text": "Hello!! **how are you**\r\n\n\n### Hope all is good", "issue": 12, "edited": True}]
+    assert api.pull_replies() == {"added": 0, "edited": 1}
+    thread = api.doc()["requests"][0]["replies"]
+    assert [x["text"] for x in thread] == ["Hello!! **how are you**\n\n### Hope all is good"]
+    notes = notes_api.NotesApi(app, state).doc()["notes"]
+    assert len(notes) == 1 and notes[0]["text"].startswith("Hello!!")
+    # an edit of a reply the radio never had is a reply like any other
+    srv.replies = [{"id": 902, "at": "2026-11-07T11:00:00Z", "text": "Late edit", "issue": 12, "edited": True}]
+    assert api.pull_replies() == {"added": 1}
+
+
+def test_the_owner_writes_back_on_a_request(sendable):
+    app, api, srv, state = sendable
+    api.send({"note": "The keys stopped"})
+    srv.replies = [{"id": 901, "at": "2026-11-07T10:00:00Z", "text": "Is the cable in?", "issue": 12},
+                   {"id": "closed:12:t", "at": "2026-11-07T10:30:00Z", "text": "Your request #12 is done.", "issue": 12, "state": "done"}]
+    api.pull_replies()
+    assert api.doc()["requests"][0]["state"] == "done"
+    status, doc = api.route("POST", "/api/support/reply", {"number": 12, "note": "  Pushed it in.\n\n\nStill quiet.  "})
+    assert status == 200 and doc["ok"]
+    method, url, body, _ = srv.calls[-1]
+    assert url.endswith("/v1/reply") and body["issue"] == 12 and body["note"] == "Pushed it in.\n\nStill quiet." and body["box_id"]
+    req = api.doc()["requests"][0]
+    assert req["state"] == "sent", "open again, waiting for the makers"
+    assert [(x.get("mine", False), x["text"]) for x in req["replies"]][-1] == (True, "Pushed it in.\n\nStill quiet.")
+    assert req["unseen"] == 2, "the makers' two, never the owner's own words"
+    # kept across a send that dedups onto the same issue
+    api._remember(12, "2026-11-07T12:00:00+01:00", True, "again")
+    assert any(x.get("mine") for x in api.doc()["requests"][0]["replies"])
+    # refusals: not this radio's, nothing to say, offline, the daily limit
+    assert api.route("POST", "/api/support/reply", {"number": 99, "note": "hi"})[0] == 404
+    assert api.route("POST", "/api/support/reply", {"number": 12, "note": "  "})[0] == 400
+    srv.down = True
+    status, doc = api.route("POST", "/api/support/reply", {"number": 12, "note": "hi"})
+    assert status == 503 and "still here" in doc["error"]
+    srv.down, srv.status = False, 429
+    status, doc = api.route("POST", "/api/support/reply", {"number": 12, "note": "hi"})
+    assert status == 429 and "tomorrow" in doc["error"]

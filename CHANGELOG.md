@@ -2,8 +2,32 @@
 
 ## Unreleased
 
-- Lyrics follow the song: the line being sung lights up amber (Synced), from
-  YouTube Music or LRCLIB; plain lyrics as before when nobody has the timing.
+Support
+- **Write to the makers**: with nothing sent, the page is where you write.
+- **Your requests** are threads: Sent · Seen · Answered · Done, our replies
+  with their line breaks and simple formatting, and **Write back** (it opens
+  a finished request again).
+- Our replies show up within a minute while the page is open.
+
+The page
+- Lyrics follow the song: the line being sung lights up amber, from YouTube
+  Music or LRCLIB; plain lyrics as before when nobody has the timing.
+- **Something's wrong?** sits at the bottom of Settings, easy to find.
+- Handover is calmer: one "Prepare for handover", and ! only for what really
+  blocks it.
+
+Wi-Fi and the lamp
+- Re-typing the password of the network you're on saves it without a restart.
+- After joining a network the lamp breathes amber, then says OK - never a
+  red that nothing clears; with no network at all it calls CQ for setup.
+- A setup network named after the room works (Hasler-Kitchen).
+- The radio's logs are kept across restarts.
+
+For makers
+- Check-ins carry more (schema 2); the dashboard is redesigned, with a page
+  per radio, 60 days of history, fleet roll-ups and alert issues.
+- Worker: `POST /v1/reply` for write-backs; `/owner` replies keep line breaks
+  and edits; requests show open · seen · answered · done.
 
 ## 1.6.3 - 2026-11-07
 

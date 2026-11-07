@@ -354,7 +354,7 @@ The kit files on the boot partition can stay; cloud-init runs them only once
   carry `app/setup/`; wait for one that does.
 - **"bad signature"** or **"does not match"**: something between the release
   site and the radio is not what the makers signed. Nothing was installed.
-  Tell the makers.
+  Write to the makers.
 - **"rolled back"**: the release failed its health check on this radio
   (`sudo hasler-update status` says why) and the updater will not try that
   release again here. Most often the key board is not connected. Fix the

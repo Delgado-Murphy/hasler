@@ -32,14 +32,19 @@ also fetches the makers' replies every half hour while a request is open.
     GET  /api/support          -> {"available", "requests": [{"number", "at", "deduped", "state", "title",
                                     "replies": [{"at", "text", "state", "seen"}...oldest first], "unseen"}...newest first],
                                    "pending": [{"id", "at", "title", "error"}], "unseen_replies"}
-                               state: sent | seen (the makers' "seen" label, or reopened) | done (closed)
+                               state: sent | seen (the makers' "seen" label, or reopened) | done (closed);
+                               the thread mixes in the owner's write-backs, in time order: {"at", "text", "mine": true}
     POST /api/support/send     {"note", "wifi"} -> {"ok", "number", "at", "deduped", "requests"}
                                or {"ok", "queued": true, "pending"} when the server can't be reached;
                                409 with sending off, 429 after the server's daily limit, 502 refused,
                                503 the server answered but couldn't take it (try again).
     POST /api/support/retry    {} -> {"ok", "sent": n, "pending"}: the waiting ones, now.
     POST /api/support/forget   {"id"} -> {"ok", "pending"}: a waiting one, not sent after all.
-    POST /api/support/replies  {} -> {"ok", "added"}: fetch the makers' replies into the notes.
+    POST /api/support/replies  {} -> {"ok", "added"}: fetch the makers' replies into the notes; an edited
+                               reply (same id, ``edited``) takes the old one's place.
+    POST /api/support/reply    {"number", "note"} -> {"ok", "requests"}: the owner writes back on a request
+                               (the server's ``/v1/reply``: a comment on the same issue, reopened if closed);
+                               the request is "sent" again. 503 offline (nothing kept: write again), 429.
 
 The requests sent are kept in ``<state>/support-requests.json`` (number, time,
 the note's first line; the hand-over clears it and the outbox with
@@ -62,6 +67,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
+from .notes_api import tidy_text
 from .server import Unavailable
 
 log = logging.getLogger(__name__)
@@ -69,7 +75,8 @@ log = logging.getLogger(__name__)
 # The makers' server, for every radio whose box.yaml doesn't name another (update/hasler_update/layout.py
 # has the same default for the daily check-in; a test keeps the two equal).
 DEFAULT_URL = "https://hasler-checkin.delgado-murphy.workers.dev"   # the root; /v1/... are derived (base_url, endpoint)
-PATHS = ("/api/support", "/api/support/send", "/api/support/retry", "/api/support/forget", "/api/support/replies")
+PATHS = ("/api/support", "/api/support/send", "/api/support/retry", "/api/support/forget", "/api/support/replies",
+         "/api/support/reply")
 REQUESTS_FILE = "support-requests.json"
 OUTBOX_FILE = "support-outbox.json"
 TOKEN_FILE = "support.json"               # under secrets/: the radio's own word
@@ -77,22 +84,23 @@ NOTES_FILE = "maker-notes.jsonl"          # web/notes_api.py reads it
 SEEN_FILE = "maker-notes.seen"
 NOTES_KEEP = 200                          # as scripts/hasler-note trims it
 REQUESTS_KEPT = 20
+FOLLOWUPS_KEPT = 30                       # the owner's write-backs on one request
+FOLLOWUP_MAX = 2000
 OUTBOX_KEPT = 5
 STATES = ("sent", "seen", "done")         # a request: sent, the makers have seen it, done (the issue closed)
 MAX_BYTES = 16384                         # the server refuses more
 TIMEOUT_S = 15.0
 TOKEN_HEADER = "X-Hasler-Token"
 USER_AGENT = "hasler-support/1"
-TEXT_MAX = 600
 TITLE_MAX = 120
 RETRY_FIRST_S = 60.0                      # the outbox: a minute, then twice as long each time...
 RETRY_MAX_S = 1800.0                      # ...up to half an hour
 REPLIES_EVERY_S = 1800.0                  # the makers' replies, while a request is open
 OPEN_DAYS = 14                            # a done request is still asked about this long (it may be reopened)
 
-OFF_WORDS = "Sending from the radio is switched off here. Use Share, Copy or Email instead."
-NOT_KNOWN_WORDS = ("The makers’ server doesn’t know this radio any more. Use Email or Share for now, "
-                   "and mention it: they can reset the radio’s line.")
+OFF_WORDS = "Sending straight from the radio is off here. Use Share, Copy or Email instead."
+NOT_KNOWN_WORDS = ("The makers don’t recognise this radio any more. Use Email or Share for now, "
+                   "and mention it: they can reset its line.")
 
 
 class Refused(Exception):
@@ -196,6 +204,11 @@ class SupportApi:
             return 200, {"ok": True, **self.flush(force=True)}
         if p == "/api/support/forget":
             return 200, {"ok": True, **self.forget(body)}
+        if p == "/api/support/reply":
+            try:
+                return 200, {"ok": True, **self.followup(body)}
+            except Refused as exc:
+                return exc.status, {"ok": False, "errors": [], "error": str(exc)}
         return 200, {"ok": True, **self.pull_replies()}
 
     # -- box.yaml and the radio's word ----------------------------------------
@@ -255,7 +268,7 @@ class SupportApi:
             return ""                     # an older server without enrolment: send without a word, as before
         if status != 200 or not isinstance(doc, dict) or not isinstance(doc.get("token"), str) or not doc["token"]:
             log.info("support: enrolment refused: %s %s", status, doc)
-            raise Unavailable("The makers’ server couldn’t take it just now. Try again in a while, or use Share or Email.")
+            raise Unavailable("The makers couldn’t take it just now. Try again in a while, or use Share or Email.")
         path = self._token_file()
         if path is not None:
             from ..boxconfig import atomic_write_text
@@ -293,8 +306,11 @@ class SupportApi:
         for r in self._read(REQUESTS_FILE, "requests"):
             if isinstance(r, dict) and isinstance(r.get("number"), int):
                 state = r.get("state") if r.get("state") in STATES else "sent"
+                fus = [{"at": str(x.get("at") or "")[:40], "text": tidy_text(x.get("text"), FOLLOWUP_MAX)}
+                       for x in (r.get("followups") if isinstance(r.get("followups"), list) else [])
+                       if isinstance(x, dict) and str(x.get("text") or "").strip()]
                 out.append({"number": r["number"], "at": str(r.get("at") or "")[:40], "deduped": bool(r.get("deduped")),
-                            "state": state, "title": str(r.get("title") or "")[:TITLE_MAX]})
+                            "state": state, "title": str(r.get("title") or "")[:TITLE_MAX], "followups": fus[-FOLLOWUPS_KEPT:]})
         return out
 
     def _write(self, name: str, key: str, items: list) -> None:
@@ -311,7 +327,7 @@ class SupportApi:
             kept = [r for r in self.requests() if r["number"] != number]
             # sent again (the same issue): keep what the makers already said about it, and its first words
             kept = ([{"number": number, "at": at, "deduped": deduped, "state": old["state"] if old else "sent",
-                      "title": (old and old["title"]) or title}] + kept)[:REQUESTS_KEPT]
+                      "title": (old and old["title"]) or title, "followups": old["followups"] if old else []}] + kept)[:REQUESTS_KEPT]
             self._write_requests(kept)
             return kept
 
@@ -368,13 +384,20 @@ class SupportApi:
                 continue
             threads.setdefault(n["issue"], []).append({
                 "at": str(n.get("replied_at") or n.get("at") or "")[:40],
-                "text": " ".join(str(n["text"]).split())[:TEXT_MAX],
+                "text": tidy_text(n["text"]),
                 "state": n.get("state") if n.get("state") in STATES else None,
-                "seen": _epoch(n.get("at")) <= seen_at})
+                "seen": _epoch(n.get("at")) <= seen_at,
+                "_k": _epoch(n.get("at"))})       # in order by the radio's own clock, as the owner's words are
         reqs = []
         for r in self.requests():
+            fus = r.pop("followups", [])
             replies = threads.get(r["number"], [])
-            reqs.append({**r, "replies": replies, "unseen": sum(1 for x in replies if not x["seen"])})
+            unseen = sum(1 for x in replies if not x["seen"])
+            if fus:
+                mine = [{"at": x["at"], "text": x["text"], "state": None, "seen": True, "mine": True, "_k": _epoch(x["at"])} for x in fus]
+                replies = sorted(replies + mine, key=lambda x: x["_k"])
+            replies = [{k: v for k, v in x.items() if k != "_k"} for x in replies]
+            reqs.append({**r, "replies": replies, "unseen": unseen})
         return {"available": bool(base and box_id), "requests": reqs, "pending": self.pending(),
                 "unseen_replies": sum(r["unseen"] for r in reqs)}
 
@@ -411,16 +434,16 @@ class SupportApi:
                 continue
             break
         if status == 429:
-            raise Refused(429, "You’ve sent several today already. The makers have them; use Share or Email for anything more.")
+            raise Refused(429, "You’ve sent several today. The makers have them; for anything more, use Share or Email.")
         if status == 403:
             raise Refused(502, NOT_KNOWN_WORDS if kind != "shared" else
-                          "The makers’ server didn’t accept this radio. Use Share or Email instead.")
+                          "The makers can’t take messages from this radio yet. Use Share or Email instead.")
         if status == 400 or status == 413:
             log.info("support request refused: %s %s", status, doc)
-            raise Refused(502, "The makers’ server couldn’t read this report. Use Share or Email instead.")
+            raise Refused(502, "The makers couldn’t read this one. Use Share or Email instead.")
         if not (200 <= status < 300) or not isinstance(doc, dict) or not isinstance(doc.get("number"), int):
             log.info("support request not taken: %s %s", status, doc)
-            raise Unavailable("The makers’ server couldn’t take it just now. Try again in a while, or use Share or Email.")
+            raise Unavailable("The makers couldn’t take it just now. Try again in a while, or use Share or Email.")
         return doc
 
     def send(self, body: Any) -> dict:
@@ -444,6 +467,39 @@ class SupportApi:
 
     def _now_iso(self) -> str:
         return datetime.fromtimestamp(self.clock()).astimezone().isoformat(timespec="seconds")
+
+    def followup(self, body: Any) -> dict:
+        """The owner writes back on one of their requests: a comment on the same issue (``/v1/reply``)."""
+        body = body if isinstance(body, dict) else {}
+        number, note = body.get("number"), tidy_text(body.get("note"), FOLLOWUP_MAX)
+        if not isinstance(number, int) or not any(r["number"] == number for r in self.requests()):
+            raise Refused(404, "That request isn’t on this radio.")
+        if not note:
+            raise Refused(400, "Write a few words first.")
+        base, shared, box_id = self._server()
+        if not base or not box_id:
+            raise Refused(409, OFF_WORDS)
+        token, kind = self._word(base, shared, box_id)
+        try:
+            status, doc = self.transport("POST", endpoint(base, "reply"), {"schema": 1, "box_id": box_id, "issue": number, "note": note}, token)
+        except (urllib.error.URLError, OSError, ValueError):
+            raise Refused(503, "The radio can’t reach the internet just now. Your words are still here; send them once it’s back.") from None
+        if status == 429:
+            raise Refused(429, "That’s a lot for one day. The makers have your words; write again tomorrow.")
+        if status in (403, 404):
+            raise Refused(502, NOT_KNOWN_WORDS if kind != "shared" else "The makers couldn’t match this to your request. Start a new one instead.")
+        if not (200 <= status < 300) or not isinstance(doc, dict) or not doc.get("ok"):
+            log.info("support follow-up not taken: %s %s", status, doc)
+            raise Refused(503, "The makers couldn’t take it just now. Your words are still here; try again in a while.")
+        with self._lock:
+            kept = self.requests()
+            for r in kept:
+                if r["number"] == number:
+                    r["followups"] = (r["followups"] + [{"at": self._now_iso(), "text": note}])[-FOLLOWUPS_KEPT:]
+                    r["state"] = "sent"           # open again, waiting for the makers
+            self._write_requests(kept)
+        log.info("support follow-up sent on #%s", number)
+        return {"requests": self.doc()["requests"]}
 
     # -- the outbox: sent once the radio is online again -----------------------
 
@@ -570,13 +626,16 @@ class SupportApi:
         with self._lock:
             mine = {r["number"] for r in self.requests()}
             known = {str(d["reply_id"]) for d in self._note_lines() if d.get("reply_id") is not None}
-            lines, ids = [], []
+            lines, ids, edits = [], [], {}
             for r in replies:
                 if not isinstance(r, dict) or r.get("id") is None:
                     continue
                 ids.append(r["id"])
-                text = " ".join(str(r.get("text") or "").split())[:TEXT_MAX]
+                text = tidy_text(r.get("text"))
                 issue = r.get("issue") if isinstance(r.get("issue"), int) else None
+                if text and r.get("edited") and str(r["id"]) in known:
+                    edits[str(r["id"])] = text    # the maker edited their reply: the new words in its place
+                    continue
                 if not text or str(r["id"]) in known or (issue is not None and issue not in mine):
                     continue                      # said already, or about a request of the radio's last owner
                 known.add(str(r["id"]))
@@ -588,12 +647,14 @@ class SupportApi:
                 if r.get("state") in STATES:
                     note["state"] = r["state"]
                 lines.append(json.dumps(note, ensure_ascii=False))
-            if lines:
+            if lines or edits:
                 path = self.state_dir / NOTES_FILE
                 try:
                     old = path.read_text(encoding="utf-8").splitlines()
                 except OSError:
                     old = []
+                if edits:
+                    old = [self._edited(line, edits) for line in old]
                 from ..boxconfig import atomic_write_text
                 atomic_write_text(path, "\n".join((old + lines)[-NOTES_KEEP:]) + "\n")
                 log.info("%d note(s) from the makers' replies", len(lines))
@@ -603,4 +664,14 @@ class SupportApi:
                 self.transport("POST", endpoint(base, "replies") + "/ack", {"box_id": box_id, "ids": ids}, token)
             except (urllib.error.URLError, OSError, ValueError):
                 pass                              # asked again next time; the ids keep it single
-        return {"added": len(lines)}
+        return {"added": len(lines), **({"edited": len(edits)} if edits else {})}
+
+    @staticmethod
+    def _edited(line: str, edits: dict) -> str:
+        try:
+            d = json.loads(line)
+        except ValueError:
+            return line
+        if not isinstance(d, dict) or str(d.get("reply_id")) not in edits:
+            return line
+        return json.dumps({**d, "text": edits[str(d["reply_id"])], "edited": True}, ensure_ascii=False)

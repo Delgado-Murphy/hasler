@@ -121,7 +121,9 @@ Six questions, at most one look a day:
 5. Which radios are stuck on old versions? **Versions** per channel (older
    than the newest-but-one in amber), and each row's mode and check.
 6. Does this radio have an open request? The **Requests** column (`#12 open`,
-   `#9 seen`; amber when open for 2+ days), from the GitHub webhook.
+   `#9 seen`, `#8 answered`; amber when open for 2+ days), from the GitHub
+   webhook: open → seen (the label) → answered (a `/owner` reply) → done
+   (closed); reopened by you is seen again, the owner writing back is open.
 
 Plus **Platform**: Pi model, RAM and moOde per count, with low voltage beside
 it. Times are Europe/Madrid, the UTC time on hover. Every coloured state also
