@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.7.4 - 2026-11-07
+
+- Settings: the version sits under Delgado & Murphy, a little smaller.
+
 ## 1.7.3 - 2026-11-07
 
 - Shortcuts for your phone are gone again, with the Add to Home Screen
