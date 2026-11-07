@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.5 - 2026-11-07
+
+Write to the makers
+- Each request is titled with your own words, and keeps your whole message.
+- New replies come first, and the page opens on the request that has one.
+- Done requests fold to one line; **Write back** opens them again.
+- Times read "17:45" and "Yesterday"; the makers' name shows once per run.
+- Replies read better: code blocks, quotes, nested and tick lists.
+- Replies no longer also show under "From the makers".
+- "Couldn't reach the radio" when it can't check, with Try again.
+
 ## 1.7.4 - 2026-11-07
 
 - Settings: the version sits under Delgado & Murphy, a little smaller.
