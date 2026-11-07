@@ -360,7 +360,7 @@ and so on. A row is done when the radio knows it is. Optional rows have
 
 | Row | What you find there |
 |---|---|
-| **Sound** | The **volume ceiling** (30 up to the top for this speaker; 90 on the Hasler HM). The **quietest step**. **Mono** (on to start). **What the tone knob does**. **If a knob feels off**: **Calibrate**. |
+| **Sound** | The **volume ceiling** (30 up to the top for this speaker; 90 on the Hasler HM). The **quietest step**. **Mono** (on to start). **What the tone knob does**. **A knob feels off?**: **Calibrate**. |
 | **Keys** | Edit keys, what **PU** steps through, and Reset keys. |
 | **Phones** | Spotify, AirPlay, Bluetooth and UPnP on or off. **Your phones** (with the Bluetooth codec while one plays) and **Pair a phone**. **Back to the radio when a phone stops**. The name phones see. |
 | **Music accounts** | **Spotify**: the radio's own account. **YouTube Music**: your sign-in, for Liked songs and private playlists (it takes a computer and a few technical steps; the makers can do it for you over remote help). |

@@ -29,7 +29,9 @@ It takes about **20 minutes**, most of it waiting.
 
 1. Open Raspberry Pi Imager.
 2. **Device:** Raspberry Pi 4. **Operating system:** *Media player OS* →
-   **moOde audio player** → the **64-bit Trixie** release (tested: 10.3.6).
+   **moOde audio player** → the **64-bit Trixie** release (tested: 10.3.7, with MPD 0.24.17). If Imager offers an older
+   10.x image, take moOde's **Software update** once the install is done,
+   then re-run our setup (see [build guide](build-guide.md#updating-the-player-underneath)).
    **Storage:** your card.
 3. When Imager offers **OS customisation**, choose **Edit settings** and fill in:
    - **Hostname:** `hasler` (the radio is then `hasler.local`; the install
