@@ -140,7 +140,7 @@ class TestPreview:
         assert not lamp.previewing
         lamp.preview([0.0, 0.0, 1.0], 1.0)
         assert not lamp.previewing
-        r, _, b = duty(lamp, clock.t)
+        r, _, b = duty(lamp, clock.t + 0.1)       # after the 70 ms blend: no one-frame cut
         assert b == 0.0 and r == pytest.approx(eng.EMBER_NIGHT ** eng.GAMMA)
 
     def test_threaded_engine_returns_to_the_look_on_its_own(self):

@@ -27,6 +27,7 @@ hue at the bottom and rises again.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
 import threading
@@ -35,10 +36,11 @@ from typing import Any, Callable, NamedTuple
 
 from .contract import (
     ALIASES, BECKON_REST_S, BREATH_FALL_S, BREATH_REST_S, BREATH_RISE_S, CASTING_LEVEL,
-    CASTING_NIGHT, EMBER_LEVEL, EMBER_NIGHT, IDENTIFY_REST_S, IDENTIFY_S, KEY_REPLIES, NIGHT_CAP,
-    PLAYING_LEVEL, PLAYING_NIGHT, READY_LEVEL, READY_NIGHT, REPLY_ALIASES, SETUP_REST_S,
-    SLOW_AT_NIGHT, Look, Output, beckoning, breathing, canonical, parse_reply, steady,
+    CASTING_NIGHT, EMBER_LEVEL, EMBER_NIGHT, IDENTIFY_S, KEY_REPLIES, NIGHT_CAP, PLAYING_LEVEL,
+    PLAYING_NIGHT, READY_LEVEL, READY_NIGHT, REPLY_ALIASES, SETUP_REST_S, SLOW_AT_NIGHT, Look,
+    Output, canonical, parse_reply, steady,
 )
+from . import signals
 from .outputs import CHANNELS, NullOutput, open_output
 
 log = logging.getLogger(__name__)
@@ -49,9 +51,14 @@ GAMMA = 2.2
 FRAME_S = 0.02                  # 50 Hz while anything moves
 LIT = 1e-4                      # perceptual level below which the lamp is dark
 
-# The three colours, in Frame.w order.
+# The release's colours, first in Frame.w order; io.lamp.palette may add more
+# (a green, a warning red...), which follow in the order given.
 HUES: tuple[str, str, str] = ("amber", "ember", "blue")
 ONEHOT: dict[str, RGB] = {"amber": (1.0, 0.0, 0.0), "ember": (0.0, 1.0, 0.0), "blue": (0.0, 0.0, 1.0)}
+# Hue families: a change between families never fades through RGB (the hue
+# rule: down to 10 %, swap, up). Amber and ember are one; a new colour is its
+# own family unless its palette entry says otherwise ({"family": "warm"}).
+FAMILIES: dict[str, str] = {"amber": "warm", "ember": "warm", "blue": "blue"}
 
 # -- transitions (docs/lamp.md "Transitions") ----------------------------------
 
@@ -69,8 +76,11 @@ COUNTDOWN_RESTORE_S = 0.4       # knob back on: snap back to the Look
 # -- the behaviours (docs/lamp.md "Behaviours") ---------------------------------
 
 KICK_GAIN, KICK_MIN = 1.4, 0.5
-# At night the kick's absolute floor is lower: a 50 % flash is glaring in a dark bedroom.
-KICK_MIN_NIGHT = 0.30  # to +40 % of the level, at least 50 % absolute ...
+# At night the kick's absolute floor is lower: a 50 % flash is glaring in a
+# dark bedroom - but still ~3:1 in light over night ready, or nobody sees it.
+KICK_MIN_NIGHT = 0.36  # to +40 % of the level, at least 50 % absolute ...
+# From the dim ember (asleep) a kick to 50 % is a 6-14x jump in light: harsh.
+KICK_MIN_EMBER, KICK_MIN_EMBER_NIGHT = 0.35, 0.25
 KICK_ATTACK_S = 0.03            # ... in 30 ms ...
 KICK_DECAY_S = 0.35             # ... then the filament cools, exponentially
 KICK_K = 4.0
@@ -80,15 +90,48 @@ SAG_DOWN_S, SAG_HOLD_S, SAG_UP_S = 0.15, 0.20, 0.60   # ... hold, recover
 SAG_S = SAG_DOWN_S + SAG_HOLD_S + SAG_UP_S
 SWELL_GAIN, SWELL_S = 0.30, 1.2  # +30 % and back, raised cosine
 BECKON_GAP_S = 0.25             # two kicks this far apart, then a rest
-NIGHT_BECKON = 0.5              # a beckon is half as tall at night
+# A beckon asks for attention: its kicks reach at least this (day / night),
+# 1.6x the level it beats on - 6:1 in light over ready, by day and by night.
+BECKON_GAIN = 1.6
+BECKON_TOP, BECKON_TOP_NIGHT = 0.80, 0.45
+# Setup's long-short: a long glow (rise, hold, fall), a gap, then a kick.
+LONG_RISE_S, LONG_HOLD_S, LONG_FALL_S, LONG_GAP_S = 0.35, 0.45, 0.45, 0.35
+# A pattern's steps change over this (or half the step, if shorter): crisp,
+# but never a one-frame jump.
+EDGE_S = 0.05
+# Identify is the signal table's "identify" pattern (lamp/signals.py): three
+# flashes to full brightness, whatever the night or the owner's brightness
+# (the owner asked for it, and it lasts 10 s), dipping to IDENTIFY_LOW.
+IDENTIFY_LOW = signals.IDENTIFY_LOW
+# An overlay in another hue family (a pattern reply, identify in a named
+# colour) dips to the hue trough over this before it starts and as it ends.
+OVERLAY_DIP_S = 0.3
 BREATH_PERIOD = BREATH_RISE_S + BREATH_FALL_S + BREATH_REST_S
+# A breath never swings less than this (peak / trough, perceptual): ~3:1 in
+# light, the least that reads as moving at low levels.
+BREATH_MIN_SWING = 1.7
+# Brightness never pushes a Look above this: the kick, swell and beckon need
+# the headroom above (a Look defined higher keeps its own level).
+LOOK_CAP = PLAYING_LEVEL
 
 # Brightness the owner picked (Settings -> Pilot lamp), a factor on every level.
 BRIGHTNESS: dict[str, float] = {"low": 0.6, "normal": 1.0, "bright": 1.25}
-VISIBLE_MIN = HUE_TROUGH        # "low" never takes a lit Look below this (ember: its night level)
+# "low" never takes a lit Look below this (ember: its night level): a refuse
+# sag from here still reaches ~3:1 in light before the minimum duty stops it,
+# and the dim blue die stays clearly lit.
+VISIBLE_MIN = 0.17
+# Amber is never drawn below the amber band's top times this, or it turns
+# ember-red (its green under the floor) and reads as asleep.
+AMBER_MARGIN = 1.1
 
-# Shown when the keeper stops ticking (engine.watchdog): busy, don't unplug.
-BUSY = breathing("ember", 0.35, night=0.22, slow=True)
+# Shown when the keeper stops ticking (engine.watchdog): busy, don't unplug
+# (the signal table's "busy"; this is its default).
+BUSY = signals.DEFAULTS["busy"]
+# With a high green floor (a frosted LED on 3.3 V can need 4-5 % duty) amber
+# can't be dim and amber at once: below the band it honestly blends into
+# ember-red rather than showing a green held far above its share. Amber is
+# held above the band only up to this (day, night), so ready stays dim.
+AMBER_MIN_CAP: tuple[float, float] = (0.50, 0.24)
 
 # The levels the Lamp colours page previews at (perceptual): full, the night
 # cap, standby ember.
@@ -96,16 +139,25 @@ PREVIEW_S = 30.0                # a calibration preview lasts this long after it
 PREVIEW_LEVELS: dict[str, float] = {"full": 1.0, "night": NIGHT_CAP, "ember": EMBER_LEVEL}
 # The lamp page's "show me": a meaning's Look for a while (preview_look), and
 # its reply words (preview_reply).
-PREVIEW_LOOK_S = 6.0
+PREVIEW_LOOK_S = 8.0
 PREVIEW_LOOKS: dict[str, Look] = {
     "playing": steady("amber", PLAYING_LEVEL, PLAYING_NIGHT),
     "ready": steady("amber", READY_LEVEL, READY_NIGHT),
     "asleep": steady("ember", EMBER_LEVEL, EMBER_NIGHT),
     "phone": steady("blue", CASTING_LEVEL, CASTING_NIGHT),
     "busy": BUSY,
-    "asking": beckoning("amber", READY_LEVEL, READY_NIGHT),
-    "setup": beckoning("amber", READY_LEVEL, READY_NIGHT, rest_s=SETUP_REST_S),
+    "asking": signals.DEFAULTS["asking"],
+    "setup": signals.DEFAULTS["setup"],
 }
+
+
+def preview_looks() -> dict[str, Look]:
+    """The looks "Show me" draws: PREVIEW_LOOKS with the signal table's remaps."""
+    looks = dict(PREVIEW_LOOKS)
+    for name in ("busy", "asking", "setup"):
+        looks[name] = signals.get(name)
+    return looks
+
 PREVIEW_REPLIES: dict[str, str] = {"heard": "kick", "no": "refuse"}
 
 # -- calibration (io.lamp; docs/lamp.md "Calibration") --------------------------
@@ -128,13 +180,18 @@ DEFAULT_MIN_DUTY: RGB = (0.006, 0.006, 0.006)
 # floor and relit at GATE_ON (hysteresis): lit, it is held at the floor, so
 # the colour is never more than ~2x off its ratio; dark, it is gone.
 GATE_OFF, GATE_ON = 0.5, 0.7
+# ... but only while the channel itself is within this of its floor, so a
+# switch is never more than a floor's step. A channel that must come on while
+# already well above it (a Look change jumped the envelope) fades in instead.
+GATE_SWITCH = 1.5
+GATE_FADE_S = 0.4
 DEFAULT_GAIN: dict[str, float] = {"amber": 1.0, "ember": 1.0, "blue": 1.0}
 
 
 class Frame(NamedTuple):
     """One frame, before calibration: colour mix, level, envelope (all perceptual)."""
 
-    w: RGB          # weights of amber, ember, blue (sum 1)
+    w: tuple[float, ...]   # weights of the engine's hues (amber, ember, blue, extras; sum 1)
     level: float
     env: float      # the level the colour is judged at
 
@@ -206,8 +263,12 @@ def kick_len(decay_s: float = KICK_DECAY_S) -> float:
     return KICK_ATTACK_S + decay_s
 
 
-def kick_peak(level: float, night: bool = False) -> float:
-    return min(1.0, max(level * KICK_GAIN, KICK_MIN_NIGHT if night else KICK_MIN))
+def kick_peak(level: float, night: bool = False, ember: bool = False) -> float:
+    if ember:
+        least = KICK_MIN_EMBER_NIGHT if night else KICK_MIN_EMBER
+    else:
+        least = KICK_MIN_NIGHT if night else KICK_MIN
+    return min(1.0, max(level * KICK_GAIN, least))
 
 
 def sag_shape(t: float, times: int = 1) -> float:
@@ -229,12 +290,73 @@ def pair_shape(t: float, rest_s: float, decay_s: float = KICK_DECAY_S) -> float:
     return max(kick_shape(u, decay_s), kick_shape(u - BECKON_GAP_S, decay_s))
 
 
+def long_short_len(rest_s: float, decay_s: float = KICK_DECAY_S) -> float:
+    return LONG_RISE_S + LONG_HOLD_S + LONG_FALL_S + LONG_GAP_S + kick_len(decay_s) + max(0.0, rest_s)
+
+
+def long_short_shape(t: float, rest_s: float, decay_s: float = KICK_DECAY_S) -> float:
+    """Setup's beat, 0..1: a long glow (rise 0.35 s, hold 0.45 s, fall 0.45 s), a
+    0.35 s gap, a kick, then ``rest_s`` - "daah-dit", repeating."""
+    u = t % long_short_len(rest_s, decay_s)
+    if u < LONG_RISE_S:
+        return ease_out(u / LONG_RISE_S)
+    u -= LONG_RISE_S
+    if u < LONG_HOLD_S:
+        return 1.0
+    u -= LONG_HOLD_S
+    if u < LONG_FALL_S:
+        return 1.0 - ease(u / LONG_FALL_S)
+    return kick_shape(u - LONG_FALL_S - LONG_GAP_S, decay_s)
+
+
+def pattern_len(steps) -> float:
+    return sum(s for _, s in steps)
+
+
+def pattern_shape(t: float, steps, start: float | None = None) -> float:
+    """A pattern's share of its level at ``t``: each step held, its edge eased in
+    over EDGE_S (half a short step) from the step before, looping. ``start``:
+    the share to ease the very first edge from (else the last step's)."""
+    total = pattern_len(steps)
+    if total <= 0.0:
+        return 1.0
+    first = t < total
+    u = t % total
+    prev = steps[-1][0] if start is None or not first else start
+    for i, (share, dur) in enumerate(steps):
+        if u < dur:
+            edge = min(EDGE_S, dur / 2)
+            if u < edge and edge > 0.0:
+                return _lerp(prev, share, ease(u / edge))
+            return share
+        u -= dur
+        prev = share
+    return steps[-1][0]
+
+
+def identify_len() -> float:
+    """One cycle of the identify pattern (1.7 s by default)."""
+    return pattern_len(signals.get("identify").steps)
+
+
 def _lerp(a: float, b: float, w: float) -> float:
     return a + (b - a) * w
 
 
 def _lerp3(a: RGB, b: RGB, w: float) -> RGB:
     return (a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w, a[2] + (b[2] - a[2]) * w)
+
+
+def _pad(w: tuple[float, ...], n: int) -> tuple[float, ...]:
+    return w + (0.0,) * (n - len(w)) if len(w) < n else w
+
+
+def _lerpn(a: tuple[float, ...], b: tuple[float, ...], w: float) -> tuple[float, ...]:
+    if len(a) == len(b) == 3:
+        return _lerp3(a, b, w)  # type: ignore[arg-type]
+    n = max(len(a), len(b))
+    a, b = _pad(a, n), _pad(b, n)
+    return tuple(x + (y - x) * w for x, y in zip(a, b))
 
 
 def perceptual3(duty: RGB) -> RGB:
@@ -253,12 +375,17 @@ def _lerp_frame(a: Frame, b: Frame, w: float) -> Frame:
         wa = wb
     elif b.level <= LIT:
         wb = wa
-    return Frame(_lerp3(wa, wb, w), _lerp(a.level, b.level, w), _lerp(a.env, b.env, w))
+    return Frame(_lerpn(wa, wb, w), _lerp(a.level, b.level, w), _lerp(a.env, b.env, w))
 
 
-def family(w: RGB) -> str:
-    """"blue" or "warm" (amber and ember are one family: they may fade into each other)."""
-    return "blue" if w[2] > 0.5 else "warm"
+def family(w: tuple[float, ...], hues: tuple[str, ...] = HUES,
+           families: dict[str, str] | None = None) -> str:
+    """The hue family of the colour that dominates ``w`` ("warm" for amber and ember,
+    which may fade into each other; "blue"; a new colour's own)."""
+    fam = families or FAMILIES
+    i = max(range(len(w)), key=lambda k: w[k])
+    name = hues[i] if i < len(hues) else "amber"
+    return fam.get(name, name)
 
 
 # -- calibration parsing -------------------------------------------------------
@@ -286,7 +413,10 @@ def _ratio_rgb(value: Any, default: RGB) -> RGB:
 
 
 def parse_palette_entry(value: Any, day: RGB, night: RGB) -> tuple[RGB, RGB]:
-    """A palette entry: [r, g, b] (day and night alike), {red, green, blue}, or {day, night}."""
+    """A palette entry: [r, g, b] (day and night alike), {red, green, blue}, {day, night},
+    or {rgb} - the dict forms may also carry a "family" (read by the engine)."""
+    if isinstance(value, dict) and "rgb" in value and "day" not in value:
+        value = {"day": value["rgb"], **({"night": value["night"]} if "night" in value else {})}
     if isinstance(value, dict) and ("day" in value or "night" in value):
         d = _ratio_rgb(value["day"], day) if "day" in value else day
         n = _ratio_rgb(value["night"], d) if "night" in value else d
@@ -343,6 +473,7 @@ class LampEngine:
         self._reply_from: Frame = DARK_FRAME   # the base when the reply started
         self._reply_slow = 1.0
         self._identify_until: float | None = None
+        self._pattern: tuple[Look, int] = (Look(), 1)    # the pattern reply: what, how often
         self._preview_look: Look | None = None
         self._preview_look_until = now
         self._identify_t0 = now
@@ -359,6 +490,8 @@ class LampEngine:
         self._fed = now
         self._tripped = False
         self._gate = [True, True, True]
+        self._gate_fade: list[float | None] = [None, None, None]   # fade-in start per channel
+        self._now = now
         self._last_frame: Frame = DARK_FRAME
         self._last: RGB = (0.0, 0.0, 0.0)      # the last rendered duty
         self._written: RGB | None = None
@@ -374,19 +507,33 @@ class LampEngine:
     def _configure(self, spec: dict) -> None:
         palette = dict(DEFAULT_PALETTE)
         night = dict(DEFAULT_PALETTE)
-        for name, value in (spec.get("palette") or {}).items():
-            if name not in DEFAULT_PALETTE:
-                if name not in ALIASES and name != "off":
-                    log.warning("lamp: ignoring unknown palette colour %r", name)
+        families = dict(FAMILIES)
+        raw_palette = spec.get("palette") if isinstance(spec.get("palette"), dict) else {}
+        for name, value in raw_palette.items():
+            name = str(name)
+            if name in ALIASES or name in ("off", "show"):
                 continue    # an old colour's tuning: its colour is gone
+            if name not in palette:
+                # A new colour (a green "done", a warning red...): any name the
+                # release doesn't use; Looks and signals may then draw it.
+                first, _ = parse_palette_entry(value, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
+                if max(first) <= 0.0:
+                    log.warning("lamp: ignoring palette colour %r: black", name)
+                    continue
+                palette[name] = night[name] = first
+                families[name] = name
             palette[name], night[name] = parse_palette_entry(value, palette[name], night[name])
+            if isinstance(value, dict) and isinstance(value.get("family"), str):
+                families[name] = value["family"]
         self.palette: dict[str, RGB] = palette
         self.palette_night: dict[str, RGB] = night
+        self.hues: tuple[str, ...] = tuple(palette)
+        self.families: dict[str, str] = families
         balance = spec.get("balance")
         self.balance = _rgb(balance, (1.0, 1.0, 1.0)) if balance is not None else (1.0, 1.0, 1.0)
         floor = spec.get("min_duty")
         self.min_duty = _rgb(floor, DEFAULT_MIN_DUTY) if floor is not None else DEFAULT_MIN_DUTY
-        gain = dict(DEFAULT_GAIN)
+        gain = {n: DEFAULT_GAIN.get(n, 1.0) for n in self.hues}
         raw = spec.get("level_gain")
         if isinstance(raw, dict):
             for name, value in raw.items():
@@ -438,7 +585,7 @@ class LampEngine:
         with self._cond:
             return {
                 "palette": {n: {"day": list(self.palette[n]), "night": list(self.palette_night[n])}
-                            for n in HUES},
+                            for n in self.hues},
                 "balance": dict(zip(CHANNELS, self.balance)),
                 "min_duty": dict(zip(CHANNELS, self.min_duty)),
                 "level_gain": dict(self.level_gain),
@@ -516,6 +663,28 @@ class LampEngine:
             self._reply_slow = NIGHT_SLOW if self._night and kind in SLOW_AT_NIGHT else 1.0
             self._wake()
 
+    def play(self, look: Look | str, times: int = 1) -> bool:
+        """Play a pattern once (or ``times``) over the Look, then the Look again.
+
+        ``look`` is a pattern Look (``contract.pattern``/``morse``) or the name
+        of one in the signal table - a green "done", a morse nod. Its colour is
+        any palette colour or "show"; another hue family dips to 10 % first
+        and after (the hue rule). Its level follows night and brightness. A
+        reply like the others: a newer reply replaces it, the countdown
+        outranks it. False if it isn't a pattern.
+        """
+        if isinstance(look, str):
+            look = signals.TABLE.get(look) or Look()
+        if look.motion != "pattern" or not look.steps:
+            log.warning("lamp: play wants a pattern, not %r", look)
+            return False
+        with self._cond:
+            if self._countdown is not None:
+                return False
+            self._pattern = (look, max(1, int(times)))
+            self._start_reply("pattern", self._clock())
+            return True
+
     def countdown(self, progress: float | None) -> None:
         with self._cond:
             if progress is None:
@@ -526,6 +695,9 @@ class LampEngine:
                 return
             progress = min(1.0, max(0.0, float(progress)))
             if progress != self._countdown:
+                if self._countdown is None and (self._reply is not None or self._identify_until is not None
+                                                or self._preview is not None or self._preview_look is not None):
+                    self._start_blend(self._clock(), BLEND_S)   # never cut a kick in one frame
                 self._countdown = progress
                 self._reply = None
                 self._identify_until = None
@@ -592,13 +764,14 @@ class LampEngine:
             self.key_replies = bool(on)
 
     def identify(self, seconds: float | None = IDENTIFY_S) -> None:
-        """"Which radio?": an eager beckon in the colour on show for ``seconds``; 0/None ends it."""
+        """"Which radio?": three full-brightness flashes in the colour on show, again and
+        again, for ``seconds`` (whatever the night or the brightness); 0/None ends it."""
         with self._cond:
             now = self._clock()
             if not seconds or seconds <= 0:
                 if self._identify_until is not None:
                     self._identify_until = None
-                    self._start_blend(now, RESTORE_S)
+                    self._end_overlay(now, self._identify_look())
                     self._wake()
                 return
             if self._countdown is not None:
@@ -630,12 +803,12 @@ class LampEngine:
         with self._cond:
             if self._shown:
                 return
-            c = canonical(colour)
+            c = self._canon(colour)
             level = _clamp01(float(level))
             if c == "off":
                 self._seed = DARK_FRAME
             else:
-                self._seed = Frame(ONEHOT[c], level, level)
+                self._seed = Frame(self._onehot(c), level, level)
             self._written = self._resolve(self._seed, self._gate)
             self._last = self._written
 
@@ -692,7 +865,7 @@ class LampEngine:
     def preview_colour(self, colour: str, level: float, hold_s: float = PREVIEW_S) -> None:
         """Show a palette colour at a perceptual level through the whole calibration
         (day/night palette, level gain, gate) - what that colour really looks like there."""
-        c = canonical(colour)
+        c = self._canon(colour)
         with self._cond:
             if c == "off":
                 self.preview(None)
@@ -721,7 +894,7 @@ class LampEngine:
         """Show a meaning's Look and behaviour ("playing", "ready", "asleep", "phone",
         "busy", "asking", "setup") for ``seconds`` with the real transitions, then the
         live Look again (the lamp page's "show me")."""
-        look = PREVIEW_LOOKS.get(name)
+        look = preview_looks().get(name)
         if look is None:
             log.warning("lamp: no preview look %r", name)
             return
@@ -766,11 +939,11 @@ class LampEngine:
 
     def duty_for(self, colour: str, level: float) -> RGB:
         """The linear duty a steady ``colour`` at perceptual ``level`` gets (no night, no brightness)."""
-        c = canonical(colour)
+        c = self._canon(colour)
         if c == "off" or level <= LIT:
             return (0.0, 0.0, 0.0)
         level = _clamp01(float(level))
-        return self._resolve(Frame(ONEHOT[c], level, level), None)
+        return self._resolve(Frame(self._onehot(c), level, level), None)
 
     @property
     def previewing(self) -> bool:
@@ -797,6 +970,7 @@ class LampEngine:
         watchdog trips) but writes nothing, so tests can drive it with any clock.
         """
         with self._cond:
+            self._now = now
             self._check_watchdog(now)
             if self._preview_look is not None and now >= self._preview_look_until:
                 self._end_preview_look(now)
@@ -805,7 +979,7 @@ class LampEngine:
             if self._identify_until is not None:
                 if now >= self._identify_until:
                     self._identify_until = None
-                    self._start_blend(now, RESTORE_S)
+                    self._end_overlay(now, self._identify_look())
                 else:
                     frame = self._draw_identify(now - self._identify_t0, frame)
             if self._reply is not None:
@@ -813,8 +987,10 @@ class LampEngine:
                 if drawn is None:       # finished: back to what is underneath
                     end = self._reply_t0 + self._reply_len()
                     final = self._draw_reply(self._reply_len() - 1e-9, self._base(end))
-                    self._reply = None
-                    if final is not None and _differs_f(final, self._base(end)):
+                    kind, self._reply = self._reply, None
+                    if kind == "pattern":
+                        self._end_overlay(now, self._pattern[0])
+                    elif final is not None and _differs_f(final, self._base(end)):
                         self._start_blend(now, RESTORE_S)
                 else:
                     frame = drawn
@@ -842,6 +1018,7 @@ class LampEngine:
                 or self._target_look().motion != "solid"
                 or self._identify_until is not None or self._preview is not None
                 or self._blend_from is not None or self._preview_look is not None
+                or any(f is not None for f in self._gate_fade)
             )
             self._last = duty
             return duty, moving
@@ -899,12 +1076,12 @@ class LampEngine:
         start = self._base(now)
         self._tripped = True
         self._epoch = now
-        self._transition(start, self._look_frame(BUSY, now), now, 0.0)
+        self._transition(start, self._look_frame(signals.get("busy"), now), now, 0.0)
 
     def _target_look(self) -> Look:
         if self._preview_look is not None:
             return self._preview_look
-        return BUSY if self._tripped else self._look
+        return signals.get("busy") if self._tripped else self._look
 
     def _set_look(self, look: Look, now: float, start: Frame, fade_s: float, cut: bool,
                   keep_epoch: bool = True) -> None:
@@ -939,7 +1116,7 @@ class LampEngine:
         if start.level <= LIT and target.level <= LIT:
             self._trans = None
             return
-        if start.level > LIT and target.level > LIT and family(start.w) != family(target.w):
+        if start.level > LIT and target.level > LIT and self._family(start.w) != self._family(target.w):
             self._trans = {
                 "kind": "hue", "from": start, "t0": now,
                 "fall": HUE_FALL_S * night, "rise": HUE_RISE_S,
@@ -959,7 +1136,7 @@ class LampEngine:
 
     def _level(self, look: Look) -> tuple[float, float]:
         """(peak, trough) of ``look`` as drawn now: night, ember calibration, brightness."""
-        colour = canonical(look.colour)
+        colour = self._canon(look.colour)
         if colour == "off" or look.level <= 0.0:
             return 0.0, 0.0
         day = look.level
@@ -974,37 +1151,105 @@ class LampEngine:
             night *= self.ember_night / EMBER_NIGHT
         peak = night if self._night else day
         scaled = min(1.0, peak * self._scale)
+        if self._scale > 1.0:
+            scaled = min(scaled, max(peak, LOOK_CAP))   # keep the headroom for replies
         least = self._night_ember() if colour == "ember" else VISIBLE_MIN
         scaled = max(scaled, min(peak, least))
+        amber_min = self._amber_min() if colour == "amber" else 0.0
+        scaled = max(scaled, amber_min)
         trough = 0.0
         if look.motion == "breath":
-            trough = min(scaled, look.floor * scaled / look.level)
+            # The trough stays above the band (amber) and above what the main
+            # channel's minimum duty can draw, and the peak keeps ~3:1 in light
+            # over it - a breath must read as a breath on any LED.
+            trough = max(min(scaled, look.floor * scaled / look.level), amber_min,
+                         self._floor_level(colour))
+            scaled = min(1.0, max(scaled, trough * BREATH_MIN_SWING))
         return scaled, trough
+
+    def _amber_min(self) -> float:
+        """The lowest level amber is drawn at: above the band, so it stays amber -
+        but never over AMBER_MIN_CAP (with a high green floor ready must stay dim)."""
+        cap = AMBER_MIN_CAP[1] if self._night else AMBER_MIN_CAP[0]
+        return min(1.0, self._band()[1] * AMBER_MARGIN, max(cap, self.amber_band[1] * AMBER_MARGIN))
+
+    def _band(self) -> tuple[float, float]:
+        """The amber band in force: io.lamp.amber_band, or higher if the green floor needs it.
+
+        Amber's green must be at least about its floor where amber is drawn
+        as amber; below that it can only be held far above its share (yellow-
+        green) or dropped (ember-red). So the band's top is at least the level
+        where amber's green wants GATE_ON of its floor, and amber blends into
+        ember below it - one honest, gradual change instead of either.
+        """
+        lo, hi = self.amber_band
+        g = max(self.palette["amber"][1], self.palette_night["amber"][1]) * self.balance[1]
+        gain = max(self.level_gain.get("amber", 1.0), 1e-6)
+        if g > 0.0:
+            need = min(1.0, (self.min_duty[1] * GATE_ON / g) ** (1.0 / GAMMA) / gain)
+            if need > hi:
+                lo, hi = max(lo, need * 0.6), need
+        return lo, hi
+
+    def _floor_level(self, colour: str) -> float:
+        """The perceptual level at which ``colour``'s main channel reaches its minimum duty."""
+        if colour not in self.palette:
+            return 0.0
+        ratio = self._ratio(colour, 1.0)
+        i = max(range(3), key=lambda k: ratio[k] * self.balance[k])
+        top = ratio[i] * self.balance[i]
+        if top <= 0.0:
+            return 0.0
+        gain = max(self.level_gain.get(colour, 1.0), 1e-6)
+        return min(1.0, (self.min_duty[i] / top) ** (1.0 / GAMMA) / gain)
+
+    def _canon(self, colour: str) -> str:
+        """``colour`` as the engine draws it: a palette colour (new ones too), an old
+        name mapped onto its family, or "off"."""
+        if colour in self.palette:
+            return colour
+        return canonical(colour)
+
+    def _onehot(self, name: str) -> tuple[float, ...]:
+        if name in ONEHOT and len(self.hues) == 3:
+            return ONEHOT[name]
+        return tuple(1.0 if h == name else 0.0 for h in self.hues)
+
+    def _family(self, w: tuple[float, ...]) -> str:
+        return family(w, self.hues, self.families)
 
     def _night_ember(self) -> float:
         return self.ember_night
 
     def _look_frame(self, look: Look, now: float) -> Frame:
-        colour = canonical(look.colour)
+        colour = self._canon(look.colour)
         peak, trough = self._level(look)
         if peak <= 0.0:
             return DARK_FRAME
-        w = ONEHOT[colour]
+        w = self._onehot(colour)
         t = now - self._epoch
         if look.motion == "breath":
             return Frame(w, trough + (peak - trough) * breath_shape(t, look.period_s), trough)
         if look.motion == "beckon":
-            rest = look.period_s if look.period_s > 0 else BECKON_REST_S
-            return Frame(w, self._beckon_level(peak, pair_shape(t, rest, self._decay())), peak)
+            if look.rhythm == "long-short":
+                rest = look.period_s if look.period_s > 0 else SETUP_REST_S
+                k = long_short_shape(t, rest, self._decay())
+            else:
+                rest = look.period_s if look.period_s > 0 else BECKON_REST_S
+                k = pair_shape(t, rest, self._decay())
+            return Frame(w, self._beckon_level(peak, k), peak)
+        if look.motion == "pattern" and look.steps:
+            # Judged at the peak: a lit minor channel is held, never flicking per step.
+            return Frame(w, peak * pattern_shape(t, look.steps), peak)
         return Frame(w, peak, peak)
 
     def _decay(self) -> float:
         return KICK_DECAY_S * (NIGHT_SLOW if self._night else 1.0)
 
     def _beckon_level(self, level: float, k: float) -> float:
-        top = kick_peak(level)          # beckon must stay visible: halved at night, not floored lower
-        if self._night:
-            top = level + (top - level) * NIGHT_BECKON
+        """A beckon's level: from ``level`` up to its top (BECKON_TOP, lower at night) by ``k``."""
+        least = (BECKON_TOP_NIGHT if self._night else BECKON_TOP) * min(1.0, self._scale)
+        top = min(1.0, max(level * BECKON_GAIN, least))
         return level + (top - level) * k
 
     def _base(self, now: float) -> Frame:
@@ -1040,6 +1285,10 @@ class LampEngine:
             return kick_len(KICK_DECAY_S * self._reply_slow) - KICK_LEAD_S
         if self._reply == "swell":
             return SWELL_S * self._reply_slow
+        if self._reply == "pattern":
+            look, times = self._pattern
+            dip = 2 * OVERLAY_DIP_S if self._overlay_switches(look, self._reply_from) else 0.0
+            return dip + times * pattern_len(look.steps)
         return REPLY_S[self._reply]
 
     def _draw_reply(self, t: float, base: Frame) -> Frame | None:
@@ -1053,12 +1302,17 @@ class LampEngine:
             if start <= LIT or base.level <= LIT:
                 return base         # nothing to kick: the lamp is dark
             k = kick_shape(t + KICK_LEAD_S, KICK_DECAY_S * self._reply_slow)
-            return Frame(base.w, min(1.0, base.level + (kick_peak(start, self._night) - start) * k), base.env)
+            top = kick_peak(start, self._night, ember=base.w[1] > 0.5)
+            return Frame(base.w, min(1.0, base.level + max(0.0, top - start) * k), base.env)
         if name in ("refuse", "refuse1", "refuse3"):
             f = sag_shape(t, REFUSE_TIMES[name])
             # The colour is judged at the sagged level: deep in a sag amber
             # may lose its green - it reads as "no", and it happens once.
             return Frame(base.w, base.level * f, min(base.env, base.env * f))
+        if name == "pattern":
+            look, _ = self._pattern
+            peak = self._level(self._overlay_colour(look, base))[0]
+            return self._overlay(look, t, base, self._reply_len(), peak)
         if name == "swell":
             x = t / (SWELL_S * self._reply_slow)
             gain = 1.0 + SWELL_GAIN * (0.5 - 0.5 * math.cos(2 * math.pi * x))
@@ -1071,17 +1325,79 @@ class LampEngine:
         c = tail(t / self._reply_len())
         return Frame(base.w, _lerp(start.level, ready, c), _lerp(start.env, ready, c))
 
+    def _identify_look(self) -> Look:
+        look = signals.get("identify")
+        return look if look.motion == "pattern" and look.steps else signals.DEFAULTS["identify"]
+
     def _draw_identify(self, t: float, base: Frame) -> Frame:
-        if base.level <= LIT:
-            base = Frame(ONEHOT["amber"], READY_LEVEL, READY_LEVEL)
-        k = pair_shape(t, IDENTIFY_REST_S, self._decay())
-        return Frame(base.w, self._beckon_level(base.level, k), base.env)
+        """The signal table's identify pattern (three flashes to full, dipping to
+        IDENTIFY_LOW) at its own level - no night cap, no brightness: on demand."""
+        look = self._identify_look()
+        total = (self._identify_until or self._now) - self._identify_t0
+        return self._overlay(look, t, base, total, look.level)
+
+    def _overlay_colour(self, look: Look, base: Frame) -> Look:
+        """``look`` with "show" resolved to the colour on show (amber on a dark lamp)."""
+        if look.colour != "show":
+            return look
+        name = "amber"
+        if base.level > LIT:
+            i = max(range(len(base.w)), key=lambda k: base.w[k])
+            name = self.hues[i] if i < len(self.hues) else "amber"
+        return dataclasses.replace(look, colour=name)  # type: ignore[arg-type]
+
+    def _overlay_switches(self, look: Look, base: Frame) -> bool:
+        """Whether an overlay of ``look`` over ``base`` changes hue family (and so dips)."""
+        if look.colour == "show" or base.level <= LIT:
+            return False
+        w = self._onehot(self._canon(look.colour))
+        return self._family(w) != self._family(base.w)
+
+    def _overlay(self, look: Look, t: float, base: Frame, total: float, peak: float) -> Frame:
+        """A pattern drawn over ``base`` for ``total`` seconds at ``peak``.
+
+        In the colour on show ("show") it starts from where the lamp is; in
+        another hue family it first dips to the hue trough in the old colour
+        and ends with a dip in its own (the hue rule), the Look then rising
+        from the trough (``_end_overlay``).
+        """
+        coloured = self._overlay_colour(look, base)
+        w = self._onehot(self._canon(coloured.colour))
+        if base.level > LIT and look.colour == "show":
+            w = base.w
+        dip = OVERLAY_DIP_S if self._overlay_switches(look, base) else 0.0
+        if t < dip:
+            c = tail(t / dip)
+            return Frame(base.w, _lerp(base.level, HUE_TROUGH, c), _lerp(base.env, HUE_TROUGH, c))
+        u = t - dip
+        start = None
+        if not dip and base.level > LIT and peak > 0.0:
+            start = min(1.0, base.level / peak)        # the first edge eases from where it was
+        elif dip:
+            start = min(1.0, HUE_TROUGH / peak) if peak > 0.0 else 0.0
+        level = peak * pattern_shape(u, look.steps, start)
+        if dip and t > total - dip:
+            c = tail((t - (total - dip)) / dip)
+            level = _lerp(level, HUE_TROUGH, c)
+        return Frame(w, level, max(peak, LIT))
+
+    def _end_overlay(self, now: float, look: Look) -> None:
+        """An overlay ended: rise from the hue trough if it was another family, else blend."""
+        base = self._base(now)
+        if self._overlay_switches(look, base):
+            w = self._onehot(self._canon(look.colour))
+            self._trans = {"kind": "hue", "from": Frame(w, HUE_TROUGH, HUE_TROUGH),
+                           "t0": now - HUE_FALL_S, "fall": HUE_FALL_S, "rise": HUE_RISE_S,
+                           "trough": HUE_TROUGH}
+            self._blend_from = None
+        else:
+            self._start_blend(now, RESTORE_S)
 
     def _draw_countdown(self, frame: Frame, p: float) -> Frame:
         """Knob held off: glow down along the countdown to the night ember."""
         floor = self.ember_night
-        ember = Frame(ONEHOT["ember"], floor, floor)
-        if frame.level <= LIT or family(frame.w) == "warm":
+        ember = Frame(self._onehot("ember"), floor, floor)
+        if frame.level <= LIT or self._family(frame.w) == "warm":
             return _lerp_frame(frame, ember, p)
         trough = min(HUE_TROUGH, frame.level)     # blue: down, swap, up - never purple
         if p < 0.5:
@@ -1107,8 +1423,13 @@ class LampEngine:
             rgb = night
         else:
             rgb = _lerp3(night, day, math.log(env / NIGHT_ANCHOR) / math.log(1.0 / NIGHT_ANCHOR))
+        if name == "ember":
+            # Ember is the main channel alone, at every level and brightness: a
+            # trace of green would make asleep read as ready.
+            top = max(range(3), key=lambda i: rgb[i])
+            rgb = tuple(c if i == top else 0.0 for i, c in enumerate(rgb))  # type: ignore[assignment]
         if name == "amber":
-            lo, hi = self.amber_band
+            lo, hi = self._band()
             if env < hi:
                 w = 1.0 if env <= lo or hi <= lo else (hi - env) / (hi - lo)
                 rgb = _lerp3(rgb, self._ratio("ember", env), ease(w))
@@ -1121,7 +1442,7 @@ class LampEngine:
         env = frame.env if frame.env > LIT else frame.level
         ratio: RGB = (0.0, 0.0, 0.0)
         gain = 0.0
-        for weight, name in zip(frame.w, HUES):
+        for weight, name in zip(frame.w, self.hues):
             if weight <= 0.0:
                 continue
             r = self._ratio(name, env)
@@ -1137,17 +1458,30 @@ class LampEngine:
             if raw[i] <= 0.0:
                 continue
             floor = self.min_duty[i]
+            fade = 1.0
             if i != main:
                 on = gate[i] if gate is not None else True
-                if on and want[i] < floor * GATE_OFF:
+                near = raw[i] <= floor * GATE_SWITCH
+                if on and want[i] < floor * GATE_OFF and (near or gate is None):
                     on = False
                 elif not on and want[i] >= floor * GATE_ON:
                     on = True
+                    if gate is not None and not near:
+                        self._gate_fade[i] = self._now     # far above the floor: fade in
                 if gate is not None:
                     gate[i] = on
+                    if not on:
+                        self._gate_fade[i] = None
+                    elif self._gate_fade[i] is not None:
+                        x = (self._now - self._gate_fade[i]) / GATE_FADE_S
+                        if x >= 1.0 or x < 0.0:
+                            self._gate_fade[i] = None
+                        else:
+                            fade = ease(x)
                 if not on:
                     continue
-            out[i] = min(1.0, max(raw[i], floor))
+            lit = max(raw[i], floor)
+            out[i] = min(1.0, floor + (lit - floor) * fade)
         return (out[0], out[1], out[2])
 
     def _raw_duty(self, ratio: RGB, level: float) -> RGB:
@@ -1173,7 +1507,7 @@ class LampEngine:
         top = max(self.palette[name]) or 1.0
         level = (min(1.0, channel / top)) ** (1.0 / GAMMA) / max(self.level_gain[name], 1e-6)
         level = _clamp01(level)
-        return Frame(ONEHOT[name], level, level)
+        return Frame(self._onehot(name), level, level)
 
 
 REFUSE_TIMES: dict[str, int] = {"refuse": 2, "refuse1": 1, "refuse3": 3}
@@ -1217,6 +1551,7 @@ def open_lamp(spec: dict) -> LampEngine | None:
         output = open_output({**fallback, "backend": "gpio"})
     if isinstance(output, NullOutput):
         return None
+    signals.remap(spec.get("signals"))      # io.lamp.signals: a new design without code
     return LampEngine(
         output,
         palette=spec.get("palette"),

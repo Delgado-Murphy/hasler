@@ -5590,7 +5590,7 @@ const LAMP_MEANS = [
 ];
 // /api/status "lamp" in words, for the front page: "Lamp: asleep".
 const LAMP_WORDS = {playing:'playing', ready:'ready', asleep:'asleep', phone:'a phone is playing', busy:'busy — don’t unplug',
-  asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone', offline:'no internet'};
+  asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone', offline:'no internet', off:'off — safe to unplug'};
 const lampLook = {showing:null, until:0, timer:null, busy:false};
 const lampPrefs = () => Object.assign({brightness:'normal', key_replies:true, present:false, show_s:5, identify_s:10}, (settings && settings.lamp) || {});
 function lampMeanings(panel){

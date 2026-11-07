@@ -424,7 +424,7 @@ class TestBootScript:
         (tmp_path / "run" / "handover").write_text(json.dumps({"mode": "ember", "at": time.time()}))
         res = run_boot(tmp_path, "--print", "--seconds", "1.2")
         levels = frames(res.stdout)
-        assert 0.14 <= levels[-1] <= 0.36
+        assert 0.11 <= levels[-1] <= 0.51         # the deep slow busy breath, 12-50 %
         assert duty(root, 1) == 0 and duty(root, 2) == 0
         assert json.loads((tmp_path / "run" / "boot").read_text())["colour"] == "ember"
 

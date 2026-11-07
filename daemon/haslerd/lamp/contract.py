@@ -11,9 +11,10 @@ Three parts meet here and nowhere else:
 
 The light language (agreed 2026-11): **3 colours, 6 behaviours, 2
 transition rules**. Colours: amber (the radio), ember (asleep), moon blue (a
-phone is in charge). Behaviours: steady, breath (busy - don't unplug), kick
-(I heard you), refuse (no / failed), beckon (I need you / which radio),
-swell (something arrived or left). Transitions: brightness rises fast and
+phone is in charge). Behaviours: steady, breath (busy; the deep slow one:
+don't unplug), kick (I heard you), refuse (no / failed), beckon (I need you:
+two kicks to ask, long-short to be set up, three full flashes for "which
+radio?"), swell (something arrived or left). Transitions: brightness rises fast and
 falls with a long tail; a hue change dips to 10 % and swaps at the bottom,
 never fading through RGB.
 
@@ -52,29 +53,48 @@ def canonical(colour: str) -> str:
 
 
 # solid: steady. breath: the asymmetric busy breath (period_s, floor = trough).
-# beckon: two kicks 250 ms apart, then period_s of rest, until the Look changes.
-Motion = Literal["solid", "breath", "beckon"]
+# pattern: a sequence of (level share, seconds) steps, looping - morse, a
+# flash code, any rhythm the signal table wants (``pattern()``, ``morse()``).
+# beckon: a rhythm (two kicks 250 ms apart, or long-short), then period_s of
+# rest, until the Look changes.
+Motion = Literal["solid", "breath", "beckon", "pattern"]
+# A step of a pattern: (share of the Look's level 0..1, seconds).
+Step = tuple[float, float]
 
 # -- the levels (perceptual), day / night, docs/lamp.md "Levels" ----------------
 
 PLAYING_LEVEL, PLAYING_NIGHT = 0.80, 0.35     # headroom above 80 % for a kick
-READY_LEVEL, READY_NIGHT = 0.30, 0.20
+READY_LEVEL, READY_NIGHT = 0.30, 0.22         # night: clear of the amber band, so still amber
 EMBER_LEVEL, EMBER_NIGHT = 0.22, 0.15         # standby; calibration io.lamp.levels
 CASTING_LEVEL, CASTING_NIGHT = 0.55, 0.30     # moon blue's peak is 55 %
-CAST_PAUSED_LEVEL = 0.20
+CAST_PAUSED_LEVEL = 0.18                      # moon blue's red trace well off, 3:1 under night casting
 SLEEP_LEVEL = 0.25                            # the sleep timer's last minute
 NIGHT_CAP = 0.35                              # a Look with no night level of its own
 
 # -- the behaviours' shapes (docs/lamp.md "Behaviours") -------------------------
+#
+# Every meaning has its own signature, told apart by motion first (tempo,
+# depth, rhythm), then level, then colour (docs/lamp.md "Telling them apart").
 
-BREATH_S = 3.4                  # rise 1.3 s ease-out, fall 1.7 s ease-in-out, rest 0.4 s
-BREATH_RISE_S, BREATH_FALL_S, BREATH_REST_S = 1.3, 1.7, 0.4
+BREATH_S = 3.0                  # rise 1.15 s ease-out, fall 1.5 s ease-in-out, rest 0.35 s
+BREATH_RISE_S, BREATH_FALL_S, BREATH_REST_S = 1.15, 1.5, 0.35
 BREATH_FLOOR = 0.45             # trough, as a share of the peak
-SLOW_S, SLOW_FLOOR = 6.0, 0.40  # the slow tempo: shutting down, installing
-BECKON_REST_S = 2.2             # between pairs of kicks
-SETUP_REST_S = 4.0              # setup / hotspot: a patient beckon
-IDENTIFY_REST_S = 1.0           # "which radio?": an eager one ...
-IDENTIFY_S = 10.0               # ... for about this long
+# The slow tempo (busy - don't unplug: shutting down, installing): twice as
+# slow as the standard breath and much deeper - from a faint glow to about
+# half, so even at night it can never pass for the steady ember of "asleep".
+SLOW_S, SLOW_FLOOR = 6.0, 0.24
+BUSY_LEVEL, BUSY_NIGHT = 0.50, 0.30   # the slow breath's peak; trough 12 % (night: the faintest lit)
+BECKON_REST_S = 2.2             # asking: two kicks, then this rest
+# Setup / hotspot: its own rhythm, "long-short" - a long glow up, then a short
+# kick, then this rest (about 3 s a cycle).
+SETUP_REST_S = 1.0
+# Identify ("which radio?"): three quick full-brightness flashes, then this
+# rest, for about IDENTIFY_S - the only signal that ever reaches full.
+IDENTIFY_REST_S = 0.8
+IDENTIFY_S = 10.0
+
+# How a beckon (I need you / it's me) beats.
+Rhythm = Literal["pair", "long-short"]
 
 
 @dataclass(frozen=True)
@@ -87,6 +107,8 @@ class Look:
     period_s: float = 0.0         # breath period; for a beckon, the rest between pairs
     floor: float = 0.0            # breath trough, perceptual 0..1 (scales with the peak at night)
     night: float | None = None    # the level at night; None: min(level, NIGHT_CAP), ember scaled
+    rhythm: Rhythm = "pair"       # a beckon's beat: two kicks (asking) or long-short (setup)
+    steps: tuple[Step, ...] = ()  # a pattern's steps: (share of level, seconds), looping
 
 
 DARK = Look()
@@ -104,8 +126,54 @@ def breathing(colour: Colour, peak: float, night: float | None = None,
 
 
 def beckoning(colour: Colour, level: float, night: float | None = None,
-              rest_s: float = BECKON_REST_S) -> Look:
-    return Look(colour, level, "beckon", rest_s, 0.0, night)
+              rest_s: float = BECKON_REST_S, rhythm: Rhythm = "pair") -> Look:
+    """A beckon on ``level``: two kicks (``"pair"``) or a long glow and a kick
+    (``"long-short"``), then ``rest_s``, until the Look changes."""
+    return Look(colour, level, "beckon", rest_s, 0.0, night, rhythm)
+
+
+def pattern(colour: str, level: float, steps, night: float | None = None) -> Look:
+    """A Look that plays ``steps`` - (share of ``level`` 0..1, seconds) - again and again.
+
+    Any colour the palette knows (or ``"show"``: the colour on show, for an
+    overlay such as identify). The engine softens each edge over a frame or
+    two, so a step is a crisp change, never a one-frame jump.
+    """
+    clean = tuple((min(1.0, max(0.0, float(a))), max(0.0, float(s))) for a, s in steps)
+    if not clean or sum(s for _, s in clean) <= 0.0:
+        raise ValueError("a pattern needs steps with some length")
+    return Look(colour, level, "pattern", 0.0, 0.0, night, "pair", clean)  # type: ignore[arg-type]
+
+
+MORSE: dict[str, str] = {
+    "a": ".-", "b": "-...", "c": "-.-.", "d": "-..", "e": ".", "f": "..-.", "g": "--.", "h": "....",
+    "i": "..", "j": ".---", "k": "-.-", "l": ".-..", "m": "--", "n": "-.", "o": "---", "p": ".--.",
+    "q": "--.-", "r": ".-.", "s": "...", "t": "-", "u": "..-", "v": "...-", "w": ".--", "x": "-..-",
+    "y": "-.--", "z": "--..", "0": "-----", "1": ".----", "2": "..---", "3": "...--", "4": "....-",
+    "5": ".....", "6": "-....", "7": "--...", "8": "---..", "9": "----.",
+}
+
+
+def morse(text: str, unit_s: float = 0.15, low: float = 0.15, gap_after: float = 7.0) -> tuple[Step, ...]:
+    """``text`` as pattern steps: dot 1 unit, dash 3, gaps 1 / 3 (letters) / 7
+    (words) units at ``low``, then ``gap_after`` units before it repeats."""
+    steps: list[Step] = []
+    words = [w for w in str(text).lower().split() if w]
+    for wi, word in enumerate(words):
+        letters = [MORSE[c] for c in word if c in MORSE]
+        for li, code in enumerate(letters):
+            for si, sym in enumerate(code):
+                steps.append((1.0, unit_s * (3 if sym == "-" else 1)))
+                if si < len(code) - 1:
+                    steps.append((low, unit_s))
+            if li < len(letters) - 1:
+                steps.append((low, unit_s * 3))
+        if wi < len(words) - 1:
+            steps.append((low, unit_s * 7))
+    if not steps:
+        raise ValueError(f"nothing to send in {text!r}")
+    steps.append((low, unit_s * gap_after))
+    return tuple(steps)
 
 
 # One-off replies drawn over the current Look, then the Look again

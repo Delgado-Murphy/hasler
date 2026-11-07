@@ -15,7 +15,7 @@ Priority, highest first (docs/lamp.md "State map"):
     drawn by the engine; halted is dark.
  2. replies (kick, refuse, swell) - the engine's overlay, not a Look
  3. a confirm request: beckon until a key is pressed
- 4. setup / hotspot: the patient amber beckon
+ 4. setup / hotspot: the amber long-short beckon
  5. a phone casting (it beats standby: a phone wakes the radio)
  6. standby
  7. boot warm-up
@@ -30,10 +30,13 @@ that can't work refuses (and a missing panel refuses three times at boot).
 
 from __future__ import annotations
 
+import dataclasses
+
+from . import signals
 from .contract import (
-    CAST_PAUSED_LEVEL, CASTING_LEVEL, CASTING_NIGHT, EMBER_LEVEL, EMBER_NIGHT, PLAYING_LEVEL,
-    PLAYING_NIGHT, READY_LEVEL, READY_NIGHT, SETUP_REST_S, SLEEP_LEVEL, BoxState, Look, beckoning,
-    breathing, steady,
+    CAST_PAUSED_LEVEL, CASTING_LEVEL, CASTING_NIGHT, EMBER_LEVEL, EMBER_NIGHT, NIGHT_CAP,
+    PLAYING_LEVEL, PLAYING_NIGHT, READY_LEVEL, READY_NIGHT, SLEEP_LEVEL, BoxState, Look, breathing,
+    steady,
 )
 
 # Kept for the keeper's timers: seconds without internet before a press may refuse.
@@ -42,12 +45,17 @@ OFFLINE_AFTER_S = 60.0
 PLAYING = steady("amber", PLAYING_LEVEL, PLAYING_NIGHT)
 READY = steady("amber", READY_LEVEL, READY_NIGHT)
 STANDBY = steady("ember", EMBER_LEVEL, EMBER_NIGHT)
-SHUTTING_DOWN = breathing("ember", 0.35, night=0.22, slow=True)
+# Busy - don't unplug: the deep slow ember breath, 6 s, from a faint glow
+# (12 %) to 50 % (night 30 %). Deep enough that it never passes for asleep.
+# The designed signals (busy, setup, asking) are the signal table's
+# (lamp/signals.py); these names are their defaults, look_for asks the table.
+SHUTTING_DOWN = signals.DEFAULTS["busy"]
 # Installing an update: the shutdown's breath, never a steady ember (which
 # reads as "asleep" - and the box must not be unplugged now).
 UPDATING = SHUTTING_DOWN
 LOADING = breathing("amber", 0.55, night=0.35)
-HOTSPOT = beckoning("amber", READY_LEVEL, READY_NIGHT, rest_s=SETUP_REST_S)
+# Set me up: its own rhythm, long-short ("daah-dit"), about 3 s a cycle.
+HOTSPOT = signals.DEFAULTS["setup"]
 PAIRING = breathing("blue", CASTING_LEVEL, night=CASTING_NIGHT)
 CASTING = steady("blue", CASTING_LEVEL, CASTING_NIGHT)
 CAST_PAUSED = steady("blue", CAST_PAUSED_LEVEL, CAST_PAUSED_LEVEL)
@@ -105,10 +113,8 @@ def look_for(state: BoxState) -> tuple[Look, float]:
     """The Look the lamp should settle into, and how long to fade into it (0: standard)."""
     if state.halted:
         return Look(), STANDARD
-    if state.shutting_down:
-        return SHUTTING_DOWN, STANDARD
-    if state.updating:
-        return UPDATING, STANDARD
+    if state.shutting_down or state.updating:
+        return signals.get("busy"), STANDARD
     if state.confirming:
         return confirm_look(_underneath(state)), STANDARD
     return _underneath(state)
@@ -116,7 +122,7 @@ def look_for(state: BoxState) -> tuple[Look, float]:
 
 def _underneath(state: BoxState) -> tuple[Look, float]:
     if state.hotspot:
-        return HOTSPOT, STANDARD
+        return signals.get("setup"), STANDARD
     if state.casting:
         return (CAST_PAUSED if state.cast_paused else CASTING), STANDARD
     if state.standby:
@@ -135,7 +141,7 @@ def _underneath(state: BoxState) -> tuple[Look, float]:
 
 
 MEANINGS = ("playing", "ready", "asleep", "phone", "busy", "asking", "setup",
-            "starting", "pairing", "offline")
+            "starting", "pairing", "offline", "off")
 
 
 def meaning_for(state: BoxState) -> str:
@@ -143,10 +149,10 @@ def meaning_for(state: BoxState) -> str:
 
     Follows look_for's priority, so the page names what the cabinet shows.
     "offline": idle without internet for a minute (the lamp itself shows
-    ready - a press would refuse), or halted.
+    ready - a press would refuse). "off": halted, the lamp is dark.
     """
     if state.halted:
-        return "offline"
+        return "off"
     if state.shutting_down or state.updating:
         return "busy"
     if state.confirming:
@@ -170,11 +176,18 @@ def meaning_for(state: BoxState) -> str:
 
 
 def confirm_look(under: tuple[Look, float]) -> Look:
-    """A confirm request beckons in the colour on show, at least at the ready level."""
+    """A confirm request beckons in the colour on show, on at most the ready level.
+
+    Beating on the ready level (not playing's 80 %) leaves the kicks room to
+    be seen: ~6:1 in light, day and night.
+    """
+    ask = signals.get("asking")
     look = under[0]
     if look.colour == "off" or look.level <= 0.0:
-        return beckoning("amber", READY_LEVEL, READY_NIGHT)
-    return beckoning(look.colour, look.level, look.night)
+        return ask
+    night = look.night if look.night is not None else min(look.level, NIGHT_CAP)
+    return dataclasses.replace(ask, colour=look.colour, level=min(look.level, READY_LEVEL),
+                               night=min(night, READY_NIGHT))
 
 
 def sleepy(state: BoxState, look: Look, fade: float) -> tuple[Look, float]:

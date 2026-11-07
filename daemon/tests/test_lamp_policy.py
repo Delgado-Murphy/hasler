@@ -47,9 +47,9 @@ class TestPriority:
 
     def test_3_hotspot_beats_a_phone_and_standby(self):
         assert look(hotspot=True, casting=True, standby=True) == policy.HOTSPOT
-        # Setup is the patient amber beckon: two kicks, 4 s rest.
-        assert (policy.HOTSPOT.colour, policy.HOTSPOT.motion, policy.HOTSPOT.period_s) == (
-            "amber", "beckon", 4.0)
+        # Setup has its own rhythm: an amber long-short beckon, 1 s rest (~3 s a cycle).
+        assert (policy.HOTSPOT.colour, policy.HOTSPOT.motion, policy.HOTSPOT.rhythm,
+                policy.HOTSPOT.period_s) == ("amber", "beckon", "long-short", 1.0)
 
     def test_halted_is_dark(self):
         assert look(halted=True, shutting_down=True) == policy.Look()
@@ -58,7 +58,10 @@ class TestPriority:
         got = look(confirming=True)
         assert got.motion == "beckon" and got.colour == "amber" and got.period_s == 2.2
         assert got.level == policy.READY.level
-        assert look(confirming=True, playing=True).level == policy.PLAYING.level
+        # Playing beckons on the ready level: room for the kicks to show.
+        assert look(confirming=True, playing=True).level == policy.READY.level
+        assert look(confirming=True, playing=True).night == policy.READY.night
+        assert look(confirming=True).rhythm == "pair"
         assert look(confirming=True, casting=True).colour == "blue"
         assert look(confirming=True, standby=True).colour == "ember"
         assert look(confirming=True, hotspot=True).period_s == 2.2     # beats setup
@@ -67,10 +70,10 @@ class TestPriority:
     def test_4_a_phone_beats_standby(self):
         assert look(casting=True, standby=True) == policy.CASTING
 
-    def test_4_casting_is_moon_blue_55_and_a_20_glow_paused(self):
+    def test_4_casting_is_moon_blue_55_and_an_18_glow_paused(self):
         assert look(casting=True) == policy.CASTING
         assert (policy.CASTING.level, policy.CASTING.night) == (0.55, 0.30)
-        assert look(casting=True, cast_paused=True).level == 0.2
+        assert look(casting=True, cast_paused=True).level == 0.18
         assert look_for(replace(IDLE, casting=True))[1] == policy.STANDARD
 
     def test_4_a_phone_beats_offline(self):
@@ -101,12 +104,14 @@ class TestPriority:
 
     def test_8_loading_is_the_standard_amber_breath(self):
         assert look(loading=True, offline_s=600) == policy.LOADING
-        assert policy.LOADING.colour == "amber" and policy.LOADING.period_s == 3.4
+        assert policy.LOADING.colour == "amber" and policy.LOADING.period_s == 3.0
         assert policy.LOADING.floor == pytest.approx(0.45 * policy.LOADING.level)
 
     def test_busy_breaths_are_the_slow_tempo(self):
-        assert policy.SHUTTING_DOWN.period_s == 6.0
-        assert policy.SHUTTING_DOWN.floor == pytest.approx(0.40 * policy.SHUTTING_DOWN.level)
+        # Twice as slow as the standard breath, and deep: 12 % -> 50 % (night 30 %).
+        assert policy.SHUTTING_DOWN.period_s == 6.0 == 2 * policy.LOADING.period_s
+        assert (policy.SHUTTING_DOWN.level, policy.SHUTTING_DOWN.night) == (0.50, 0.30)
+        assert policy.SHUTTING_DOWN.floor == pytest.approx(0.12)
 
     def test_9_offline_and_a_missing_panel_are_no_idle_states(self):
         assert look(offline_s=600) == policy.READY
@@ -117,7 +122,7 @@ class TestPriority:
     def test_10_playing_is_80_and_ready_is_30(self):
         assert look_for(replace(IDLE, playing=True)) == (policy.PLAYING, policy.STANDARD)
         assert (policy.PLAYING.level, policy.PLAYING.night) == (0.80, 0.35)
-        assert look() == policy.READY and (policy.READY.level, policy.READY.night) == (0.30, 0.20)
+        assert look() == policy.READY and (policy.READY.level, policy.READY.night) == (0.30, 0.22)
 
     def test_playlists_are_amber_too(self):
         for source in ("radio", "ytm", "spotify"):
@@ -127,7 +132,7 @@ class TestPriority:
         got, fade = look_for(replace(IDLE, playing=True, sleeping=True))
         assert (got.colour, got.level, got.night, fade) == ("amber", 0.25, 0.25, 20.0)
         got, _ = look_for(replace(IDLE, sleeping=True))
-        assert (got.level, got.night) == (0.25, 0.20)
+        assert (got.level, got.night) == (0.25, 0.22)
 
 
 class TestMeaning:
@@ -146,7 +151,7 @@ class TestMeaning:
         ({"pairing": True}, "pairing"),
         ({"offline_s": 120.0}, "offline"),
         ({"offline_s": 120.0, "playing": True}, "playing"),
-        ({"halted": True}, "offline"),
+        ({"halted": True}, "off"),
     ])
     def test_meaning_follows_the_priority(self, kw, meaning):
         assert policy.meaning_for(replace(IDLE, **kw)) == meaning

@@ -16,7 +16,7 @@ survives a change of palette or light language. A policy that knows better
 can expose ``meaning_for(state) -> str`` and it is used instead.
 
 ``STATUS`` adds the in-between states the front page may show that have no
-"Show me" row (warming up, a phone pairing, no internet).
+"Show me" row (warming up, a phone pairing, no internet, off).
 """
 
 from __future__ import annotations
@@ -30,10 +30,11 @@ LOOKS: tuple[str, ...] = ("playing", "ready", "asleep", "phone", "busy", "asking
 # One-off replies the owner can ask to see.
 REPLIES: tuple[str, ...] = ("heard", "no")
 # Everything /api/status "lamp" can say.
-STATUS: tuple[str, ...] = LOOKS + ("starting", "pairing", "offline")
+STATUS: tuple[str, ...] = LOOKS + ("starting", "pairing", "offline", "off")
 
-# How long "Show me" plays a look on the real lamp (seconds).
-SHOW_S = 5.0
+# How long "Show me" plays a look on the real lamp (seconds): long enough for
+# two of setup's 3 s cycles and a whole 6 s busy breath.
+SHOW_S = 8.0
 # Identify: how long by default, and the most one call may ask for.
 IDENTIFY_S = 10.0
 IDENTIFY_MAX_S = 60.0
@@ -75,6 +76,8 @@ def meaning_of(state: BoxState, policy: Any = None) -> str:
                 return name
         except Exception:
             pass
+    if state.halted:
+        return "off"
     if state.shutting_down or state.updating:
         return "busy"
     if state.hotspot:

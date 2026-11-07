@@ -20,8 +20,8 @@ breathes too: haslerd.service's ExecStopPost runs ``hasler-lamp-boot
 and starts this service again unless the box is shutting down (then haslerd
 left a steady ember for the halt hook). Started with a fresh note, it
 continues from whatever the LED shows - no fade from dark, no jump - into the
-amber breath, or the ember breath (15-35 %, 2.5 s, pure red: busy, don't
-unplug) while an update is installed.
+amber breath, or the deep slow ember breath (12-50 %, 6 s, pure red: busy,
+don't unplug - the engine's slow tempo) while an update is installed.
 
 Hardware (docs/hardware.md "Pilot lamp"): common-anode RGB LED on 3.3 V, red
 GPIO17, green GPIO22, blue GPIO27, GPIO LOW = lit. Each pin is its own
@@ -96,9 +96,10 @@ HANDOVER_FRESH_S = 60.0           # an older note is a leftover, not a handover
 LOOKS = {
     # 0.10/0.35 read as 'off' on this LED (bench, 20 Oct)
     "amber": {"floor": 0.25, "peak": 0.60, "period_s": 3.0, "balance": (1.0, 0.15, 0.0)},
-    # [SHUTTING_DOWN / UPDATING]: busy, don't unplug. Pure red, as the engine
-    # draws deep ember (its trace of green is under the floor).
-    "ember": {"floor": 0.15, "peak": 0.35, "period_s": 2.5, "balance": (1.0, 0.0, 0.0)},
+    # [SHUTTING_DOWN / UPDATING]: busy, don't unplug - the engine's deep slow
+    # breath (12 % -> 50 %, 6 s), so it never passes for asleep. Pure red, as
+    # the engine draws ember.
+    "ember": {"floor": 0.12, "peak": 0.50, "period_s": 6.0, "balance": (1.0, 0.0, 0.0)},
 }
 FLOOR, PEAK = LOOKS["amber"]["floor"], LOOKS["amber"]["peak"]
 BREATH_S = LOOKS["amber"]["period_s"]

@@ -41,8 +41,9 @@ log = logging.getLogger(__name__)
 RUN_DIR = Path(os.environ.get("HASLER_LAMP_RUN", "/run/hasler-lamp"))
 GAMMA = 2.2                 # the engine's (lamp/engine.py); the boot script's too
 TAKEOVER_WAIT_S = 0.3       # the boot script answers within a frame or two
-# What a shutdown leaves for the halt hook: the shutting-down breath's middle
-# (0.15..0.35 perceptual), steady - never a frozen breath at a random phase.
+# What a shutdown leaves for the halt hook: a steady ember inside the
+# shutting-down breath (0.12..0.50 perceptual) - never a frozen breath at a
+# random phase.
 # Pure red, as the engine draws deep ember (its green is under the floor).
 HOLD_LEVEL = 0.25
 HOLD_LEVEL_NIGHT = 0.17     # the night ember's share of that (0.15 / 0.22)
