@@ -326,6 +326,42 @@ on the Pi's USB jacks under the HAT's far end helps); J4
 keeps 5 V on pin 1; no ESD diodes on D+/D− (the CH224A only uses them for BC1.2 detection);
 pot readings may jitter a few counts with the lamp pulsing (shared 3V3A wire).
 
+## Rev B: the pilot lamp (decided 7 November 2026)
+
+Rev A drives the lamp straight from three Pi GPIOs (pwm-gpio, software PWM at 800 Hz) into a
+common-anode LED on 3V3A through 220/100/100 ohm. The lamp review on the first board found its
+limits: green and blue get only ~2-4 mA (Vf 2.8-3.1 V against a 3.3 V anode, +-40 % between
+LEDs, strongly temperature dependent), blue can never match amber, and pulses under ~6-10 us
+are lost to timer jitter, so amber turns red and breaths flick hue when dim. The software in
+1.2.x works around it (realistic floors, a planned amber -> ember blend, per-colour gains and a
+guided calibration). Rev B fixes it in hardware:
+
+- **A constant-current LED driver.** First choice: **TLC59711** (12 channels, 16-bit PWM with
+  spread-spectrum, constant-current sinks with a 7-bit current trim per colour group - white
+  balance in hardware, the full PWM range kept for dimming; 2-wire, bit-banged from two spare
+  GPIOs such as 5/6 on J4). Alternatives: LP5562 (I2C, 4 channels incl. W, on-chip fade engine
+  that keeps breathing through boot, a daemon restart or a hang) or a PCA9685 (12-bit,
+  open-drain, cheapest; not constant-current, so keep per-channel resistors). PWM at
+  1-4 kHz or above (IEEE 1789 low-risk; no flicker on camera).
+- **5 V for the lamp anode**, never through a GPIO: the driver sinks the cathodes (or, with
+  plain GPIO/PWM, one logic-level N-MOSFET per channel - AO3400A or DMG1012T, gate 100 ohm
+  from the pin, 100 k to GND, which also keeps the LED dark during reset). Needs its own
+  conductor to the cabinet: today J2-12 (3V3A) feeds both the pots' high end and the LED anode,
+  and the HM's 16-wire ribbon has no spare - split the anode from the pot rail in the cabinet
+  and use a free J2 pin. With resistors instead of constant current, pre-balance them for 5 V
+  (about R 330 ohm, G 680 ohm-1 k, B 180 ohm) so every colour uses most of the PWM range.
+- **The LED: a diffused (frosted) RGB, ideally RGB + warm white.** The owner has frosted RGB
+  LEDs for now. Best: an RGBW part whose white is a phosphor 1800-2200 K ("filament") or
+  PC-amber die - amber, ember and the warm glow come from one broad-spectrum channel that dims
+  without hue drift and barely moves with temperature; RGB is left for the moon blue. Avoid
+  addressable WS2812/SK6812 parts (8-bit at ~1 kHz can't dim to ember smoothly).
+- **Light behind the lens:** 1-2 mm opal acrylic or diffuser film, a 5-10 mm white-lined mixing
+  cavity, black foam sealing the chamber so no light spills onto the keys. Check the lens tint
+  with a torch first (an amber lens eats blue).
+- **Nice to have:** an NTC on the spare ADS1115 input (A3) near the LED for temperature
+  compensation; a footprint for a TCS34725/AS7341 colour sensor (Qwiic) for repeatable
+  calibration and drift correction.
+
 ## Rebuilding
 
 Everything under `hardware/hat/` is generated from `hardware/hat/gen/design.py`:
