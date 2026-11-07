@@ -123,6 +123,12 @@ button{cursor:pointer}
   box-shadow:inset 0 3px 0 var(--amber),0 0 0 #8F7F5E,0 0 18px rgba(255,178,56,.55)}
 .key.pu.down{background:linear-gradient(180deg,#5A4430 0%,#40301F 85%,#33261A 100%);box-shadow:inset 0 3px 0 var(--amber),0 0 0 #1C130C,0 0 18px rgba(255,178,56,.45)}
 .key:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+/* A key with a hold job: a short bar at the top of the cap; a red "!" when Home Assistant lacks its target. */
+.key-h{position:absolute;top:5px;left:50%;width:14px;height:3px;margin-left:-7px;border-radius:2px;background:#A8916A;pointer-events:none}
+.key.pu .key-h{background:var(--brass)}
+.key-h.miss,.skey .hm.miss{top:3px;width:13px;height:13px;margin-left:-6.5px;border-radius:50%;background:var(--red);color:#FFF3E6;font:800 9px/13px var(--sans);text-align:center}
+.key-h.miss::before,.skey .hm.miss::before{content:"!"}
+.key-h[hidden],.skey .hm[hidden]{display:none}
 @media (max-width:379px){ .key{height:164px} .key-l{font-size:8px;line-height:10px;letter-spacing:.02em} .key-n{font-size:21px} .bank{gap:5px;padding-inline:8px} }
 
 /* ---------- controls ---------- */
@@ -166,6 +172,16 @@ button{cursor:pointer}
 .skey.pu[aria-current="true"]{background:#6A5038}
 .skey .dot{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--red)}
 .skey .dot.dirty{background:var(--amber)}
+.skey .hm{position:absolute;bottom:6px;left:50%;width:12px;height:3px;margin-left:-6px;border-radius:2px;background:#A8916A}
+.skey.pu .hm{background:var(--brass)}
+.skey .hm.miss{top:auto;bottom:4px}
+/* Tap | Hold switch on a key: each half says what it does, a dot when it has a problem or unsaved change. */
+.slot-seg button{position:relative;padding:6px 14px}
+.slot-seg button small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none}
+.slot-seg .dot{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--red)}
+.slot-seg .dot.dirty{background:var(--amber)}
+.choice.hold .choice-name{white-space:normal;overflow-wrap:anywhere}
+.choice.hold.miss{border-color:rgba(217,68,43,.6)}
 .sheet{position:relative;display:flex;flex-direction:column;gap:16px;margin:0 -16px;padding:18px 18px 0;border-top:1px solid var(--line2);border-radius:22px 22px 0 0;
   background:linear-gradient(180deg,#261A11 0%,#1F150D 100%);min-height:60vh}
 .grab{align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line2);flex:none}
@@ -271,6 +287,15 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .kl-name{color:var(--cream);font:600 15px/20px var(--serif);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kl-sub{color:var(--muted);font:10px/13px var(--mono);letter-spacing:.08em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chev{flex:none;color:var(--muted)}
+/* The key list: a Tap line and a Hold line per key, each its own button, never cut short. */
+.keylist.slots li{display:flex;align-items:center;gap:14px;padding:6px 4px;border-bottom:1px solid var(--line)}
+.keylist.slots .kl-n{cursor:pointer}
+.keylist.slots button{display:flex;align-items:baseline;gap:8px;min-height:32px;padding:5px 2px;border:0;border-radius:6px}
+.kl-k{flex:none;width:34px;color:var(--muted);font:10px/20px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.kl-v{flex:1;min-width:0;color:var(--cream);font:600 15px/20px var(--serif);overflow-wrap:anywhere}
+.kl-line.hold .kl-v{color:var(--text2);font:500 14px/20px var(--sans)}
+.kl-line.hold.none .kl-v{color:var(--muted)}
+.kl-miss{display:block;color:#F07A62;font:12.5px/16px var(--sans)}
 /* key combinations (Edit keys) */
 .combos{display:flex;flex-direction:column;gap:8px;margin-top:14px}
 .combo-h{margin:0;color:var(--title);font:600 18px/24px var(--serif)}
@@ -1067,7 +1092,7 @@ let settings = null, haState = null, haEnts = null, haEntsErr = '', browseData =
 let ytm = {available:null, signed_in:false, name:''};
 const acctUi = {open:false, text:'', err:'', busy:false};
 const ytmPicked = new Map(), stationMeta = new Map(), autoName = {}, srcMemo = {}, linkMode = {};
-const ed = {key:null, pick:null, ent:null, rename:false, entQ:'', lp:null, lpQ:'', combo:null};
+const ed = {key:null, slot:'tap', pick:null, ent:null, rename:false, entQ:'', lp:null, lpQ:'', combo:null};   // slot: the Tap or Hold tab
 const tryRes = {};          // "k1.hold" -> what the last "Try it" said
 let view = 'remote';
 
@@ -1334,6 +1359,7 @@ function buildBank(){
   const bank = $('bank'); bank.textContent = '';
   for (const k of remoteKeys()){
     const btn = h('button', {type:'button', class:'key' + (k.id === 'pu' ? ' pu' : ''), 'data-key':k.id},
+      h('span', {class:'key-h', 'aria-hidden':'true', hidden:''}),
       h('span', {class:'key-n', 'aria-hidden':'true'}, k.label), h('span', {class:'key-l', 'aria-hidden':'true', lang:'es'}));
     bindKey(btn, k.id);
     bank.append(btn);
@@ -1341,12 +1367,11 @@ function buildBank(){
   paintBank();
 }
 function holdVerb(id){ const k = cfg && cfg.keys.find(x => x.id === id); return verbOf(k && k.hold); }
+// A press longer than 600 ms is a hold, by finger, mouse or keyboard (Space / Enter kept down).
 function bindKey(btn, id){
-  let timer = null, rep = null, held = false, active = false;
-  btn.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;
-    active = true; held = false;
-    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+  let timer = null, rep = null, held = false, active = null;   // active: 'ptr' | 'kbd' while down
+  const start = src => {
+    active = src; held = false;
     localDown.add(id); paintBank();
     timer = setTimeout(() => {
       held = true;
@@ -1356,19 +1381,33 @@ function bindKey(btn, id){
       press(id, 'hold');
       if (v === 'volume_up' || v === 'volume_down') rep = setInterval(() => press(id, 'hold', true), 150);
     }, 600);
-  });
-  const end = fire => {
-    if (!active) return;
-    active = false; clearTimeout(timer); clearInterval(rep); rep = null;
+  };
+  const end = (fire, src) => {
+    if (!active || active !== src) return;
+    active = null; clearTimeout(timer); clearInterval(rep); rep = null;
     localDown.delete(id);
     if (fire && !held) tap(id);
     paintBank();
   };
-  btn.addEventListener('pointerup', () => end(true));
-  btn.addEventListener('pointercancel', () => end(false));
-  btn.addEventListener('lostpointercapture', () => end(false));
+  btn.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || active) return;
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+    start('ptr');
+  });
+  btn.addEventListener('pointerup', () => end(true, 'ptr'));
+  btn.addEventListener('pointercancel', () => end(false, 'ptr'));
+  btn.addEventListener('lostpointercapture', () => end(false, 'ptr'));
   btn.addEventListener('contextmenu', e => e.preventDefault());
-  btn.addEventListener('click', e => { if (e.detail === 0) tap(id); });   // keyboard: Enter / Space
+  // Keyboard: the press starts on keydown and ends on keyup; the browser's own click is held back.
+  const actKey = e => e.key === ' ' || e.key === 'Enter';
+  btn.addEventListener('keydown', e => {
+    if (!actKey(e) || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    if (!e.repeat && !active) start('kbd');
+  });
+  btn.addEventListener('keyup', e => { if (actKey(e)){ e.preventDefault(); end(true, 'kbd'); } });
+  btn.addEventListener('blur', () => end(false, 'kbd'));
+  btn.addEventListener('click', e => { if (e.detail === 0 && !active) tap(id); });   // a screen reader's "activate"
 }
 function holdName(k){
   if (!k) return '';
@@ -1419,7 +1458,12 @@ function paintBank(){
     if (lbl.textContent !== short) lbl.textContent = short;
     const down = localDown.has(id) || (flashUntil[id] || 0) > now || pressed.has(id) || cur === id || (id === 'pu' && puEngaged());
     btn.classList.toggle('down', down);
-    btn.setAttribute('aria-label', (k.label ? (id === 'pu' ? 'PU' : 'Key ' + k.label) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : ''));
+    const hk = cfg && cfg.keys.find(x => x.id === id), hv = verbOf(hk && hk.hold), miss = hv !== 'none' && !!missingFor(id, 'hold');
+    const hm = btn.querySelector('.key-h');
+    if (hm){ hm.hidden = hv === 'none'; hm.classList.toggle('miss', miss); }
+    const holdTxt = hv === 'none' ? '' : '. Hold: ' + holdName(hk) + (miss ? ', missing in Home Assistant' : '');
+    btn.setAttribute('aria-label', (k.label ? (id === 'pu' ? 'PU' : 'Key ' + k.label) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : '') + holdTxt);
+    btn.title = hv === 'none' ? '' : 'Hold: ' + holdName(hk) + (miss ? ' (missing in Home Assistant)' : '');
     btn.setAttribute('aria-pressed', String(cur === id));
   }
 }
@@ -1718,7 +1762,11 @@ function onRoute(){
   $('app').dataset.view = view;
   if (view === 'edit'){
     ed.key = next.arg === 'reset' || next.arg === 'combos' ? null : next.arg && cfg && cfg.keys.some(k => k.id === next.arg) ? next.arg : (changed ? null : ed.key);
-    ed.pick = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null; ed.ent = null; ed.lp = null; ed.rename = false; ed.combo = null;
+    // #edit/<key>/hold opens the Hold tab; #edit/<key>/tap the Tap tab with its choices open.
+    const sl = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null;
+    ed.slot = sl || 'tap';
+    ed.pick = sl === 'tap' ? 'tap' : null; ed.ent = null; ed.lp = null; ed.rename = false; ed.combo = null;
+    edArrive = sl && next.arg ? {key: next.arg, slot: sl, until: Date.now() + 8000} : null;
   }
   renderPanel();
   if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); }
@@ -1735,6 +1783,7 @@ function onRoute(){
     if (f) f.focus({preventScroll:true});
     setUi.backTo = null;
   }
+  if (view === 'edit' && edArrive) arriveSlot();
   setDeepLink();
 }
 window.addEventListener('hashchange', onRoute);
@@ -1789,10 +1838,12 @@ function renderEdit(){
   const strip = h('div', {class:'strip-keys', role:'group', 'aria-label':'Choose a key'});
   for (const k of draft.keys){
     const bad = keyErrCount(k) > 0, dirty = keyDirty(k);
+    const hasHold = verbOf(k.hold) !== 'none', hMiss = hasHold && !!missingFor(k.id, 'hold');
     strip.append(h('button', {type:'button', class:'skey' + (k.id === 'pu' ? ' pu' : ''), 'aria-current': String(k.id === ed.key),
-        'aria-label': keyLabel(k) + (bad ? ', has a problem' : dirty ? ', unsaved' : ''),
+        'aria-label': keyLabel(k) + (bad ? ', has a problem' : dirty ? ', unsaved' : '') + (hasHold ? '. Hold: ' + slotSummary(k, 'hold') + (hMiss ? ', missing in Home Assistant' : '') : ''),
         onclick: () => selectKey(k.id)}, k.label,
-      bad ? h('span', {class:'dot', 'aria-hidden':'true'}) : dirty ? h('span', {class:'dot dirty', 'aria-hidden':'true'}) : null));
+      bad ? h('span', {class:'dot', 'aria-hidden':'true'}) : dirty ? h('span', {class:'dot dirty', 'aria-hidden':'true'}) : null,
+      hasHold ? h('span', {class:'hm' + (hMiss ? ' miss' : ''), 'aria-hidden':'true'}) : null));
   }
   panel.append(strip);
   const sheet = h('section', {class:'sheet', 'aria-label': ed.key ? 'Key settings' : 'Keys'}, h('div', {class:'grab', 'aria-hidden':'true'}));
@@ -1804,11 +1855,57 @@ function renderEdit(){
   else keySheet(sheet, k);
   panel.append(sheet);
 }
-function selectKey(id){
+// Another key keeps the tab that's open (or opens `slot`); the address follows: #edit/k3, #edit/k3/hold.
+function selectKey(id, slot){
   ed.key = id; ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; ed.rename = false; saveMsg = {text:'', bad:false};
-  history.replaceState(null, '', '#edit/' + id); prevHash = location.hash;
+  if (slot) ed.slot = slot;
+  edArrive = null;
+  history.replaceState(null, '', slotHash(id)); prevHash = location.hash;
   renderEdit();
   const t = $('keyTitle'); if (t) t.focus({preventScroll:true});
+}
+const slotHash = id => '#edit/' + id + (ed.slot === 'hold' ? '/hold' : '');
+// The Tap | Hold switch: no new history entry, so it never asks about unsaved changes.
+function setSlot(s){
+  if (ed.slot === s) return;
+  ed.slot = s; ed.pick = null; ed.ent = null; ed.lp = null; ed.rename = false; edArrive = null;
+  if (ed.key){ history.replaceState(null, '', slotHash(ed.key)); prevHash = location.hash; }
+  rerender();
+  const b = $('slot-' + s); if (b) b.focus({preventScroll:true});
+}
+// What a slot was when last saved, beside what it is now (a preset by what it plays, not its number).
+function slotSig(d, k, s){
+  const a = k && k[s], p = a && a.do === 'preset' ? presetIn(d, a.n) : null;
+  return JSON.stringify(p ? Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle}, ytmRef(p)) : normAct(a));
+}
+const slotDirty = (k, s) => !!cfg && slotSig(draft, k, s) !== slotSig(cfg, cfg.keys.find(x => x.id === k.id), s);
+function slotErr(k, s){
+  if (errs[k.id + '.' + s]) return true;
+  const a = k[s];
+  return !!(a && a.do === 'preset' && ['name','source','uri','shuffle','_'].some(f => errs['p' + a.n + '.' + f]));
+}
+// Arriving on a key's Tap or Hold by its address (or Reassign in Home Assistant): a target Home
+// Assistant doesn't have opens its search at once; otherwise the tab itself gets the focus.
+let edArrive = null;
+function arriveSlot(){
+  const a = edArrive;
+  if (!a || view !== 'edit' || Date.now() > a.until || (draft && ed.key !== a.key)){ edArrive = null; return; }
+  if (!draft) return;                     // the keys aren't here yet; onRoute runs again when they are
+  const k = draft.keys.find(x => x.id === a.key), v = verbOf(k && k[a.slot]);
+  if (!k){ edArrive = null; return; }
+  if (isHa(v) && missingFor(k.id, a.slot) && haOn()){
+    edArrive = null;
+    ed.slot = a.slot; ed.pick = null;
+    if (v === 'ha_light' || v === 'ha_service'){ ed.lp = a.slot; ed.lpQ = ''; } else { ed.ent = a.slot; ed.entQ = ''; }
+    rerender();
+    const f = $(ed.lp ? 'lpq' : 'entq') || $('chg-' + a.slot);
+    if (f){ f.scrollIntoView({block:'center'}); f.focus({preventScroll:true}); }
+    return;
+  }
+  if (!isHa(v) || haState) edArrive = null;   // still waiting to hear from Home Assistant: try again then
+  const t = $('slot-' + a.slot), ae = document.activeElement;
+  const busy = ae && ae !== t && ae.closest && ae.closest('.sheet');   // already at work in the sheet: leave the focus be
+  if (t && !busy) t.focus({preventScroll:true});
 }
 function done(){
   if (isDirty() && !confirm('Discard the changes you haven’t saved?')) return;
@@ -1823,13 +1920,17 @@ function slotSummary(k, s){
   return verbShort(v);
 }
 function keyList(){
-  const ul = h('ul', {class:'keylist'});
+  const ul = h('ul', {class:'keylist slots'});
   for (const k of draft.keys){
-    ul.append(h('li', null, h('button', {type:'button', onclick: () => selectKey(k.id)},
-      h('span', {class:'kl-n' + (k.id === 'pu' ? ' pu' : ''), 'aria-hidden':'true'}, k.label),
-      h('span', {class:'kl-txt'}, h('span', {class:'kl-name'}, keyLabel(k) + ' · ' + slotSummary(k, 'tap').split(' · ')[0]),
-        h('span', {class:'kl-sub'}, 'Tap · ' + slotSummary(k, 'tap') + '  /  Hold · ' + slotSummary(k, 'hold'))),
-      h('span', {class:'chev'}, IC.chev()))));
+    const hNone = verbOf(k.hold) === 'none', hMiss = !hNone && missingFor(k.id, 'hold');
+    const line = (slot, word, txt, extra) => h('button', {type:'button', class:'kl-line ' + slot + (slot === 'hold' && hNone ? ' none' : ''), id:'kl-' + k.id + '-' + slot,
+        'aria-label': keyLabel(k) + ', ' + slot + ': ' + txt + (extra ? ', ' + extra : ''), onclick: () => selectKey(k.id, slot)},
+      h('span', {class:'kl-k', 'aria-hidden':'true'}, word), h('span', {class:'kl-v', 'aria-hidden':'true'}, txt, extra ? h('span', {class:'kl-miss'}, extra) : null));
+    ul.append(h('li', null,
+      h('span', {class:'kl-n' + (k.id === 'pu' ? ' pu' : ''), 'aria-hidden':'true', onclick: () => selectKey(k.id, 'tap')}, k.label),
+      h('span', {class:'kl-txt'},
+        line('tap', 'Tap', slotSummary(k, 'tap')),
+        line('hold', 'Hold', slotSummary(k, 'hold'), hMiss ? 'Missing in Home Assistant' : ''))));
   }
   return h('div', {class:'field'}, h('p', {class:'hint'}, 'Pick a key to change what it plays, and what it does when you hold it.'), ul,
     combosOn() ? comboSection() : null,
@@ -1846,20 +1947,25 @@ function ownPreset(k){
   return p;
 }
 function keySheet(sheet, k){
-  const tapV = verbOf(k.tap);
+  const tapV = verbOf(k.tap), onHold = ed.slot === 'hold';
   sheet.append(h('div', {class:'sheet-head'},
     h('h2', {id:'keyTitle', tabindex:'-1'}, keyLabel(k)),
-    h('span', {class:'mono'}, tapV === 'preset' ? 'Tap plays' : 'Tap does')));
+    h('span', {class:'mono'}, onHold ? 'Hold does' : tapV === 'preset' ? 'Tap plays' : 'Tap does')));
+  sheet.append(slotSwitch(k));
   const cNote = comboNote(k); if (cNote) sheet.append(cNote);
   const kErr = errText(k.id + '._'); if (kErr) sheet.append(h('p', {class:'err', role:'alert'}, kErr));
-  if (tapV === 'preset' && ed.pick !== 'tap') presetSection(sheet, k);
+  // The radio turned down the other half of this key: say where.
+  const other = onHold ? 'tap' : 'hold';
+  if (slotErr(k, other) && !slotErr(k, ed.slot)) sheet.append(h('p', {class:'note-bad'}, 'The radio didn’t accept what ' + (onHold ? 'a tap does' : 'holding does') + '. ',
+    h('button', {type:'button', class:'link', style:'min-height:0;padding:0', onclick: () => setSlot(other)}, onHold ? 'Show Tap' : 'Show Hold')));
+  if (onHold) holdSection(sheet, k);
+  else if (tapV === 'preset' && ed.pick !== 'tap') presetSection(sheet, k);
   else actionSection(sheet, k, 'tap');
-  holdRow(sheet, k);
-  const p = tapV === 'preset' ? presetIn(draft, k.tap.n) : null;
+  const p = !onHold && tapV === 'preset' ? presetIn(draft, k.tap.n) : null;
   const dirty = isDirty();
   sheet.append(h('p', {class:'save-msg' + (saveMsg.bad ? ' bad' : ''), role:'status', 'aria-live':'polite'}, saveMsg.text));
   sheet.append(h('div', {class:'actions'},
-    h('button', {type:'button', class:'btn', id:'testBtn', disabled: !p, onclick: () => testPreset(p)}, 'Test on the radio'),
+    onHold ? null : h('button', {type:'button', class:'btn', id:'testBtn', disabled: !p, onclick: () => testPreset(p)}, 'Test on the radio'),
     h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': keyLabel(k).replace(/^Key/, 'key'), disabled: saving || !dirty, onclick: save},
       saveLbl(dirty, keyLabel(k).replace(/^Key/, 'key')))));
 }
@@ -2057,19 +2163,41 @@ function actionSection(sheet, k, slot){
   const err = errText(k.id + '.' + slot); if (err) sheet.append(h('p', {class:'err', role:'alert'}, err));
   if (slot === 'tap') sheet.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { setVerb(k, 'tap', 'preset'); ed.pick = null; rerender(); }}, 'Play music on this key instead')));
 }
-function holdRow(sheet, k){
+// Tap | Hold, right under the key's name: each half shows what it does now.
+function slotSwitch(k){
+  const seg = h('div', {class:'seg slot-seg', role:'radiogroup', 'aria-label':'Edit what a tap or a hold does'});
+  for (const [s, word] of [['tap', 'Tap'], ['hold', 'Hold']]){
+    const on = ed.slot === s, sum = slotSummary(k, s);
+    const bad = slotErr(k, s) || (verbOf(k[s]) !== 'none' && !!missingFor(k.id, s)), dirty = !bad && slotDirty(k, s);
+    seg.append(h('button', {type:'button', role:'radio', id:'slot-' + s, 'aria-checked': String(on), tabindex: on ? '0' : '-1',
+        'aria-label': word + ': ' + sum + (bad ? ', has a problem' : dirty ? ', unsaved' : ''), onclick: () => setSlot(s)},
+      word, h('small', {'aria-hidden':'true'}, sum),
+      bad ? h('span', {class:'dot', 'aria-hidden':'true'}) : dirty ? h('span', {class:'dot dirty', 'aria-hidden':'true'}) : null));
+  }
+  return seg;
+}
+// The hold card: what it does and on what ("Scene · Evening", not just "Scene").
+function holdCard(k){
   const a = k.hold, v = verbOf(a);
-  let val = verbShort(v), small = '';
-  if (v === 'preset'){ const p = presetIn(draft, a.n); val = 'Plays ' + (p ? p.name : 'a preset'); }
-  if (v === 'bt_pair') small = (a.seconds || 120) + ' s';
-  if (v === 'custom') val = a.label || 'Custom';
-  const row = h('div', {class:'row'},
-    h('div', {class:'row-txt'}, h('span', {class:'mono'}, 'Hold'), h('span', {class:'row-val'}, val, small ? [' ', h('small', null, '· ' + small)] : null)),
-    h('button', {type:'button', class:'link', id:'chg-hold', 'aria-expanded': String(ed.pick === 'hold'), 'aria-label':'Change what holding ' + keyLabel(k) + ' does',
-      onclick: () => { ed.pick = ed.pick === 'hold' ? null : 'hold'; ed.ent = null; ed.lp = null; rerender(); }}, ed.pick === 'hold' ? 'Close' : 'Change'));
-  sheet.append(row);
-  if (ed.pick === 'hold') sheet.append(verbPicker(k, 'hold'));
-  else if (v !== 'preset') sheet.append(paramsFor(k, 'hold'));
+  let name = verbShort(v), type = VERB_DESC[v] || (verbDef(v) ? verbDef(v).label : '');
+  if (v === 'none'){ name = 'Nothing yet'; type = 'Holding this key does nothing'; }
+  else if (v === 'preset'){ const p = presetIn(draft, a.n); name = p ? p.name || 'Untitled' : 'Play music'; type = 'Plays' + (p ? ' · ' + (SRC_HEAD[p.source] || p.source) : ''); }
+  else if (isHa(v)){ name = haTarget(a) || 'Nothing chosen yet'; type = verbShort(v) + ' · Home Assistant'; }
+  else if (v === 'bt_pair') type = 'Open for a new phone · ' + durWords(a.seconds || 120);
+  else if (v === 'volume_up' || v === 'volume_down') type = 'Volume';
+  else if (v === 'custom'){ name = a.label || 'Custom'; type = 'Set by hand on the radio'; }
+  return {name, type};
+}
+function holdSection(sheet, k){
+  if (ed.pick === 'hold'){ sheet.append(verbPicker(k, 'hold')); return; }
+  const v = verbOf(k.hold), c = holdCard(k), miss = isHa(v) && !!missingFor(k.id, 'hold');
+  sheet.append(h('div', {class:'choice hold' + (v === 'none' ? ' unset' : '') + (miss ? ' miss' : '')},
+    h('span', {class:'thumb blank', 'aria-hidden':'true'}, IC.dots()),
+    h('div', {class:'choice-txt'}, h('span', {class:'choice-name', id:'holdName'}, c.name), h('span', {class:'choice-type'}, c.type)),
+    h('button', {type:'button', class:'link', id:'chg-hold', 'aria-label': (v === 'none' ? 'Choose' : 'Change') + ' what holding ' + keyLabel(k) + ' does',
+      onclick: () => { ed.pick = 'hold'; ed.ent = null; ed.lp = null; rerender(); }}, v === 'none' ? 'Choose' : 'Change')));
+  sheet.append(h('p', {class:'hint'}, 'Hold the key about half a second to do this. A short press does the Tap job.'));
+  if (v !== 'preset') sheet.append(paramsFor(k, 'hold'));
   const err = errText(k.id + '.hold'); if (err) sheet.append(h('p', {class:'err', role:'alert'}, err));
 }
 function verbPicker(k, slot){
@@ -2151,7 +2279,7 @@ function entityField(wrap, k, slot){
     if (a.entity && (miss || (haEnts && !e))) wrap.append(h('p', {class:'note-bad'}, 'Not in this Home Assistant'));
     return;
   }
-  const inp = h('input', {type:'search', id:'entq', value: ed.entQ, placeholder:'Search ' + (domains.length ? domains.join(', ') : 'entities'), autocomplete:'off', 'aria-label':'Search Home Assistant'});
+  const inp = h('input', {type:'search', id:'entq', value: ed.entQ, placeholder:'Search ' + (domains.length ? domains.join(', ') : 'entities'), autocomplete:'off', 'aria-label':'Search Home Assistant', 'aria-describedby': miss && a.entity ? 'entMiss' : null});
   const list = h('div', {class:'picker', role:'radiogroup', 'aria-label':'Home Assistant entities'});
   const paint = () => {
     list.textContent = '';
@@ -2168,6 +2296,8 @@ function entityField(wrap, k, slot){
     }
   };
   inp.addEventListener('input', () => { ed.entQ = inp.value; paint(); });
+  // Reassigning: say what it pointed at, so the replacement is easy to recognise.
+  if (miss && a.entity) wrap.append(h('p', {class:'note-bad', id:'entMiss'}, 'Was ' + a.entity + ', which this Home Assistant doesn’t have. Choose what to use instead.'));
   wrap.append(h('label', {for:'entq'}, 'Choose from Home Assistant'), h('div', {class:'searchbox'}, IC.search(), inp), list,
     h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { ed.ent = null; rerender(); }}, 'Cancel')));
   paint();
@@ -2373,6 +2503,8 @@ function lightEditor(wrap, k, slot){
   const box = h('div', {class:'ha-ed'});
   wrap.append(box);
   if (ed.lp === slot){
+    const was = haLights ? a.entities.filter(id => !lightById(id)) : [];
+    if (was.length) box.append(h('p', {class:'note-bad'}, 'Was ' + was.join(', ') + ', which this Home Assistant doesn’t have.'));
     if (haLightsErr) box.append(h('p', {class:'err'}, haLightsErr));
     else if (!haLights) box.append(h('p', {class:'hint'}, 'Asking Home Assistant for the lights…'));
     else box.append(multiPicker(k, slot, haLights.lights.map(l => ({id:l.entity_id, name:l.name, area:l.area, na: l.state === 'unavailable',
@@ -7597,6 +7729,7 @@ async function refreshHa(){
   if (!(haState && haState.connected)){ haEnts = null; haEntsErr = ''; haLights = null; haLightsErr = ''; }
   paintBank();
   if (view === 'settings' || view === 'edit') rerender();
+  if (view === 'edit' && edArrive) arriveSlot();
 }
 let entsLoading = null;
 function loadEntities(refresh){
