@@ -363,3 +363,9 @@ def test_unit_never_holds_the_boot():
     assert "Type=exec" in unit and "network-online" not in unit
     assert "ConditionPathExists=!/var/lib/hasler-install/done" in unit
     assert "ExecStart=/usr/bin/python3 -I /usr/local/sbin/hasler-install resume" in unit
+
+
+@pytest.mark.parametrize("have,want", [("10.3.6", True), ("10.3.7", False), ("10.4.0", False), ("10.0", True),
+                                       ("9.4.2", False), ("11.0.1", False), (None, False)])
+def test_moode_is_brought_up_to_the_tested_release_within_its_series(have, want):
+    assert hi.moode_needs_update(have, "10.3.7") is want

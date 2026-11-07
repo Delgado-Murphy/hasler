@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.6.0 - 2026-11-07
+
+The page
+- Open **http://hasler.local** - no more `:8080` (that still works).
+  moOde's own pages move to `:8081`.
+- Simpler Settings: short labels, one-line summaries, details folded away.
+- Phone fixes: no zoom when you tap a field, Back closes a sheet, sheets fit
+  short screens, bigger tap targets.
+- Fixed: the slider that floated away from its track; a key's label after
+  you put something new on it.
+
+Keys
+- Ten starter sets, by who's listening: little ones, kids, teens, indie,
+  grown-up eclectic, classical, jazz, golden oldies, España, world.
+
+Help
+- **Send to the makers**: your report goes straight to their private support
+  list, and their answer comes back under This radio. You see when they've
+  seen it and when it's done.
+
+Player
+- Tested on moOde 10.3.7 with MPD 0.24.17. A new radio on an older moOde
+  updates it during setup.
+
+For makers
+- Owner requests arrive as issues in the private `hasler-support` repo;
+  reply with a line starting `/owner`, label `seen`, close when done.
+- The check-in server is live (`tools/checkin/`).
+- The owner's guide is shorter and only for owners; maker material lives in
+  the build guide.
+
 ## 1.5.2 - 2026-11-07
 
 - When a Bluetooth phone disconnects, the radio's own music comes back in

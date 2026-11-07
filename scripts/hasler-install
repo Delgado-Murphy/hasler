@@ -78,6 +78,11 @@ LOG_ON_CARD = BOOT_FW / "hasler-install.log"     # readable from any computer if
 SELF = Path("/usr/local/sbin/hasler-install")
 UNIT = Path("/etc/systemd/system/hasler-install.service")
 MOODE_LOG = Path("/var/log/moode.log")
+# The moOde release the current Hasler release was tested on. An older 10.x card
+# (Imager can lag behind) takes moOde's own in-place update first, so every new
+# radio starts on the player its makers tested (docs/new-install.md).
+MOODE_TESTED = "10.3.7"
+MOODE_UPDATER = Path("/var/www/util/system-updater.sh")
 MOODE_CFG = Path("/boot/moodecfg.ini")             # moOde 10's worker reads it from /boot, not the FAT
 EX_LATER = 75
 
@@ -325,6 +330,22 @@ def facts() -> dict:
         m = re.fullmatch(r"cpython-(\d+)", tag)
         abi = f"cp{m.group(1)}" if m else None
     return {"arch": platform.machine(), "os": codename, "moode": moode, "python_abi": abi}
+
+
+def moode_needs_update(have: str | None, tested: str = MOODE_TESTED) -> bool:
+    """True for a moOde of the tested series that is older than the tested release
+    (never for another series: a jump to 11 is a decision, not a step)."""
+    if not have:
+        return False
+    h, t = _vt(have), _vt(tested)
+    return h[0] == t[0] and h < t
+
+
+def moode_update(have: str) -> None:
+    """moOde's own updater (the same as its Software update page), once."""
+    series = _vt(have)[0]
+    say(f"moOde {have} is older than {MOODE_TESTED}, the release the makers tested: updating it first (a few minutes)")
+    run(["bash", str(MOODE_UPDATER), f"moode{series}"])
 
 
 def _vt(v: str) -> tuple:
@@ -800,6 +821,13 @@ def step_setup(s: dict, args) -> dict:
     if problems:
         raise InstallError("this machine can't run the release: " + "; ".join(problems))
     setup: Path = got["setup"]
+    reboot = False
+    have = facts().get("moode")
+    if s.get("moode_update", "yes") == "yes" and MOODE_UPDATER.exists() and not mark("moode-updated").exists() \
+            and moode_needs_update(have):
+        moode_update(have)            # before bootstrap: moOde rewrites files our setup patches
+        mark("moode-updated").write_text(have)
+        reboot = True                 # moOde asks for a restart after its update
     if not mark("apt-updated").exists():
         run(["apt-get", "update", "-q"])
         mark("apt-updated").touch()
@@ -825,7 +853,6 @@ def step_setup(s: dict, args) -> dict:
             write_owned(ov, "schema: 1\ncontrols: {}\nio: {panel_optional: true}   # hasler.txt panel_optional\n", user)
             say(f"wrote {ov}: the radio may run without its key board (a bare Pi)")
     run(["bash", str(setup / "scripts/ota-bootstrap.sh"), "--user", user], env=env)   # ownership after box.yaml
-    reboot = False
     if s["moode"] == "yes" and not mark("moode-handed").exists():
         shutil.copyfile(setup / "config/firstboot/moodecfg.ini", MOODE_CFG)
         os.sync()
