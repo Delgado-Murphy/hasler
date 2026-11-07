@@ -6,7 +6,9 @@ as pi or root; ``--ok`` also plays the green bloom), appended to
 ``<state>/maker-notes.jsonl`` as ``{"at", "by", "text"}`` and capped like the
 stream events (the script trims it). The page shows the newest ones under
 This radio as **From the makers**, with the date; **Seen** folds them away,
-and they can be read again there. The hand-over keeps the file: the notes
+and they can be read again there. The makers' answers to a request (web/support_api.py
+keeps them in the same file, with ``reply_id`` and ``issue``) are left out here: they
+show in that request's thread on Write to the makers, once. The hand-over keeps the file: the notes
 are about the hardware, not the owner (docs/build-guide.md "Notes for
 makers": notes name parts and settings, never people).
 
@@ -57,8 +59,9 @@ def _epoch(stamp: Any) -> float:
         return 0.0
 
 
-def read_notes(state_dir: Path | None) -> list[dict]:
-    """Every well-formed note on the card, newest first."""
+def read_notes(state_dir: Path | None, replies: bool = True) -> list[dict]:
+    """Every well-formed note on the card, newest first; ``replies=False`` leaves out the
+    makers' answers to a request (they carry ``reply_id`` or ``issue``)."""
     if state_dir is None:
         return []
     try:
@@ -72,6 +75,8 @@ def read_notes(state_dir: Path | None) -> list[dict]:
         except ValueError:
             continue
         if not isinstance(doc, dict) or not doc.get("at") or not str(doc.get("text") or "").strip():
+            continue
+        if not replies and (doc.get("reply_id") is not None or doc.get("issue") is not None):
             continue
         out.append((_epoch(doc["at"]), i, {"at": str(doc["at"])[:40], "by": str(doc.get("by") or "")[:40],
                                            "text": tidy_text(doc["text"], keep_indent=True)}))
@@ -115,7 +120,7 @@ class NotesApi:
     def doc(self) -> dict:
         seen_at = self._seen_at()
         notes = []
-        for n in read_notes(self.state_dir)[:NOTES_SHOWN]:
+        for n in read_notes(self.state_dir, replies=False)[:NOTES_SHOWN]:
             notes.append({**n, "seen": _epoch(n["at"]) <= seen_at})
         return {"notes": notes, "unseen": sum(1 for n in notes if not n["seen"])}
 

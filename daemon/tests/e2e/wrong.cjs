@@ -215,9 +215,9 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       assert(/Sent · request #12\. They’ll answer here\./.test(await text(page, '#reqJust')), 'one line: ' + await text(page, '#reqJust'));
       assert(await page.isVisible('#req-12.just'), 'the request itself, marked');
       // the makers closed it: Something's wrong? says so
-      sup.requests = [{number: 12, at: '2026-11-07T18:00:00+01:00', deduped: false, state: 'done'}];
+      sup.requests = [{number: 12, at: '2026-11-07T18:00:00+01:00', deduped: false, state: 'done', title: 'It goes quiet after a few minutes'}];
       await page.goto(radio.base + '/#settings/wrong');
-      await until(async () => /Request #12 · Done · (7 Nov|Nov 7)/.test(await text(page, '#wrongReqs')), 6000, 'the done state: ' + await text(page, '#wrongReqs'));
+      await until(async () => /It goes quiet after a few minutes · Done/.test(await text(page, '#wrongReqs')), 6000, 'the done state: ' + await text(page, '#wrongReqs'));
       // with a request sent, opening This radio asks the radio for the makers' replies
       await page.goto(radio.base + '/#settings/radio');
       await until(async () => replies >= 1, 8000, 'the replies fetch');
@@ -248,7 +248,7 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await until(() => page.isVisible('#sec-notes'), 8000, 'the group');
       const cards = await page.$$eval('#sec-notes .note-card', els => els.map(e => e.dataset.at));
       assert(cards[0] === '2026-11-07T18:02:00+01:00', 'newest first: ' + cards.join());
-      assert(/From the makers · (7 Nov|Nov 7)/.test(await text(page, '#sec-notes .note-card')), 'the date: ' + await text(page, '#sec-notes .note-card'));
+      assert(/^(7 Nov|Nov 7)$/.test(await text(page, '#sec-notes .note-card .note-when')), 'the date, alone: ' + await text(page, '#sec-notes .note-card'));
       assert(await page.isVisible('#notesOld'), 'earlier notes folded');
       await page.click('#sec-notes .note-card button:has-text("Seen")');
       await until(async () => seenBody != null, 4000, 'the seen request');

@@ -5,8 +5,11 @@
 // the sheet is the words and Send, and closes into the request; offline it waits ("Saved on the radio")
 // and can go now; a maker's reply shows as a note, in the thread (a little safe Markdown), in Needs
 // attention and as the gear's dot; reading it clears the dot; states Sent · Answered · Seen · Done; the
-// owner writes back in the thread; New request opens the composer above the list; nothing of a thread
-// sits outside its card. Help from the makers: writing leads, remote help is the quieter row. Also: the
+// owner writes back in the thread; while one is open New request is the quiet way out under the list;
+// nothing of a thread sits outside its card. The page (1.7.5 review): cards by the owner's first line,
+// unread first, the owner's whole note first, the author once, short times and state lines, Done folded,
+// a failed GET is one row with Try again, Needs attention lands on the card, a reply during the poll is
+// said to a screen reader. "From the makers" holds the makers' own notes only, just above Help. Help from the makers: writing leads, remote help is the quieter row. Also: the
 // setup network's password is shown on This radio, no Show needed.
 //
 //   cd daemon && node tests/e2e/support_line.cjs
@@ -58,22 +61,25 @@ async function until(fn, ms, what){
 const shot = async (page, name) => { if (SHOTS){ fs.mkdirSync(SHOTS, {recursive: true}); await page.screenshot({path: path.join(SHOTS, name + '.png'), fullPage: true}); } };
 const text = async (page, sel) => (await page.textContent(sel)) || '';
 
-const AT = '2026-11-07T18:00:00+01:00';
+// Times relative to now: the page says "17:45" today, "Yesterday", else "7 Nov".
+const ago = h => new Date(Date.now() - h * 3600e3).toISOString();
+const AT = ago(1);
+const TIME = '\\d{1,2}:\\d{2}( ?[AP]M)?';
 // The radio's side of the makers' Worker, as GET /api/support says it: one request, its thread, the outbox.
 function makeSupport(){
   const s = {available: true, requests: [], pending: [], unseen_replies: 0};
   const api = {
     doc: () => JSON.parse(JSON.stringify(s)),
-    sent: (n, title) => { s.requests.unshift({number: n, at: AT, deduped: false, state: 'sent', title, replies: [], unseen: 0}); },
+    sent: (n, title, note) => { s.requests.unshift({number: n, at: AT, deduped: false, state: 'sent', title, note: note || '', replies: [], unseen: 0}); },
     reply: (n, text, state) => {
       const r = s.requests.find(x => x.number === n);
-      r.replies.push({at: '2026-11-08T09:00:00Z', text, state: state || null, seen: false});
+      r.replies.push({at: ago(0.5), text, state: state || null, seen: false, ...(state === 'seen' && /reopened/.test(text) ? {reopened: true} : {})});
       if (state) r.state = state;
       r.unseen = r.replies.filter(x => !x.seen).length;
       s.unseen_replies = s.requests.reduce((a, x) => a + x.unseen, 0);
     },
     seen: () => { s.requests.forEach(r => { r.replies.forEach(x => { x.seen = true; }); r.unseen = 0; }); s.unseen_replies = 0; },
-    back: (n, text) => { const r = s.requests.find(x => x.number === n); r.replies.push({at: '2026-11-08T10:00:00+01:00', text, state: null, seen: true, mine: true}); if (r.state !== 'done') r.state = 'sent'; else r.state = 'sent'; },
+    back: (n, text) => { const r = s.requests.find(x => x.number === n); r.replies.push({at: ago(0.2), text, state: null, seen: true, mine: true}); r.state = 'sent'; },
     queue: (title) => { s.pending.push({id: 'p1', at: AT, title, error: null}); },
     flush: () => { const p = s.pending.shift(); if (p) api.sent(13, p.title); return p ? 1 : 0; },
     raw: s,
@@ -88,20 +94,18 @@ async function wire(page, sup, opts = {}){
     if (opts.refuseBack) return r.fulfill({status: 503, json: {ok: false, error: 'The radio can’t reach the internet just now. Your words are still here; send them once it’s back.'}});
     sup.back(body.number, body.note); r.fulfill({json: {ok: true, requests: sup.doc().requests}});
   });
-  await page.route('**/api/support', r => r.fulfill({json: sup.doc()}));
+  await page.route('**/api/support', r => opts.down ? r.fulfill({status: 500, body: ''}) : r.fulfill({json: sup.doc()}));
   await page.route('**/api/support/replies', r => { hits.replies++; r.fulfill({json: {ok: true, added: 0}}); });
   await page.route('**/api/support/send', r => {
     const body = r.request().postDataJSON(); hits.send.push(body);
     if (opts.offline){ sup.queue(body.note.split('\n')[0]); return r.fulfill({json: {ok: true, queued: true, pending: sup.doc().pending}}); }
-    sup.sent(12, body.note.split('\n')[0]);
+    sup.sent(12, body.note.split('\n')[0], body.note);
     r.fulfill({json: {ok: true, number: 12, at: AT, deduped: false, requests: sup.doc().requests}});
   });
   await page.route('**/api/support/retry', r => { hits.retry++; const n = sup.flush(); r.fulfill({json: {ok: true, sent: n, pending: sup.doc().pending}}); });
   await page.route('**/api/notes/seen', r => { hits.seen++; sup.seen(); r.fulfill({json: {ok: true, unseen: 0}}); });
   await page.route('**/api/notes', r => {
-    const notes = [];
-    sup.raw.requests.forEach(q => q.replies.forEach(x => notes.push({at: x.at, by: 'makers', text: x.text, seen: x.seen})));
-    notes.reverse();
+    const notes = (opts.notes || []).slice();
     r.fulfill({json: {notes, unseen: notes.filter(n => !n.seen).length}});
   });
   return hits;
@@ -171,10 +175,19 @@ async function wire(page, sup, opts = {}){
       assert(!(await page.isVisible('#dlg')), 'no separate confirmation');
       assert(hits.send[0].note === 'The keys stopped\nafter the storm', 'body ' + JSON.stringify(hits.send[0]));
       assert(/Sent · request #12\. They’ll answer here\./.test(await text(page, '#reqJust')), 'line: ' + await text(page, '#reqJust'));
-      assert(/^You · (7 Nov|Nov 7)The keys stopped$/.test(await text(page, '#req-12 .req-msg.mine')), 'card: ' + await text(page, '#req-12'));
+      assert((await text(page, '#reqT-12 .req-topic')) === 'The keys stopped', 'the heading is the first line: ' + await text(page, '#reqT-12'));
+      assert(/^#12 · (7 Nov|Nov 7|\d{1,2} \w{3}|\w{3} \d{1,2})$/.test(await text(page, '#reqT-12 .req-meta')), 'number and date beneath: ' + await text(page, '#reqT-12 .req-meta'));
+      assert(new RegExp('^You · ' + TIME + '$').test(await text(page, '#req-12 .req-msg.mine .req-who')), 'today: the time: ' + await text(page, '#req-12 .req-who'));
+      assert((await page.$eval('#req-12 .req-msg.mine .req-txt', e => e.innerText)) === 'The keys stopped\nafter the storm', 'the whole note first');
       assert((await text(page, '#reqState-12')) === 'Sent', 'state');
-      assert(/No answer yet/.test(await text(page, '#req-12')), 'what to expect');
-      assert(await page.isVisible('#reqNew'), 'New request at the top');
+      assert((await text(page, '#req-12 .req-wait')) === 'No answer yet.', 'what to expect, briefly');
+      assert(await page.isVisible('#reqMore') && /Something else\?/.test(await text(page, '#reqMore')), 'New request, quietly under the list');
+      assert(!(await page.$eval('#reqNew', e => e.classList.contains('primary'))), 'not the primary while one is open');
+      const below = await page.$eval('#reqNew', e => e.getBoundingClientRect().top) > await page.$eval('#reqList', e => e.getBoundingClientRect().bottom);
+      assert(below, 'below the list');
+      const wb = await page.$eval('#reqBackOpen-12', e => ({cls: e.className, h: e.getBoundingClientRect().height, b: getComputedStyle(e).borderTopWidth,
+        right: e.getBoundingClientRect().right, card: e.closest('.req-card').getBoundingClientRect().right}));
+      assert(wb.cls === 'li-act' && wb.h >= 44 && wb.b === '0px' && wb.card - wb.right < 24, 'Write back, a quiet link at the right: ' + JSON.stringify(wb));
       assert(await inCards(page), 'the thread inside its card');
       await shot(page, 'support-sent');
       await page.close();
@@ -183,20 +196,29 @@ async function wire(page, sup, opts = {}){
     await check('a maker’s reply: a note, Needs attention, the gear’s dot, the thread (Answered); reading it clears the dot', async () => {
       sup.reply(12, 'Is the ribbon cable at the back pushed in?');
       const page = await page0('reply');
-      const hits = await wire(page, sup);
+      const hits = await wire(page, sup, {notes: [{at: ago(30), by: 'bill', text: 'Replaced the **memory card**', seen: false}]});
       await page.goto(radio.base + '/');
       await until(async () => !(await page.$eval('#gearDot', e => e.hidden)), 8000, 'the dot on the gear');
       await page.goto(radio.base + '/#settings');
       await until(() => page.isVisible('#setrow-attn-replies'), 8000, 'Needs attention');
       assert(/New reply from the makers/.test(await text(page, '#setrow-attn-replies')) && /About request #12: The keys stopped/.test(await text(page, '#setrow-attn-replies')),
         'row: ' + await text(page, '#setrow-attn-replies'));
+      assert((await page.getAttribute('#setrow-attn-replies', 'href')) === '#settings/radio/requests?n=12', 'lands on the card');
       await page.goto(radio.base + '/#settings/radio');
       await until(() => page.isVisible('#sec-notes'), 8000, 'From the makers');
-      assert(/ribbon cable/.test(await text(page, '#sec-notes')), 'the reply as a note');
+      assert(!/ribbon cable/.test(await text(page, '#sec-notes')) && /memory card/.test(await text(page, '#sec-notes')), 'the makers’ own note, not the reply again: ' + await text(page, '#sec-notes'));
+      const nc = await page.$eval('#sec-notes .note-card', c => ({first: c.firstElementChild.className, date: c.firstElementChild.textContent,
+        md: !!c.querySelector(':scope > .md.note-md'), inSub: !!c.querySelector('.li-sub .md'), fs: getComputedStyle(c.querySelector('.md')).fontSize,
+        color: getComputedStyle(c.querySelector('.md')).color}));
+      assert(/li-sub/.test(nc.first) && !/From the makers/.test(nc.date) && nc.md && !nc.inSub && nc.fs === '14.5px' && nc.color === 'rgb(237, 227, 204)', 'the date, then the note in cream: ' + JSON.stringify(nc));
+      assert((await page.$eval('#sec-notes', e => e.nextElementSibling && e.nextElementSibling.id)) === 'sec-help', 'just above Help from the makers');
       assert(/New reply from the makers/.test(await text(page, '#setrow-requests')), 'the row says so');
+      assert((await page.getAttribute('#setrow-requests', 'href')) === '#settings/radio/requests?n=12', 'the row lands on the card too');
       await page.click('#setrow-requests');
       await until(() => page.isVisible('#req-12 .req-msg.theirs'), 6000, 'the thread');
-      assert(/^Delgado & Murphy · (8 Nov|Nov 8)New/.test(await text(page, '#req-12 .req-msg.theirs')) && /ribbon cable/.test(await text(page, '#req-12 .req-thread')), 'thread: ' + await text(page, '#req-12 .req-thread'));
+      assert(new RegExp('^Delgado & Murphy · ' + TIME + 'New').test(await text(page, '#req-12 .req-msg.theirs')) && /ribbon cable/.test(await text(page, '#req-12 .req-thread')), 'thread: ' + await text(page, '#req-12 .req-thread'));
+      assert(await page.evaluate(() => location.hash) === '#settings/radio/requests', 'the ?n= dropped from the address');
+      await until(() => page.evaluate(() => !!document.activeElement.closest('#req-12')), 4000, 'focus on the card it came for');
       assert((await text(page, '#reqState-12')) === 'Answered', 'a reply moves it to Answered: ' + await text(page, '#reqState-12'));
       const badge = await page.$eval('#req-12 .req-new', e => ({bg: getComputedStyle(e).backgroundColor, tag: e.tagName}));
       assert(badge.tag === 'SPAN' && !/\(\s*(1[2-9]\d|2\d\d),\s*(1[5-9]\d|2\d\d),\s*(1[2-9]\d|2\d\d)/.test(badge.bg), 'a quiet badge, no green: ' + JSON.stringify(badge));
@@ -209,7 +231,7 @@ async function wire(page, sup, opts = {}){
       await sleep(300);
       assert(await inCards(page), 'the thread inside its card, after a refresh');
       assert(await page.isVisible('#req-12 .req-new'), '"New" stays until the owner leaves');
-      assert(/Checked just now/.test(await text(page, '#reqChecked')), 'checked quietly');
+      assert(/Checked just now/.test(await text(page, '#reqChecked')) && await page.$eval('#reqChecked', e => !!e.closest('.req-lbl')), 'checked quietly, next to the heading');
       await shot(page, 'support-thread');
       await page.goto(radio.base + '/');
       await until(async () => await page.$eval('#gearDot', e => e.hidden), 8000, 'the dot gone');
@@ -303,41 +325,101 @@ async function wire(page, sup, opts = {}){
       const page = await page0('done');
       const hits = await wire(page, sup);
       await page.goto(radio.base + '/#settings/radio/requests');
-      await until(async () => (await text(page, '#reqState-12')) === 'Done', 8000, 'done');
+      // Done folds to one row; the row opens it
+      await until(() => page.isVisible('#reqFold-12'), 8000, 'the folded row');
+      assert((await page.getAttribute('#reqFold-12', 'aria-expanded')) === 'false' && !(await page.$('#req-12 .req-thread')), 'folded');
+      assert(/^The keys stopped\s*· Done /.test(await text(page, '#reqFold-12')), 'one row: ' + await text(page, '#reqFold-12'));
+      // all done: New request leads again
+      assert(await page.$eval('#reqNew', e => e.classList.contains('primary') && getComputedStyle(e).boxShadow === 'none'), 'primary again, no glow');
+      await page.click('#reqFold-12');
+      await until(async () => (await text(page, '#reqState-12')) === 'Done', 4000, 'open');
+      assert((await page.getAttribute('#reqFold-12', 'aria-expanded')) === 'true', 'says it is open');
       const thread = await page.$$eval('#req-12 .req-msg:not(.mine)', ls => ls.map(l => l.textContent));
-      assert(thread.length === 2 && /ribbon/.test(thread[0]) && /is done/.test(thread[1]), 'in order: ' + thread.join(' | '));
+      assert(thread.length === 3 && /ribbon/.test(thread[0]) && /^\S.*Glad it plays again\.$/.test(thread[1]) && /^✓Marked done · /.test(thread[2]), 'in order: ' + thread.join(' | '));
+      const ev = await page.$eval('#req-12 .req-msg.event', e => ({pl: getComputedStyle(e).paddingLeft, bl: getComputedStyle(e).borderLeftWidth}));
+      assert(ev.pl === '0px' && ev.bl === '0px', 'the state line at the card’s edge: ' + JSON.stringify(ev));
+      assert((await text(page, '#reqBackHint-12')) === 'Writing back opens it again.', 'what writing back does');
       assert(await inCards(page), 'inside its card');
       sup.reply(12, 'The makers reopened your request #12.', 'seen');
       await page.reload();
       const seen0 = hits.seen;
       await until(async () => (await text(page, '#reqState-12')) === 'Seen', 8000, 'reopened');
+      assert(/^Opened again · /.test(await page.$$eval('#req-12 .req-msg.event', ls => ls.at(-1).textContent)), 'opened again, briefly');
       await until(async () => hits.seen > seen0, 6000, 'read');
       await page.goto(radio.base + '/#settings/wrong');
       await until(() => page.isVisible('#wrongReqs'), 8000, 'Your requests from Something’s wrong?');
-      await until(async () => /Request #12 · Seen/.test(await text(page, '#wrongReqs')), 6000, 'the row: ' + await text(page, '#wrongReqs'));
+      await until(async () => /The keys stopped · Seen/.test(await text(page, '#wrongReqs')), 6000, 'the row: ' + await text(page, '#wrongReqs'));
       await page.close();
     });
 
-    await check('offline: the request waits on the radio, says so, and Send now sends it; New request writes inline', async () => {
+    await check('offline: the request waits on the radio, says so, and Send now sends it; New request writes inline, under the list', async () => {
       const page = await page0('offline');
       const hits = await wire(page, sup, {offline: true});
       await page.goto(radio.base + '/#settings/radio/requests');
       await until(() => page.isVisible('#reqNew'), 8000, 'New request');
       await page.click('#reqNew');
-      await until(() => page.isVisible('#reqNote'), 4000, 'the composer, above the list');
+      await until(() => page.isVisible('#reqNote'), 4000, 'the composer, where the button was');
       assert((await text(page, '#sech-write')) === 'New request' && await page.isVisible('#reqCancel'), 'with Cancel');
-      const y = await page.$eval('#reqNote', e => e.getBoundingClientRect().top), ly = await page.$eval('#reqList', e => e.getBoundingClientRect().top);
-      assert(y < ly, 'above the list');
+      const y = await page.$eval('#reqNote', e => e.getBoundingClientRect().top), ly = await page.$eval('#reqList', e => e.getBoundingClientRect().bottom);
+      assert(y > ly, 'under the list');
       await page.fill('#reqNote', 'Silence again');
       await page.click('#reqSend');
       await until(async () => /Saved on the radio/.test(await text(page, '#reqJust')), 4000, 'saved');
       assert(/goes by itself once the internet is back/.test(await text(page, '#reqJust')), 'says when');
       assert(!(await page.$('#reqNote')), 'the composer folds away');
       await until(() => page.isVisible('#wait-p1'), 6000, 'Waiting to send');
-      assert(/Silence again/.test(await text(page, '#wait-p1')) && /goes by itself once the radio is online/.test(await text(page, '#wait-p1')), 'card: ' + await text(page, '#wait-p1'));
-      await page.click('#wait-p1 button:has-text("Send now")');
+      assert(/Silence again/.test(await text(page, '#wait-p1')) && /Goes by itself when the internet is back\./.test(await text(page, '#wait-p1')), 'card: ' + await text(page, '#wait-p1'));
+      assert(await page.$eval('#waitForget-p1', e => e.className === 'li-act danger'), 'Don’t send, a quiet red link');
+      assert((await page.$$('#sec-reqwait button:has-text("Send now")')).length === 1, 'one Send now for the group');
+      await page.click('#waitSend');
       await until(async () => hits.retry === 1 && await page.isVisible('#req-13'), 6000, 'sent now');
       assert(!(await page.$('#wait-p1')), 'no longer waiting');
+      await page.close();
+    });
+
+    await check('the radio didn’t answer: one row and Try again, nothing to write into', async () => {
+      const page = await page0('down');
+      const hits = await wire(page, sup, {down: true});
+      await page.goto(radio.base + '/#settings/radio/requests');
+      await until(() => page.isVisible('#reqErr'), 8000, 'the row');
+      assert((await text(page, '#reqErr .li-title')) === 'Couldn’t reach the radio.' && (await text(page, '#reqRetry')) === 'Try again', 'row: ' + await text(page, '#reqErr'));
+      assert(!(await page.$('#reqNote')) && !(await page.$('#reqCopy')) && !(await page.$('#reqNew')), 'no composer, no Copy pretending');
+      assert((await page.$$('#panel .li')).length === 1, 'one row');
+      await page.unroute('**/api/support');
+      await page.route('**/api/support', r => r.fulfill({json: sup.doc()}));
+      await page.click('#reqRetry');
+      await until(() => page.isVisible('#reqList'), 6000, 'the requests, asked again');
+      await page.close();
+    });
+
+    await check('cards: unread first then latest; the author once; short times; landing on ?n=; a reply in the poll said once', async () => {
+      const o = makeSupport();
+      o.raw.requests = [
+        {number: 20, at: ago(30), state: 'sent', title: 'Old and read', note: '', unseen: 0,
+         replies: [{at: ago(28), text: 'First word', state: null, seen: true}, {at: ago(27.9), text: 'Second word', state: null, seen: true}]},
+        {number: 21, at: ago(2), state: 'sent', title: 'Newest, read', note: 'Newest, read', unseen: 0, replies: []},
+        {number: 22, at: ago(24 * 9), state: 'sent', title: 'Oldest, unread', note: '', unseen: 1,
+         replies: [{at: ago(24 * 8), text: 'Still there?', state: null, seen: false}]}];
+      o.raw.unseen_replies = 1;
+      const page = await page0('order');
+      await wire(page, o);
+      await page.goto(radio.base + '/#settings/radio/requests?n=20');
+      await until(() => page.isVisible('#req-20'), 8000, 'the cards');
+      const ids = await page.$$eval('#reqList .req-card', cs => cs.map(c => c.id));
+      assert(ids.join() === 'req-22,req-21,req-20', 'order: ' + ids.join());
+      await until(() => page.evaluate(() => !!document.activeElement.closest('#req-20')), 4000, 'focus on #20');
+      assert(await page.evaluate(() => location.hash) === '#settings/radio/requests', 'the address is the page again');
+      const yday = new Date(Date.now() - 27.9 * 3600e3).toDateString() === new Date(Date.now() - 864e5).toDateString();
+      const who = await page.$$eval('#req-20 .req-msg.theirs .req-who', ws => ws.map(w => w.textContent));
+      assert(/^Delgado & Murphy · /.test(who[0]) && !/Delgado/.test(who[1]), 'the author once: ' + who.join(' | '));
+      if (yday) assert(who[0] === 'Delgado & Murphy · Yesterday', 'yesterday: ' + who[0]);
+      assert(/^You · (\d{1,2} \w{3}|\w{3} \d{1,2})$/.test(await text(page, '#req-22 .req-msg.mine .req-who')), 'older: the date: ' + await text(page, '#req-22 .req-who'));
+      assert((await page.$eval('#req-20 .req-msg.mine .req-txt', e => e.textContent)) === 'Old and read', 'an old request without its note: the title');
+      // a reply arrives while the page is open: said once to a screen reader
+      o.reply(21, 'On it.');
+      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+      await until(async () => (await text(page, '#reqLive')) === 'New reply on request #21.', 4000, 'the live line');
+      assert(await page.$eval('#reqLive', e => e.getAttribute('aria-live') === 'polite' && e.classList.contains('sr')), 'polite, unseen');
       await page.close();
     });
 
