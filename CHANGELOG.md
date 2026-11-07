@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.4.0 - 2026-11-07
+
+The pilot lamp, light language v2.
+
+- Five colours, each with a job: amber (the radio), ember (asleep - and it
+  never moves), moon blue (a phone), magic-eye green (all good - only as a
+  short glow or Morse, never steady) and signal red (something's wrong -
+  always moving, never steady).
+- Playing is an incandescent filament: a warm gold with a tiny, irregular
+  shimmer. Ready is a steady, brighter amber (45 %). Busy (starting, loading,
+  installing an update, shutting down) is a deep amber breath - no longer to
+  be confused with asleep.
+- The radio talks in Morse when it matters: "CQ" (calling any station) while
+  it waits to be set up, "HI" in green when you press Identify, "OK" in green
+  after an update or a finished setup, SOS in red only for faults that need
+  a maker (an update that couldn't be undone, the SD card failing, no sound
+  card, the panel board missing, overheating).
+- A failed action is HAL 9000's slow red eye; no internet is a red-alert
+  double pulse every few seconds, only while the radio is awake and idle.
+  Small successes (a phone paired, a confirmation, a Home Assistant action)
+  get a short green glow.
+- Geek mode (Settings -> Pilot lamp, off by default): Identify sends the
+  room's callsign, "73" before shutting down, the Close Encounters notes
+  after an update, and a little surprise to find.
+- Settings -> Pilot lamp shows what the lamp is saying now, and lists every
+  meaning grouped (Everyday, Replies, Needs you, Problems) with an animated
+  sample, its rhythm and Show me; "Show me everything" plays them all in
+  about a minute. The front page no longer narrates the lamp.
+- The printed key card has a "What the lamp says" legend.
+- The Lamp check now shows every sample through the lamp's own engine (what
+  you pick is what you get), finds floors up to 8 %, and has a step for the
+  green. A saved check stays applied after a restart.
+- Fixes: no stray flashes in the "press a key" rhythm; standby while a phone
+  plays no longer stays blue for 3 s; the Excelsior's key 0 shows a full
+  reply on a tap and starts the shutdown fade only after half a second; after
+  a power cut at night the lamp wakes gently; colour changes never flick.
+
 ## 1.3.0 - 2026-11-07
 
 The pilot lamp, rebuilt to feel calm, warm and immediate.
