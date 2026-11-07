@@ -168,6 +168,9 @@ class FakePlayer:
     volume: float | None = None
     muted: bool = False
     source: str = "radio"
+    # The sleep timer's fade: the share of ``volume`` heard now, None = no fade.
+    # ``volume`` stays the owner's level throughout, as MoodePlayer reports it.
+    faded: float | None = None
     tone: dict[str, float] = field(default_factory=dict)
     speaker: int | None = None
     shutdown_called: bool = False
@@ -197,6 +200,15 @@ class FakePlayer:
     def set_volume(self, value: float) -> None:
         self.calls.append(("set_volume", value))
         self.volume = value
+        self.faded = None
+
+    def fade_level(self, fraction: float) -> None:
+        self.calls.append(("fade_level", round(fraction, 3)))
+        self.faded = fraction
+
+    def end_fade(self) -> None:
+        self.calls.append(("end_fade",))
+        self.faded = None
 
     def get_volume(self) -> float | None:
         return self.volume

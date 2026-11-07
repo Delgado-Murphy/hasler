@@ -109,6 +109,7 @@ class BoxState:
     source: str = "radio"            # radio | ytm | spotify | bluetooth | airplay | ...
     panel_missing: bool = False
     night: bool = False
+    sleeping: bool = False           # the sleep timer's last minute (haslerd/sleep.py): dim
     # Multiroom (multiroom/group.py): "" alone or leading, "joining" while
     # this radio joins a group, "following" while it plays a leader's music.
     group: str = ""

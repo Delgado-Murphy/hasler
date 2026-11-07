@@ -22,7 +22,7 @@ Priority, highest first (docs/lamp.md "Priority"):
     no idle red)
 10. offline idle red (only when the next key press would fail), and the
     missing panel board
-11. playing / ready
+11. playing / ready - dimmed slowly in the sleep timer's last minute
 """
 
 from __future__ import annotations
@@ -75,6 +75,12 @@ FADE_LOADING = 0.3
 FADE_BOOT = 1.0
 FADE_SHUTDOWN = 0.5
 FADE_ALERT = 1.0
+# The sleep timer's last minute (haslerd/sleep.py): playing or ready amber
+# sinks to a glow just above the standby ember, slowly, so the room barely
+# notices; standby's own 1.5 s fade to ember follows at the end. 0.25 stays
+# under the night cap (35 %), so it dims at night too.
+SLEEP_LEVEL = 0.25
+FADE_SLEEP = 20.0
 
 
 def playing_look(source: str) -> Look:
@@ -146,11 +152,18 @@ def look_for(state: BoxState) -> tuple[Look, float]:
     if state.loading or state.group == "joining":
         return LOADING, FADE_LOADING
     if state.group == "following" and state.group_playing:
-        return playing_look(state.group_source), FADE_PLAYING
+        return sleepy(state, playing_look(state.group_source), FADE_PLAYING)
     if offline_shows(state):
         return OFFLINE, FADE_ALERT
     if state.panel_missing and not state.playing:
         return PANEL_MISSING, FADE_ALERT
     if state.playing:
-        return playing_look(state.source), FADE_PLAYING
-    return READY, FADE_READY
+        return sleepy(state, playing_look(state.source), FADE_PLAYING)
+    return sleepy(state, READY, FADE_READY)
+
+
+def sleepy(state: BoxState, look: Look, fade: float) -> tuple[Look, float]:
+    """``look`` as it is, or dimmed to SLEEP_LEVEL while the sleep timer fades out."""
+    if not state.sleeping:
+        return look, fade
+    return Look(look.colour, min(look.level, SLEEP_LEVEL)), FADE_SLEEP
