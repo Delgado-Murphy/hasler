@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import json
 import logging
 import os
 import signal
@@ -275,6 +276,9 @@ class LampKeeper:
         # daemon's warm-up stage goes on breathing it.
         self.boot_breath: Look | None = None
         self.run_dir = handover.RUN_DIR
+        # What the next boot breath draws (lamp/handover.py boot_doc), written on change.
+        self.boot_file = handover.BOOT_FILE
+        self._boot_sig: str | None = None
         self._fed = False                   # engine.watchdog armed (first show): feed() each tick
         self._refused_panel = False         # the missing panel board said once (refuse3)
         # web/confirm.ConfirmBroker (set by main): a press on the radio is
@@ -485,6 +489,42 @@ class LampKeeper:
                     self.driver.set_night(night)
                 except Exception:
                     log.debug("lamp set_night failed", exc_info=True)
+            self.note_boot()        # night, calibration or brightness changed: the boot breath's notes
+
+    def _hold_duties(self) -> tuple | None:
+        """The steady ember a shutdown leaves (day, night), as the engine draws
+        standby with this lamp's calibration: levels, palette, balance, floors."""
+        duty_for = getattr(self.driver, "duty_for", None)
+        if not callable(duty_for):
+            return None
+        from .lamp.contract import EMBER_LEVEL, EMBER_NIGHT
+        calibration = getattr(self.driver, "calibration", None)
+        levels = (calibration() or {}).get("levels", {}) if callable(calibration) else {}
+        day = float(levels.get("ember_day", EMBER_LEVEL))
+        night = float(levels.get("ember_night", EMBER_NIGHT))
+        return tuple(duty_for("ember", day)), tuple(duty_for("ember", night))
+
+    def note_boot(self, force: bool = False) -> bool:
+        """Leave the boot script what it should draw next time (lamp-boot.json:
+        night or day, the boot and busy breaths as this engine draws them),
+        when any of it changed. Never raises; True if written."""
+        calibration = getattr(self.driver, "calibration", None)
+        if not callable(calibration):
+            return False
+        try:
+            spec = calibration()
+            busy = getattr(policy, "UPDATING", None) or getattr(policy, "SHUTTING_DOWN")
+            bright = getattr(self.driver, "brightness", 1.0)
+            sig = json.dumps([spec, bool(self.state.night), bright, repr(busy)], sort_keys=True, default=str)
+            if sig == self._boot_sig and not force:
+                return False
+            doc = handover.boot_doc(spec, bool(self.state.night), busy, bright, self._hold_duties())
+            if handover.write_boot_doc(doc, self.boot_file):
+                self._boot_sig = sig
+                return True
+        except Exception:
+            log.debug("lamp: boot breath notes failed", exc_info=True)
+        return False
 
     def _renderers_changed(self, player: Any) -> bool:
         """moOde's phone flags moved since the last look: a phone started or
@@ -707,10 +747,14 @@ class LampKeeper:
                 output = getattr(self.driver, "output", None)
                 hold = getattr(output, "hold", None)
                 if callable(hold):
-                    palette = getattr(self.driver, "palette", None) or {}
-                    ratio = palette.get("ember", (1.0, 0.10, 0.0))
-                    balance = getattr(self.driver, "balance", (1.0, 1.0, 1.0))
-                    hold(*handover.hold_duty(ratio, bool(self.state.night), balance))
+                    duties = self._hold_duties()
+                    if duties is not None:      # the engine's standby ember: calibrated levels and floors
+                        hold(*duties[1 if self.state.night else 0])
+                    else:
+                        palette = getattr(self.driver, "palette", None) or {}
+                        ratio = palette.get("ember", (1.0, 0.10, 0.0))
+                        balance = getattr(self.driver, "balance", (1.0, 1.0, 1.0))
+                        hold(*handover.hold_duty(ratio, bool(self.state.night), balance))
             handover.write_handover(mode, self.run_dir)
         except Exception:
             log.debug("lamp close failed", exc_info=True)

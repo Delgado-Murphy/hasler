@@ -117,6 +117,73 @@ def write_handover(mode: str, run_dir: Path = RUN_DIR) -> bool:
         return False
 
 
+# -- the boot breath's notes from haslerd (lamp-boot.json) -----------------------
+#
+# The boot script runs before haslerd - after a power cut at 3 am too - so
+# haslerd leaves it what it would draw: night or day, and each breath the
+# script may show as frames of linear duty drawn by the engine itself (a
+# scratch engine with this lamp's calibration, brightness and floors, see
+# lamp/scratch.py). Written on change only; the script reads it with the
+# stdlib and falls back to its own breaths without it.
+
+BOOT_FILE = Path(os.environ.get("HASLER_LAMP_BOOT_FILE", "/var/lib/haslerd/lamp-boot.json"))
+BOOT_FPS = 25
+BOOT_VERSION = 1
+
+
+def _boot_amber() -> Any:
+    """The boot script's own amber breath (25-60 %, 3 s by day; 0.10/0.35 read
+    as off on the bench LED), with the night cap at night."""
+    from .contract import NIGHT_CAP, Look
+    return Look("amber", 0.60, "breath", 3.0, 0.25, night=NIGHT_CAP)
+
+
+def _levels(look: Any, night: bool) -> tuple[float, float]:
+    """(floor, peak) of a breath Look, perceptual, by day or at night."""
+    from .contract import NIGHT_CAP
+    peak = look.level
+    if night:
+        peak = look.night if look.night is not None else min(look.level, NIGHT_CAP)
+    floor = look.floor * peak / look.level if look.level > 0 else 0.0
+    return round(floor, 4), round(peak, 4)
+
+
+def boot_doc(spec: dict | None, night: bool, busy: Any, brightness: float | str = 1.0,
+             hold: Sequence[Sequence[float]] | None = None) -> dict:
+    """lamp-boot.json: the night flag, and per mode (``amber`` the boot/restart
+    breath, ``ember`` the busy breath while an update installs - whatever
+    Look ``busy`` is) a day and a night table of one breath cycle's frames."""
+    from . import scratch
+
+    doc: dict = {"version": BOOT_VERSION, "night": bool(night), "fps": BOOT_FPS, "at": time.time(),
+                 "looks": {}}
+    for mode, look in (("amber", _boot_amber()), ("ember", busy)):
+        entry = {}
+        for when, is_night in (("day", False), ("night", True)):
+            frames = scratch.look_frames(spec, look, is_night, fps=BOOT_FPS, brightness=brightness)
+            floor, peak = _levels(look, is_night)
+            entry[when] = {"colour": str(look.colour), "floor": floor, "peak": peak,
+                           "period_s": float(look.period_s),
+                           "frames": [[round(c, 6) for c in f] for f in frames]}
+        doc["looks"][mode] = entry
+    if hold is not None:
+        doc["hold"] = {"day": [round(c, 6) for c in hold[0]], "night": [round(c, 6) for c in hold[1]]}
+    return doc
+
+
+def write_boot_doc(doc: dict, path: Path = BOOT_FILE) -> bool:
+    """Leave ``doc`` for the next boot breath. Never raises."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(doc, separators=(",", ":")))
+        os.replace(tmp, path)
+        return True
+    except OSError:
+        log.debug("lamp: no boot breath notes in %s", path, exc_info=True)
+        return False
+
+
 def hold_duty(
     ratio: Sequence[float] = (1.0, 0.10, 0.0),
     night: bool = False,

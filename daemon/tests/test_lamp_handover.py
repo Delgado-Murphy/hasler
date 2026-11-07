@@ -413,7 +413,8 @@ def test_excelsior_key_0_countdown_starts_after_half_a_second_and_cancels():
 
 def run_boot(tmp_path, *args, env=None, timeout=10):
     full = {**os.environ, "HASLER_PWM_ROOT": str(tmp_path / "pwm"), "HASLER_LAMP_RUN": str(tmp_path / "run"),
-            "HASLER_LAMP_PERIOD_FILE": str(tmp_path / "lamp-period"), **(env or {})}
+            "HASLER_LAMP_PERIOD_FILE": str(tmp_path / "lamp-period"),
+            "HASLER_LAMP_BOOT_FILE": str(tmp_path / "lamp-boot.json"), **(env or {})}
     return subprocess.run([sys.executable, str(BOOT_SCRIPT), *args], env=full, capture_output=True,
                           text=True, timeout=timeout)
 
@@ -530,3 +531,106 @@ def test_units_hand_the_lamp_over():
         assert "ExecStartPre=-+/usr/bin/systemctl stop hasler-lamp-boot" not in text
         assert "ExecStartPost=-+/usr/bin/systemctl stop hasler-lamp-boot.service" in text
         assert "ExecStopPost=-+/usr/local/sbin/hasler-lamp-boot --handover" in text
+
+
+# -- the boot breath's notes (lamp-boot.json) and a calibrated shutdown hold -----
+
+
+CAL_SPEC = {"min_duty": {"red": 0.01, "green": 0.008, "blue": 0.01}, "balance": {"red": 1.0, "green": 0.9, "blue": 1.0},
+            "levels": {"ember_day": 0.25, "ember_night": 0.12}}
+
+
+@pytest.fixture
+def real(tmp_path):
+    from haslerd.lamp.engine import LampEngine
+    clock = Clock()
+    variant = load_variant(VARIANTS / "hasler-hm.yaml")
+    engine = LampEngine(FakeOutput(), threaded=False, clock=clock)
+    engine.calibrate(CAL_SPEC)
+    actions = Actions(variant, FakePlayer(), clock=clock)
+    night = {"on": False}
+    keeper = LampKeeper(engine, actions, None, FakeNet(), None, clock=clock, night=lambda w, s: night["on"])
+    keeper.run_dir = tmp_path
+    keeper.boot_file = tmp_path / "lamp-boot.json"
+    return clock, engine, keeper, night
+
+
+def test_haslerd_leaves_the_boot_breath_its_frames_on_change(real):
+    clock, engine, keeper, night = real
+    keeper.tick(clock())
+    doc = json.loads(keeper.boot_file.read_text())
+    assert doc["night"] is False and doc["fps"] == handover.BOOT_FPS
+    busy = doc["looks"]["ember"]["day"]
+    assert busy["period_s"] == policy.UPDATING.period_s                 # the engine's busy breath, not 2.5 s
+    assert len(busy["frames"]) == round(policy.UPDATING.period_s * handover.BOOT_FPS)
+    amber = doc["looks"]["amber"]
+    top = lambda e: max(max(f) for f in e["frames"]) ** (1 / 2.2)
+    assert top(amber["day"]) == pytest.approx(0.60, abs=0.01)
+    assert top(amber["night"]) == pytest.approx(0.35, abs=0.01)          # night-scaled
+    assert amber["night"]["peak"] == 0.35 and amber["night"]["floor"] < 0.25
+    lit_green = [f[1] for f in amber["day"]["frames"] if f[1] > 0]
+    assert lit_green and min(lit_green) >= 0.008                        # the calibrated floor holds
+    assert doc["hold"]["night"] == pytest.approx(list(engine.duty_for("ember", 0.12)), abs=1e-6)
+    stamp = keeper.boot_file.stat().st_mtime_ns
+    clock.t += 61
+    keeper.tick(clock())
+    assert keeper.boot_file.stat().st_mtime_ns == stamp                  # nothing changed: not rewritten
+    night["on"] = True
+    clock.t += 61
+    keeper.tick(clock())
+    assert json.loads(keeper.boot_file.read_text())["night"] is True
+
+
+def test_a_shutdown_holds_the_calibrated_standby_ember(real):
+    clock, engine, keeper, night = real
+    keeper.state.night = True
+    keeper.actions.shutting_down = True
+    keeper.close()
+    assert engine.output.held == pytest.approx(engine.duty_for("ember", 0.12))
+    keeper.state.night = False
+    assert keeper._hold_duties()[0] == pytest.approx(engine.duty_for("ember", 0.25))
+
+
+def _boot_notes(tmp_path, night):
+    from haslerd.lamp import scratch
+    from haslerd.lamp.engine import LampEngine
+    engine = LampEngine(FakeOutput(), threaded=False)
+    engine.calibrate(CAL_SPEC)
+    doc = handover.boot_doc(engine.calibration(), night, policy.UPDATING)
+    (tmp_path / "lamp-boot.json").write_text(json.dumps(doc))
+    assert scratch
+    return doc
+
+
+class TestBootScriptWithNotes:
+    def test_a_power_cut_at_night_wakes_to_the_night_breath(self, tmp_path):
+        _boot_notes(tmp_path, night=True)
+        res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "3.5")
+        assert res.returncode == 0, res.stderr
+        levels = frames(res.stdout)
+        assert levels[0] < 0.01                                          # still a fade up from dark
+        assert max(levels) <= 0.36                                       # never 60 % in the bedroom
+        assert max(levels[len(levels) // 2:]) > 0.25
+        state = json.loads((tmp_path / "run" / "boot").read_text())
+        assert state["peak"] == 0.35 and state["floor"] < 0.25 and state["colour"] == "amber"
+
+    def test_an_update_handover_breathes_the_engines_busy_breath(self, tmp_path):
+        doc = _boot_notes(tmp_path, night=False)
+        table = doc["looks"]["ember"]["day"]["frames"]
+        start = table[len(table) // 2]
+        lit_sysfs(tmp_path, duties=tuple(int(d * 1250000) for d in start))
+        (tmp_path / "run").mkdir()
+        (tmp_path / "run" / "handover").write_text(json.dumps({"mode": "ember", "at": time.time()}))
+        res = run_boot(tmp_path, "--print", "--seconds", "1.5")
+        levels = frames(res.stdout)
+        assert abs(levels[0] - max(start) ** (1 / 2.2)) < 0.03           # from the LED's frame, no jump
+        assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.05
+        state = json.loads((tmp_path / "run" / "boot").read_text())
+        assert state["period_s"] == policy.UPDATING.period_s and state["colour"] == "ember"
+
+    def test_odd_notes_fall_back_to_the_scripts_own_breath(self, tmp_path):
+        (tmp_path / "lamp-boot.json").write_text('{"looks": {"amber": {"day": {"frames": "nope"}}}, "fps": 25}')
+        res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "0.3")
+        assert res.returncode == 0 and frames(res.stdout)[0] < 0.01
+        state = json.loads((tmp_path / "run" / "boot").read_text())
+        assert (state["floor"], state["peak"]) == (0.25, 0.60)

@@ -20,8 +20,15 @@ breathes too: haslerd.service's ExecStopPost runs ``hasler-lamp-boot
 and starts this service again unless the box is shutting down (then haslerd
 left a steady ember for the halt hook). Started with a fresh note, it
 continues from whatever the LED shows - no fade from dark, no jump - into the
-amber breath, or the ember breath (15-35 %, 2.5 s, pure red: busy, don't
-unplug) while an update is installed.
+amber breath, or the busy breath (don't unplug) while an update is installed.
+
+haslerd's notes (/var/lib/haslerd/lamp-boot.json, lamp/handover.py
+boot_doc): whether it was night, and each breath as haslerd's engine draws it
+on this very lamp - calibrated colours and floors, night levels, the engine's
+busy breath (slow, 6 s) - as one cycle of linear duty frames. With them the
+script plays those frames (so a power cut at 3 am wakes to the night breath,
+not 25-60 %); without them, or with anything odd in them, it falls back to
+its own breaths below (stdlib only, never fails for want of the file).
 
 Hardware (docs/hardware.md "Pilot lamp"): common-anode RGB LED on 3.3 V, red
 GPIO17, green GPIO22, blue GPIO27, GPIO LOW = lit. Each pin is its own
@@ -79,6 +86,8 @@ ROOT = os.environ.get("HASLER_PWM_ROOT", "/sys/class/pwm")
 FAKE = "HASLER_PWM_ROOT" in os.environ
 STATE_DIR = os.environ.get("HASLER_LAMP_RUN", "/run/hasler-lamp")
 PERIOD_FILE = os.environ.get("HASLER_LAMP_PERIOD_FILE", "/var/lib/haslerd/lamp-period")
+# haslerd's notes: night or day, and its breaths as frames (boot_table below).
+BOOT_FILE = os.environ.get("HASLER_LAMP_BOOT_FILE", "/var/lib/haslerd/lamp-boot.json")
 SYSTEMCTL = os.environ.get("HASLER_SYSTEMCTL", "systemctl")
 UNIT = "hasler-lamp-boot.service"
 GROUP = "gpio"                    # haslerd's SupplementaryGroups
@@ -262,6 +271,67 @@ def continue_at(t: float, start: float, look: dict) -> float:
     return start + (target - start) * w
 
 
+# --- haslerd's frames (lamp-boot.json, haslerd/lamp/handover.py boot_doc) ------
+
+def boot_table(mode: str) -> dict | None:
+    """haslerd's table for ``mode`` (amber | ember) tonight or today, or None.
+
+    {"night": bool, "fps": n, "looks": {mode: {"day"|"night": {"floor",
+    "peak", "period_s", "frames": [[r, g, b] linear duty, ...]}}}}: one cycle
+    of the breath as haslerd's engine draws it on this lamp (calibration,
+    floors, night levels). Anything odd: None, and the script's own breath."""
+    try:
+        with open(BOOT_FILE) as f:
+            doc = json.load(f)
+        entry = doc["looks"][mode]["night" if doc.get("night") else "day"]
+        fps = float(doc["fps"])
+        frames = [[max(0.0, min(1.0, float(c))) for c in fr] for fr in entry["frames"]]
+        if fps <= 0 or not frames or any(len(fr) != 3 for fr in frames) or max(map(max, frames)) <= 0:
+            return None
+        floor, peak, period = float(entry["floor"]), float(entry["peak"]), float(entry["period_s"])
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return {"fps": fps, "frames": frames, "floor": floor, "peak": peak, "period_s": period,
+            "night": bool(doc.get("night"))}
+
+
+class TablePlayer:
+    """Plays a table's frames, looping. Cold (``start`` None): a FADE_S fade up
+    from dark to the breath's brightest frame, then on from there. A handover:
+    from the LED's duties (``start``) into the frame nearest them, blended
+    over CONTINUE_S - no dark frame, no jump."""
+
+    def __init__(self, table: dict, start: list | None) -> None:
+        self.frames, self.fps = table["frames"], table["fps"]
+        self.start = start
+        if start is None:
+            self.i0 = max(range(len(self.frames)), key=lambda i: max(self.frames[i]))
+            self.lead = FADE_S
+        else:
+            p = [c ** (1.0 / GAMMA) for c in start]
+            self.i0 = min(range(len(self.frames)), key=lambda i: sum(
+                abs(c ** (1.0 / GAMMA) - q) for c, q in zip(self.frames[i], p)))
+            self.lead = 0.0
+
+    def frame(self, t: float) -> list:
+        return self.frames[(self.i0 + int(max(0.0, t) * self.fps)) % len(self.frames)]
+
+    def at(self, t: float) -> list:
+        if self.start is None:
+            if t < FADE_S:
+                x = t / FADE_S
+                x = x * x * (3 - 2 * x)                 # smoothstep, perceptual
+                return [c * x ** GAMMA for c in self.frames[self.i0]]
+            return self.frame(t - FADE_S)
+        target = self.frame(t)
+        if t >= CONTINUE_S:
+            return target
+        w = t / CONTINUE_S
+        w = w * w * (3 - 2 * w)
+        return [((a ** (1 / GAMMA)) + ((b ** (1 / GAMMA)) - (a ** (1 / GAMMA))) * w) ** GAMMA
+                for a, b in zip(self.start, target)]
+
+
 def make_fake_sysfs() -> None:
     for i, gpio in enumerate(GPIOS):
         node = os.path.join(ROOT, f"pwmchip{i}", "device", "of_node")
@@ -413,11 +483,17 @@ def main() -> int:
 
     look = LOOKS[mode or "amber"]
     balance = look["balance"]
+    table = boot_table(mode or "amber")
+    if table is not None:
+        # haslerd's own frames (night-scaled, calibrated): its levels for the state.
+        look = {**look, "floor": table["floor"], "peak": table["peak"], "period_s": table["period_s"]}
     start = 0.0
+    lit = [ch.lit() for ch in channels]
     if mode is not None:
         # What the LED shows (the red channel carries both looks), perceptual.
         start = channels[0].lit() ** (1.0 / GAMMA)
         log(f"handover ({mode}): breathing on from {start:.2f}")
+    player = TablePlayer(table, lit if mode else None) if table is not None else None
 
     t0 = time.monotonic()
     state = {"colour": mode or "amber", "t0_monotonic": t0,
@@ -437,9 +513,14 @@ def main() -> int:
         t = time.monotonic() - t0
         if args.seconds and t >= args.seconds:
             break
-        p = continue_at(t, start, look) if mode else level_at(t)
-        lin = p ** GAMMA
-        duties = [ch.set(lin * k) for ch, k in zip(channels, balance)]
+        if player is not None:
+            rgb = player.at(t)
+            p = max(rgb) ** (1.0 / GAMMA)
+            duties = [ch.set(d) for ch, d in zip(channels, rgb)]
+        else:
+            p = continue_at(t, start, look) if mode else level_at(t)
+            lin = p ** GAMMA
+            duties = [ch.set(lin * k) for ch, k in zip(channels, balance)]
         if args.print:
             print(f"{t:6.3f} level={p:.3f} duty_ns={duties}", flush=True)
         nxt += frame
