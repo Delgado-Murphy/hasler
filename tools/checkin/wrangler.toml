@@ -7,7 +7,7 @@ compatibility_date = "2026-10-01"
 # `wrangler kv namespace create CHECKINS` prints the id to put here.
 [[kv_namespaces]]
 binding = "CHECKINS"
-id = "replace-with-the-namespace-id"
+id = "b565f44ec14643329addafd897860286"
 
 # Optional. Set as secrets instead of here (`wrangler secret put CHECKIN_TOKEN`,
 # `wrangler secret put DASHBOARD_KEY`); listed so the names are in one place.
@@ -18,8 +18,9 @@ id = "replace-with-the-namespace-id"
 # "Send to the makers" (support.js; SUPPORT.md has the steps). Its own namespace,
 # so the dashboard's list stays radios only: `wrangler kv namespace create SUPPORT`.
 # Secrets: `wrangler secret put GITHUB_TOKEN`, `wrangler secret put GITHUB_WEBHOOK_SECRET`.
-# [[kv_namespaces]]
-# binding = "SUPPORT"
-# id = "replace-with-the-support-namespace-id"
+[[kv_namespaces]]
+binding = "SUPPORT"
+id = "7dd7e157753c4a648d8e3522fc554525"
+
 [vars]
 SUPPORT_REPO = "Delgado-Murphy/hasler-support"
