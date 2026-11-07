@@ -116,6 +116,7 @@ from .. import __version__
 from ..actions import Actions
 from ..lamp import night
 from ..lamp import engine as lamp_engine
+from ..lamp import scratch as lamp_scratch
 from .. import boxconfig
 from . import lamp_check
 from ..panel import calibrate
@@ -379,6 +380,13 @@ class WebApp:
         # Where the Lamp check reads the CPU's temperature (None: the Pi's thermal zone).
         self.cpu_temp_file: Path | None = None
         self._knob_lock = threading.Lock()
+        # The Lamp check's animated samples: a scratch engine's frames streamed
+        # onto the live lamp (lamp/scratch.py); any other preview ends them.
+        self._lamp_stage = lamp_scratch.Stage(
+            write=lambda lamp, duty, hold: self._show_duty(lamp, duty, hold),
+            end=lambda lamp: self._end_preview(lamp))
+        self._lamp_scene_key: Any = None        # the last animated sample, and its jump channel
+        self._lamp_scene_info: dict = {}
         # A press on the radio for the risky buttons (web/confirm.py). The lamp
         # hook is read at call time: the LampKeeper sets it after build_web.
         self.confirm = ConfirmBroker(panel, reply=self._lamp_reply)
@@ -1190,6 +1198,13 @@ class WebApp:
         # Only what differs from the release: a later release's retune still lands.
         palette = {n: rgb for n, rgb in palette.items()
                    if any(abs(a - b) > 1e-6 for a, b in zip(rgb, defaults[n]))}
+        self._store_lamp_palette(palette)
+        log.info("lamp colours %s from the web page",
+                 "set (" + ", ".join(sorted(palette)) + ")" if palette else "back to the release's")
+        return self.lamp_palette()
+
+    def _store_lamp_palette(self, palette: dict) -> None:
+        """settings.json ``lamp_palette`` = ``palette`` ({} removes it); the listeners hear."""
         with self.lock:
             if self.settings_file is not None:
                 doc = load_settings(self.settings_file)
@@ -1211,18 +1226,20 @@ class WebApp:
                     listener(dict(doc))
                 except Exception:
                     log.exception("a lamp settings listener failed")
-        log.info("lamp colours %s from the web page",
-                 "set (" + ", ".join(sorted(palette)) + ")" if palette else "back to the release's")
-        return self.lamp_palette()
 
     def lamp_preview(self, body: Any) -> dict:
         """``{"rgb": [r, g, b], "level": name|0..1}`` on the lamp for a while; ``{"rgb": null}`` ends it.
 
-        ``{"duty": [r, g, b]}`` shows raw channel duties (the Lamp check,
-        ``_preview_duty``); it is handled before any other kind of preview.
+        ``{"draft": <calibration>, ...}`` shows the Lamp check's draft drawn
+        by a scratch engine (``_preview_draft``); ``{"duty": [r, g, b]}``
+        raw channel duties (``_preview_duty``); both come before any other
+        kind of preview, and every other kind ends the check's animation.
         ``{"look": name}`` / ``{"reply": name}`` (lamp/meanings.py) play one of
         the lamp's meanings for a few seconds instead (web/lamp_api.py).
         """
+        if isinstance(body, dict) and "draft" in body:
+            return self._preview_draft(body)
+        self._lamp_stage.stop()             # any other preview ends the check's animation
         if isinstance(body, dict) and "duty" in body:
             return self._preview_duty(body["duty"])
         if isinstance(body, dict) and "rgb" not in body and ("look" in body or "reply" in body):
@@ -1313,23 +1330,71 @@ class WebApp:
         """
         duty = lamp_check.duty_from(raw)
         lamp = self.lamp
-        preview = getattr(lamp, "preview", None)
-        preview_duty = getattr(lamp, "preview_duty", None)
-        exact = False
-        if callable(preview_duty):
-            preview_duty(duty, hold_s=getattr(lamp_engine, "PREVIEW_S", 30.0))
-            exact = True
-        elif callable(preview):
-            if lamp_check.accepts(preview, "raw"):
-                preview(duty, 1.0, raw=True)
-                exact = True
-            else:
-                peak = max(duty)
-                gamma = getattr(lamp_engine, "GAMMA", 2.2)
-                rgb = [d / peak for d in duty] if peak > 0 else [0.0, 0.0, 0.0]
-                preview(rgb, peak ** (1.0 / gamma) if peak > 0 else 0.0)
+        exact = self._show_duty(lamp, duty, getattr(lamp_engine, "PREVIEW_S", 30.0))
         return {"lamp": lamp is not None, "showing": lamp is not None, "raw": exact,
                 "expires_s": getattr(lamp_engine, "PREVIEW_S", 30.0)}
+
+    @staticmethod
+    def _show_duty(lamp: Any, duty: Any, hold_s: float) -> bool:
+        """Raw duty on ``lamp`` for ``hold_s``; True if drawn exactly (see _preview_duty)."""
+        preview = getattr(lamp, "preview", None)
+        preview_duty = getattr(lamp, "preview_duty", None)
+        if callable(preview_duty):
+            preview_duty(list(duty), hold_s=hold_s)
+            return True
+        if not callable(preview):
+            return False
+        if lamp_check.accepts(preview, "raw"):
+            preview(list(duty), 1.0, raw=True)
+            return True
+        peak = max(duty)
+        gamma = getattr(lamp_engine, "GAMMA", 2.2)
+        rgb = [d / peak for d in duty] if peak > 0 else [0.0, 0.0, 0.0]
+        preview(rgb, peak ** (1.0 / gamma) if peak > 0 else 0.0)
+        return False
+
+    @staticmethod
+    def _end_preview(lamp: Any) -> None:
+        preview = getattr(lamp, "preview", None)
+        if callable(preview):
+            preview(None)
+
+    def _preview_draft(self, body: dict) -> dict:
+        """The Lamp check's draft on the lamp, drawn by a scratch engine (web/lamp_check.py).
+
+        ``{"draft", "colour", "level"}``: the steady colour's duty, held like
+        any preview. ``{"draft", "look", "night"}``: the sweep item animated -
+        its frames streamed for PREVIEW_S after the last identical request
+        (which only extends it), with ``jump``: the channel to blame.
+        """
+        lamp = self.lamp
+        spec = lamp_check.draft_spec(body["draft"], lamp)
+        kind, name, arg = lamp_check.preview_target(body)
+        hold = getattr(lamp_engine, "PREVIEW_S", 30.0)
+        if kind == "colour":
+            self._lamp_stage.stop()
+            duty = lamp_scratch.duty_for(spec, name, arg)
+            exact = self._show_duty(lamp, duty, hold) if lamp is not None else False
+            return {"lamp": lamp is not None, "showing": lamp is not None, "raw": exact,
+                    "duty": [round(d, 6) for d in duty], "expires_s": hold}
+        from ..lamp import policy
+        scene = lamp_check.scenes(policy).get(name)
+        if scene is None:
+            raise ValueError(f"the lamp has no {name!r} look any more")
+        key = (json.dumps(spec, sort_keys=True), name, arg)
+        cached = self._lamp_scene_info if self._lamp_scene_key == key else None
+        if cached is None:
+            probe = lamp_scratch.SceneFrames(spec, scene, night=arg)
+            frames = probe.sample(fps=25, cycles=1)
+            cached = {"jump": lamp_scratch.flicker_channel(frames),
+                      "duty": [round(d, 6) for d in frames[0]]}
+            self._lamp_scene_key, self._lamp_scene_info = key, cached
+        if lamp is not None:
+            show = lamp_scratch.SceneFrames(spec, scene, night=arg)
+            self._lamp_stage.play(key, lamp, show.at, hold)
+        return {"lamp": lamp is not None, "showing": lamp is not None,
+                "raw": callable(getattr(lamp, "preview_duty", None)), "look": name, "night": arg,
+                **cached, "expires_s": hold}
 
     # -- the Lamp check's calibration (web/lamp_check.py) -------------------
 
@@ -1346,11 +1411,9 @@ class WebApp:
             "raw_preview": callable(getattr(lamp, "preview_duty", None)) or (callable(preview) and lamp_check.accepts(preview, "raw")),
             "saved": lamp_check.saved_from((self._overlay().get("io") or {}).get("lamp")),
             "standard": lamp_check.standard(lamp_engine, lamp),
+            # The sweep; the page sends {"draft", "look": id, "night"} and
+            # the engine draws it (there is no model of the engine on the page).
             "looks": lamp_check.sweep(policy),
-            "model": {"gamma": getattr(lamp_engine, "GAMMA", 2.2),
-                      "night_cap": getattr(lamp_engine, "NIGHT_CAP", 0.35),
-                      "minor_share": getattr(lamp_engine, "MINOR_SHARE", 0.2),
-                      "standby_ember": getattr(lamp_engine, "STANDBY_EMBER", 0.22)},
             "preview_s": getattr(lamp_engine, "PREVIEW_S", 30.0),
             "cpu_temp_c": lamp_check.cpu_temp_c(self.cpu_temp_file),
         }
@@ -1382,9 +1445,32 @@ class WebApp:
         log.info("lamp back to its standard calibration")
         return self.lamp_calibration()
 
+    # io.lamp keys the engine's calibrate() reads (lamp/engine.py).
+    LAMP_CAL_KEYS = ("palette", "balance", "min_duty", "level_gain", "levels", "amber_band")
+
+    def _lamp_io(self) -> dict:
+        """The effective ``io.lamp`` (descriptor + overlay) as saved now."""
+        paths = self.box_paths
+        if paths is not None:
+            try:
+                lamp = boxconfig.load_effective_variant(paths, self.variant_name).io.get("lamp")
+                return lamp if isinstance(lamp, dict) else {}
+            except Exception:
+                log.debug("could not read the effective io.lamp", exc_info=True)
+        lamp = (getattr(getattr(self.actions, "variant", None), "io", None) or {}).get("lamp")
+        return lamp if isinstance(lamp, dict) else {}
+
     def _apply_lamp_calibration(self, cal: dict | None) -> None:
         """The running variant's io follows the overlay; the engine follows at
-        once when it offers ``set_calibration(cal | None)``, else at restart."""
+        once when it offers ``set_calibration``, else at restart.
+
+        The engine gets the whole effective calibration (the descriptor's
+        ``min_duty``, a custom ``amber_band`` ... with the check's keys over
+        it), since ``calibrate`` resets anything missing to its default. A
+        save also drops the page's hand-set colours (settings.json
+        ``lamp_palette``): the check supersedes them, and they would
+        otherwise lie over the calibrated palette after the next restart.
+        """
         hook, reload = self.on_overlay_saved, self.reload_variant
         try:
             if hook is not None:
@@ -1393,12 +1479,19 @@ class WebApp:
                 reload()
         except Exception:
             log.exception("re-applying the overlay after the lamp check failed")
+        current = self._lamp_io()
+        spec = {k: copy.deepcopy(current[k]) for k in self.LAMP_CAL_KEYS if k in current}
+        if cal is not None:
+            spec.update(copy.deepcopy(cal))
         setter = getattr(self.lamp, "set_calibration", None)
         if callable(setter):
             try:
-                setter(cal)
+                setter(spec or None)
             except Exception:
                 log.exception("the lamp engine refused the calibration")
+        if cal is not None and self.lamp_settings().get("lamp_palette"):
+            self._store_lamp_palette({})
+            log.info("lamp: the hand-set colours gave way to the lamp check")
 
     def _lamp_doc(self) -> dict:
         saved = self.lamp_settings()

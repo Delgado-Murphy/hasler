@@ -6356,24 +6356,28 @@ document.addEventListener('visibilitychange', () => { if (document.hidden){ lchk
    Each question shows two samples on the real lamp (A, then B, every 1.5 s) and
    a staircase halves its step after each pick. Nothing is saved until Save on
    the summary (PUT /api/lamp/calibration -> io.lamp of the box's overlay; see
-   web/lamp_check.py for the keys). Samples go out as raw channel duties
-   (POST /api/lamp/preview {duty}); lchkDuty is the page's model of the engine
-   (palette ratio -> gamma -> balance -> floor) that turns the draft into duties. ---- */
+   web/lamp_check.py for the keys). The page holds the draft and only sends
+   choices: the floors and the balance go out as raw channel duties
+   (POST /api/lamp/preview {duty}); every other sample is {draft, colour, level}
+   or {draft, look, night}, and the radio's own engine draws it with the draft
+   (a scratch engine, lamp/scratch.py) - there is no model of the engine here. ---- */
 const LCHK_KEY = 'hasler.lampcheck';
 const LCHK_ALT_MS = 1500;
+const LCHK_LOOK_MS = 10000;                          // a look plays on the radio; this keeps it alive
 const LCHK_FLOORS = [0.02, 0.01, 0.005, 0.0025];     // floor test duties, 2 % down to 0.25 %
-const LCHK_WHITE = [1, 0.35, 0.06];                  // the palette's warm white the balance is measured against
-const LCHK_WHITE_R = 0.6;                            // red duty of the warm-white samples
+const LCHK_WHITE = [1, 0.35, 0.06];                  // the warm-bulb mix (raw duty ratios) the balance is judged by
+const LCHK_WHITE_R = 0.6;                            // red duty of the balance samples
+const LCHK_GAIN = [0.5, 2];                          // a channel's balance stays within half and twice
 const LCHK_CH = ['red', 'green', 'blue'];
 const LCHK_CH_NAME = ['Red', 'Green', 'Blue'];
-const LCHK_OTHER = {white:[1, 0.35, 0.06], red:[1, 0.03, 0], amber_pale:[1, 0.22, 0], magenta:[0.25, 0, 1]};
-const LCHK_STEPS = ['Faintest light', 'Warm white', 'Amber', 'Standby glow', 'Blue', 'Every look'];
+const LCHK_BLUE_LEVEL = 0.55;                        // a phone playing: where the blue's tint is judged
+const LCHK_STEPS = ['Faintest light', 'Balance', 'Amber', 'Standby glow', 'Blue', 'Every look'];
 const LCHK_TASKS = [
   {id:'floor-red', step:0, kind:'floor', ch:0},
   {id:'floor-green', step:0, kind:'floor', ch:1},
   {id:'floor-blue', step:0, kind:'floor', ch:2},
-  {id:'white-green', step:1, kind:'stair', delta:0.1, lo:0.2, hi:0.6, picks:4},
-  {id:'white-blue', step:1, kind:'stair', delta:0.02, lo:0, hi:0.08, picks:4},
+  {id:'white-green', step:1, kind:'stair', delta:0.1, lo:LCHK_WHITE[1] * LCHK_GAIN[0], hi:LCHK_WHITE[1] * LCHK_GAIN[1], picks:4},
+  {id:'white-blue', step:1, kind:'stair', delta:0.02, lo:LCHK_WHITE[2] * LCHK_GAIN[0], hi:LCHK_WHITE[2] * LCHK_GAIN[1], picks:4},
   {id:'amber-day', step:2, kind:'stair', delta:0.04, lo:0, hi:0.5, picks:4, level:1},
   {id:'amber-night', step:2, kind:'stair', delta:0.03, lo:0, hi:0.5, picks:4, level:0.35},
   {id:'ember-day', step:3, kind:'adjust', key:'ember_day'},
@@ -6438,48 +6442,17 @@ function lchkInit(st){
   return {i:0, tries:0};
 }
 
-/* the page's model of the engine: palette ratio at a perceptual level -> channel duties */
-const lchkModel = () => (lchk.data && lchk.data.model) || {gamma:2.2, night_cap:0.35, minor_share:0.2, standby_ember:0.22};
-function lchkRaw(rgb, level, cal){
-  const g = lchkModel().gamma;
-  return rgb.map((c, i) => { const p = Math.pow(Math.max(0, c), 1 / g) * level; return p <= 1e-4 ? 0 : Math.pow(Math.min(1, p), g) * cal.balance[LCHK_CH[i]]; });
+/* samples: the draft with one change, and a rough swatch for the screen */
+function lchkPayload(c){
+  return {min_duty: c.min_duty, balance: c.balance, palette: c.palette, level_gain: c.level_gain, levels: c.levels};
 }
-function lchkDuty(rgb, level, cal){
-  const raw = lchkRaw(rgb, level, cal), top = Math.max(...raw), share = lchkModel().minor_share;
-  return raw.map((d, i) => { const f = cal.min_duty[LCHK_CH[i]];
-    return d <= 0 ? 0 : d >= f ? Math.min(1, d) : d >= share * top ? Math.min(1, f) : 0; });
-}
-function lchkLookRgb(colour, night, cal){
-  if (colour === 'amber') return cal.palette.amber[night ? 'night' : 'day'];
+// The draft as it would be with fn's change (the working copy stays as it is).
+function lchkWith(cal, fn){ const c = lchkCopy(lchkPayload(cal)); if (fn) fn(c); return c; }
+// The screen can't show the lamp: a linear ratio at a perceptual level, for lchkCss only.
+function lchkTint(rgb, level){ const k = Math.pow(clamp(level, 0, 1), 2.2); return rgb.map(v => v * k); }
+function lchkRgbOf(colour, cal){
   if (colour === 'ember' || colour === 'blue') return cal.palette[colour];
-  return (lcal.data && lcal.data.effective[colour]) || LCHK_OTHER[colour] || [1, 0.15, 0];
-}
-// A look's perceptual level t seconds into its breath, as the engine would draw it with this draft.
-function lchkLookLevel(look, night, cal, t){
-  const m = lchkModel(), gain = cal.level_gain[look.colour] || 1;
-  let peak = look.level * gain;
-  if (look.colour === 'ember') peak = look.level * gain * cal.levels[night ? 'ember_night' : 'ember_day'] / m.standby_ember;
-  else if (night) peak = Math.min(peak, m.night_cap);
-  peak = Math.min(1, peak);
-  if (look.motion !== 'breath' || !(look.period_s > 0)) return peak;
-  const floor = look.level > 0 ? look.floor * peak / look.level : 0;
-  return floor + (peak - floor) * (0.5 - 0.5 * Math.cos(2 * Math.PI * t / look.period_s));
-}
-// "The colour jumped": the channel that crosses its floor during the look, else its faintest lit one.
-function lchkJumpChannel(item, cal){
-  const look = item.look, rgb = lchkLookRgb(look.colour, item.night, cal);
-  const n = look.motion === 'breath' ? 48 : 1, lo = [1, 1, 1], hi = [0, 0, 0];
-  for (let k = 0; k < n; k++){
-    const raw = lchkRaw(rgb, lchkLookLevel(look, item.night, cal, k / n * (look.period_s || 1)), cal);
-    raw.forEach((d, i) => { if (d > 0){ lo[i] = Math.min(lo[i], d); hi[i] = Math.max(hi[i], d); } });
-  }
-  let best = -1;
-  for (let i = 0; i < 3; i++){
-    const f = cal.min_duty[LCHK_CH[i]];
-    if (hi[i] > 0 && lo[i] < f && hi[i] >= f && (best < 0 || hi[i] < hi[best])) best = i;
-  }
-  if (best < 0) for (let i = 0; i < 3; i++) if (hi[i] > 0 && (best < 0 || hi[i] < hi[best])) best = i;
-  return best < 0 ? 0 : best;
+  return cal.palette.amber.day;
 }
 function lchkItems(){
   const out = [];
@@ -6495,57 +6468,64 @@ function lchkStairVals(t, ts){
 function lchkWhite(g, b){ return [LCHK_WHITE_R, LCHK_WHITE_R * g, LCHK_WHITE_R * b]; }
 function lchkScene(){
   const st = lchk.st, t = LCHK_TASKS[st.task], ts = st.ts, c = st.cal;
-  const one = (duty, name, sub) => ({duty, name, sub});
+  // body: what goes to the lamp; swatch: a rough picture of it for the screen.
+  const one = (body, swatch, name, sub) => ({body, swatch, name, sub});
+  const raw = duty => one({duty: duty.map(r6)}, duty);
   if (t.kind === 'floor'){
     const pct = LCHK_FLOORS[ts.i] * 100, duty = [0, 0, 0]; duty[t.ch] = LCHK_FLOORS[ts.i];
     return {mode:'pulse', q: LCHK_CH_NAME[t.ch] + ' alone, very faint (' + pct + ' %). Is it steady, shimmering, or gone?',
       help:'It blinks on and off so you can find it. Look at the lamp, not the phone.',
-      cards:[one(duty, LCHK_CH_NAME[t.ch] + ' at ' + pct + ' %', 'on for 1.5 s, off for 1.5 s')],
+      cards:[Object.assign(raw(duty), {name: LCHK_CH_NAME[t.ch] + ' at ' + pct + ' %', sub:'on for 1.5 s, off for 1.5 s'})],
       answers:[['steady', 'Steady'], ['shimmer', 'Shimmering'], ['gone', 'Gone']]};
   }
   if (t.kind === 'stair'){
     const [a, b] = lchkStairVals(t, ts);
-    if (t.id === 'white-green') return {mode:'alt', q:'Which is closer to a warm white — a candle, or an old 2200 K bulb?',
-      help:'A is a little more orange, B a little more yellow. If you have a warm bulb or a candle, keep it in view.',
-      cards:[one(lchkWhite(a, st.white.b), 'A', 'more orange'), one(lchkWhite(b, st.white.b), 'B', 'more yellow')],
+    if (t.id === 'white-green') return {mode:'alt', q:'Which looks more like the light of an old, warm bulb — or a candle?',
+      help:'This balances the lamp’s three colours against each other. A is a little more orange, B a little more yellow. If you have a warm bulb or a candle, keep it in view.',
+      cards:[Object.assign(raw(lchkWhite(a, st.white.b)), {name:'A', sub:'more orange'}), Object.assign(raw(lchkWhite(b, st.white.b)), {name:'B', sub:'more yellow'})],
       answers:[['a', 'A'], ['same', 'Can’t tell'], ['b', 'B']]};
-    if (t.id === 'white-blue') return {mode:'alt', q:'Which is whiter?',
-      help:'A has a little less blue, B a little more. Pick the one that looks like white light, not cream and not cold.',
-      cards:[one(lchkWhite(st.white.g, a), 'A', 'warmer'), one(lchkWhite(st.white.g, b), 'B', 'cooler')],
+    if (t.id === 'white-blue') return {mode:'alt', q:'Which looks more like plain white light?',
+      help:'A has a little less blue, B a little more. Pick the one that is neither cream nor cold.',
+      cards:[Object.assign(raw(lchkWhite(st.white.g, a)), {name:'A', sub:'warmer'}), Object.assign(raw(lchkWhite(st.white.g, b)), {name:'B', sub:'cooler'})],
       answers:[['a', 'A'], ['same', 'Can’t tell'], ['b', 'B']]};
-    const night = t.id === 'amber-night';
+    const night = t.id === 'amber-night', day = c.palette.amber.day;
+    const amber = v => one({draft: lchkWith(c, x => { x.palette.amber.night = [day[0], v, day[2]]; if (!night) x.palette.amber.day = [day[0], v, day[2]]; }),
+      colour:'amber', level: t.level}, lchkTint([1, v, 0], t.level));
     return {mode:'alt', q: night ? 'At night (dimmed): which is your amber?' : 'Playing, full brightness: which is your amber?',
       help:'A is slightly yellower, B slightly redder. Pick the warm, old-radio glow you want to see.',
-      cards:[one(lchkDuty([1, a, 0], t.level, c), 'A', 'slightly yellower'), one(lchkDuty([1, b, 0], t.level, c), 'B', 'slightly redder')],
+      cards:[Object.assign(amber(a), {name:'A', sub:'slightly yellower'}), Object.assign(amber(b), {name:'B', sub:'slightly redder'})],
       answers:[['a', 'A'], ['same', 'Can’t tell'], ['b', 'B']]};
   }
   if (t.kind === 'adjust'){
     const night = t.key === 'ember_night';
     return {mode:'steady', q: (night ? 'Standby at night' : 'Standby by day') + ': is the glow visible but calm?',
       help: night ? 'It should be easy to find in the dark without lighting the room.' : 'Easy to see in daylight behind the window, but quiet — the radio is asleep.',
-      cards:[one(lchkDuty(c.palette.ember, ts.lv, c), 'Standby glow', Math.round(ts.lv * 100) + ' % brightness')],
+      cards:[one({draft: lchkWith(c, x => { x.levels[t.key] = r4(ts.lv); }), look:'standby', night}, lchkTint(c.palette.ember, ts.lv),
+        'Standby glow', Math.round(ts.lv * 100) + ' % brightness')],
       answers:[['up', 'Too dim'], ['ok', 'Just right'], ['down', 'Too bright']]};
   }
   if (t.kind === 'match'){
-    const amber = lchkDuty(c.palette.amber[t.level < 0.5 ? 'night' : 'day'], t.level, c);
-    const blue = lchkDuty(c.palette.blue, Math.min(1, t.level * ts.g), c);
+    const amber = one({draft: lchkWith(c), colour:'amber', level: t.level}, lchkTint(c.palette.amber[t.level < 0.5 ? 'night' : 'day'], t.level), 'Amber', 'stays the same');
+    const blue = one({draft: lchkWith(c, x => { x.level_gain.blue = r4(ts.g); }), colour:'blue', level: t.level},
+      lchkTint(c.palette.blue, t.level * ts.g), 'Blue', 'changes as you answer');
     return {mode:'alt', q:'Which is brighter — the amber or the blue?',
       help:'Ignore the colour, only how much light. ' + (t.level < 0.5 ? 'This is the dimmed, night brightness.' : 'This is the brightness of a phone playing.'),
-      cards:[one(amber, 'Amber', 'stays the same'), one(blue, 'Blue', 'changes as you answer')],
+      cards:[amber, blue],
       answers:[['amber', 'The amber'], ['same', 'About the same'], ['blue', 'The blue']]};
   }
   if (t.kind === 'tint'){
-    const lv = Math.min(1, 0.6 * c.level_gain.blue), A = ts.stage ? [0.03, 0, 1] : [0, 0, 1], B = ts.stage ? [0.05, 0, 1] : [0.04, 0, 1];
+    const A = ts.stage ? [0.03, 0, 1] : [0, 0, 1], B = ts.stage ? [0.05, 0, 1] : [0.04, 0, 1];
+    const blue = rgb => one({draft: lchkWith(c, x => { x.palette.blue = rgb; }), colour:'blue', level: LCHK_BLUE_LEVEL}, lchkTint(rgb, LCHK_BLUE_LEVEL));
     return {mode:'alt', q: ts.stage ? 'And now: which blue do you prefer?' : 'Which is the nicer blue?',
       help: ts.stage ? 'A has a little less red in it, B a little more.' : 'A is pure blue, B has a touch of red. Some LEDs look greenish without it.',
-      cards:[one(lchkDuty(A, lv, c), 'A', ts.stage ? 'less red' : 'pure blue'), one(lchkDuty(B, lv, c), 'B', ts.stage ? 'more red' : 'a touch of red')],
+      cards:[Object.assign(blue(A), {name:'A', sub: ts.stage ? 'less red' : 'pure blue'}), Object.assign(blue(B), {name:'B', sub: ts.stage ? 'more red' : 'a touch of red'})],
       answers:[['a', 'A'], ['same', 'Can’t tell'], ['b', 'B']]};
   }
   const items = lchkItems(), it = items[ts.i];
   return {mode:'look', item: it, q:'“' + it.look.name + '” ' + (it.night ? 'at night' : 'by day') + ': does the colour stay the same?',
-    help: it.look.motion === 'breath' ? 'It breathes. Watch for the colour jumping or flickering as it gets faint.' : 'Watch it for a few seconds: it should not flicker or change colour.',
-    cards:[{duty: lchkDuty(lchkLookRgb(it.look.colour, it.night, c), lchkLookLevel(it.look, it.night, c, 0), c), name: it.look.name,
-      sub: (it.night ? 'at night' : 'by day') + ' · ' + (ts.i + 1) + ' of ' + items.length}],
+    help: it.look.watch || 'Watch it for a few seconds: it should not flicker or change colour.',
+    cards:[one({draft: lchkWith(c), look: it.look.id, night: it.night}, lchkTint(lchkRgbOf(it.look.colour, c), it.night ? Math.min(it.look.level, 0.35) : it.look.level),
+      it.look.name, (it.night ? 'at night' : 'by day') + ' · ' + (ts.i + 1) + ' of ' + items.length)],
     answers:[['jump', 'The colour jumped'], ['fine', 'Looks right']]};
 }
 // The progress through the whole check, 0..1.
@@ -6562,30 +6542,27 @@ function lchkProgress(){
   return (st.task + part) / LCHK_TASKS.length;
 }
 
-/* the lamp: alternate A and B (or blink, or hold) and keep the preview alive */
-function lchkSend(body){ lcalPreview(body); }
+/* the lamp: alternate A and B (or blink, or hold, or let the radio play a look) */
+function lchkSend(body){
+  lcal.showing = true; lcal.sent = Date.now();
+  return api('POST', '/api/lamp/preview', body).catch(() => null);
+}
 function lchkShow(){
   if (!lchk.st || !lchk.st.running || lchk.st.done) return;
   const sc = lchkScene(), ph = lchk.phase;
-  if (sc.mode === 'look'){
-    // Drawn here, frame by frame, so the lamp shows the draft (unsaved) calibration.
-    const it = sc.item, c = lchk.st.cal, t = (Date.now() - lchk.t0) / 1000;
-    lchkSend({duty: lchkDuty(lchkLookRgb(it.look.colour, it.night, c), lchkLookLevel(it.look, it.night, c, t), c).map(r6)});
-  } else {
-    const which = sc.mode === 'alt' ? ph % 2 : 0;
-    const duty = sc.mode === 'pulse' && ph % 2 ? [0, 0, 0] : sc.cards[which].duty;
-    lchkSend({duty: duty.map(r6)});
-    const now = $('lchkNow');
-    sc.cards.forEach((_, i) => { const el = $('lchkCard' + i); if (el) el.classList.toggle('on', sc.mode === 'pulse' ? ph % 2 === 0 : i === which); });
-    if (now) now.textContent = sc.mode === 'alt' ? 'On the lamp: ' + sc.cards[which].name : sc.mode === 'pulse' ? (ph % 2 ? 'Off' : 'On') : 'On the lamp';
-  }
+  if (sc.mode === 'look'){ lchkSend(sc.cards[0].body); return; }   // the radio animates it; the same body only keeps it going
+  const which = sc.mode === 'alt' ? ph % 2 : 0;
+  lchkSend(sc.mode === 'pulse' && ph % 2 ? {duty:[0, 0, 0]} : sc.cards[which].body);
+  const now = $('lchkNow');
+  sc.cards.forEach((_, i) => { const el = $('lchkCard' + i); if (el) el.classList.toggle('on', sc.mode === 'pulse' ? ph % 2 === 0 : i === which); });
+  if (now) now.textContent = sc.mode === 'alt' ? 'On the lamp: ' + sc.cards[which].name : sc.mode === 'pulse' ? (ph % 2 ? 'Off' : 'On') : 'On the lamp';
 }
 function lchkLoop(){
   clearTimeout(lchk.timer); lchk.timer = null;
   if (!lchk.st || !lchk.st.running || lchk.st.done) return;
   lchkShow();
-  const fast = lchkScene().mode === 'look';
-  lchk.timer = setTimeout(() => { lchk.phase++; lchkLoop(); }, fast ? 100 : LCHK_ALT_MS);
+  const look = lchkScene().mode === 'look';
+  lchk.timer = setTimeout(() => { lchk.phase++; lchkLoop(); }, look ? LCHK_LOOK_MS : LCHK_ALT_MS);
 }
 function lchkRestart(){ lchk.phase = 0; lchk.t0 = Date.now(); lchkLoop(); }
 function lchkPause(render = true){
@@ -6596,8 +6573,22 @@ function lchkPause(render = true){
 }
 
 /* answers */
-function lchkPick(k){
+// "The colour jumped": the radio says which channel to blame (it drew the look,
+// so it knows which one crossed its floor); ask it again for this very look.
+async function lchkJump(){
+  if (lchk.jumping) return;
+  lchk.jumping = true;
+  let ch = null;
+  try {
+    const r = await lchkSend(lchkScene().cards[0].body);   // the same look: the radio keeps playing it
+    ch = r && r.ok && r.json ? r.json.jump : null;
+  } catch (_) {}
+  lchk.jumping = false;
+  lchkPick('jump', LCHK_CH.includes(ch) ? ch : 'green');
+}
+function lchkPick(k, jump){
   const st = lchk.st; if (!st || !st.running || st.done) return;
+  if (k === 'jump' && jump === undefined && LCHK_TASKS[st.task].kind === 'verify'){ lchkJump(); return; }
   lchk.live = '';
   st.hist.push(JSON.stringify({task: st.task, ts: st.ts, cal: st.cal, white: st.white, blue: st.blue, notes: st.notes}));
   if (st.hist.length > 300) st.hist.shift();
@@ -6620,7 +6611,7 @@ function lchkPick(k){
       if (t.id === 'white-green') st.white.g = v;
       else if (t.id === 'white-blue'){
         st.white.b = v;
-        c.balance = {red: 1, green: r4(clamp(st.white.g / LCHK_WHITE[1], 0.05, 4)), blue: r4(clamp(v / LCHK_WHITE[2], 0.25, 4))};
+        c.balance = {red: 1, green: r4(clamp(st.white.g / LCHK_WHITE[1], ...LCHK_GAIN)), blue: r4(clamp(v / LCHK_WHITE[2], ...LCHK_GAIN))};
       } else {
         const day = c.palette.amber.day;
         if (t.id === 'amber-day'){ c.palette.amber.day = [day[0], v, day[2]]; c.palette.amber.night = [day[0], v, day[2]]; }
@@ -6654,7 +6645,7 @@ function lchkPick(k){
   } else {
     const items = lchkItems();
     if (k === 'jump'){
-      const ch = lchkJumpChannel(items[ts.i], c), name = LCHK_CH[ch];
+      const name = jump, ch = LCHK_CH.indexOf(jump);
       c.min_duty[name] = r6(Math.min(0.05, Math.max(c.min_duty[name] * 1.5, 0.0005)));
       st.notes.raised[ch]++; ts.tries++;
       lchkSay(LCHK_CH_NAME[ch] + '’s faintest light raised — watch it again.');
@@ -6690,9 +6681,6 @@ function lchkBegin(fresh){
   st.running = true;
   lchkKeep(); rerender(); lchkRestart();
   const f = document.querySelector('#lchk .lk-ans button'); if (f) f.focus({preventScroll:true});
-}
-function lchkPayload(c){
-  return {min_duty: c.min_duty, balance: c.balance, palette: c.palette, level_gain: c.level_gain, levels: c.levels};
 }
 async function lchkSave(){
   const st = lchk.st; if (!st || lchk.busy) return;
@@ -6732,7 +6720,7 @@ function lchkCss(duty){
 }
 function lchkCard(card, i, on){
   return h('div', {class:'lk-card' + (on ? ' on' : ''), id:'lchkCard' + i},
-    h('span', {class:'lk-sw', style: lchkCss(card.duty), 'aria-hidden':'true'}),
+    h('span', {class:'lk-sw', style: lchkCss(card.swatch), 'aria-hidden':'true'}),
     h('span', null, h('span', {class:'lk-now', 'aria-hidden':'true'}, 'on the lamp'), h('b', null, card.name), h('small', null, card.sub)));
 }
 const lchkPct = x => (Math.round(x * 10000) / 100) + ' %';
@@ -6748,12 +6736,12 @@ function lchkSummary(){
     h('p', {class:'lk-q'}, 'That’s it. Here is what you chose.'),
     h('ul', {class:'lk-sum', id:'lchkSum'},
       row(null, 'Faintest steady light', LCHK_CH.map((n, i) => LCHK_CH_NAME[i][0] + ' ' + lchkPct(c.min_duty[n])).join(' · ')),
-      row(lchkWhite(st.white.g, st.white.b), 'Warm white balance', 'green ×' + c.balance.green + ' · blue ×' + c.balance.blue),
-      row(lchkDuty(c.palette.amber.day, 1, c), 'Amber, playing', 'yellow ' + c.palette.amber.day[1]),
-      row(lchkDuty(c.palette.amber.night, 0.35, c), 'Amber, at night', 'yellow ' + c.palette.amber.night[1]),
-      row(lchkDuty(c.palette.ember, c.levels.ember_day, c), 'Standby glow, by day', Math.round(c.levels.ember_day * 100) + ' %'),
-      row(lchkDuty(c.palette.ember, c.levels.ember_night, c), 'Standby glow, at night', Math.round(c.levels.ember_night * 100) + ' %'),
-      row(lchkDuty(c.palette.blue, Math.min(1, 0.8 * c.level_gain.blue), c), 'Blue', '×' + c.level_gain.blue + (c.palette.blue[0] ? ' · red ' + c.palette.blue[0] : ' · pure'))),
+      row(lchkWhite(st.white.g, st.white.b), 'Balance of the colours', 'green ×' + c.balance.green + ' · blue ×' + c.balance.blue),
+      row(lchkTint(c.palette.amber.day, 0.8), 'Amber, playing', 'yellow ' + c.palette.amber.day[1]),
+      row(lchkTint(c.palette.amber.night, 0.35), 'Amber, at night', 'yellow ' + c.palette.amber.night[1]),
+      row(lchkTint(c.palette.ember, c.levels.ember_day), 'Standby glow, by day', Math.round(c.levels.ember_day * 100) + ' %'),
+      row(lchkTint(c.palette.ember, c.levels.ember_night), 'Standby glow, at night', Math.round(c.levels.ember_night * 100) + ' %'),
+      row(lchkTint(c.palette.blue, Math.min(1, LCHK_BLUE_LEVEL * c.level_gain.blue)), 'Blue', '×' + c.level_gain.blue + (c.palette.blue[0] ? ' · red ' + c.palette.blue[0] : ' · pure'))),
     st.notes.none.length ? h('p', {class:'note-warn'}, 'No steady faint ' + st.notes.none.join(' or ') + ' at all — its floor is set high (3 %). If that looks wrong, check the LED and its wiring.') : null,
     st.notes.capped ? h('p', {class:'note-warn'}, 'Blue couldn’t quite match the amber even at full power, so it runs as bright as it can.') : null,
     raised.length ? h('p', {class:'hint'}, 'Raised during the check: ' + raised.join(', ') + '.') : null,

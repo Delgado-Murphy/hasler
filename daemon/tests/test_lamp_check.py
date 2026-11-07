@@ -158,7 +158,35 @@ class TestSave:
         assert heard == ["hasler-hm"]
         assert app.lamp.cals[-1]["levels"] == CAL["levels"] and "calibrated" in app.lamp.cals[-1]
         app.delete_lamp_calibration()
-        assert app.lamp.cals[-1] is None
+        # Back to the descriptor's io.lamp (hasler-hm.yaml has min_duty), not to nothing.
+        assert app.lamp.cals[-1] == {"min_duty": {"red": 0.006, "green": 0.006, "blue": 0.006}}
+
+    def test_a_live_save_keeps_a_custom_amber_band(self, app):
+        write_overlay(app, {"schema": 1, "io": {"lamp": {"amber_band": [0.1, 0.25]}}})
+        app.lamp = RawLamp()
+        app.put_lamp_calibration(copy.deepcopy(CAL))
+        assert app.lamp.cals[-1]["amber_band"] == [0.1, 0.25]
+        assert overlay(app)["io"]["lamp"]["amber_band"] == [0.1, 0.25]
+        app.delete_lamp_calibration()
+        assert app.lamp.cals[-1]["amber_band"] == [0.1, 0.25]
+
+    def test_the_check_supersedes_hand_set_colours(self, app, tmp_path):
+        from haslerd.lamp.outputs import FakeOutput
+        from haslerd.web.server import load_settings, save_settings
+        app.settings_file = tmp_path / "settings.json"
+        save_settings(app.settings_file, {"schema": 1, "lamp_palette": {"amber": [1.0, 0.4, 0.0]}, "room": "Den"})
+        lamp = eng.LampEngine(FakeOutput(), threaded=False, clock=lambda: 1.0)
+        lamp.set_palette({"amber": [1.0, 0.4, 0.0]})
+        app.lamp = lamp
+        heard = []
+        app.lamp_listeners.append(lambda doc: (heard.append(doc), lamp.set_palette(doc.get("lamp_palette") or {})))
+        app.put_lamp_calibration(copy.deepcopy(CAL))
+        saved = load_settings(app.settings_file)
+        assert "lamp_palette" not in saved and saved["room"] == "Den"
+        assert heard and "lamp_palette" not in heard[-1]
+        assert lamp.palette["amber"] == tuple(CAL["palette"]["amber"]["day"])        # the check's, live
+        assert lamp.palette_night["amber"] == tuple(CAL["palette"]["amber"]["night"])
+        assert lamp.balance == pytest.approx((1.0, 1.142857, 0.666667))
 
     def test_needs_the_box_config_directory(self, app):
         app.box_paths = None
@@ -246,7 +274,16 @@ class TestGet:
         looks = {lk["id"]: lk for lk in app.lamp_calibration()["looks"]}
         assert looks["standby"]["colour"] == "ember" and looks["standby"]["level"] == 0.22
         assert looks["pairing"]["motion"] == "breath" and looks["pairing"]["period_s"] == pytest.approx(eng.BREATH_PERIOD)
-        assert {"playing", "casting", "offline"} <= set(looks)
+        from haslerd.lamp import policy
+        assert looks["playing"]["level"] == policy.PLAYING.level == 0.80
+        assert looks["hotspot"]["motion"] == "beckon"                   # setup beckons now, never steady
+        assert looks["busy"]["period_s"] == policy.SHUTTING_DOWN.period_s
+        assert {"asking", "kick", "refuse", "swell", "hue"} <= set(looks)    # the behaviours too
+        assert "offline" not in looks                                   # no red breath any more
+        assert all(lk["watch"] for lk in looks.values())
+
+    def test_no_model_of_the_engine_for_the_page(self, app):
+        assert "model" not in app.lamp_calibration()
 
     def test_an_engine_with_the_new_calls_says_so(self, app):
         app.lamp = RawLamp()
@@ -311,6 +348,151 @@ class TestRawPreview:
         assert app.lamp.previews == [([1, 0.15, 0], 0.35)]
 
 
+# -- the draft, drawn by the engine ---------------------------------------------
+
+
+def scratch(cal=CAL, night=False):
+    from haslerd.lamp.outputs import FakeOutput
+    lamp = eng.LampEngine(FakeOutput(), threaded=False, clock=lambda: 0.0)
+    lamp.calibrate(copy.deepcopy(cal))
+    if night:
+        lamp.set_night(True)
+    return lamp
+
+
+def wait_for(fn, seconds=2.0):
+    import time
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if fn():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+class TestDraftPreview:
+    @pytest.fixture(autouse=True)
+    def stop_stage(self, app):
+        yield
+        app._lamp_stage.stop()
+
+    def test_a_colour_is_the_engines_duty_for_the_draft(self, app):
+        app.lamp = RawLamp()
+        doc = app.lamp_preview({"draft": copy.deepcopy(CAL), "colour": "amber", "level": 1.0})
+        want = scratch().duty_for("amber", 1.0)
+        assert app.lamp.raw[-1][0] == pytest.approx(list(want))
+        assert doc["duty"] == pytest.approx(list(want), abs=1e-6) and doc["raw"] is True
+        assert want != scratch({}).duty_for("amber", 1.0)              # the draft, not today's calibration
+
+    def test_draft_level_gain_and_ember_levels_are_the_engines(self, app):
+        app.lamp = RawLamp()
+        cal = copy.deepcopy(CAL)
+        cal["level_gain"]["blue"] = 1.25
+        app.lamp_preview({"draft": cal, "colour": "blue", "level": 0.8})
+        assert app.lamp.raw[-1][0] == pytest.approx(list(scratch(cal).duty_for("blue", 0.8)))
+        assert app.lamp.raw[-1][0][2] == pytest.approx(min(1.0, 1.0 * 0.666667))    # 0.8 x 1.25 = full, x balance
+
+    def test_on_a_real_live_engine_the_lamp_shows_it(self, app):
+        from haslerd.lamp.outputs import FakeOutput
+        live = eng.LampEngine(FakeOutput(), threaded=False, clock=lambda: 5.0)
+        app.lamp = live
+        app.lamp_preview({"draft": copy.deepcopy(CAL), "colour": "ember", "level": 0.275})
+        assert live.render(5.0)[0] == pytest.approx(scratch().duty_for("ember", 0.275))
+
+    def test_a_look_streams_the_engines_frames_and_names_the_channel_to_blame(self, app):
+        app.lamp = RawLamp()
+        doc = app.lamp_preview({"draft": copy.deepcopy(CAL), "look": "loading", "night": False})
+        assert doc["look"] == "loading" and doc["jump"] in ("red", "green", "blue")
+        assert wait_for(lambda: len(app.lamp.raw) > 5), "no frames streamed"
+        assert all(hold == pytest.approx(1.0) for _, hold in app.lamp.raw)
+        levels = {round(d[0], 4) for d, _ in app.lamp.raw}
+        assert len(levels) > 2                                          # it breathes
+        app.lamp_preview({"rgb": None})                                 # any other preview ends it
+        n = len(app.lamp.raw)
+        assert app._lamp_stage.playing is None
+        assert wait_for(lambda: False, 0.1) is False and len(app.lamp.raw) == n
+
+    def test_the_same_look_again_extends_it_without_a_restart(self, app):
+        app.lamp = RawLamp()
+        body = {"draft": copy.deepcopy(CAL), "look": "kick", "night": True}
+        app.lamp_preview(body)
+        key = app._lamp_stage.playing
+        app.lamp_preview(copy.deepcopy(body))
+        assert app._lamp_stage.playing is key
+        body["night"] = False
+        app.lamp_preview(body)
+        assert app._lamp_stage.playing != key
+
+    def test_night_draws_the_looks_own_night_level(self, app):
+        from haslerd.lamp import policy, scratch as sc
+        spec = lamp_check.check(copy.deepcopy(CAL))
+        day = sc.SceneFrames(spec, sc.Scene(policy.PLAYING)).at(0.0)
+        night = sc.SceneFrames(spec, sc.Scene(policy.PLAYING), night=True).at(0.0)
+        assert day == pytest.approx(scratch().duty_for("amber", policy.PLAYING.level))
+        assert night == pytest.approx(scratch().duty_for("amber", policy.PLAYING.night))
+
+    def test_the_hue_change_never_shows_purple_and_the_kick_peaks(self, app):
+        from haslerd.lamp import policy, scratch as sc
+        cal = copy.deepcopy(CAL)
+        cal["palette"]["blue"] = [0.0, 0.0, 1.0]                     # pure blue: any red is the mix
+        spec = lamp_check.check(cal)
+        scenes = lamp_check.scenes(policy)
+        frames = sc.SceneFrames(spec, scenes["hue"]).sample()
+        assert any(f[2] > 0.1 for f in frames) and any(f[0] > 0.05 and f[2] == 0 for f in frames)
+        assert not any(f[0] > 0.02 and f[2] > 0.02 for f in frames)    # down, swap, up - never both
+        kick = sc.SceneFrames(spec, scenes["kick"]).sample()
+        assert max(f[0] for f in kick) > kick[0][0] * 1.3
+
+    def test_every_sweep_item_renders_by_day_and_night(self, app):
+        from haslerd.lamp import policy, scratch as sc
+        spec = lamp_check.check(copy.deepcopy(CAL))
+        for lid, scene in lamp_check.scenes(policy).items():
+            for night in (False, True):
+                frames = sc.SceneFrames(spec, scene, night=night).sample(fps=10)
+                assert frames and max(max(f) for f in frames) > 0, (lid, night)
+        assert set(lamp_check.scenes(policy)) == {item[0] for item in lamp_check.SWEEP}
+
+    @pytest.mark.parametrize("body", [
+        {"colour": "white", "level": 1},
+        {"colour": "amber", "level": 1.5},
+        {"colour": "amber", "look": "ready"},
+        {"look": "offline"},
+        {"look": "ready", "night": "yes"},
+        {},
+    ])
+    def test_rejects(self, app, body):
+        app.lamp = RawLamp()
+        with pytest.raises(ValueError):
+            app.lamp_preview({"draft": copy.deepcopy(CAL), **body})
+        assert app.lamp.raw == []
+
+    def test_a_bad_draft_is_rejected(self, app):
+        bad = copy.deepcopy(CAL)
+        bad["balance"]["blue"] = 0
+        with pytest.raises(ValueError):
+            app.lamp_preview({"draft": bad, "colour": "amber", "level": 1})
+
+
+class TestScratch:
+    def test_flicker_channel(self):
+        from haslerd.lamp.scratch import flicker_channel
+        assert flicker_channel([(0.5, 0.01, 0.0), (0.2, 0.0, 0.0), (0.4, 0.007, 0.0)]) == "green"
+        assert flicker_channel([(0.5, 0.05, 0.0), (0.2, 0.02, 0.0)]) == "green"          # faintest lit minor
+        assert flicker_channel([(0.0, 0.0, 0.5), (0.0, 0.0, 0.2)]) == "blue"
+        assert flicker_channel([(0.0, 0.0, 0.0)]) is None
+
+    def test_look_frames_are_the_engine_stepped(self):
+        from haslerd.lamp import policy
+        from haslerd.lamp.outputs import FakeOutput
+        from haslerd.lamp.scratch import look_frames
+        frames = look_frames({}, policy.LOADING, fps=25)
+        assert len(frames) == round(policy.LOADING.period_s * 25)
+        live = eng.LampEngine(FakeOutput(), threaded=False, clock=lambda: 0.0)
+        live.show(policy.LOADING, cut=True)
+        for i in (0, 10, 40):
+            assert frames[i] == pytest.approx(live.render(i / 25)[0])
+
+
 # -- over HTTP -------------------------------------------------------------------
 
 
@@ -341,6 +523,10 @@ class TestHttp:
         assert status == 200 and doc["ok"]
         status, doc = self.call(url + "/api/lamp/preview", "POST", {"duty": [0.01, 0, 0]})
         assert status == 200 and doc["ok"] and doc["raw"] is False
+        status, doc = self.call(url + "/api/lamp/preview", "POST", {"draft": CAL, "colour": "blue", "level": 0.55})
+        assert status == 200 and doc["ok"] and len(doc["duty"]) == 3
+        status, doc = self.call(url + "/api/lamp/preview", "POST", {"draft": CAL, "look": "nope"})
+        assert status == 400
         status, doc = self.call(url + "/api/lamp/calibration", "DELETE", {})
         assert status == 200 and doc["saved"] == {}
 

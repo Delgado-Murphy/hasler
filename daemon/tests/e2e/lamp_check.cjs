@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // The guided Lamp check (Settings -> Maker tools -> Lamp colours): walks the
-// whole flow with scripted picks - floors, warm white, amber, standby glow,
+// whole flow with scripted picks - floors, balance, amber, standby glow,
 // blue, the verification sweep - with Back, Stop and resume (across a reload),
 // a keyboard answer, then Save, and checks the calibration the radio saved
 // into the overlay's io.lamp (and that other io.lamp keys survived), the raw
@@ -131,15 +131,15 @@ function near(a, b, path = ''){
       await pick(page, 'gone');                      // blue gone at 2 %: floor set high, 3 %
     });
 
-    await check('step 2, warm white: A/B staircase', async () => {
+    await check('step 2, balance: A/B staircase, named in plain words', async () => {
       assert((await step(page)).includes('Step 2 of 6'), await step(page));
-      assert((await q(page)).includes('warm white'), await q(page));
+      assert((await q(page)).includes('warm bulb') && (await step(page)).includes('Balance'), await q(page));
       await sleep(1700);                             // let the lamp swap to B once
       const lit = await page.$eval('#lchkCard1', el => el.classList.contains('on'));
       assert(lit, 'B is not shown as on the lamp after 1.5 s');
       await shot(page, 'lampcheck-phone-white');
       await pick(page, 'b'); await pick(page, 'a'); await pick(page, 'a'); await pick(page, 'b');   // green 0.4375 -> x1.25
-      assert((await q(page)).includes('whiter'), await q(page));
+      assert((await q(page)).includes('plain white'), await q(page));
       await pick(page, 'same');                      // blue 0.04 -> x0.6667
     });
 
@@ -181,8 +181,8 @@ function near(a, b, path = ''){
       assert((await step(page)).includes('Step 6 of 6'), await step(page));
       assert((await q(page)).includes('Playing') && (await q(page)).includes('by day'), await q(page));
       await shot(page, 'lampcheck-phone-sweep');
-      await pick(page, 'jump');                      // amber's faintest lit channel: green 0.375 % x 1.5
-      assert((await page.textContent('#lchkLive')).includes('Green'), 'no word about the raised floor');
+      await pick(page, 'jump');                      // the radio blames amber's faintest lit channel: green 0.375 % x 1.5
+      await until(async () => (await page.textContent('#lchkLive')).includes('Green'), 4000, 'a word about the raised floor');
       assert((await q(page)).includes('Playing'), 'the look is not re-run');
       const m = /1 of (\d+)/.exec(await page.textContent('#lchk')), n = m ? +m[1] : 0;
       assert(n >= 20, 'only ' + n + ' looks to check');
@@ -216,11 +216,30 @@ function near(a, b, path = ''){
       await shot(page, 'lampcheck-phone-saved');
     });
 
-    await check('the page only sent raw duties 0..1 while checking', async () => {
+    await check('the page only sent choices: raw duties for floors and balance, the draft for the engine to draw', async () => {
       const duties = previews.filter(b => b.duty);
       assert(duties.length > 10, 'only ' + duties.length + ' duty previews');
       assert(duties.every(b => b.duty.length === 3 && b.duty.every(v => typeof v === 'number' && v >= 0 && v <= 1)), 'a bad duty');
+      const drafts = previews.filter(b => b.draft);
+      const keys = ['balance', 'level_gain', 'levels', 'min_duty', 'palette'];
+      assert(drafts.length > 20, 'only ' + drafts.length + ' draft previews');
+      assert(drafts.every(b => JSON.stringify(Object.keys(b.draft).sort()) === JSON.stringify(keys)), 'a draft with odd keys');
+      assert(drafts.every(b => (b.colour && typeof b.level === 'number' && b.look === undefined) || (b.look && typeof b.night === 'boolean')), 'a bad draft preview');
+      const looks = new Set(drafts.filter(b => b.look).map(b => b.look));
+      for (const id of ['standby', 'playing', 'loading', 'hotspot', 'asking', 'kick', 'refuse', 'swell', 'hue'])
+        assert(looks.has(id), 'the sweep never showed ' + id + ': ' + [...looks]);
+      assert(drafts.some(b => b.colour === 'amber' && b.level === 1) && drafts.some(b => b.colour === 'blue'), 'no colour samples');
       assert(previews.some(b => b.rgb === null), 'the preview was never ended');
+    });
+
+    await check('the radio draws a draft preview itself (no model on the page)', async () => {
+      const draft = previews.filter(b => b.draft).pop().draft;
+      const post = async body => (await fetch(radio.base + '/api/lamp/preview', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).json();
+      const amber = await post({draft, colour: 'amber', level: 1});
+      assert(amber.ok && amber.duty.length === 3 && amber.duty[0] > amber.duty[1] && amber.duty[2] === 0, JSON.stringify(amber));
+      const look = await post({draft, look: 'loading', night: true});
+      assert(look.ok && ['red', 'green', 'blue'].includes(look.jump), JSON.stringify(look));
+      await post({rgb: null});
     });
 
     await check('Back to standard takes a second tap and keeps the rest of the overlay', async () => {

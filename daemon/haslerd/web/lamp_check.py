@@ -1,7 +1,7 @@
 """The guided Lamp check (Maker tools): the calibration it saves, checked.
 
 The page walks the owner through six by-eye steps on the real lamp (floors,
-warm white, amber, ember, blue, a verification sweep) and saves the result
+balance, amber, standby glow, blue, a verification sweep) and saves the result
 into the box's calibration overlay, ``io.lamp`` of
 ``/etc/hasler/variant.d/<variant>.yaml`` - next to the knob curves, so a
 release update never touches it. The keys are a contract with the lamp
@@ -19,12 +19,22 @@ at once)::
     calibrated: {at: ISO time, cpu_temp_c: number | null, version: 1}
 
 Only those keys are written; anything else under ``io.lamp`` (pins, backend,
-other palette colours) is kept. ``calibrated`` is the server's: the time and
-the CPU's temperature at save (amber drifts yellow as the LED warms).
+``amber_band``, other palette colours) is kept. ``calibrated`` is the
+server's: the time and the CPU's temperature at save (amber drifts yellow as
+the LED warms). Saving also drops the page's hand-set colours (settings.json
+``lamp_palette``): the check supersedes them.
 
-While calibrating, the page previews raw channel duties
-(``POST /api/lamp/preview {"duty": [r, g, b]}``): no gamma, balance or floor,
-so it can find the floors and gains those stages need.
+The page holds the draft and only sends choices; the engine draws everything:
+
+* the floors and the balance are measured on raw channel duties
+  (``POST /api/lamp/preview {"duty": [r, g, b]}``) - no gamma, balance or
+  floor, since those are what they find;
+* every other sample is ``{"draft": <the contract>, "colour": name, "level":
+  0..1}`` (a steady colour) or ``{"draft": ..., "look": <sweep id>, "night":
+  bool}`` (a Look or a behaviour, animated): the server builds a scratch
+  engine with the draft (lamp/scratch.py) and streams its frames to the live
+  lamp as raw duties. The answer carries ``jump``, the channel to blame if
+  the owner says the colour jumped.
 """
 
 from __future__ import annotations
@@ -33,7 +43,7 @@ import inspect
 import math
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 CHANNELS = ("red", "green", "blue")
 GAINS = ("amber", "ember", "blue")
@@ -50,23 +60,62 @@ LEVEL_RANGE = (0.01, 1.0)
 
 CPU_TEMP_FILE = Path("/sys/class/thermal/thermal_zone0/temp")
 
-# The looks the verification sweep runs, by the policy's names (lamp/policy.py):
-# (id, what the owner calls it, policy attribute, fallback Look fields).
-SWEEP = (
-    ("playing", "Playing", None, ("amber", 1.0, "solid", 0.0, 0.0)),
-    ("ready", "Ready", "READY", ("amber", 0.35, "solid", 0.0, 0.0)),
-    ("loading", "Tuning in", "LOADING", ("amber", 0.70, "breath", 1.2, 0.25)),
-    ("boot", "Starting up", ("BOOT", "network"), ("amber", 0.50, "breath", 3.0, 0.30)),
-    ("standby", "Standby", "STANDBY", ("ember", 0.22, "solid", 0.0, 0.0)),
-    ("boot_standby", "Starting in standby", "BOOT_STANDBY", ("ember", 0.25, "breath", 3.0, 0.12)),
-    ("shutting_down", "Shutting down", "SHUTTING_DOWN", ("ember", 0.35, "breath", 2.5, 0.15)),
-    ("casting", "A phone playing", "CASTING", ("blue", 0.80, "solid", 0.0, 0.0)),
-    ("cast_paused", "A phone paused", "CAST_PAUSED", ("blue", 0.30, "solid", 0.0, 0.0)),
-    ("pairing", "Bluetooth pairing", "PAIRING", ("blue", 0.60, "breath", 2.0, 0.15)),
-    ("hotspot", "Wi-Fi setup", "HOTSPOT", ("white", 0.60, "breath", 3.0, 0.15)),
-    ("offline", "No internet", "OFFLINE", ("red", 0.30, "breath", 4.0, 0.10)),
-)
+# What the check shows, the engine draws: every sample but the raw floors and
+# balance is a scratch engine (lamp/scratch.py) with the page's draft
+# calibration, so the check can never drift from the engine again.
+COLOURS = ("amber", "ember", "blue")
 
+
+def _attr(name: str) -> Callable[[Any], Any]:
+    return lambda policy: getattr(policy, name, None)
+
+
+def _boot(stage: str) -> Callable[[Any], Any]:
+    def look(policy: Any) -> Any:
+        table = getattr(policy, "BOOT", None)
+        return table.get(stage) if isinstance(table, dict) else None
+    return look
+
+
+def _asking(policy: Any) -> Any:
+    """A confirm request over ready: the beckon in the colour on show."""
+    fn, ready = getattr(policy, "confirm_look", None), getattr(policy, "READY", None)
+    return fn((ready, 0.0)) if callable(fn) and ready is not None else None
+
+
+# The verification sweep, by day and at night: the policy's Looks as they are
+# today, then the behaviours drawn over them. (id, what the owner calls it,
+# what to watch for, the Look, events (at s, "reply" word | "show" Look), the
+# scene's length - 0 for a Look on its own, which repeats by itself).
+SWEEP: tuple = (
+    ("playing", "Playing", "steady", _attr("PLAYING"), (), 0.0),
+    ("ready", "Ready", "steady", _attr("READY"), (), 0.0),
+    ("loading", "Tuning in", "breath", _attr("LOADING"), (), 0.0),
+    ("boot", "Starting up", "breath", _boot("network"), (), 0.0),
+    ("standby", "Standby", "steady", _attr("STANDBY"), (), 0.0),
+    ("boot_standby", "Starting in standby", "breath", _attr("BOOT_STANDBY"), (), 0.0),
+    ("busy", "Shutting down or updating", "breath", _attr("SHUTTING_DOWN"), (), 0.0),
+    ("casting", "A phone playing", "steady", _attr("CASTING"), (), 0.0),
+    ("cast_paused", "A phone paused", "steady", _attr("CAST_PAUSED"), (), 0.0),
+    ("pairing", "Bluetooth pairing", "breath", _attr("PAIRING"), (), 0.0),
+    ("hotspot", "Wi-Fi setup", "beckon", _attr("HOTSPOT"), (), 0.0),
+    ("asking", "Asking for a key press", "beckon", _asking, (), 0.0),
+    ("kick", "A key heard", "kick", _attr("PLAYING"), ((0.6, "reply", "kick"),), 2.0),
+    ("refuse", "Can’t do that", "sag", _attr("READY"), ((0.6, "reply", "refuse"),), 3.5),
+    ("swell", "Another radio joins", "swell", _attr("PLAYING"), ((0.6, "reply", "swell"),), 3.0),
+    ("hue", "A phone takes over, then lets go", "hue", _attr("READY"),
+     ((1.0, "show", _attr("CASTING")), (4.0, "show", _attr("READY"))), 7.0),
+)
+# What the page asks the owner to watch, by kind of item.
+WATCH = {
+    "steady": "Watch it for a few seconds: it should not flicker or change colour.",
+    "breath": "It breathes. Watch for the colour jumping or flickering as it gets faint.",
+    "beckon": "Two quick flashes, then a rest. The colour should stay the same in the flashes.",
+    "kick": "Every couple of seconds it jumps up once and cools down. Same colour all the way?",
+    "sag": "It dips down twice and comes back. Watch the colour at the bottom of the dip.",
+    "swell": "It swells up and back. The colour should not change.",
+    "hue": "It dims, turns blue, then back to amber. Watch for a pink or purple moment in between.",
+}
 
 def number(raw: Any, name: str, lo: float, hi: float) -> float:
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
@@ -230,32 +279,83 @@ def standard(engine: Any, lamp: Any = None) -> dict:
         "palette": {"amber": {"day": amber, "night": list(amber)},
                     "ember": rgb("ember", (1.0, 0.10, 0.0)), "blue": rgb("blue", (0.0, 0.0, 1.0))},
         "level_gain": {g: 1.0 for g in GAINS},
-        "levels": {"ember_day": float(getattr(engine, "STANDBY_EMBER", 0.22)),
-                   "ember_night": float(getattr(engine, "NIGHT_EMBER", 0.15))},
+        "levels": {"ember_day": float(getattr(engine, "EMBER_LEVEL", 0.22)),
+                   "ember_night": float(getattr(engine, "EMBER_NIGHT", 0.15))},
     }
 
 
-def sweep(policy: Any) -> list[dict]:
-    """The verification sweep's looks, from the policy where it still has them."""
-    out = []
-    for lid, name, attr, fallback in SWEEP:
-        look = None
-        if isinstance(attr, tuple):
-            table = getattr(policy, attr[0], None)
-            look = table.get(attr[1]) if isinstance(table, dict) else None
-        elif attr:
-            look = getattr(policy, attr, None)
-        fields = fallback
-        if look is not None:
-            try:
-                fields = (str(look.colour), float(look.level), str(look.motion),
-                          float(look.period_s), float(look.floor))
-            except (AttributeError, TypeError, ValueError):
-                fields = fallback
-        colour, level, motion, period, floor = fields
-        out.append({"id": lid, "name": name, "colour": colour, "level": level,
-                    "motion": motion, "period_s": period, "floor": floor})
+def scenes(policy: Any) -> dict:
+    """Sweep id -> lamp/scratch.Scene, from the policy's Looks as they are now
+    (an item whose Look the policy no longer has is left out)."""
+    from ..lamp.scratch import Scene
+
+    out = {}
+    for lid, _name, _kind, source, events, length in SWEEP:
+        look = source(policy)
+        if look is None:
+            continue
+        evs = []
+        for at, what, arg in events:
+            if callable(arg):
+                arg = arg(policy)
+                if arg is None:
+                    break
+            evs.append((at, what, arg))
+        else:
+            out[lid] = Scene(look, tuple(evs), length)
     return out
+
+
+def sweep(policy: Any) -> list[dict]:
+    """The verification sweep's items for the page: names, what to watch,
+    and the base Look's colour and level (for a rough swatch only)."""
+    found = scenes(policy)
+    out = []
+    for lid, name, kind, _source, _events, _length in SWEEP:
+        scene = found.get(lid)
+        if scene is None:
+            continue
+        look = scene.look
+        out.append({"id": lid, "name": name, "kind": kind, "watch": WATCH[kind],
+                    "colour": str(look.colour), "level": float(look.level),
+                    "motion": str(look.motion), "period_s": float(look.period_s),
+                    "floor": float(look.floor)})
+    return out
+
+
+def draft_spec(body: Any, lamp: Any = None) -> dict:
+    """The page's draft calibration (the contract, validated), with the live
+    lamp's ``amber_band`` (not the check's to change) - a scratch engine's spec."""
+    cal = check(body)
+    current = getattr(lamp, "calibration", None)
+    if callable(current):
+        try:
+            band = current().get("amber_band")
+            if band is not None:
+                cal = {**cal, "amber_band": list(band)}
+        except Exception:
+            pass
+    return cal
+
+
+def preview_target(body: dict) -> tuple:
+    """A draft preview's target: ("colour", name, level) or ("scene", id, night)."""
+    has_colour, has_scene = "colour" in body, ("look" in body or "scene" in body)
+    if has_colour == has_scene:
+        raise ValueError('a draft preview takes {"colour": name, "level": 0..1} '
+                         'or {"look": sweep id, "night": bool}')
+    if has_colour:
+        colour = body["colour"]
+        if colour not in COLOURS:
+            raise ValueError("colour must be one of " + ", ".join(COLOURS))
+        return "colour", colour, number(body.get("level", 1.0), "level", 0.0, 1.0)
+    lid = body.get("look", body.get("scene"))
+    if lid not in {item[0] for item in SWEEP}:
+        raise ValueError("look must be one of " + ", ".join(item[0] for item in SWEEP))
+    night = body.get("night", False)
+    if not isinstance(night, bool):
+        raise ValueError("night must be true or false")
+    return "scene", lid, night
 
 
 def accepts(fn: Any, name: str) -> bool:
