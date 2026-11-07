@@ -1,9 +1,15 @@
 # Multiroom and casting, for makers
 
-This is how two or more Haslers play the same music in step, and how phones
-cast to a radio. It is for the person who builds or repairs a radio. The
-owner's side (what to tap, what the lamp shows) is in
-[Using your Hasler](using.md#music-in-several-rooms).
+**In short:** two or more Haslers on the same Wi-Fi can play the same music
+in step. One radio leads, the others follow; each keeps its own volume, tone
+and standby. The owner switches it on per radio (**Settings → Rooms → Play in
+several rooms**) and starts a group with **Also play on…**. Phones cast to a
+radio with Spotify, AirPlay, Bluetooth or UPnP, under the name *Hasler* (or
+*Hasler Kitchen* with a room name).
+
+The owner's side (what to tap, what the lamp shows) is in
+[Using your Hasler](using.md#music-in-several-rooms). The rest of this page is
+how it works, for the person who builds or repairs a radio.
 
 **Contents**
 

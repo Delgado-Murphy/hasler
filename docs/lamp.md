@@ -1,19 +1,34 @@
 # The pilot lamp
 
 The pilot lamp is the coloured light in the cabinet's original window. It tells
-you what the radio is doing, the way the lamp of a valve radio did, so nobody
-needs a manual.
+you what the radio is doing, the way the lamp of a valve radio did.
 
-- **Owners:** the short version is in
-  [Using your Hasler](using.md#the-pilot-lamp). This page has every detail.
-- **Makers and contributors:** this page is the design that the code follows
-  (`daemon/haslerd/lamp/`). Change the code and this page together.
+**In short:**
+
+- **Amber** is the radio. Dim and still: ready. Bright and warm: playing.
+  Breathing: busy, don't unplug.
+- **Blue** is a phone playing through the radio.
+- **Ember** (a still, deep red glow) is asleep.
+- **Green** means OK; **red** means something didn't work.
+- **Morse** is a message: HI (it's me), CQ (needs Wi-Fi), OK (done), SOS
+  (needs the makers).
+- **Dark** means safe to unplug.
+
+Owners: the everyday version is in
+[Using your Hasler](using.md#the-pilot-lamp); **Settings → Pilot lamp → Show
+me** plays any signal on the real lamp.
+
+---
+
+*For makers and contributors:* the rest of this page is the design the code
+follows (`daemon/haslerd/lamp/`). Change the code and this page together.
 
 **In one breath:** amber is the radio (playing, it glows like an
-incandescent filament), ember (a still, deep red glow) means asleep, moon blue means a phone is in charge, green means OK, red means
-something is wrong. A breath means busy (don't unplug), a quick brighten
-means "heard you", a red eye means "no", two brightens mean "press a key",
-Morse means a message (HI, CQ, OK, SOS). Dark means safe to unplug.
+incandescent filament), ember means asleep, moon blue means a phone is in
+charge, green means OK, red means something is wrong. A breath means busy, a
+quick brighten means "heard you", a red eye means "no", two brightens mean
+"press a key", Morse means a message (HI, CQ, OK, SOS). Dark means safe to
+unplug.
 
 The light language v2 (owner-approved, November 2026): **5 colours, 8
 behaviours, 2 transition rules**, and a named signal table so a new design is

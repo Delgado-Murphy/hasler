@@ -1,8 +1,14 @@
 # The knobs' sound effects (for makers)
 
-Every pot except the volume knob can carry a sound effect, done in CamillaDSP.
-The owner picks them on the key page (**Settings → Sound → What the tone knob does**); this page is how
-it works and how to give a new cabinet's pots their defaults.
+**In short:** the volume knob is always volume. The tone knob (and any other
+knob a cabinet has) can carry a sound effect: tilt (warmer to brighter, the
+default), treble, bass, loudness, presence, *1960s radio*, stereo width, or
+nothing. The owner picks it on the key page, in **Settings → Sound → What the
+tone knob does**. No effect ever makes the radio louder than flat, so the old
+speaker never works harder.
+
+The rest of this page is how it works (in CamillaDSP) and how to give a new
+cabinet's knobs their defaults.
 
 ## The pieces
 

@@ -649,10 +649,29 @@ owner should not stumble on:
   **Calibrate** is in Settings → Sound → If a knob feels off);
 - **Inside the player (moOde)**: a link to moOde's own pages;
 - **Diagnostics**: what answers and what doesn't, with details to copy into a
-  bug report.
+  bug report, and **Copy support bundle** (one file for you: no passwords,
+  tokens or cookies);
+- **Security updates**: the switch for Debian's nightly security updates (on
+  to start; it writes `os_updates: off` in `box.yaml`). Updates shows
+  "Security updates: 3 on 21 Oct".
 
 With Maker tools on, Settings → This radio → Updates also shows the **update
-channel** (Stable or Bench).
+channel**: **Stable** (each version tried on the makers' own radio first) or
+**Test versions** (*Bench*, for the makers' test radio; versions come first
+and may break). The choice also shows while a radio is on Test versions.
+Switching asks for a press on the radio. Going back to Stable, the radio
+keeps the version it has until Stable catches up; it never goes back to an
+older version on its own.
+
+**Where the owner's things live.** The station shortlist (*My stations*) is
+`/var/lib/haslerd/stations.json`, so every phone sees the same one and it
+survives updates. A **Doesn't play?** report on a station is kept in the
+state folder as `reports.jsonl`; nothing is sent anywhere. The owner's guide
+leaves these paths out on purpose.
+
+**After a hand-over** to a new owner, your own way in (the key put on the
+radio when it was built) stays; remote help still needs the new owner's key
+press each time and ends by itself after 24 hours.
 
 ### Support: what the owner can send you, and what you leave behind
 
