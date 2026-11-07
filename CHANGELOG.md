@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.5.2 - 2026-11-07
+
+- When a Bluetooth phone disconnects, the radio's own music comes back in
+  about two seconds instead of half a minute. A phone that only pauses still
+  gets its 20 seconds.
+
 ## 1.5.1 - 2026-11-07
 
 - Updating no longer trips over a stray named pipe in the radio's state folder

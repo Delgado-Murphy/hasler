@@ -87,6 +87,9 @@ CYCLE_LABELS = {
 # A cast that ended stays ended this long before the radio takes the speaker
 # back (``Actions.resume_after_cast``): a phone pausing must not count.
 CAST_END_GRACE_S = 20.0
+# ... but a Bluetooth phone that has gone (disconnected, not paused) gives the
+# speaker back almost at once: nothing is coming back to wait for.
+CAST_GONE_GRACE_S = 2.0
 
 # Renderers a phone drives through moOde. A preset key has to take the audio
 # path back from these explicitly; our own preset sources are arbitrated by the
@@ -873,9 +876,10 @@ class Actions:
         if self._cast_ended_at is None:
             self._cast_ended_at = now
             return False
-        if now - self._cast_ended_at < CAST_END_GRACE_S:
-            return False
         renderer, hand = self._cast
+        grace = CAST_GONE_GRACE_S if renderer == "bluetooth" and self._phone_gone() else CAST_END_GRACE_S
+        if now - self._cast_ended_at < grace:
+            return False
         self._cast = self._cast_ended_at = None
         if not self.resume_after_cast or self.standby or hand != self._hand:
             return False
@@ -884,6 +888,17 @@ class Actions:
         log.info("%s cast ended - back to preset %s", renderer, self._last_preset)
         self._cycle_at = None
         return self.resume_last(wait=False)   # on the main loop: don't hold it up
+
+    def _phone_gone(self) -> bool:
+        """No Bluetooth phone is connected any more (asked of BlueZ; False when
+        it can't say, so the ordinary grace applies)."""
+        bt = self.bluetooth
+        if bt is None:
+            return False
+        try:
+            return bt.connected() is None
+        except Exception:
+            return False
 
     # -- Bluetooth phones -------------------------------------------------
 

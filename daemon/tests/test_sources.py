@@ -9,7 +9,7 @@ import urllib.request
 import pytest
 from conftest import VARIANTS
 
-from haslerd.actions import CAST_END_GRACE_S, SOURCE_CYCLE, Actions, cycle_from
+from haslerd.actions import CAST_END_GRACE_S, CAST_GONE_GRACE_S, SOURCE_CYCLE, Actions, cycle_from
 from haslerd.panel.controls import Event
 from haslerd.player.base import FakePlayer
 from haslerd.player.renderers import (MoodeRenderers, RendererError, parse_session,
@@ -174,6 +174,31 @@ class TestResumeAfterCast:
         assert actions.watch_cast("radio", 101 + CAST_END_GRACE_S - 1) is False
         assert actions.watch_cast("radio", 101 + CAST_END_GRACE_S) is True
         assert player.current().n == 1
+
+    def test_a_bluetooth_phone_that_disconnects_hands_back_at_once(self, rig):
+        _, player, actions = rig
+        actions.resume_after_cast = True
+
+        class Gone:
+            def connected(self):
+                return None
+        player.bluetooth = Gone()
+        self.cast(actions, player, renderer="bluetooth")
+        assert actions.watch_cast("radio", 101 + CAST_GONE_GRACE_S - 0.5) is False
+        assert actions.watch_cast("radio", 101 + CAST_GONE_GRACE_S) is True
+        assert player.current().n == 1
+
+    def test_a_connected_bluetooth_phone_that_pauses_keeps_the_grace(self, rig):
+        _, player, actions = rig
+        actions.resume_after_cast = True
+
+        class Still:
+            def connected(self):
+                return {"name": "Pixel"}
+        player.bluetooth = Still()
+        self.cast(actions, player, renderer="bluetooth")
+        assert actions.watch_cast("radio", 101 + CAST_GONE_GRACE_S) is False
+        assert actions.watch_cast("radio", 101 + CAST_END_GRACE_S) is True
 
     def test_a_short_gap_is_not_an_end(self, rig):
         _, player, actions = rig

@@ -260,7 +260,8 @@ While a phone plays, the lamp is blue. A phone can wake the radio from
 standby. To take the radio back, tap any numbered key.
 
 When a Bluetooth or AirPlay phone stops, the radio goes back to its own music
-after about 20 seconds, unless you chose something else on the radio in the
+after about 20 seconds (a pause or a skip in between doesn't count), or within
+a couple of seconds when a Bluetooth phone disconnects - unless you chose something else on the radio in the
 meantime, or the phone had woken it from standby (then it stays quiet). To
 switch this off: **Back to the radio when a phone stops**.
 
