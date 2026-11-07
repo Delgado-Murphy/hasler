@@ -346,8 +346,8 @@ class GpiozeroOutput:
 
 def _int(text: str | None) -> int | None:
     try:
-        return int(text) if text is not None else None
-    except ValueError:
+        return int(text.split()[0]) if text else None
+    except (ValueError, IndexError):
         return None
 
 

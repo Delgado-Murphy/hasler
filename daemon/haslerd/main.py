@@ -192,12 +192,13 @@ REPLY_WORDS: dict[str, tuple[str, ...]] = {
 
 def _engine_knows(driver: Any, name: str) -> bool:
     """Does the lamp engine draw the reply ``name``? (Its REPLY_S table.)"""
-    tables = [getattr(driver, "REPLY_S", None)]
-    try:
-        from .lamp import engine as lamp_engine
-        tables += [getattr(lamp_engine, "REPLY_S", None), getattr(lamp_engine, "REPLY_ALIASES", None)]
-    except Exception:
-        pass
+    tables = [getattr(driver, "REPLY_S", None), getattr(driver, "REPLY_ALIASES", None)]
+    if tables == [None, None]:
+        try:
+            from .lamp import engine as lamp_engine
+            tables = [getattr(lamp_engine, "REPLY_S", None), getattr(lamp_engine, "REPLY_ALIASES", None)]
+        except Exception:
+            pass
     known = [t for t in tables if t is not None]
     if not known:
         return True         # can't tell: say it as it is
