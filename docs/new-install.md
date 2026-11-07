@@ -79,7 +79,7 @@ them for moOde, so this should not happen.
 |---|---|---|
 | `channel` | `stable` | `bench` only for the makers' test radio. Stable has been live since 1.0.5 (2026-10-23). |
 | `update_mode` | `auto` (small updates at night, big ones ask) | `ask`, `off` |
-| `variant` | `hasler-hm` | `excelsior` |
+| `variant` | `hasler-hm` | `excelsior` (keys that spring back on a modified unit: see [hardware.md](hardware.md#excelsior-latching-or-not)) |
 | `user` | `pi` | the username you gave Imager |
 | `moode` | `yes` (Hasler's audio and casting settings in moOde) | `no` |
 | `panel_optional` | `no` | `yes` on a bare Pi without the key board |
