@@ -485,7 +485,7 @@ class TestHaApi:
         assert code == 200
         assert doc == {"configured": False, "connected": False, "url": "", "location": "", "version": "",
                        "publish": False, "error": None, "missing": [], "previous_instance": None,
-                       "moved": None, "lost": None}
+                       "moved": None, "lost": None, "time_zone": "", "place": None}
         api.connect({"url": URL, "token": TOKEN})
         code, doc = api.route("GET", "/api/ha", None)
         assert doc["connected"] and doc["url"] == URL and doc["location"] == "Home" and doc["version"] == "2026.9.4"

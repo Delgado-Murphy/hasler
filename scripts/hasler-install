@@ -646,10 +646,59 @@ def write_owned(path: Path, text: str, user: str, mode: int = 0o644) -> None:
     os.replace(tmp, path)
 
 
+def radio_hostname(machine_id: Path = Path("/etc/machine-id"), hostname: Path = Path("/etc/hostname")) -> str | None:
+    """A new radio's own name, ``hasler-<id4>``: the last four of the radio's id
+    (web/integration.radio_id: sha256 of the machine-id), so two Haslers in one
+    home never swap addresses after a power cut. Only for a card still called
+    ``hasler`` (Imager's default); a radio that already has a name keeps it -
+    None then, or without a machine-id."""
+    try:
+        current = hostname.read_text().strip()
+        seed = machine_id.read_text().strip()
+    except OSError:
+        return None
+    if current != "hasler" or not seed:
+        return None
+    return "hasler-" + hashlib.sha256(seed.encode()).hexdigest()[:12][-4:]
+
+
+def set_hostname(name: str, hosts: Path = Path("/etc/hosts"), moode_db: Path = Path("/var/local/www/db/moode-sqlite3.db"),
+                 runner=subprocess.run) -> None:
+    """``hostnamectl`` plus /etc/hosts and moOde's own copy of the name (its
+    System page shows it and its worker re-applies it), so the three agree."""
+    runner(["hostnamectl", "set-hostname", name], check=False)
+    try:
+        text = hosts.read_text()
+        lines = [re.sub(r"(?<=\s)hasler(?=\s|$)", name, ln) if ln.startswith("127.0.1.1") else ln
+                 for ln in text.splitlines()]
+        if not any(ln.startswith("127.0.1.1") for ln in lines):
+            lines.append(f"127.0.1.1\t{name}")
+        hosts.write_text("\n".join(lines) + "\n")
+    except OSError as exc:
+        say(f"could not update {hosts}: {exc}")
+    if moode_db.exists():
+        import sqlite3
+        try:
+            con = sqlite3.connect(moode_db, timeout=5)
+            con.execute("UPDATE cfg_system SET value=? WHERE param='hostname'", (name,))
+            con.commit()
+            con.close()
+        except sqlite3.Error as exc:
+            say(f"could not tell moOde the new name: {exc}")
+
+
 def step_setup(s: dict, args) -> dict:
     """Pass 1: verify + unpack, box setup, updater + trust, box.yaml, moOde settings."""
     user = daemon_user(s)
     wait_for("moOde to finish starting", moode_ready, 600)
+    if not mark("hostname").exists():
+        # A name of its own, once, before anything announces "hasler": a second
+        # Hasler at home would otherwise become hasler-2 by boot order.
+        name = radio_hostname()
+        if name:
+            set_hostname(name)
+            say(f"this radio is {name} ({name}.local); hasler.local still finds it while it is the only one")
+        mark("hostname").write_text(name or "")
     wait_for("the network", lambda: online(args.base), 600)
     for tool in ("zstd", "ssh-keygen"):
         if not shutil.which(tool):

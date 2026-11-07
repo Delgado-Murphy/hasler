@@ -1104,6 +1104,9 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
         # POST /api/fake/phone: a page test's phone taking the speaker (web/fake_api.py).
         from .web.fake_api import FakeApi
         app.extra_routes.append(FakeApi(app))
+    else:
+        # The wifi_setup key job: the setup network now, forgetting nothing (web/wifi.py).
+        actions.wifi_setup = app.wifi.hotspot_now
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))
@@ -1395,6 +1398,7 @@ def build_wifiwatch(app: Any, conn: Connectivity, fake: bool = False) -> Hotspot
     settings_file = getattr(app, "settings_file", None)
     if settings_file is not None:
         wifi.hotspot_file = Path(settings_file).parent / "hotspot.txt"   # /var/lib/haslerd
+        wifi.joined_file = Path(settings_file).parent / "wifi-joined"    # a join's note for the next start
     idle = getattr(app, "_idle", None)
     watch = HotspotWatchdog(wifi, hotspot=lambda: conn.hotspot,
                             idle=idle if callable(idle) else (lambda: True),
@@ -1448,6 +1452,52 @@ def network_up(actions: Actions) -> None:
             hook()
         except Exception:
             log.exception("YouTube Music network_up failed")
+
+
+def consume_wifi_joined(app: Any, keeper: Any) -> str | None:
+    """The network is up: did a Wi-Fi join (the setup page, the rescue file,
+    the watchdog) restart the radio onto it? web/wifi.py left its SSID in
+    <state>/wifi-joined; this takes it, once. Then what docs/using.md
+    promises: the lamp blooms green and taps OK, the other rooms learn the
+    new address at once, Home Assistant is looked for now, and Settings says
+    "New Wi-Fi: … Moved house?" for a day. Returns the SSID, or None."""
+    wifi = getattr(app, "wifi", None)
+    take = getattr(wifi, "take_joined", None)
+    if not callable(take):
+        return None
+    try:
+        ssid = take()
+    except Exception:
+        log.debug("wifi-joined check failed", exc_info=True)
+        return None
+    if not ssid:
+        return None
+    log.warning("on Wi-Fi %r after a join - the lamp says OK", ssid)
+    if keeper is not None:
+        try:
+            keeper.celebrate()
+        except Exception:
+            log.debug("lamp celebrate failed", exc_info=True)
+    group = getattr(app, "group", None)
+    if group is not None and getattr(group, "enabled", False):
+        try:
+            group.peers.kick(force=True)
+        except Exception:
+            log.debug("peer refresh after the join failed", exc_info=True)
+    ha_api = getattr(app, "ha_api", None)
+    hook = getattr(ha_api, "network_up", None)
+    if callable(hook):
+        try:
+            hook()
+        except Exception:
+            log.debug("Home Assistant check after the join failed", exc_info=True)
+    note = getattr(app, "note_wifi_joined", None)
+    if callable(note):
+        try:
+            note(ssid)
+        except Exception:
+            log.debug("could not note the Wi-Fi join", exc_info=True)
+    return ssid
 
 
 def amp_card(player) -> int | str:
@@ -1641,6 +1691,7 @@ def main(argv=None) -> int:
             if not net_announced and getattr(connectivity, "seen_up", False):
                 net_announced = True
                 network_up(actions)
+                consume_wifi_joined(app, keeper)   # a join's restart: the lamp says OK
             resume.tick(now)
             if sleep is not None:
                 sleep.tick(now)                     # the sleep timer: fade, then standby

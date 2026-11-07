@@ -8,9 +8,11 @@ Saved in ``settings.json`` -
 today's: the host name (integration.radio_name(), "hasler"). The room name is
 who this radio is: the multiroom room list (main.build_group's identity),
 ``/api/info``'s ``name`` (Home Assistant's device name; HA keys on ``id``, so a
-rename is safe) and the key page's title. The host name and ``hasler.local``
-never change; the page shows the address avahi actually publishes (a second
-Hasler on the network becomes ``hasler-2.local``).
+rename is safe), the key page's title and the setup network's name ("Hasler
+Kitchen", web/wifi.py; ``on_renamed`` is how it hears). The host name and
+``hasler.local`` never change; the page shows the address avahi actually
+publishes (a second Hasler on the network becomes ``hasler-2.local``) and,
+beside it, the IP address, for the phones and routers that don't do .local.
 
 Casting names stay "Hasler" unless ``casting_names`` is on: then AirPlay, UPnP,
 Bluetooth (moOde, player/renderers.py) and Spotify Connect (go-librespot's
@@ -91,6 +93,19 @@ def _avahi_host() -> str | None:
     return m.group(1) if out.returncode == 0 and m else None
 
 
+def _own_ip() -> str:
+    """The address the radio has on its network ("" with none): the one a
+    phone that can't do .local types in. No packet is sent - a UDP socket
+    "connected" to a public address just picks the route's own address."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("1.1.1.1", 53))
+            ip = s.getsockname()[0]
+    except OSError:
+        return ""
+    return "" if ip.startswith("127.") else ip
+
+
 class Room:
     """The saved room, its casting names and their background apply."""
 
@@ -105,6 +120,7 @@ class Room:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         wall: Callable[[], float] = time.time,
+        own_ip: Callable[[], str] = _own_ip,
     ) -> None:
         self.settings_file = settings_file
         self.renderers = renderers
@@ -112,6 +128,7 @@ class Room:
         self.restart_spotify = restart_spotify
         self.avahi_host = avahi_host
         self.default_name = default_name
+        self.own_ip = own_ip
         self.clock, self.sleep, self.wall = clock, sleep, wall
         # Shared with SourcesApi's PUT /api/casting: one moOde job at a time.
         self.renderer_lock = threading.Lock()
@@ -121,6 +138,11 @@ class Room:
         self._thread: threading.Thread | None = None
         self._apply: dict = {"state": "idle", "name": None, "steps": [], "finished": None}
         self._address: tuple[float, str] | None = None
+        self._ip: tuple[float, str] | None = None
+        # Called with the new room name (None = cleared) after a rename is
+        # saved, off the request: the setup network follows it (web/wifi.py
+        # apply_hotspot_name; main.build_web wires it).
+        self.on_renamed: Callable[[str | None], Any] | None = None
 
     # -- the saved value ------------------------------------------------------
 
@@ -168,6 +190,18 @@ class Room:
         self._address = (now, addr)
         return addr
 
+    def ip(self) -> str:
+        """The radio's IP address on its network ("" with none), beside the .local name."""
+        now = self.clock()
+        if self._ip is not None and now - self._ip[0] < ADDRESS_TTL_S:
+            return self._ip[1]
+        try:
+            ip = str(self.own_ip() or "")
+        except Exception:
+            ip = ""
+        self._ip = (now, ip)
+        return ip
+
     def doc(self) -> dict:
         with self._lock:
             apply = {**self._apply, "steps": [dict(s) for s in self._apply["steps"]]}
@@ -179,6 +213,7 @@ class Room:
             # What casting targets are called with the switch on.
             "casting_name": casting_name(self.custom()),
             "address": self.address(),
+            "ip": self.ip(),
             "apply": apply,
         }
 
@@ -207,8 +242,23 @@ class Room:
         self.saved = dict(new)
         if self.name() != old_name:
             log.info("room name set to %r from the web page", self.name())
+            self._renamed(self.custom())
         if "casting_names" in asked or self.wanted_casting_name() != before:
             self.apply(self.wanted_casting_name())
+
+    def _renamed(self, name: str | None) -> None:
+        """Tell whoever follows the room name (the setup network), off the request."""
+        hook = self.on_renamed
+        if hook is None:
+            return
+
+        def run() -> None:
+            try:
+                hook(name)
+            except Exception:
+                log.exception("the room's rename hook failed")
+
+        threading.Thread(target=run, name="room-renamed", daemon=True).start()
 
     # -- applying -------------------------------------------------------------
 

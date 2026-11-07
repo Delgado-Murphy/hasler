@@ -28,15 +28,37 @@
  *       `iw dev wlan0 scan ap-force` (it works in hotspot mode on many chips)
  *       -> {"iw": "<raw output>"} for haslerd to parse. Changes nothing.
  *
- *   {"action": "hotspot", "password": "..."}
+ *   {"action": "hotspot", "password": "...", "ssid": "Hasler Kitchen"}
  *       Set the setup hotspot's password (8-63 characters); with no password,
  *       just regenerate its profile (repairs "address1="). No restart:
- *       NetworkManager re-reads that one file.
+ *       NetworkManager re-reads that one file. "ssid" (optional) renames the
+ *       hotspot - only together with the password, since the key NetworkManager
+ *       stores is derived from both (the room's name: "Hasler Kitchen").
  *   {"action": "hotspot", "ensure": true, "password": "..."}
  *       haslerd at start: only if needed - the password only if the hotspot
  *       has none (moOde's import of Raspberry Pi Imager's Wi-Fi blanks it, and
  *       a hotspot without one never starts), else the profile only if its
  *       address is missing. -> {"changed": bool, "password_used": bool, ...}
+ *
+ *   {"action": "hotspot-now"}
+ *       Bring the setup hotspot up now, forgetting nothing (the wifi_setup key
+ *       job): the watchdog's retry takes the radio back to its Wi-Fi in a few
+ *       minutes if nobody uses it. -> {"result": "up" | "already"}
+ *
+ *   {"action": "forget", "ssid": "Casa Vieja", "reboot": true}
+ *       Forget a saved network: its cfg_ssid row and NetworkManager profile
+ *       go. If it is the network wlan0 uses, moOde is set to "None" and the
+ *       radio restarts into setup mode (unless "reboot": false).
+ *       -> {"forgotten": "...", "was_current": bool, "restarting": bool}
+ *   {"action": "forget-all"}
+ *       Every saved network, the same way, without a restart (the hand-over
+ *       restarts by itself afterwards). -> {"forgotten": [...]}
+ *
+ * A join that leads to a restart (here, or "retry" finding a saved network
+ * again) leaves STATE_DIR/wifi-joined holding the SSID: haslerd reads and
+ * deletes it at the next start, once online, and the lamp says OK
+ * (main.consume_wifi_joined). The rescue file's join (no restart) writes it
+ * too, for the same reason.
  *
  * One deliberate difference from moOde's net-config.php: the WPA key is
  * computed here with PBKDF2 (what wpa_passphrase does) instead of moOde's
@@ -51,7 +73,11 @@
  */
 
 const HOTSPOT_FILE = '/etc/NetworkManager/system-connections/Hotspot.nmconnection';
+const NM_DIR = '/etc/NetworkManager/system-connections';
 const RESERVED = array('None', 'Activate Hotspot');
+// haslerd's state directory: the wifi-joined marker goes here, owned like the directory.
+const STATE_DIR = '/var/lib/haslerd';
+const JOINED_MARKER = STATE_DIR . '/wifi-joined';
 
 function done($ok, $error = '', $extra = array()) {
 	$out = $ok ? array('ok' => true) : array('ok' => false, 'error' => $error);
@@ -93,8 +119,28 @@ function moode_session($dbh) {
 }
 
 function schedule_reboot() {
-	// A moment later, so the page gets its answer first.
+	// A moment later, so the page gets its answer first. moOde's tables and
+	// NetworkManager's files are on the card by then (sync): a power cut in
+	// those four seconds must not leave the two disagreeing.
+	sh(array('/usr/bin/sync'));
 	return sh(array('/usr/bin/systemd-run', '--quiet', '--on-active=4', '/usr/bin/systemctl', 'reboot')) === 0;
+}
+
+// The network just joined, for haslerd's next start (see the header). Owned
+// like the state directory (haslerd runs as pi and deletes it); never fatal.
+function mark_joined($ssid) {
+	if (!is_dir(STATE_DIR)) return;
+	if (@file_put_contents(JOINED_MARKER, $ssid . "\n") === false) return;
+	$st = @stat(STATE_DIR);
+	if ($st) @chown(JOINED_MARKER, $st['uid']) && @chgrp(JOINED_MARKER, $st['gid']);
+	@chmod(JOINED_MARKER, 0644);
+}
+
+// Drop a network's NetworkManager profile (cfgNetworks only writes; what it
+// no longer knows would otherwise stay, and NetworkManager would still join it).
+function nm_forget($ssid) {
+	sh(array('/usr/bin/nmcli', 'connection', 'delete', 'id', $ssid));
+	@unlink(NM_DIR . '/' . $ssid . '.nmconnection');
 }
 
 // [psk, pwd, saepwd] as moOde stores them.
@@ -148,6 +194,7 @@ function action_join($dbh, $in) {
 		->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':psk' => $psk, ':sec' => $security, ':sae' => $saepwd));
 
 	cfgNetworks();
+	mark_joined($ssid);
 
 	if (!$reboot) {
 		sh(array('/usr/bin/nmcli', 'connection', 'reload'));
@@ -157,6 +204,59 @@ function action_join($dbh, $in) {
 	// one); if none answers within 90 s, the hotspot comes back for another go.
 	if (!schedule_reboot()) done(false, 'saved, but could not schedule the restart - power-cycle the radio');
 	done(true);
+}
+
+// --- forget ------------------------------------------------------------------------
+
+// Take one network out of moOde's tables; true if wlan0 was on it (then wlan0
+// is set to moOde's "None": no network, the hotspot at the next boot).
+function drop_network($dbh, $ssid) {
+	$dbh->prepare("DELETE FROM cfg_ssid WHERE ssid=:ssid")->execute(array(':ssid' => $ssid));
+	$cur = $dbh->query("SELECT wlanssid FROM cfg_network WHERE iface='wlan0'")->fetch(PDO::FETCH_ASSOC);
+	$was_current = $cur && (string)$cur['wlanssid'] === $ssid;
+	if ($was_current) {
+		$dbh->query("UPDATE cfg_network SET wlanssid='None', wlanuuid='', wlanpwd='', wlanpsk='', wlansec='' WHERE iface='wlan0'");
+	}
+	return $was_current;
+}
+
+function action_forget($dbh, $in) {
+	$ssid = isset($in['ssid']) ? (string)$in['ssid'] : '';
+	$reboot = !(isset($in['reboot']) && $in['reboot'] === false);
+	check_ssid($ssid);
+	$ap = $dbh->query("SELECT wlanssid FROM cfg_network WHERE iface='apd0'")->fetch(PDO::FETCH_ASSOC);
+	if ($ap && (string)$ap['wlanssid'] === $ssid) done(false, 'that is the setup network, not a saved one');
+	$was_current = drop_network($dbh, $ssid);
+	cfgNetworks();
+	nm_forget($ssid);
+	sh(array('/usr/bin/nmcli', 'connection', 'reload'));
+	$restarting = false;
+	if ($was_current && $reboot) {
+		// The radio is (or was) on this network: let go of it cleanly - a
+		// restart lands in setup mode, or on another saved network if one is near.
+		$restarting = schedule_reboot();
+	}
+	done(true, '', array('forgotten' => $ssid, 'was_current' => $was_current, 'restarting' => $restarting));
+}
+
+function action_forget_all($dbh, $in) {
+	$ap = $dbh->query("SELECT wlanssid FROM cfg_network WHERE iface='apd0'")->fetch(PDO::FETCH_ASSOC);
+	$hotspot = $ap ? (string)$ap['wlanssid'] : '';
+	$gone = array();
+	$cur = $dbh->query("SELECT wlanssid FROM cfg_network WHERE iface='wlan0'")->fetch(PDO::FETCH_ASSOC);
+	$cur = $cur ? (string)$cur['wlanssid'] : '';
+	if ($cur !== '' && !in_array($cur, RESERVED, true) && $cur !== $hotspot) $gone[] = $cur;
+	foreach ($dbh->query("SELECT ssid FROM cfg_ssid") as $r) {
+		$s = (string)$r['ssid'];
+		if ($s !== '' && $s !== $hotspot && !in_array($s, RESERVED, true) && !in_array($s, $gone, true)) $gone[] = $s;
+	}
+	$dbh->query("DELETE FROM cfg_ssid");
+	$dbh->query("UPDATE cfg_network SET wlanssid='None', wlanuuid='', wlanpwd='', wlanpsk='', wlansec='' WHERE iface='wlan0'");
+	cfgNetworks();
+	foreach ($gone as $s) nm_forget($s);
+	sh(array('/usr/bin/nmcli', 'connection', 'reload'));
+	@unlink(JOINED_MARKER);
+	done(true, '', array('forgotten' => $gone));
 }
 
 // --- hotspot password / repair -------------------------------------------------
@@ -175,6 +275,15 @@ function action_hotspot($dbh, $in) {
 	}
 	$ssid = $row['wlanssid'] !== '' ? $row['wlanssid'] : 'Hasler';
 	$uuid = $row['wlanuuid'] !== '' ? $row['wlanuuid'] : trim(file_get_contents('/proc/sys/kernel/random/uuid'));
+	$renamed = false;
+	if (isset($in['ssid']) && (string)$in['ssid'] !== '' && (string)$in['ssid'] !== $ssid) {
+		// A new name needs the password: the stored key is PBKDF2(password, name).
+		if (!$used) done(false, 'renaming the setup network needs its password too');
+		check_ssid((string)$in['ssid']);
+		$old = $ssid;
+		$ssid = (string)$in['ssid'];
+		$renamed = true;
+	}
 	if ($used) {
 		$password = (string)$in['password'];
 		if (strlen($password) < 8 || strlen($password) > 63 || preg_match('/[\x00-\x1f\x7f]/', $password)) {
@@ -191,7 +300,19 @@ function action_hotspot($dbh, $in) {
 	sh(array('/usr/bin/nmcli', 'connection', 'load', HOTSPOT_FILE));
 	$check = $dbh->query("SELECT wlanpsk FROM cfg_network WHERE iface='apd0'")->fetch(PDO::FETCH_ASSOC);
 	done(true, '', array('ssid' => $ssid, 'address' => $addr, 'password_set' => $check && $check['wlanpsk'] !== '',
-		'changed' => true, 'password_used' => $used));
+		'changed' => true, 'password_used' => $used, 'renamed' => $renamed));
+}
+
+// The setup hotspot now, keeping every saved network (the wifi_setup key job).
+function action_hotspot_now($dbh, $in) {
+	$ap = $dbh->query("SELECT wlanssid FROM cfg_network WHERE iface='apd0'")->fetch(PDO::FETCH_ASSOC);
+	$hotspot = $ap ? (string)$ap['wlanssid'] : '';
+	if ($hotspot === '') done(false, 'moOde has no hotspot settings');
+	if (wlan0_connection() === $hotspot) done(true, '', array('result' => 'already'));
+	$cur = wlan0_connection();
+	if ($cur !== '') sh(array('/usr/bin/nmcli', '-w', '15', 'connection', 'down', 'id', $cur));
+	if (!hotspot_up($hotspot)) done(false, 'the setup network did not come up - restart the radio');
+	done(true, '', array('result' => 'up', 'ssid' => $hotspot));
 }
 
 // --- scan / retry ------------------------------------------------------------------
@@ -290,6 +411,7 @@ function action_retry($dbh, $in) {
 		if ($rc === 0 && wlan0_ipv4() !== '' && wlan0_connection() === $ssid) {
 			// On a real network again. Restart, so moOde (which still thinks it
 			// is a hotspot) and everything that bound at boot start clean.
+			mark_joined($ssid);
 			schedule_reboot();
 			done(true, '', array('result' => 'joined', 'ssid' => $ssid));
 		}
@@ -312,7 +434,9 @@ if (posix_geteuid() !== 0) done(false, 'must run as root');
 $in = json_decode(stream_get_contents(STDIN), true);
 if (!is_array($in)) done(false, 'expected a JSON object on stdin');
 $action = isset($in['action']) ? (string)$in['action'] : 'join';
-if (!in_array($action, array('join', 'retry', 'scan', 'hotspot'), true)) done(false, 'unknown action');
+if (!in_array($action, array('join', 'retry', 'scan', 'hotspot', 'hotspot-now', 'forget', 'forget-all'), true)) {
+	done(false, 'unknown action');
+}
 
 chdir('/var/www');
 require_once '/var/www/inc/common.php';
@@ -325,5 +449,8 @@ moode_session($dbh);
 
 if ($action === 'join') action_join($dbh, $in);
 if ($action === 'hotspot') action_hotspot($dbh, $in);
+if ($action === 'hotspot-now') action_hotspot_now($dbh, $in);
+if ($action === 'forget') action_forget($dbh, $in);
+if ($action === 'forget-all') action_forget_all($dbh, $in);
 if ($action === 'scan') action_scan($dbh, $in);
 action_retry($dbh, $in);

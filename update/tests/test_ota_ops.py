@@ -96,6 +96,7 @@ def test_strict_release_integration(built):
               "sbin/hasler-audio-mono", "sbin/hasler-wifi-join", "sbin/hasler-lamp-boot",
               "sbin/hasler-ytdlp-update", "sbin/hasler-update", "sbin/hasler-os-update",
               "systemd/hasler-os-update.service", "systemd/hasler-os-update.timer", "sbin/hasler-bootcfg-guard", "sbin/hasler-help",
+              "sbin/hasler-timezone",
               "systemd/hasler-bootcfg-guard.service", "systemd/hasler-bootcfg-save.timer", "bin/hasler-tone", "bin/hasler-dsp", "shutdown/hasler-lamp-halt",
               "avahi/hasler.service", "systemd/bluetooth.service.d/hasler-speaker.conf",
               "systemd/bluealsa-aplay@.service.d/hasler-buffer.conf",
@@ -185,8 +186,10 @@ def test_sudoers_source_is_todays_rules():
     text = (ROOT / "config/sudoers/haslerd").read_text()
     rules = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
     assert rules == ["pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, "
+                     "/usr/bin/systemctl reboot, /bin/systemctl reboot, "
                      "/usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, "
                      "/usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/local/sbin/hasler-help, "
+                     "/usr/local/sbin/hasler-timezone, /usr/bin/journalctl --vacuum-time=1s, "
                      "/usr/bin/systemctl try-restart go-librespot.service, "
                      "/bin/systemctl try-restart go-librespot.service, "
                      "/usr/bin/systemctl restart mpd.service, /bin/systemctl restart mpd.service"]

@@ -522,10 +522,10 @@ dims it, **and the radio still works with HA stopped**.
 
 ### Moving to another home
 
-Key actions name things in the HA they were set up with. In a new home:
-Settings → This radio → Home Assistant → **Disconnect**, then connect the new home's HA. The
-page lists every key whose target the new HA does not have. Choose new targets,
-or press **Clear missing** to empty them all.
+Key actions name things in the HA they were set up with. The owner's steps
+for a new home (disconnect, connect the new home's HA, reassign or **Clear
+missing**) are in [Using your Hasler → Moving the radio](using.md#moving-the-radio);
+the page itself is **Settings → This radio → Moving this radio**.
 
 ## Phase 5b — Casting, room names and multiroom
 

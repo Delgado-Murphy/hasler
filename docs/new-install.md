@@ -32,7 +32,10 @@ It takes about **20 minutes**, most of it waiting.
    **moOde audio player** → the **64-bit Trixie** release (tested: 10.3.6).
    **Storage:** your card.
 3. When Imager offers **OS customisation**, choose **Edit settings** and fill in:
-   - **Hostname:** `hasler` (the radio is then `hasler.local`).
+   - **Hostname:** `hasler` (the radio is then `hasler.local`; the install
+     gives it a name of its own, `hasler-<four letters>`, so two Haslers in
+     one home never swap addresses - `hasler.local` still finds a radio
+     while it is the only one).
    - **Username and password:** username `pi`, and a password you keep. moOde
      does not work without a user.
    - **Wi-Fi:** your network's name and password, and your country.

@@ -1,0 +1,26 @@
+#!/bin/bash
+# hasler-timezone - set the radio's time zone, for the key page's "Clock and
+# place" (web/clock.py). Run as root by haslerd through sudo (config/sudoers/
+# haslerd allows exactly this file); it checks its one argument itself, so a
+# page can only ever name a zone the system knows.
+#
+#     hasler-timezone Europe/Madrid     -> timedatectl set-timezone Europe/Madrid
+#     hasler-timezone                   -> prints the zone in force
+#
+# Night dimming by fixed hours, "asleep if the power returns at night" and the
+# 02:00-05:00 update window all follow the clock, so a radio that moves abroad
+# wants this changed once. docs/using.md "Moving the radio".
+set -u
+ZONES=/usr/share/zoneinfo
+if [[ $# -eq 0 ]]; then
+  timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null
+  exit 0
+fi
+[[ $# -eq 1 ]] || { echo "usage: hasler-timezone [Area/City]" >&2; exit 2; }
+zone="$1"
+# Area/City (one or two slashes), letters, digits, _ + -; never . or a path.
+if ! [[ "$zone" =~ ^[A-Za-z0-9_+-]+(/[A-Za-z0-9_+-]+){0,2}$ ]]; then
+  echo "not a time zone name: $zone" >&2; exit 1
+fi
+[[ -f "$ZONES/$zone" ]] || { echo "unknown time zone: $zone" >&2; exit 1; }
+exec timedatectl set-timezone "$zone"

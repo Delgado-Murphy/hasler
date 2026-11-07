@@ -307,6 +307,30 @@ MOODE_KEYS = {"browsertitle", "hostname", "btname", "airplayname", "spotifyname"
               "upnpsvc", "bt_pairing_confirm", "alsavolume_max_bt"}
 
 
+def test_a_new_radio_gets_its_own_hostname_once(tmp_path):
+    """hasler-<id4>: the last four of the radio's id (sha256 of the machine-id),
+    only for a card still called "hasler"; a named radio keeps its name."""
+    machine_id, hostname = tmp_path / "machine-id", tmp_path / "hostname"
+    machine_id.write_text("0123456789abcdef0123456789abcdef\n")
+    hostname.write_text("hasler\n")
+    expected = "hasler-" + hashlib.sha256(b"0123456789abcdef0123456789abcdef").hexdigest()[:12][-4:]
+    assert hi.radio_hostname(machine_id, hostname) == expected
+    hostname.write_text("hasler-kitchen\n")
+    assert hi.radio_hostname(machine_id, hostname) is None            # already named: left alone
+    hostname.write_text("hasler\n")
+    machine_id.write_text("")
+    assert hi.radio_hostname(machine_id, hostname) is None            # no id to name it by
+    assert hi.radio_hostname(tmp_path / "absent", hostname) is None
+
+    calls = []
+    hosts = tmp_path / "hosts"
+    hosts.write_text("127.0.0.1\tlocalhost\n127.0.1.1\thasler\n")
+    hi.set_hostname("hasler-ab12", hosts=hosts, moode_db=tmp_path / "no.db",
+                    runner=lambda argv, **kw: calls.append(argv))
+    assert calls == [["hostnamectl", "set-hostname", "hasler-ab12"]]
+    assert hosts.read_text() == "127.0.0.1\tlocalhost\n127.0.1.1\thasler-ab12\n"
+
+
 def test_moodecfg_ini_uses_only_moode_keys():
     keys = {}
     for line in (ROOT / "config/firstboot/moodecfg.ini").read_text().splitlines():

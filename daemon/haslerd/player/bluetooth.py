@@ -372,6 +372,24 @@ class Bluetooth:
         log.info("bluetooth: forgot %s", device["name"])
         return device["name"]
 
+    def forget_all(self) -> list[str]:
+        """Every paired phone forgotten, and the last-used history with them
+        (the hand-over). One that won't go doesn't stop the rest."""
+        names: list[str] = []
+        for device in self.devices():
+            try:
+                names.append(self.forget(device["address"]))
+            except BluetoothError as exc:
+                log.warning("bluetooth: %s", exc)
+        with self._lock:
+            self._last_used = {}
+        if self.history_file is not None:
+            try:
+                self.history_file.unlink(missing_ok=True)
+            except OSError:
+                log.warning("could not remove %s", self.history_file, exc_info=True)
+        return names
+
     def control(self, command: str) -> bool:
         """next / previous / play / pause / toggle on the connected phone (AVRCP)."""
         device = self.connected()
@@ -586,6 +604,9 @@ class FakeBluetooth:
         self.calls.append(("forget", d["address"]))
         self.list.remove(d)
         return d["name"]
+
+    def forget_all(self) -> list[str]:
+        return [self.forget(d["address"]) for d in list(self.list)]
 
     def control(self, command: str) -> bool:
         self.calls.append(("control", command))

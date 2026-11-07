@@ -43,6 +43,7 @@ mixer), so the lamp answers the hand, not the player.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any, Callable
 
@@ -302,6 +303,9 @@ class Actions:
         self._hand = 0
         self._cast: tuple[str, int] | None = None    # (renderer, _hand) while a phone has it
         self._cast_ended_at: float | None = None
+        # The ``wifi_setup`` verb's doing (web/wifi.py hotspot_now, wired by
+        # main.build_web on a radio with the Wi-Fi helper); None = a laptop.
+        self.wifi_setup: Callable[[], Any] | None = None
         self._verbs: dict[str, Callable[[Event, dict], None]] = {
             "preset": self._preset,
             "preset_by_index": self._preset_by_index,
@@ -330,6 +334,7 @@ class Actions:
             "ha_light": self._ha_light,
             "ha_service": self._ha_service,
             "join_group": self._join_group,
+            "wifi_setup": self._wifi_setup,
         }
         # (kind, entity) already reported as dropped for want of HA - say it
         # once, not on every press.
@@ -1156,6 +1161,25 @@ class Actions:
             timer.set(spec.get("minutes", SLEEP_DEFAULT_MINUTES))
         except SleepError as exc:
             log.info("sleep timer not set from %s: %s", event.control, exc)
+
+    def _wifi_setup(self, event, spec):
+        """``{do: wifi_setup}``: the setup network now, forgetting nothing
+        (docs/using.md "Moving the radio"). The helper takes a while, so off
+        the panel loop; the watchdog brings the Wi-Fi back by itself if nobody
+        uses the setup network."""
+        hook = self.wifi_setup
+        if hook is None:
+            log.info("wifi_setup: no Wi-Fi helper on this radio")
+            return
+
+        def run() -> None:
+            try:
+                hook()
+            except Exception as exc:
+                log.warning("wifi_setup from %s failed: %s", event.control, exc)
+                self._reply("fail")
+
+        threading.Thread(target=run, name="wifi-setup", daemon=True).start()
 
     def _resume(self, event, spec):
         if not self.standby and self.phone_has_it():

@@ -270,6 +270,36 @@ class HaApi:
             log.exception("following Home Assistant failed")
             return False
 
+    def network_up(self) -> None:
+        """The radio just joined a (new) Wi-Fi (main.consume_wifi_joined): one
+        probe of the saved address now and, if it doesn't answer, one look on
+        the network at once - not after three misses and ten minutes. Off the
+        panel loop; never raises. Nothing without a saved connection."""
+        settings = self.settings
+        if settings is None or self.client is None:
+            return
+
+        def run() -> None:
+            try:
+                try:
+                    ok = bool(self.probe(settings.url))
+                except Exception:
+                    ok = False
+                self._reach(ok)
+                if ok:
+                    log.info("Home Assistant answers at %s on the new network", settings.url)
+                    return
+                log.info("Home Assistant isn't at %s on this network; looking for it now", settings.url)
+                self.follow.reset()
+                if not self._look(settings):
+                    # Three misses' worth: the page can say "lost" without the wait.
+                    for _ in range(follow.MISSES):
+                        self.follow.reached(False)
+            except Exception:
+                log.exception("Home Assistant check after the Wi-Fi join failed")
+
+        threading.Thread(target=run, name="ha-network-up", daemon=True).start()
+
     def _look(self, settings: ha_config.HaSettings) -> bool:
         """Discovery, then the same instance's new address, then the token there."""
         try:
@@ -513,7 +543,17 @@ class HaApi:
             "previous_instance": self.previous_instance(),
             "moved": dict(settings.moved) if settings and settings.moved else None,
             "lost": self.lost if settings else None,
+            # HA's own time zone and place (GET /api/config), for the page's
+            # "Clock and place" offer after a move (web/clock.py).
+            "time_zone": str(self.info.get("time_zone") or ""),
+            "place": self._place(),
         }
+
+    def _place(self) -> dict | None:
+        lat, lon = self.info.get("latitude"), self.info.get("longitude")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)) or isinstance(lat, bool):
+            return None
+        return {"name": str(self.info.get("location_name") or ""), "lat": round(float(lat), 4), "lon": round(float(lon), 4)}
 
     # -- operations -------------------------------------------------------
 

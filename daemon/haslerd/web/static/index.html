@@ -1062,6 +1062,7 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
 .kc-lamp{display:grid;grid-template-columns:1fr 1fr;column-gap:3mm}
 .kc-lamp h2{grid-column:1 / -1}
 .kc-lamp p{display:flex;align-items:center;gap:1.5mm;font-size:7.5pt}
+.kc-move p{font-size:7.5pt}
 .kc-pic{display:inline-flex;align-items:center;gap:.5mm;min-width:16mm}
 .kc-pic i{display:inline-block;height:1.3mm;border-radius:.65mm;background:#B9781E}
 .kc-pic i[data-c="green"]{background:#2F8F4E}.kc-pic i[data-c="red"]{background:#C0392B}
@@ -1362,13 +1363,14 @@ const SRC = [{id:'radio', label:'Radio'}, {id:'spotify', label:'Spotify'}, {id:'
 const SRC_HEAD = {radio:'Radio', spotify:'Spotify', ytm:'YouTube Music', bluetooth:'Bluetooth', airplay:'AirPlay'};
 const SHORT = {none:'Nothing', preset:'Play music', cycle_source:'Cycle sources', bt_pair:'Bluetooth pairing', volume_up:'Volume up', volume_down:'Volume down',
   standby_toggle:'Standby / wake', standby:'Standby', sleep:'Sleep timer', ha_scene:'Scene', ha_script:'Script', ha_toggle:'Toggle', ha_automation:'Automation',
-  ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler', bluetooth:'Bluetooth'};
+  ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler', bluetooth:'Bluetooth', wifi_setup:'Wi-Fi setup'};
 // What each choice in the "A tap… / Holding…" list says under its name.
 const VERB_DESC = {
   cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Source key & knobs',
   join_group:'Join the music playing on another Hasler',
   bluetooth:'Plays a phone through the radio. Press again for the next track, hold to pause',
   sleep:'Plays on for a while, fades out over the last minute, then standby',
+  wifi_setup:'Opens the radio’s setup network now, forgetting nothing — for a changed router password or a guest network. It goes back to its Wi-Fi by itself in a few minutes if nobody uses it',
   ha_light:'Turn lights on or off, dim them, change their colour',
   ha_scene:'Set a scene from Home Assistant',
   ha_script:'Run a Home Assistant script',
@@ -1854,7 +1856,7 @@ function renderDial(){
   // at: the dial stop the needle points to; bold: it is what plays (the key, the phone, the page).
   let head = '', name = '', live = '', at = null, bold = false;
   if (!online){
-    head = 'Can’t reach the radio'; name = 'Hasler'; setSong('Is your phone on the home Wi-Fi? Trying again…', '', '', 'none');
+    head = 'Can’t reach the radio'; name = 'Hasler'; setSong('Is your phone on the home Wi-Fi? A guest network, or a router with client isolation, keeps phones apart. Trying again…', '', '', 'none');
   } else if (!status){
     head = 'Tuning…'; name = 'Hasler'; setSong('', '', '', 'none');
   } else if (status.standby){
@@ -2179,7 +2181,7 @@ history.replaceState(null, '');
 // Music accounts, knob calibration to Sound).
 const SET_ALIAS = {sources:'phones', multiroom:'rooms', about:'radio', knobs:'keys'};
 const SET_SEC_ALIAS = {'radio/name':'rooms/name', 'radio/ytm':'accounts/ytm', 'keys/knobs':'sound/knobs', 'updates/music':'accounts/ytm'};
-const SET_SUBS = {radio:['updates', 'ha']};
+const SET_SUBS = {radio:['updates', 'ha', 'move']};
 function parseHash(){
   let p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   let fixed = false;
@@ -5656,7 +5658,13 @@ function attentionFromHealth(){
   }
   return out;
 }
-const ATTENTION = [attentionFromHealth, attnUpdate, attnRollback, attnSpotify, attnYtm, attnHaMissing, attnHaLost, attnHelp, attnWifi];
+// The radio joined a Wi-Fi in the last day (settings.wifi_joined, main.consume_wifi_joined): moved house?
+function attnNewWifi(){
+  const j = settings && settings.wifi_joined;
+  if (!j || !j.ssid) return null;
+  return {id:'attn-newwifi', title:'New Wi-Fi: ' + j.ssid, sub:'Moved house? Open Moving this radio', href:'#settings/radio/move'};
+}
+const ATTENTION = [attentionFromHealth, attnUpdate, attnRollback, attnSpotify, attnYtm, attnHaMissing, attnHaLost, attnHelp, attnWifi, attnNewWifi];
 // Each entry gives a row, null, or a list of rows.
 function setAttention(){ return ATTENTION.flatMap(f => f() || []); }
 // The front page's gear carries a dot while the list has rows.
@@ -6278,8 +6286,13 @@ function radioHaGroup(){
   return setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
     setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha')));
 }
+function radioMoveGroup(){
+  return setGroup('move', 'Moving', h('div', {class:'set-list'},
+    setRow('move', 'Moving this radio', 'Another room, another home, or a new owner', '#settings/radio/move')));
+}
 function renderRadio(panel){
   panel.append(radioWifiGroup());
+  panel.append(radioMoveGroup());
   panel.append(radioSoftwareGroup());
   panel.append(howTheRadioIs());
   panel.append(radioHaGroup());
@@ -6386,6 +6399,203 @@ function loadRadio(){
 }
 function loadUpdates(){ loadSoftware(); loadSettings().then(() => { if (onPage('radio/updates')) rerender(); }); if (!help) loadHelp(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
+
+/* ---- This radio → Moving this radio (#settings/radio/move): another room, another home, a new owner ---- */
+// moveUi.wifi: GET /api/wifi (the networks the radio knows); moveUi.hand: GET /api/handover (what a hand-over
+// forgets and keeps here, the makers' notes); moveUi.result: the one-time answer after the hand-over.
+const moveUi = {wifi:null, hand:null, result:null, show:false, busy:{}, err:''};
+const clockUi = {edit:false, val:'', busy:false, err:''};
+// A phone on the setup network is next to the radio: the server asks for no press from there.
+const onHotspot = () => /^(172\.24\.1\.1|10\.42\.0\.1)$/.test(location.hostname);
+async function loadMove(){
+  const again = () => { if (onPage('radio/move')) rerender(); };
+  loadSettings().then(again); loadSetupNet().then(again); refreshHa();
+  try { const r = await api('GET', '/api/wifi'); moveUi.wifi = r.ok && r.json ? r.json : {err:(r.json && r.json.error) || 'Couldn’t read the Wi-Fi.'}; } catch (_) { moveUi.wifi = {err:NET_ERR}; }
+  try { const r = await api('GET', '/api/handover'); moveUi.hand = r.ok && r.json ? r.json : (r.status === 404 ? {missing:true} : {err:true}); } catch (_) { moveUi.hand = {err:true}; }
+  again();
+}
+const moveLink = (href, text, id) => h('a', {href, id: id || null, style:'color:var(--brass);text-underline-offset:3px'}, text);
+const moveCard = (id, label, ...kids) => h('section', {class:'card-box', id:'move-' + id}, h('span', {class:'mono'}, label), ...kids);
+const moveP = (...kids) => h('p', {class:'body', style:'margin:0'}, ...kids);
+function renderMove(panel){
+  if (!settings){ panel.append(skel(3)); return; }
+  panel.append(h('p', {class:'hint', style:'padding:0 4px 4px'}, 'Nothing here is needed for everyday use. These are the three times a radio changes place.'));
+  panel.append(moveRoomCard(), moveHomeCard(), moveOwnerCard());
+}
+// Card 1 — Another room: the name, Identify, the keys that ran the old room's scenes.
+function moveRoomCard(){
+  const r = settings.room, busy = !!identUi.busy.self;
+  return moveCard('room', 'Another room',
+    moveP(h('b', null, 'Give it the room’s name. '), 'The other rooms, your phones and Home Assistant know this radio by its name', r && r.custom ? ' — it is “' + r.name + '” now.' : '.'),
+    h('div', {class:'acts'}, h('a', {class:'btn small', id:'moveRename', href:'#settings/rooms/name'}, r && r.custom ? 'Rename' : 'Name it'),
+      lampPrefs().present ? h('button', {type:'button', class:'btn small', id:'moveIdentify', disabled: busy, onclick: () => identify(null, 'self')}, busy ? 'Signalling…' : 'Identify') : null),
+    lampPrefs().present ? moveP(h('b', null, 'Not sure which radio is which? '), 'Identify: its lamp taps HI in green.') : null,
+    moveP('If a key runs lights or a scene for the old room, choose new ones in ', moveLink('#edit', 'Edit keys'), '. Rooms play together just as before; there is nothing to set up again.'));
+}
+// Card 2 — Another home, or a new Wi-Fi: the setup network to write down, what happens there,
+// the networks the radio knows (Forget), and what to look at afterwards.
+function moveHomeCard(){
+  const s = setupNet, w = moveUi.wifi;
+  const pw = s ? (s.password_set ? s.password || '' : null) : '';
+  const kv = (k, v, extra) => h('div', {class:'chk', style:'align-items:center'}, h('span', null, k),
+    h('span', {style:'display:flex;align-items:center;gap:8px;min-width:0'}, h('b', {class:'help-v'}, v), extra || null));
+  const nets = [];
+  if (!w) nets.push(skelRow());
+  else if (w.err) nets.push(h('div', {class:'li'}, h('span', {class:'li-sub'}, w.err)));
+  else if (!(w.known || []).length) nets.push(h('div', {class:'li'}, h('span', {class:'li-sub'}, w.hotspot ? 'None yet — the radio is in setup mode.' : 'None saved: this radio is on a cable.')));
+  else for (const n of w.known) nets.push(h('div', {class:'li', 'data-ssid': n.ssid},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, n.ssid), h('span', {class:'li-sub'}, n.current ? 'The network it is on now' : 'Saved — it joins this one when it is in range')),
+    h('button', {type:'button', class:'li-act', disabled: !!moveUi.busy[n.ssid], 'aria-label':'Forget ' + n.ssid, onclick: () => forgetNet(n)}, moveUi.busy[n.ssid] ? 'Forgetting…' : 'Forget')));
+  return moveCard('home', 'Another home, or a new Wi-Fi',
+    moveP(h('b', null, 'Before you go, write these down. '), 'When the radio can’t find your Wi-Fi it opens its own network, so a phone can tell it the new one.'),
+    h('div', null, kv('Setup network', (s && s.ssid) || 'Hasler'),
+      kv('Password', pw === null ? 'None — it’s an open network' : pw === '' ? 'Not shown here' : moveUi.show ? pw : '••••••••',
+        pw ? h('span', {style:'display:flex;gap:4px'},
+          h('button', {type:'button', class:'li-act', id:'movePwShow', 'aria-label': (moveUi.show ? 'Hide' : 'Show') + ' the setup password', onclick: () => { moveUi.show = !moveUi.show; rerender(); }}, moveUi.show ? 'Hide' : 'Show'),
+          h('button', {type:'button', class:'li-act', id:'movePwPrint', onclick: () => { printOptsRef().password = true; go('print'); }}, 'Print')) : null)),
+    moveP(h('b', null, 'At the new home: '), 'plug it in, wait two minutes for the lamp to tap ', h('i', null, 'CQ'), ' (long-short-long-short, long-long-short-long), join ', h('b', null, (s && s.ssid) || 'Hasler'), ' on your phone, and the Wi-Fi page opens by itself. Music comes back on its own; the lamp glows green and taps OK.'),
+    moveP(h('b', null, 'Changing Wi-Fi here, now: '), moveLink('/wifi', 'Change Wi-Fi', 'moveWifi'), ' (a key press on the radio).'),
+    h('div', null, h('span', {class:'mono', style:'display:block;margin-bottom:6px'}, 'Networks the radio knows'), h('div', {class:'list', id:'moveNets'}, ...nets)),
+    moveP(h('b', null, 'Afterwards: '), 'if you had Home Assistant, connect the new home’s: ', moveLink('#settings/radio/ha', 'Home Assistant'), '. The radio tells you which keys pointed at things the old home had. Night dimming and update hours follow the radio’s clock; if the new home is in another time zone, change it below.'),
+    h('div', {class:'list'}, clockRow(false)),
+    moveP(h('b', null, 'No phone handy, or it won’t join? '), 'A plain-text file called ', h('b', null, 'hasler-wifi.txt'), ' on the memory card does the same (how: ', h('i', null, 'Using your Hasler → Wi-Fi'), '). A network cable works too. No internet yet at the new home? Bluetooth from a phone still works.'));
+}
+// Card 3 — A new owner: what the hand-over forgets and keeps, the makers, the press, the one-time password.
+function moveOwnerCard(){
+  const d = moveUi.hand, res = moveUi.result;
+  const list = items => h('ul', {class:'body', style:'margin:0;padding-left:18px'}, items.map(t => h('li', null, t)));
+  const forgets = (d && d.forgets) || ['your Wi-Fi networks and this radio’s setup password (a new one is made and shown to you once)', 'your Spotify and YouTube Music sign-ins', 'Home Assistant', 'your phones', 'your keys and stations', 'the room’s name', 'the other addresses you allowed'];
+  const keeps = (d && d.keeps) || ['how the knobs are calibrated', 'the lamp’s colours', 'the volume ceiling', 'its updates'];
+  const notes = (d && d.maker_notes) || [];
+  if (res && res.setup) return moveCard('owner', 'A new owner',
+    h('p', {class:'body', style:'margin:0;color:var(--cream)'}, h('b', null, 'Write this down for the new owner.')),
+    h('div', {id:'handResult'}, h('div', {class:'chk'}, h('span', null, 'Setup network'), h('b', {class:'help-v'}, res.setup.ssid)),
+      h('div', {class:'chk'}, h('span', null, 'Password'), h('b', {class:'help-v', id:'handPw'}, res.setup.password))),
+    moveP(res.restarting ? 'The radio restarts in setup mode and waits for them.' : 'The radio is ready for them: unplug it and plug it in again.',
+      (res.failed || []).length ? ' Not everything could be forgotten (' + res.failed.join(', ') + ') — tell the makers.' : ''),
+    h('div', {class:'acts'}, h('button', {type:'button', class:'btn small primary', id:'handPrint', onclick: () => { printOptsRef().password = true; setupNet = Object.assign({}, setupNet || {}, {ssid: res.setup.ssid, password: res.setup.password, password_set: true}); go('print'); }}, 'Print a card for the new owner')));
+  return moveCard('owner', 'A new owner',
+    moveP(h('b', null, 'Hand over. '), 'The radio forgets you and keeps only what belongs to the cabinet: the knobs’ calibration, the lamp’s colours, the volume ceiling. The new owner starts as you did: plug it in, join its setup network, press key 1.'),
+    moveP(h('b', null, 'It forgets: ')), list(forgets),
+    moveP(h('b', null, 'It keeps: ')), list(keeps),
+    notes.length ? h('div', null, moveP(h('b', null, 'The makers’ notes about this cabinet stay with it: ')), list(notes.map(n => (n.at ? n.at + ' — ' : '') + n.text)),
+      moveP('Ask the makers if one of them should go.')) : null,
+    moveP('The makers can still help from afar — only if the new owner asks them to, with a key press. Their own way in (an SSH key put there when the radio was built) stays on the radio; remote help needs a press on the radio and ends by itself after 24 hours.'),
+    moveUi.err ? h('p', {class:'note-bad', role:'alert'}, moveUi.err) : null,
+    h('div', {class:'acts'}, h('button', {type:'button', class:'btn small danger-btn', id:'handOver', disabled: !!moveUi.busy.hand, onclick: handOver}, moveUi.busy.hand ? 'Forgetting…' : 'Hand over to a new owner')),
+    h('p', {class:'hint'}, 'Then press any key on the radio within 30 seconds. The lamp asks you: two quick brightens, again and again.'));
+}
+// Forget a saved network (DELETE /api/wifi/networks/<ssid>): a press from the home network, none from the
+// setup network; the current one asks first, because the radio restarts into setup mode.
+async function forgetNet(n){
+  if (n.current){
+    const ok = await ask({title:'Forget ' + n.ssid + '?', sub:'The radio restarts and waits for a phone on its setup network. Fine if you’re about to move it.', ok:'Forget', cancel:'Keep it', danger:true});
+    if (!ok) return;
+  }
+  let token = null;
+  if (!onHotspot()){
+    token = await radioConfirm({action:'wifi', args:{ssid: n.ssid, forget:true}, title:'Forget ' + n.ssid, sub:'Press a key on the radio to say yes.'});
+    if (!token) return;
+  }
+  moveUi.busy[n.ssid] = true; rerender();
+  try {
+    const r = await api('DELETE', '/api/wifi/networks/' + encodeURIComponent(n.ssid), token ? {confirm: token} : {});
+    if (r.ok && r.json && r.json.ok){
+      toast(r.json.restarting ? n.ssid + ' forgotten — the radio is restarting into setup mode' : n.ssid + ' forgotten');
+      if (moveUi.wifi && moveUi.wifi.known) moveUi.wifi.known = moveUi.wifi.known.filter(x => x.ssid !== n.ssid);
+      if (!r.json.restarting){ try { const w = await api('GET', '/api/wifi'); if (w.ok && w.json) moveUi.wifi = w.json; } catch (_) {} }
+    } else failToast(r, 'The radio didn’t forget it', () => forgetNet(n));
+  } catch (_) { toast(NET_ERR, true); }
+  moveUi.busy[n.ssid] = false;
+  if (onPage('radio/move')) rerender();
+}
+// The hand-over (POST /api/handover): always a real press; the answer carries the new setup password, once.
+async function handOver(){
+  const token = await radioConfirm({action:'handover', title:'Hand this radio to a new owner?',
+    sub:'It forgets your networks, accounts, phones, keys and settings, and makes a new setup password. Press a key on the radio to say yes.'});
+  if (!token){ const b = $('handOver'); if (b) b.focus({preventScroll:true}); return; }
+  moveUi.busy.hand = true; moveUi.err = ''; rerender();
+  try {
+    const r = await api('POST', '/api/handover', {confirm: token}, {timeout:120000});
+    if (r.ok && r.json && r.json.ok){ moveUi.result = r.json; toast('The radio has forgotten you'); }
+    else moveUi.err = capFirst((r.json && r.json.error) || 'The hand-over didn’t go through (error ' + r.status + ')') + '. Try again.';
+  } catch (_) { moveUi.err = NET_ERR; }
+  moveUi.busy.hand = false;
+  if (onPage('radio/move')) rerender();
+}
+// Clock and place: the time zone the fixed hours and the update window follow (PUT /api/settings {timezone}).
+// small: the one-line version on Pilot lamp → At night.
+function clockRow(small){
+  const c = settings && settings.clock, zone = (c && c.timezone) || '';
+  if (!c) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking the clock…'));
+  const ha = haState && haState.connected && haState.time_zone && haState.time_zone !== zone ? haState.time_zone : '';
+  return h('div', {class:'li col', style:'gap:10px'},
+    h('div', {class:'sw-row'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Clock and place'),
+        h('span', {class:'li-sub', id:'clockZone'}, zone ? 'Time zone ' + zone : 'Time zone not known', small ? '' : ' — night hours, “asleep if the power returns at night” and the update window follow it')),
+      clockUi.edit ? null : h('button', {type:'button', class:'li-act', id:'clockEdit', onclick: () => { Object.assign(clockUi, {edit:true, val: zone, err:''}); rerender(); const i = $('clockInp'); if (i) i.focus(); }}, 'Change')),
+    clockUi.edit ? h('div', {class:'field'}, h('label', {for:'clockInp'}, 'Time zone'),
+      h('input', {type:'text', id:'clockInp', list:'clockZones', value: clockUi.val, autocomplete:'off', placeholder:'Europe/Madrid', oninput: e => { clockUi.val = e.target.value; clockUi.err = ''; },
+        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); saveClock(clockUi.val.trim()); } else if (e.key === 'Escape'){ clockUi.edit = false; rerender(); } }}),
+      h('datalist', {id:'clockZones'}, (c.zones || []).map(z => h('option', {value:z}))),
+      clockUi.err ? h('p', {class:'err', role:'alert'}, clockUi.err) : null,
+      h('div', {class:'acts'}, h('button', {type:'button', class:'btn small primary', id:'clockSave', disabled: clockUi.busy, onclick: () => saveClock(clockUi.val.trim())}, 'Save'),
+        h('button', {type:'button', class:'btn small', onclick: () => { clockUi.edit = false; rerender(); }}, 'Cancel'),
+        ha ? h('button', {type:'button', class:'btn small', id:'clockHa', disabled: clockUi.busy, onclick: () => saveClock(ha, haState.place)}, 'Use Home Assistant’s (' + ha + ')') : null)) : null);
+}
+async function saveClock(zone, place){
+  if (!zone){ clockUi.err = 'Type a time zone, like Europe/Madrid.'; rerender(); return; }
+  clockUi.busy = true; rerender();
+  try {
+    const body = {timezone: zone}; if (place && typeof place.lat === 'number') body.location = place;
+    const r = await api('PUT', '/api/settings', body);
+    if (r.ok && r.json && r.json.clock){ settings = Object.assign(settings || {}, r.json); clockUi.edit = false; toast('Time zone ' + zone + (place ? ' · the place too' : '')); }
+    else if (hostOf(r)) failToast(r, 'The radio didn’t take that', () => saveClock(zone, place));
+    else clockUi.err = capFirst((r.json && r.json.error) || 'The radio didn’t take that zone') + '.';
+  } catch (_) { toast(NET_ERR, true); }
+  clockUi.busy = false; rerender();
+}
+// After Home Assistant connects: offer its place and zone, once per HA (settings.dismissed.clock_offer).
+async function offerClock(){
+  const st = haState; if (!st || !st.connected || !st.time_zone) return;
+  const key = st.url || 'ha';
+  if (settings && settings.dismissed && settings.dismissed.clock_offer === key) return;
+  if (!settings || !settings.clock) await loadSettings();
+  const same = settings && settings.clock && settings.clock.timezone === st.time_zone && !st.place;
+  if (!same){
+    const ok = await ask({title:'Use Home Assistant’s place and time zone for the lamp and updates?',
+      sub:(st.location ? st.location + ' · ' : '') + st.time_zone + '. Night dimming by the sun, the fixed hours and the update window follow them.', ok:'Use them', cancel:'Not now', id:'clockOfferOk'});
+    if (ok) await saveClock(st.time_zone, st.place);
+  }
+  try { const r = await api('PUT', '/api/settings', {dismissed: {clock_offer: key}}); if (r.ok && r.json) settings = Object.assign(settings || {}, r.json); } catch (_) {}
+}
+// The key card's "If it moves" block (keyCard). printOpts.password (shared with the print page's
+// welcome card, if that defined it; ours otherwise) puts the real password on the card.
+function printOptsRef(){
+  if (typeof printOpts !== 'undefined' && printOpts) return printOpts;
+  window.printOpts = window.printOpts || {password:false};
+  return window.printOpts;
+}
+function cardMoveBlock(){
+  if (!setupNet && !cardMoveBlock.asked){
+    cardMoveBlock.asked = true;
+    loadSetupNet().then(() => { if (view === 'print' && cfg) renderPrint(); }).catch(() => {});
+  }
+  const s = setupNet, r = settings && settings.room;
+  const pw = printOptsRef().password && s && s.password ? s.password : '________';
+  const addr = (r && r.address) || 'hasler.local';
+  return h('section', {class:'kc-sec kc-move', id:'kcMove'}, h('h2', null, 'If it moves'),
+    h('p', null, 'Setup network: ', h('b', null, (s && s.ssid) || 'Hasler'), ' · Password: ', h('b', {id:'kcPw'}, pw)),
+    h('p', null, 'Page: ', h('b', null, addr + ':8080'), r && r.ip ? ' (' + r.ip + ')' : ''),
+    h('p', null, 'No phone? A file called ', h('b', null, 'hasler-wifi.txt'), ' on the memory card.'));
+}
+// The print page's "Include the setup password" box — ours only when the print page didn't define printOpts.
+function movePrintOption(){
+  if (typeof printOpts !== 'undefined' && printOpts) return null;
+  const o = printOptsRef();
+  return h('label', {class:'switch', for:'printPw', style:'padding:0 4px'},
+    h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Include the setup password'), h('span', {class:'li-sub'}, 'Off, the card leaves a blank to fill in by hand. On for a card that goes to a new owner.')),
+    h('input', {type:'checkbox', role:'switch', id:'printPw', checked: !!o.password, onchange: e => { o.password = e.target.checked; renderPrint(); }}));
+}
 
 /* ---- This radio → Help from the makers: remote help for 24 h (web/help_api.py, docs/remote-help.md) ---- */
 // help: null = loading, {missing} = no /api/help (older software), {err}, or GET /api/help.
@@ -6697,6 +6907,8 @@ const SET_PAGES = [
   {id:'radio/updates', title:'Updates', parent:'radio', note:'Installing, going back or switching channel asks for a press on the radio, so nobody else on the Wi-Fi can do it.',
     render: renderUpdates, load: loadUpdates, leave: leaveUpdates},
   {id:'radio/ha', title:'Home Assistant', parent:'radio', note: NOTE_INSTANT, render: renderHa, load: () => refreshHa()},
+  {id:'radio/move', title:'Moving this radio', parent:'radio', note:'Forgetting a Wi-Fi network, or handing the radio over, asks for a press on the radio.',
+    render: renderMove, load: loadMove},
 ];
 const SET_PAGE = Object.fromEntries(SET_PAGES.map(p => [p.id, p]));
 /* ---- pilot lamp: night = sunset..sunrise where the radio stands (lamp/night.py) ---- */
@@ -6770,7 +6982,8 @@ function lampSettings(panel){
       h('button', {type:'button', class:'btn small', disabled: lampUi.busy, onclick: useHere}, 'Use this phone’s location')) : null);
   // The place sets sunset and sunrise: only By the sun needs it (a draft being typed stays in view).
   const showPlace = kind === 'sun' || lampDirty();
-  panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box, showPlace ? place : null)));
+  // The clock the fixed hours follow (small; the full row is on Moving this radio).
+  panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box, showPlace ? place : null, clockRow(true))));
 }
 function useHere(){
   lampUi.busy = true; lampUi.err = ''; rerender();
@@ -8228,8 +8441,16 @@ async function resetDefaults(){
     const token = await radioConfirm({action:'reset', title:'Reset the keys', sub:'Every key goes back to the radio’s built-in stations. This replaces all your keys.'});
     if (!token) return;
     const r = await api('POST', '/api/reset', {confirm: token});
-    if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); toast('Built-in keys restored'); refreshHa(); if (view === 'edit') rerender(); }
+    if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); toast('Built-in keys restored', {undo: resetUndo}); refreshHa(); if (view === 'edit') rerender(); }
     else toast(capFirst((r.json && r.json.error) || 'The reset didn’t go through (error ' + r.status + ')') + '. Try again.', true);
+  } catch (_) { toast(NET_ERR, true); }
+}
+// The toast's Undo: the layout the reset replaced (the radio keeps it a day; no press).
+async function resetUndo(){
+  try {
+    const r = await api('POST', '/api/reset/undo', {});
+    if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); toast('Your keys are back'); refreshHa(); if (view === 'edit') rerender(); }
+    else toast(capFirst((r.json && r.json.error) || 'The radio couldn’t bring the keys back') + '.', true);
   } catch (_) { toast(NET_ERR, true); }
 }
 // Edit keys → Start from a set… (and Settings, which calls startFromSet() too): the starter
@@ -8857,7 +9078,7 @@ function roomNameRows(first){
   return h('div', {class:'li col', style:'gap:10px'},
     first ? null : h('div', {class:'sw-row'},
       h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'roomName'}, r.custom ? r.name : 'Room not named yet'),
-        h('span', {class:'li-sub'}, 'Find it at ', h('b', {class:'rn-addr'}, r.address || 'hasler.local'))),
+        h('span', {class:'li-sub'}, 'Find it at ', h('b', {class:'rn-addr'}, r.address || 'hasler.local'), r.ip ? ' · ' + r.ip : '')),
       roomUi.edit ? null : h('div', {class:'rn-acts', style:'display:flex;gap:8px;flex-shrink:0'},
         h('button', {type:'button', class:'li-act', id:'roomEdit', onclick: () => { Object.assign(roomUi, {edit:true, val: r.custom ? r.name : '', err:''}); paintRoom(); const i = $('roomInp'); if (i) i.focus(); }},
           r.custom ? 'Rename' : 'Name it'),
@@ -9935,6 +10156,7 @@ async function haConnect(){
       haState = r.json; haUi.token = ''; haUi.editing = false; haEnts = null; haLights = null; haLightsErr = '';
       toast('Connected to Home Assistant');
       await loadEntities(); await refreshHa();
+      offerClock();          // once per HA: its place and time zone for the lamp and updates
       return;
     }
     const m = (r.json && r.json.error) || 'Couldn’t connect (error ' + r.status + ').';
@@ -10143,6 +10365,7 @@ function keyCard(size){
   const pw = powerLines();
   if (pw.length) more.push(h('section', {class:'kc-sec kc-power'}, h('h2', null, 'Switching off'), pw.map(l => h('p', null, l))));
   const lamp = cardLampLegend(); if (lamp) more.push(lamp);
+  more.push(cardMoveBlock());
   return h('article', {class:'keycard kc-' + size, id:'keyCard', style:'--n:' + keys.length, 'aria-label':'Key card'},
     h('header', {class:'kc-head'}, h('h1', {class:'kc-title'}, 'Hasler'), room ? h('span', {class:'kc-room'}, room) : null,
       h('span', {class:'kc-kind'}, 'The keys')),
@@ -10183,7 +10406,7 @@ function renderPrint(){
       onclick: () => { cardSize = z.id; try { localStorage.setItem('hasler.card', z.id); } catch (_) {} renderPrint(); const b = panel.querySelector('[data-size="' + z.id + '"]'); if (b) b.focus(); }}, z.label)));
   panel.append(h('div', {class:'print-tools'}, screenTop('Key card', 'edit'),
     h('p', {class:'hint'}, 'What each key does, to keep by the radio. ' + (isDirty() ? 'It shows the keys as last saved.' : 'It shows the keys as saved now.')),
-    seg, h('div', {class:'actions'}, h('button', {type:'button', class:'btn primary', id:'printBtn', disabled: !cfg, onclick: () => window.print()}, 'Print'))));
+    seg, movePrintOption(), h('div', {class:'actions'}, h('button', {type:'button', class:'btn primary', id:'printBtn', disabled: !cfg, onclick: () => window.print()}, 'Print'))));
   if (!cfg){ panel.append(h('p', {class:'loading'}, cfg === null ? 'Warming up the valves…' : 'Couldn’t load the keys.')); return; }
   panel.append(h('div', {class:'card-sheet'}, keyCard(cardSize)));
 }

@@ -112,3 +112,15 @@ class AllowedHosts:
             self._save()
         log.info("web: changes through %s no longer accepted", host)
         return True
+
+    def clear(self) -> list[str]:
+        """Every allowed address gone (the hand-over: a new owner, a new home's
+        names). box.yaml's web.hostnames are the makers', not touched here."""
+        with self._lock:
+            gone = sorted(self._hosts)
+            self._hosts = {}
+            if self.path is not None:
+                self.path.unlink(missing_ok=True)
+        if gone:
+            log.info("web: changes through %s no longer accepted", ", ".join(gone))
+        return gone

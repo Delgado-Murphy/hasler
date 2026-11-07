@@ -500,7 +500,7 @@ the gear on the front page carries a small amber dot.
 | **Music accounts** | **Spotify**: the radio's own account, the one Spotify keys play from (**Sign in**, **Change account**, **Sign out**; the page gives a code for spotify.com/pair). **YouTube Music**: your account (sign in for your Liked songs and private playlists; it takes a computer and a few technical steps, which the makers can do for you over remote help), **Hide explicit songs**, and whether the YouTube Music helper is working. |
 | **Rooms** | **This room**: the **room name** (with **Remove**) and the radio's address, **Use the room name on phones**, and **Identify this radio** (its lamp taps HI in Morse, in green). **Several rooms**: **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. **The other Haslers**, each with **Identify** (the page says when that radio has no lamp, or needs a software update first). |
 | **Pilot lamp** | **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). **At night**: when the lamp dims (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. **What the lamp means**: **Now** (what the lamp says right now, in words), the full list folded away, each colour with its rhythm and **Show me** (it plays on the radio's lamp), and **Show me everything**. **Geek mode** and its callsign (off to start). Lamp colours are set by the makers. |
-| **This radio** | **Wi-Fi** and the setup network. **Software**: Updates (with **This Wi-Fi is a phone hotspot or capped**). **How the radio is**: in plain words, its Wi-Fi and signal, whether the internet answers, how warm it is inside, the memory card's free space, how it was last switched off (and how often the power was cut this month), how long it has been running, whether the player and the sound card answer, and the last update - with **Restart the radio** (a press on the radio confirms it). **Home Assistant**. [Help from the makers](#help-from-the-makers). Folded at the very bottom: the other addresses allowed to change this radio. |
+| **This radio** | **Wi-Fi** and the setup network. **Moving this radio**: another room, another home, or a new owner ([Moving the radio](#moving-the-radio)). **Software**: Updates (with **This Wi-Fi is a phone hotspot or capped**). **How the radio is**: in plain words, its Wi-Fi and signal, whether the internet answers, how warm it is inside, the memory card's free space, how it was last switched off (and how often the power was cut this month), how long it has been running, whether the player and the sound card answer, and the last update - with **Restart the radio** (a press on the radio confirms it). **Home Assistant**. [Help from the makers](#help-from-the-makers). Folded at the very bottom: the other addresses allowed to change this radio. |
 
 The version number is at the bottom of Settings.
 
@@ -526,11 +526,19 @@ version number seven times to show it. You won't need it.
 ### "Press any key on the radio"
 
 Some buttons change a lot: installing an update from the page (**Install
-tonight**, **Install now**), going back to an older version, changing the update channel, changing Wi-Fi, resetting the keys,
-signing Spotify in or out, letting the makers help, restarting the radio. For
+tonight**, **Install now**), going back to an older version, changing the update channel, changing or forgetting a Wi-Fi network, resetting the keys,
+signing Spotify in or out, letting the makers help, restarting the radio,
+handing it to a new owner. For
 these the page asks you to **press any key on the radio within 30 seconds**.
 That proves someone is standing next to the radio, not just anyone on the
-Wi-Fi.
+Wi-Fi. (Resetting the keys keeps the old layout for a day: the message
+offers **Undo**.)
+
+One honest line about that guard: the player underneath the radio (moOde)
+has pages of its own on the radio's address without the `:8080`, and they ask
+for no key press. Anyone on your Wi-Fi who knows about them can change the
+Wi-Fi there. The radio trusts your home network, as your printer does; if you
+keep guests on a separate network, that is enough.
 
 ## Home Assistant
 
@@ -627,9 +635,100 @@ radio goes back to the old one when it is in range, and otherwise makes the
    joins that network. What happened is in **hasler-wifi-result.txt** on the
    same drive.
 
+   The file must be plain text, not rich text (in TextEdit: Format → Make
+   Plain Text). The password line can hold spaces and quotes as they are. A
+   third line, `hotspot_password = …`, gives the radio's own setup network a
+   new password at the same time, should you have lost the old one.
+
 A network cable from the router to the radio's Ethernet socket also works:
 the radio is then at **http://hasler.local:8080** and you can set the Wi-Fi
 there.
+
+**Forgetting a network.** **Settings → This radio → Moving this radio** lists
+the networks the radio knows, each with **Forget** (a key press on the radio).
+Forgetting the one it is on restarts it into setup mode, so the page asks
+first. Nothing is ever forgotten by itself: a radio that goes back to a home
+it knew joins that Wi-Fi again without any help.
+
+**Opening the setup network from a key.** In **Edit keys**, a hold or a
+two-key combination can do **Open Wi-Fi setup now**: the radio opens its setup
+network without forgetting anything, for when the router's password changed
+or a guest network keeps your phone from reaching it. If nobody uses it, the
+radio goes back to its Wi-Fi by itself in a few minutes.
+
+## Moving the radio
+
+**Settings → This radio → Moving this radio** is the one page for the three
+times a radio changes place. Nothing on it is needed for everyday use.
+
+### Another room
+
+Unplug it, carry it, plug it in: it comes back playing what it played. Then
+give it the room's name (**Rename** on that page, or **Settings → Rooms**):
+the other rooms, your phones and Home Assistant know the radio by its name.
+Not sure which radio is which? **Identify**: its lamp taps HI in green. If a
+key runs lights or a scene for the old room, choose new ones in **Edit keys**.
+Rooms play together just as before; there is nothing to set up again.
+
+Once the room is named, the radio's setup network is called after it too:
+**Hasler Kitchen** rather than plain **Hasler**, so two radios being set up in
+one house are told apart. The Wi-Fi page says which radio it belongs to and
+has **Blink the lamp**.
+
+### Another home, or a new Wi-Fi
+
+**Before you go, write these down** from the page: the setup network's name
+and password (**Show**, or **Print** for the key card). When the radio can't
+find your Wi-Fi it opens that network, so a phone can tell it the new one.
+
+**At the new home:** plug it in, wait two minutes for the lamp to tap *CQ*
+(long-short-long-short, long-long-short-long), join the setup network on your
+phone, and the Wi-Fi page opens by itself ([Wi-Fi](#wi-fi) has the steps).
+Music comes back on its own; the lamp blooms green and taps OK. For a day
+afterwards Settings says **New Wi-Fi: …** under *Needs attention*, with a
+link to this page.
+
+**Afterwards:**
+
+- **Home Assistant.** Key actions name things in the Home Assistant they were
+  set up with. In a new home: **Settings → This radio → Home Assistant →
+  Disconnect**, then connect the new home's. The page lists every key whose
+  target the new one doesn't have — choose new targets, or press **Clear
+  missing** to empty them all. (If the radio looks for its old Home Assistant
+  and can't find it, the page says so.)
+- **Clock and place.** Night dimming by fixed hours, "asleep if the power
+  comes back at night" and the hours updates install in all follow the
+  radio's clock, and it kept the old home's time zone. **Clock and place** on
+  the Moving page (and under **Pilot lamp → At night**) changes it. When Home
+  Assistant connects, the page offers once to take its place and time zone
+  for both the lamp and the clock.
+- The old home's Wi-Fi stays saved, so the radio goes back to it by itself if
+  you return. **Forget** it on the page if you'd rather it didn't.
+
+**No phone handy, or it won't join?** The [file on the memory card](#if-nothing-works-a-file-on-the-memory-card)
+does the same, and so does a network cable. No internet yet at the new home?
+Bluetooth from a phone still works.
+
+### A new owner
+
+**Hand over to a new owner**, then press any key on the radio within 30
+seconds. The radio forgets you and keeps only what belongs to the cabinet. It
+forgets: your Wi-Fi networks and the setup password (a new one is made and
+shown to you once), your Spotify and YouTube Music sign-ins, Home Assistant,
+your phones, your keys and stations, the room's name, the other addresses you
+allowed, what it was playing, and its log. It keeps: how the knobs are
+calibrated, the lamp's colours, the volume ceiling and the quietest step, its
+software and updates, and the makers' notes about the cabinet.
+
+Afterwards the page shows, once, the new setup network and password:
+**write them down for the new owner**, or print them on a card (**Print a card
+for the new owner**). The radio then restarts in setup mode and waits for
+them; their first ten minutes are the ones at the top of this guide.
+
+The makers can still help from afar, but only if the new owner asks them to,
+with a key press. Their own way in - a key put on the radio when it was
+built - stays; remote help needs a press on the radio each time and ends by
+itself after 24 hours ([Help from the makers](#help-from-the-makers)).
 
 ## Updates
 
@@ -708,9 +807,14 @@ What changed in each version: the
 **The key page doesn't open.**
 
 - Check that your phone is on the same Wi-Fi as the radio (not mobile data,
-  not a guest network).
+  not a guest network). A guest network, or a router with "client isolation"
+  switched on, keeps the phones on it from reaching each other - and the
+  radio. Put the radio and the phone on the ordinary home network; a key set
+  to **Open Wi-Fi setup now** (see [Wi-Fi](#wi-fi)) is the way to reach a
+  radio stuck on the wrong one.
 - Wait a minute after the radio starts.
-- Try the radio's IP address instead of `hasler.local`.
+- Try the radio's IP address instead of `hasler.local` (**Settings → Rooms**
+  shows it next to the name, and so does the key card).
 - If the lamp taps out amber Morse (CQ), the radio isn't on your Wi-Fi: see
   [Wi-Fi](#wi-fi).
 

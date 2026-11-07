@@ -278,6 +278,34 @@ class SpotifyAccountApi:
             log.info("Spotify signed out from the key page (was %s)", mask(user) if had else "signed out")
         return self.doc()
 
+    def purge(self) -> list[str]:
+        """The hand-over (web/handover.py): signed out, and the sign-in and
+        sign-out backups gone with it - ``state.json.before-sign-out`` holds a
+        token that still works, which a new owner must not inherit. No press
+        here (the hand-over took one); nothing to do is not an error. Returns
+        what it removed, for the log."""
+        gone: list[str] = []
+        with self._lock:
+            if self.config.is_file() and os.access(self.dir, os.W_OK):
+                state = _read_json(self.state) or {}
+                user, had = self._account()
+                self._set_type(SIGNED_OUT_TYPE)
+                self._write_creds(state, "", None)
+                self._forget()
+                self._error = None
+                if had:
+                    gone.append("account")
+                    log.info("Spotify signed out for the hand-over (was %s)", mask(user))
+            for name in (BEFORE_SIGN_IN, BEFORE_SIGN_OUT, LEGACY):
+                path = self.dir / name
+                try:
+                    if path.exists():
+                        path.unlink()
+                        gone.append(name)
+                except OSError:
+                    log.warning("could not remove %s", path, exc_info=True)
+        return gone
+
     def resume(self) -> None:
         """At haslerd's start: a sign-in left waiting gets its deadline back."""
         try:

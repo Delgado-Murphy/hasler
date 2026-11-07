@@ -71,6 +71,10 @@ VERBS: list[dict[str, Any]] = [
     # Multiroom (multiroom/group.py): follow the Hasler leading a group, else
     # the one playing; on a follower, leave the group.
     {"do": "join_group", "label": "Join the music in another room (again: leave)"},
+    # The setup network now, forgetting nothing (web/wifi.py hotspot_now): the
+    # way out when the router's password changed or a guest network isolates
+    # the radio. A hold or a combination; no shipped key does it.
+    {"do": "wifi_setup", "label": "Open Wi-Fi setup now"},
     {"do": "ha_scene", "label": "Home Assistant scene", "params": ["entity", "transition"], "domains": ["scene"]},
     {"do": "ha_script", "label": "Run a Home Assistant script", "params": ["entity"], "domains": ["script"]},
     {"do": "ha_toggle", "label": "Toggle a Home Assistant device", "params": ["entity"],

@@ -49,10 +49,12 @@ ACTIONS = ("update", "rollback", "wifi", "reset", "channel", "help",   # help: w
            "spotify",                                                   # web/spotify_account_api.py
            "hostname",                                                  # web/hosts.py
            "restart",                                                   # "Restart the radio" (server.py restart)
-           "starter")                                                   # a starter set on every key (server.set_starter)
+           "starter",                                                   # a starter set on every key (server.set_starter)
+           "handover")                                                  # a new owner (web/handover.py)
 # Always a real press, even on a bench with web.allow_unconfirmed: the request
-# comes from an address the radio doesn't trust yet.
-ALWAYS_PRESS = ("hostname",)
+# comes from an address the radio doesn't trust yet (hostname), or wipes the
+# owner's radio for good (handover).
+ALWAYS_PRESS = ("hostname", "handover")
 CONFIRM_S = 30.0         # to press a key after asking
 USE_S = 60.0             # to use a confirmed token
 ASK_EVERY_S = 5.0        # the lamp asks again this often while pending

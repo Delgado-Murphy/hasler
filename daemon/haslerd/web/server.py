@@ -113,7 +113,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
 
@@ -131,6 +131,7 @@ from ..player.base import Preset
 from ..player.glr_config import SpotifyGuests, guests_from
 from ..player.moode import SOURCE_MPD_S, treble_db
 from ..player.sources.radio import mpd_patience
+from . import clock as clock_mod
 from . import keymap, lamp_api, stations
 from ..lamp import meanings as lamp_meanings
 from ..net import HOTSPOT_ADDRS
@@ -176,6 +177,15 @@ KEYS_STATE_PER_S = 10
 KEYS_HUSH_S = 0.8
 CONFIRM_ID = re.compile(r"^/api/confirm/([A-Za-z0-9_-]{10,64})$")
 HOST_ID = re.compile(r"^/api/hosts/([A-Za-z0-9.:-]{1,253})$")
+# DELETE /api/wifi/networks/<ssid> (percent-encoded): forget a saved network.
+WIFI_NET_ID = re.compile(r"^/api/wifi/networks/(.+)$")
+# Reset keys keeps the layout it replaced this long, for the toast's Undo.
+KEYS_BAK = "keys.yaml.bak"
+KEYS_BAK_S = 24 * 3600.0
+# "New Wi-Fi: …" stays on the Settings list this long after a join.
+WIFI_JOINED_S = 24 * 3600.0
+# The hand-over's restart: after the page has its answer (the new setup password).
+HANDOVER_REBOOT_S = 4.0
 # Reached through an address the radio doesn't know: only asking to allow it gets through.
 ALLOW_HOST_PATHS = ("/api/confirm/request", "/api/hosts")
 # Names the box answers to besides its own hostname (+ web.hostnames in box.yaml).
@@ -409,6 +419,10 @@ class WebApp:
         # applies it at start; put_settings on every change.
         self.spotify_guests = SpotifyGuests()
         self.wifi = wifi or Wifi(db=station_db)
+        # The setup network is called after the room ("Hasler Kitchen"): a
+        # rename reaches it here, and ensure_hotspot asks the room at start.
+        self.wifi.room_name = self.room.custom
+        self.room.on_renamed = self.wifi.apply_hotspot_name
         self.lock = threading.Lock()
         # The ytm source (for now_playing) and its catalogue, if the player has them.
         self.ytm = (getattr(actions.player, "sources", None) or {}).get("ytm")
@@ -601,6 +615,37 @@ class WebApp:
             self.confirm.consume(body.get("confirm"), "wifi", {"ssid": ssid})
         self.wifi.join(ssid, str(body.get("password", "")), str(body.get("security", "auto")))
 
+    def wifi_forget(self, ssid: str, body: Any, local_addr: str | None) -> dict:
+        """``DELETE /api/wifi/networks/<ssid>``: forget a saved network. The
+        same rule as a change: a press on the radio from the home network
+        (confirm action ``wifi`` with ``forget``), none from the setup hotspot.
+        The current network restarts the radio into setup mode."""
+        body = body if isinstance(body, dict) else {}
+        if plain_addr(local_addr) not in self.hotspot_addrs:
+            self.confirm.consume(body.get("confirm"), "wifi", {"ssid": ssid, "forget": True})
+        return self.wifi.forget(ssid)
+
+    def handover_doc(self) -> dict:
+        """``GET /api/handover``: what a hand-over forgets and keeps here, and the makers' notes."""
+        from . import handover as handover_mod
+        return handover_mod.describe(self)
+
+    def handover(self, body: Any) -> dict:
+        """``POST /api/handover {"confirm": token}``: the radio forgets its owner
+        (web/handover.py), answers with the new setup password - shown once -
+        and restarts into setup mode a moment later. Always a real press
+        (confirm.ALWAYS_PRESS), even on a bench."""
+        from . import handover as handover_mod
+        body = body if isinstance(body, dict) else {}
+        self.confirm.consume(body.get("confirm"), "handover", {})
+        log.warning("hand-over to a new owner requested from the key page")
+        doc = handover_mod.run(self)          # each step takes the page's lock as it needs it
+        reboot = getattr(self.actions.player, "reboot", None)
+        doc["restarting"] = callable(reboot)
+        if callable(reboot):
+            handover_mod.reboot_later(reboot, HANDOVER_REBOOT_S)
+        return doc
+
     def wifi_retry(self, body: Any) -> dict:
         """Setup mode's "try my Wi-Fi again" (haslerd/wifiwatch.py). No key press:
         the helper does nothing unless the radio is its own hotspot, and then the
@@ -769,22 +814,51 @@ class WebApp:
                     keymap.save(self.keys_file, specs, table, shipped=self._shipped())   # keeps the file's combos
                 else:
                     keymap.save(self.keys_file, specs, table, combos, self._shipped())
+                # A layout saved after a reset is the new truth: no Undo past it.
+                self.keys_file.with_name(KEYS_BAK).unlink(missing_ok=True)
             keymap.apply(self.actions, self.panel, specs, table, combos)
             self._rewarm()
         log.info("key layout saved from the web page")
         return self.config()
 
-    def reset(self) -> dict:
+    def reset(self, keep: bool = True) -> dict:
         """Every key back to the shipped layout: the starter set in force and
         the descriptor's key table and combinations. keys.yaml goes, so the
-        keys follow the release from here."""
+        keys follow the release from here - kept a day as keys.yaml.bak for
+        the toast's Undo (``reset_undo``), unless ``keep`` is off (the hand-over)."""
         with self.lock:
             if self.keys_file is not None:
-                self.keys_file.unlink(missing_ok=True)
+                bak = self.keys_file.with_name(KEYS_BAK)
+                if keep and self.keys_file.exists():
+                    self.keys_file.replace(bak)
+                else:
+                    self.keys_file.unlink(missing_ok=True)
+                    bak.unlink(missing_ok=True)
             specs, table = self._shipped()
             keymap.apply(self.actions, self.panel, specs, table, copy.deepcopy(self.default_combos))
             self._rewarm()
         log.info("key layout reset to the built-in stations (%s)", self.starter_pack() or "the descriptor's")
+        return self.config()
+
+    def reset_undo(self) -> dict:
+        """``POST /api/reset/undo``: the layout a reset replaced, if it is less
+        than a day old (keys.yaml.bak). No press: it is the owner's own layout
+        coming back, as a save would."""
+        if self.keys_file is None:
+            raise ValueError("this radio keeps no key layout file")
+        bak = self.keys_file.with_name(KEYS_BAK)
+        try:
+            age = time.time() - bak.stat().st_mtime
+        except FileNotFoundError:
+            raise ValueError("there is no layout to bring back: the reset is too long ago, or the keys were saved since") from None
+        if age > KEYS_BAK_S:
+            bak.unlink(missing_ok=True)
+            raise ValueError("that reset is more than a day old; the layout before it is gone")
+        with self.lock:
+            bak.replace(self.keys_file)
+            keymap.apply_saved(self.keys_file, self.actions, self.panel, shipped=self._shipped())
+            self._rewarm()
+        log.info("key layout from before the reset brought back")
         return self.config()
 
     def play(self, raw: Any) -> None:
@@ -1266,12 +1340,49 @@ class WebApp:
             # Notices the page has shown once and need not show again, e.g.
             # {"rollback": "1.4.1"}: that version's "didn't work here" was seen.
             "dismissed": self._dismissed(),
+            # The network joined in the last day, if any: "New Wi-Fi: … Moved house?"
+            "wifi_joined": self._wifi_joined(),
+            # The time zone and the zones the page lists (web/clock.py).
+            "clock": clock_mod.doc(self._timezone()),
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
 
+    def _timezone(self, fresh: bool = False) -> str:
+        """The system's zone, asked at most once a minute (timedatectl is a process)."""
+        now = time.monotonic()
+        cached = getattr(self, "_tz_cache", None)
+        if cached is not None and not fresh and now - cached[0] < 60.0:
+            return cached[1]
+        try:
+            zone = clock_mod.current_timezone()
+        except Exception:
+            log.debug("could not read the time zone", exc_info=True)
+            zone = ""
+        self._tz_cache = (now, zone)
+        return zone
+
+    def _wifi_joined(self) -> dict | None:
+        doc = load_settings(self.settings_file).get("wifi_joined") if self.settings_file is not None else None
+        if not isinstance(doc, dict) or not isinstance(doc.get("at"), (int, float)):
+            return None
+        if time.time() - float(doc["at"]) > WIFI_JOINED_S:
+            return None
+        return {"ssid": str(doc.get("ssid") or ""), "at": float(doc["at"])}
+
+    def note_wifi_joined(self, ssid: str) -> None:
+        """A join just finished (main.consume_wifi_joined): remember it a day for the page."""
+        if self.settings_file is None:
+            return
+        with self.lock:
+            doc = load_settings(self.settings_file)
+            doc["wifi_joined"] = {"ssid": ssid, "at": time.time()}
+            doc.setdefault("schema", boxconfig.SCHEMA)
+            save_settings(self.settings_file, doc)
+
     # The page's dismissed notices: short names to short values (a version), null forgets one.
-    DISMISS_KEYS = ("rollback",)
+    # clock_offer: the Home Assistant (its address) whose place and zone were offered.
+    DISMISS_KEYS = ("rollback", "clock_offer")
 
     def _dismissed(self) -> dict:
         d = load_settings(self.settings_file).get("dismissed") if self.settings_file is not None else self._dismissed_mem
@@ -1290,8 +1401,10 @@ class WebApp:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
         ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``,
         ``ytm`` ({"hide_explicit": bool}), ``lamp`` ({"brightness", "key_replies"}),
-        ``dismissed`` ({"rollback": "1.4.1"}: a notice the page has shown)."""
-        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm", "lamp", "dismissed"}
+        ``dismissed`` ({"rollback": "1.4.1"}: a notice the page has shown),
+        ``timezone`` ("Europe/Madrid": the system clock's zone, web/clock.py)."""
+        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm", "lamp",
+                "dismissed", "timezone"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
@@ -1330,6 +1443,10 @@ class WebApp:
         if "ytm" in body and not (isinstance(ytm, dict) and set(ytm) <= {"hide_explicit"}
                                   and isinstance(ytm.get("hide_explicit", False), bool)):
             raise ValueError("ytm must be {\"hide_explicit\": true|false}")
+        zone = clock_mod.timezone_from(body["timezone"]) if "timezone" in body else None
+        if zone is not None and zone != self._timezone():
+            clock_mod.set_timezone(zone)       # the root helper; ValueError with its reason
+            self._tz_cache = (time.monotonic(), zone)
         with self.lock:
             if mono is not None:
                 try:
@@ -2782,6 +2899,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, app.diagnostics()))
             elif url.path == "/api/diagnostics/bundle":
                 self._guard(lambda: self._json(200, app.diagnostics_bundle()))
+            elif url.path == "/api/handover":
+                self._guard(lambda: self._json(200, app.handover_doc()))
             elif url.path == "/api/software":
                 self._guard(lambda: self._json(200, app.software.status()))
             elif m := CONFIRM_ID.match(url.path):
@@ -2901,6 +3020,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             except Exception:
                 log.warning("wifi status failed", exc_info=True)
                 wifi = {}
+            # Which radio this page belongs to (two in setup mode look alike):
+            # the room and the id's last four, as the makers see them.
+            try:
+                wifi = {**wifi, "room": app.room.custom() or "",
+                        "short_id": integration.radio_id(app.machine_id_file)[-4:]}
+            except Exception:
+                log.debug("wifi page identity failed", exc_info=True)
             html = wifi_page.render(page.read_text("utf-8"), wifi, lang, form=form, **kw)
             self._send(status, html.encode(), "text/html; charset=utf-8")
 
@@ -2978,8 +3104,12 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(join)
             elif path == "/api/reset":
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.confirmed_reset(self._body())}))
+            elif path == "/api/reset/undo":
+                self._guard(lambda: (self._body(), self._json(200, {"ok": True, "config": app.reset_undo()})))
             elif path == "/api/restart":
                 self._guard(lambda: self._json(200, {"ok": True, **app.restart(self._body())}))
+            elif path == "/api/handover":
+                self._guard(lambda: self._json(200, {"ok": True, **app.handover(self._body())}))
             elif path == "/api/keys/starter":
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.set_starter(self._body())}))
             elif path == "/api/confirm/request":
@@ -3041,6 +3171,9 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": app.confirm.cancel(m.group(1))}))
             elif m := HOST_ID.match(path):
                 self._guard(lambda: self._json(200, {"ok": True, **app.remove_host(m.group(1))}))
+            elif m := WIFI_NET_ID.match(path):
+                self._guard(lambda: self._json(200, {"ok": True, **app.wifi_forget(
+                    unquote(m.group(1)), self._body(), self._local_addr())}))
             elif path == "/api/software/install":
                 self._guard(lambda: (app.software.cancel_install(), self._json(200, {"ok": True})))
             elif path == "/api/ytm/account":

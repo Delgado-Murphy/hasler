@@ -14,7 +14,9 @@
 # before moOde's worker looks for a network. It hands the values to
 # hasler-wifi-join on stdin (as the setup page does, without the restart),
 # writes what happened to hasler-wifi-result.txt next to it and deletes
-# hasler-wifi.txt, which holds a password. docs/using.md "Wi-Fi".
+# hasler-wifi.txt, which holds a password. docs/using.md "Wi-Fi". The helper
+# leaves /var/lib/haslerd/wifi-joined behind, so haslerd's lamp says OK once
+# the radio is on the network (main.consume_wifi_joined).
 set -u
 BOOT=/boot/firmware
 IN="$BOOT/hasler-wifi.txt"

@@ -10,6 +10,15 @@ The same helper scans while the radio is a hotspot (NetworkManager can't) and
 tries the saved networks again for the watchdog (haslerd/wifiwatch.py), so a
 power cut where the router comes back slower than the radio does not leave it
 in setup mode until somebody pulls the plug.
+
+Moving the radio (docs/using.md "Moving the radio"): ``forget`` drops one
+saved network (the current one restarts the radio into setup mode),
+``forget_all`` every one (the hand-over); ``set_hotspot_name`` calls the
+setup network after the room ("Hasler Kitchen") once the room is named;
+``hotspot_now`` brings it up without forgetting anything (the wifi_setup key
+job). A join writes ``<state>/wifi-joined`` with the SSID before the restart
+(the helper does too, for the rescue file's path); ``take_joined`` hands it to
+haslerd's next start, once, so the lamp can say OK on the new network.
 """
 
 from __future__ import annotations
@@ -37,8 +46,12 @@ HOTSPOT_SSID = "Hasler"
 # (ensure_hotspot): ssid=... and password=... lines, 0600. main.py points this
 # into the state directory.
 HOTSPOT_FILE = "/var/lib/haslerd/hotspot.txt"
+# The SSID of the network just joined, left for the next start (see above).
+JOINED_FILE = "/var/lib/haslerd/wifi-joined"
 # Hotspot passwords haslerd chooses: letters and digits nobody misreads.
 PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+# The setup network's name is the room's, as the casting names are: "Hasler Kitchen".
+HOTSPOT_NAME_MAX = 32
 RESERVED = ("None", "Activate Hotspot")
 # A scan from the hotspot takes the radio off its channel for a moment (the
 # phone on it notices): at most this often, however often the page asks.
@@ -176,12 +189,14 @@ class Wifi:
         helper: str = HELPER,
         hotspot_file: str | Path = HOTSPOT_FILE,
         clock: Callable[[], float] = time.monotonic,
+        joined_file: str | Path | None = JOINED_FILE,
     ) -> None:
         self._run = runner
         self._hotspot = hotspot
         self.db = db
         self.helper = helper
         self.hotspot_file = hotspot_file
+        self.joined_file = joined_file
         # The last scan that found something: in hotspot mode NetworkManager
         # lists nothing, and the helper's scan does not work on every chip.
         self._last_scan: list[dict] = []
@@ -190,11 +205,14 @@ class Wifi:
         self._next_helper_scan = 0.0
         # The watchdog (haslerd/wifiwatch.py) sets this; its status() joins ours.
         self.watch: Any = None
+        # The room's name (web/room.py custom()), for the setup network's name;
+        # main.build_wifiwatch wires it. None: plain "Hasler".
+        self.room_name: Callable[[], str | None] | None = None
 
     def status(self) -> dict:
         hotspot = bool(self._hotspot())
         doc = {"hotspot": hotspot, "current": self.current_ssid(), "networks": self.networks(hotspot),
-               "saved": self.saved_ssids(), "setup": self.hotspot_info()}
+               "saved": self.saved_ssids(), "known": self.known(), "setup": self.hotspot_info()}
         if self.watch is not None:
             try:
                 doc["retry"] = self.watch.status()
@@ -282,24 +300,104 @@ class Wifi:
         The helper fixes whichever is the case and nothing else; a password
         it used is kept here for the key page (``setup.password``).
         """
-        password = "-".join("".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(4)) for _ in range(3))
+        password = self.new_password()
         reply = self._helper({"action": "hotspot", "ensure": True, "password": password}, timeout=60)
         if reply.get("ok") and reply.get("password_used"):
             ssid = str(reply.get("ssid") or self.hotspot_ssid())
-            path = Path(self.hotspot_file)
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                with os.fdopen(fd, "w", encoding="utf-8") as f:
-                    f.write(f"# haslerd: the setup hotspot (moOde -> Network -> Access Point)\n"
-                            f"ssid={ssid}\npassword={password}\n")
-            except OSError:
-                log.warning("could not keep the setup hotspot's password in %s", path, exc_info=True)
+            self._keep_hotspot(ssid, password)
             log.warning("setup hotspot %r had no password - it has one now (key page, /api/wifi)", ssid)
         elif reply.get("ok") and reply.get("changed"):
             log.warning("setup hotspot's profile repaired (it had no address)")
         elif not reply.get("ok"):
             log.info("setup hotspot check: %s", reply.get("error"))
+        if reply.get("ok"):
+            # A room named before this release, or a name the hotspot missed.
+            self.apply_hotspot_name()
+        return reply
+
+    @staticmethod
+    def new_password() -> str:
+        """A setup password nobody misreads: three groups of four, like abcd-efgh-jkmn."""
+        return "-".join("".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(4)) for _ in range(3))
+
+    def _keep_hotspot(self, ssid: str, password: str) -> None:
+        """Remember the setup network's name and password (0600) for the key page."""
+        path = Path(self.hotspot_file)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(f"# haslerd: the setup hotspot (moOde -> Network -> Access Point)\n"
+                        f"ssid={ssid}\npassword={password}\n")
+        except OSError:
+            log.warning("could not keep the setup hotspot's password in %s", path, exc_info=True)
+
+    # -- the setup network's name -------------------------------------------------
+
+    @staticmethod
+    def hotspot_name_for(room: str | None) -> str:
+        """What the setup network is called for a room: "Hasler Kitchen"; plain
+        "Hasler" without a room, or the room itself when it already starts so."""
+        room = (room or "").strip()
+        if not room:
+            return HOTSPOT_SSID
+        if room.lower().startswith(HOTSPOT_SSID.lower()):
+            name = room
+        else:
+            name = f"{HOTSPOT_SSID} {room}"
+        name = name[:HOTSPOT_NAME_MAX].rstrip(" .-")
+        return re.sub(r"[\x00-\x1f\x7f/\\]", "", name) or HOTSPOT_SSID
+
+    def apply_hotspot_name(self, room: str | None = None) -> dict | None:
+        """Call the setup network after the room (``room``, else ``room_name()``).
+
+        Only when haslerd knows the hotspot's password (hotspot.txt): the key
+        NetworkManager stores is derived from name and password, so a rename
+        needs both, and a password set on moOde's page is not known here.
+        None when there is nothing to do."""
+        if room is None and self.room_name is not None:
+            try:
+                room = self.room_name()
+            except Exception:
+                room = None
+        want = self.hotspot_name_for(room)
+        saved = read_hotspot_file(self.hotspot_file)
+        password = saved.get("password", "")
+        if not password:
+            if want != self.hotspot_ssid():
+                log.info("setup network stays %r: its password isn't known here, so it can't be renamed", self.hotspot_ssid())
+            return None
+        if want == self.hotspot_ssid() and saved.get("ssid") == want:
+            return None
+        reply = self._helper({"action": "hotspot", "password": password, "ssid": want}, timeout=60)
+        if reply.get("ok"):
+            self._keep_hotspot(str(reply.get("ssid") or want), password)
+            log.info("setup network is now %r", reply.get("ssid") or want)
+        else:
+            log.warning("could not rename the setup network: %s", reply.get("error"))
+        return reply
+
+    def set_hotspot_password(self, room: str | None = None) -> dict:
+        """A new setup password (the hand-over: the old owner read the old one),
+        with the network's name for ``room`` (plain "Hasler" for a new owner).
+        Returns {"ssid", "password"}; raises ValueError if the helper refuses."""
+        password = self.new_password()
+        want = self.hotspot_name_for(room)
+        reply = self._helper({"action": "hotspot", "password": password, "ssid": want}, timeout=60)
+        if not reply.get("ok"):
+            raise ValueError(reply.get("error") or "the Wi-Fi helper failed")
+        ssid = str(reply.get("ssid") or want)
+        self._keep_hotspot(ssid, password)
+        log.warning("setup network %r has a new password", ssid)
+        return {"ssid": ssid, "password": password}
+
+    def hotspot_now(self) -> dict:
+        """The setup network now, forgetting nothing (the wifi_setup key job)."""
+        reply = self._helper({"action": "hotspot-now"}, timeout=90)
+        if not reply.get("ok"):
+            raise ValueError(reply.get("error") or "the Wi-Fi helper failed")
+        log.warning("setup network %s from a key (nothing forgotten)",
+                    "already up" if reply.get("result") == "already" else "brought up")
         return reply
 
     def retry(self, force: bool = False) -> dict:
@@ -308,6 +406,8 @@ class Wifi:
         reply = self._helper({"action": "retry", "force": bool(force)}, timeout=180)
         if not reply.get("result"):
             reply["result"] = "error"
+        if reply["result"] == "joined":
+            self.mark_joined(str(reply.get("ssid") or ""))
         return reply
 
     def _query(self, sql: str) -> list[tuple]:
@@ -365,4 +465,69 @@ class Wifi:
         reply = self._helper({"ssid": ssid, "password": password, "security": security}, timeout=30)
         if not reply.get("ok"):
             raise ValueError(reply.get("error") or "the Wi-Fi helper failed")
+        self.mark_joined(ssid)
         log.warning("joining Wi-Fi %r - restarting", ssid)
+
+    # -- the networks it knows: forgetting -------------------------------------------
+
+    def known(self) -> list[dict]:
+        """The saved networks for the page, the current one first and flagged."""
+        cur = self.current_ssid()
+        return [{"ssid": s, "current": s == cur} for s in self.saved_ssids()]
+
+    def forget(self, ssid: str, reboot: bool = True) -> dict:
+        """Forget a saved network. The current one restarts the radio into
+        setup mode (``reboot``); raises ValueError with the helper's reason."""
+        ssid = (ssid or "").strip()
+        if not 1 <= len(ssid.encode()) <= 32:
+            raise ValueError("network name must be 1–32 characters")
+        if ssid == self.hotspot_ssid():
+            raise ValueError("that is the setup network, not a saved one")
+        if ssid not in self.saved_ssids():
+            raise ValueError(f"the radio doesn't know a network called {ssid}")
+        reply = self._helper({"action": "forget", "ssid": ssid, "reboot": bool(reboot)}, timeout=60)
+        if not reply.get("ok"):
+            raise ValueError(reply.get("error") or "the Wi-Fi helper failed")
+        log.warning("Wi-Fi %r forgotten%s", ssid, " - restarting into setup mode" if reply.get("restarting") else "")
+        return {"forgotten": ssid, "was_current": bool(reply.get("was_current")),
+                "restarting": bool(reply.get("restarting"))}
+
+    def forget_all(self) -> dict:
+        """Every saved network, without a restart (the hand-over restarts itself)."""
+        reply = self._helper({"action": "forget-all"}, timeout=60)
+        if not reply.get("ok"):
+            raise ValueError(reply.get("error") or "the Wi-Fi helper failed")
+        gone = [str(s) for s in (reply.get("forgotten") or [])]
+        self.take_joined()
+        log.warning("every saved Wi-Fi forgotten (%s)", ", ".join(gone) or "there were none")
+        return {"forgotten": gone}
+
+    # -- the marker for the next start ---------------------------------------------------
+
+    def mark_joined(self, ssid: str) -> None:
+        """Leave the SSID just joined for the next start (``take_joined``). Never raises."""
+        if self.joined_file is None:
+            return
+        try:
+            path = Path(self.joined_file)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(ssid + "\n", encoding="utf-8")
+        except OSError:
+            log.debug("could not write %s", self.joined_file, exc_info=True)
+
+    def take_joined(self) -> str | None:
+        """The SSID a join left for this start, and the marker is gone; None if none."""
+        if self.joined_file is None:
+            return None
+        path = Path(self.joined_file)
+        try:
+            ssid = path.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return None
+        except (OSError, UnicodeDecodeError):
+            ssid = ""
+        try:
+            path.unlink()
+        except OSError:
+            log.debug("could not remove %s", path, exc_info=True)
+        return ssid or None

@@ -22,6 +22,12 @@ from urllib.parse import parse_qs
 LANGS = ("en", "es")
 SECURITIES = ("auto", "none", "wpa-psk", "sae")
 HOTSPOT_SSID = "Hasler"
+# The "which radio is this" block under the title (the room, the id's last
+# four, Blink the lamp): its few words live here, not in the page's table.
+WHO = {
+    "en": {"blink": "Blink the lamp", "blinking": "Look at the lamp…", "radio": "radio"},
+    "es": {"blink": "Parpadea la luz", "blinking": "Mira la luz…", "radio": "radio"},
+}
 
 _STRINGS = re.compile(r'<script type="application/json" id="strings">(.*?)</script>', re.S)
 _SLOT = re.compile(r"\{\{(=?)(\w+)\}\}")
@@ -153,10 +159,18 @@ def render(page: str, status: dict[str, Any], lang: str, *, state: str = "form",
         f'<a href="/wifi?lang={code}" lang="{code}"{CURRENT if code == lang else ""}>{name}</a>'
         for code, name in (("en", "English"), ("es", "Español")))
 
+    # Which radio this page is for: "Kitchen · radio ab12" (two in setup mode look alike).
+    who = {**WHO["en"], **WHO.get(lang, {})}
+    room, short_id = str(status.get("room") or ""), str(status.get("short_id") or "")
+    who_words = " · ".join(x for x in (escape(room), f"{who['radio']} {escape(short_id)}" if short_id else "") if x)
+
     values = {
         "lang": lang,
         "state": "done" if state == "done" else "form",
         "back": back,
+        "who": who_words,
+        "blink": who["blink"],
+        "blinking": who["blinking"],
         "lede_key": lede_key,
         "lede_ssid": escape(lede_ssid),
         "lede": _fmt(s.get(lede_key, ""), v=escape(lede_ssid)),
