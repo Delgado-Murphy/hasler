@@ -83,7 +83,7 @@ them for moOde, so this should not happen.
 | `channel` | `stable` | `bench` only for the makers' test radio. Stable has been live since 1.0.5 (2026-10-23). |
 | `update_mode` | `auto` (small updates at night, big ones ask) | `ask`, `off` |
 | `variant` | `hasler-hm-hat` (a Hasler HM on the Hasler HAT: every new one) | `hasler-hm` (the prototype's stripboard) \| `excelsior` (keys that spring back on a modified unit: see [hardware.md](hardware.md#excelsior-latching-or-not)) |
-| `starter` | `eclectic` (the built-in stations: the starter set on the keys) | `classical`, `jazz`, `pop`, `raices`, `family` (`config/presets/`); the owner can pick another on the key page |
+| `starter` | `eclectic` (the built-in stations: the starter set on the keys) | `little`, `family`, `teens`, `indie`, `classical`, `jazz`, `oldies`, `espana`, `world` (`config/presets/`; 1.5's `pop` and `raices` mean `espana`); the owner can pick another on the key page |
 | `user` | `pi` | the username you gave Imager |
 | `moode` | `yes` (Hasler's audio and casting settings in moOde) | `no` |
 | `panel_optional` | `no` | `yes` on a bare Pi without the key board |

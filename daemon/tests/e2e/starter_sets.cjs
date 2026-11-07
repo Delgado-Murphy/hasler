@@ -2,7 +2,8 @@
 // Starter sets on the key page: the "Start from a set…" sheet at the bottom of
 // Edit keys, choosing a set (every key changes, the radio remembers it, Reset
 // goes back to it), on a Hasler HM and on an Excelsior (seven keys, Tape), and
-// a radio whose box.yaml names a set. Runs fake radios (haslerd --fake) in
+// a radio whose box.yaml names a set, and one that names a set 1.6 folded into
+// another (pop -> espana). Runs fake radios (haslerd --fake) in
 // Chrome; box.yaml's web.allow_unconfirmed stands in for the key press.
 //
 //   cd daemon && node tests/e2e/starter_sets.cjs
@@ -17,7 +18,8 @@ const {chromium} = require(process.env.PLAYWRIGHT || 'playwright');
 
 const DAEMON = path.resolve(__dirname, '..', '..');
 const PY = process.env.HASLER_PY || path.join(DAEMON, '.venv', 'bin', 'python');
-const SETS = ['eclectic', 'classical', 'jazz', 'pop', 'raices', 'family'];
+const SETS = ['little', 'family', 'teens', 'indie', 'eclectic', 'classical', 'jazz', 'oldies', 'espana', 'world'];
+const GROUPS = ['Little ones', 'Kids', 'Teens & twenties', 'Grown-ups'];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let failed = 0, passed = 0;
 
@@ -63,6 +65,7 @@ const presetName = (cfg, n) => (cfg.presets.find(p => p.n === n) || {}).name;
   const hm = await startRadio({variant: 'hasler-hm'});
   const ex = await startRadio({variant: 'excelsior'});
   const boxed = await startRadio({variant: 'hasler-hm', starter: 'family'});
+  const folded = await startRadio({variant: 'hasler-hm', starter: 'pop'});
   const browser = await launch();
   const errors = [];
   const phone = await browser.newContext({viewport: {width: 390, height: 844}, deviceScaleFactor: 2});
@@ -84,11 +87,12 @@ const presetName = (cfg, n) => (cfg.presets.find(p => p.n === n) || {}).name;
       glyphs: [...el.querySelectorAll('.ss-g')].map(g => g.getAttribute('aria-label')), button: el.querySelector('.btn').textContent, primary: el.querySelector('.btn').classList.contains('primary')})));
   };
   try {
-    await check('the config lists the six sets, the eclectic one on the keys', async () => {
+    await check('the config lists the ten sets, grouped, the eclectic one on the keys', async () => {
       const c = await getJson(hm.base, '/api/config');
       assert(c.starter === 'eclectic' && c.starter_from === 'default' && c.factory === true, 'starter ' + JSON.stringify([c.starter, c.starter_from, c.factory]));
       assert(JSON.stringify(c.starters.map(s => s.id)) === JSON.stringify(SETS), 'sets ' + c.starters.map(s => s.id));
-      assert(c.starters.every(s => s.keys.length === 6 && s.title && s.blurb), 'six keys per set on the HM');
+      assert(c.starters.every(s => s.keys.length === 6 && s.title && s.blurb && s.group), 'six keys per set on the HM');
+      assert(JSON.stringify([...new Set(c.starters.map(s => s.group))]) === JSON.stringify(GROUPS), 'groups ' + c.starters.map(s => s.group));
       assert(presetName(c, 1) === 'FIP' && presetName(c, 3) === 'Coffee Shop Blend', 'eclectic keys ' + c.presets.map(p => p.name));
       assert(c.presets[0].station === 'fr-fip' && c.presets[0].uri.startsWith('https://'), 'station id on key 1: ' + JSON.stringify(c.presets[0]));
     });
@@ -100,6 +104,8 @@ const presetName = (cfg, n) => (cfg.presets.find(p => p.n === n) || {}).name;
       assert(row.includes('Reset keys to defaults') && row.includes('Start from a set…') && row.includes('(Eclectic)'), 'bottom row: ' + row);
       const sets = await openSheet(page);
       assert(JSON.stringify(sets.map(s => s.id)) === JSON.stringify(SETS), 'sheet sets ' + sets.map(s => s.id));
+      const heads = await page.$$eval('#setsDlg .ss-group', els => els.map(e => e.textContent));
+      assert(JSON.stringify(heads) === JSON.stringify(GROUPS), 'group headings ' + heads);
       const cur = sets.find(s => s.on);
       assert(cur && cur.id === 'eclectic' && cur.now === 'On the keys now' && !cur.primary, 'current set ' + JSON.stringify(cur));
       assert(sets.filter(s => !s.on).every(s => s.primary && s.button === 'Use this set'), 'the other sets have a primary button');
@@ -153,28 +159,41 @@ const presetName = (cfg, n) => (cfg.presets.find(p => p.n === n) || {}).name;
       await page.waitForSelector('.keylist li');
       const sets = await openSheet(page);
       const classical = sets.find(s => s.id === 'classical');
-      assert(classical.keys.length === 7 && classical.keys[6] === 'Tape Gentle Chamber Music', 'the Tape key in the sheet: ' + classical.keys);
+      assert(classical.keys.length === 7 && classical.keys[6] === 'Tape Gregorian chant', 'the Tape key in the sheet: ' + classical.keys);
       await page.click('#setsDlg [data-choose="classical"]');
       await until(async () => !(await page.$('#setsDlg')), 5000, 'the sheet to close');
       const c = await until(async () => { const d = await getJson(ex.base, '/api/config'); return d.starter === 'classical' ? d : null; }, 5000, 'classical on the keys');
-      assert(presetName(c, 1) === 'Radio Swiss Classic' && presetName(c, 7) === 'Gentle Chamber Music' && c.factory, 'classical keys: ' + c.presets.map(p => p.name));
+      assert(presetName(c, 1) === 'Radio Swiss Classic' && presetName(c, 7) === 'Gregorian chant' && c.factory, 'classical keys: ' + c.presets.map(p => p.name));
       const tape = c.keys.find(k => k.id === 'tape');
       assert(tape.tap.n === 7, 'Tape still plays 7');
       await page.goto(ex.base + '/#');
       await page.waitForSelector('#bank button[data-key="tape"]');
-      await until(async () => (await page.textContent('#bank button[data-key="tape"] .key-l')).includes('Chamber'), 5000, 'the Tape key cap');
+      await until(async () => (await page.textContent('#bank button[data-key="tape"] .key-l')).includes('Gregorian'), 5000, 'the Tape key cap');
       await page.close();
     });
 
     await check('box.yaml starter: family on the keys, the page says so', async () => {
       const c = await getJson(boxed.base, '/api/config');
       assert(c.starter === 'family' && c.starter_from === 'box' && c.factory === true, JSON.stringify([c.starter, c.starter_from, c.factory]));
-      assert(presetName(c, 1) === 'Radio Swiss Pop' && presetName(c, 3) === 'Canciones infantiles', 'family keys ' + c.presets.map(p => p.name));
+      assert(presetName(c, 1) === 'Songs From Animated Movies' && presetName(c, 3) === 'Disney en castellano', 'family keys ' + c.presets.map(p => p.name));
       const page = await open(boxed, '#edit');
       await page.waitForSelector('#sec-reset');
-      assert((await page.textContent('#sec-reset')).includes('(Family kitchen)'), 'the reset row names the set');
+      assert((await page.textContent('#sec-reset')).includes('(Kids & family)'), 'the reset row names the set');
       const sets = await openSheet(page);
       assert(sets.find(s => s.on).id === 'family', 'family marked');
+      await page.keyboard.press('Escape');
+      await page.close();
+    });
+
+    await check('box.yaml naming a folded set (pop): España on the keys, marked in the sheet', async () => {
+      const c = await getJson(folded.base, '/api/config');
+      assert(c.starter === 'espana' && c.starter_from === 'box' && c.factory === true, JSON.stringify([c.starter, c.starter_from, c.factory]));
+      assert(presetName(c, 1) === 'Pop español' && presetName(c, 2) === 'Flamenco Radio', 'espana keys ' + c.presets.map(p => p.name));
+      const page = await open(folded, '#edit');
+      await page.waitForSelector('#sec-reset');
+      assert((await page.textContent('#sec-reset')).includes('(España)'), 'the reset row names the set');
+      const sets = await openSheet(page);
+      assert(sets.find(s => s.on).id === 'espana', 'espana marked');
       await page.keyboard.press('Escape');
       await page.close();
     });
@@ -202,7 +221,7 @@ const presetName = (cfg, n) => (cfg.presets.find(p => p.n === n) || {}).name;
     if (errors.length) failed++;
   } finally {
     await browser.close();
-    for (const r of [hm, ex, boxed]){ r.proc.kill(); fs.rmSync(r.tmp, {recursive: true, force: true}); }
+    for (const r of [hm, ex, boxed, folded]){ r.proc.kill(); fs.rmSync(r.tmp, {recursive: true, force: true}); }
   }
   console.log(`${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);

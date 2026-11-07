@@ -6,6 +6,7 @@ from a starter set in ``config/presets/<pack>.yaml``::
 
     pack: eclectic
     title: "Eclectic"
+    group: "Grown-ups"
     blurb: "A little of everything ..."
     presets:
       - {n: 1, name: "FIP", short: "FIP", station: fr-fip, why: "..."}
@@ -24,7 +25,9 @@ so a key still plays when an id is gone from a later collection.
 Which set a radio uses: ``box.yaml starter:`` (hasler-install writes
 ``eclectic``), overridden by ``settings.json starter`` when the owner chose
 one on the key page ("Start from a set"). ``DEFAULT_PACK`` when neither says.
-"Reset keys to defaults" resets to that set.
+"Reset keys to defaults" resets to that set. A set a release dropped or
+renamed is followed to its successor (``PACK_ALIASES``): a radio on 1.5's
+``pop`` plays ``espana`` now, as if the owner had chosen it.
 
 ``layout_rev`` names a shipped layout (the set's presets and the descriptor's
 key table) by content; keys.yaml carries it as ``defaults_rev`` beside a
@@ -48,8 +51,15 @@ import yaml
 log = logging.getLogger(__name__)
 
 DEFAULT_PACK = "eclectic"
-# The order the page lists the sets in; anything else comes after, by name.
-PACK_ORDER = ("eclectic", "classical", "jazz", "pop", "raices", "family")
+# The order the page lists the sets in (youngest listeners first, so the
+# sheet's ``group`` headings read in age order); anything else comes after, by name.
+PACK_ORDER = ("little", "family", "teens", "indie",
+              "eclectic", "classical", "jazz", "oldies", "espana", "world")
+# Sets a release dropped or renamed -> the set that took their place. A radio
+# whose box.yaml or settings.json names an old one plays its successor (an
+# info line, not a warning: nobody did anything wrong). 1.6 folded 1.5's
+# "Pop & hits" and "Raíces" into "España".
+PACK_ALIASES = {"pop": "espana", "raices": "espana"}
 PACK_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 SHORT_MAX = 12                  # a key-cap label (web/keymap.py SHORT_MAX)
 ENTRY_SOURCES = ("station", "ytm", "radio", "spotify", "url")
@@ -172,6 +182,7 @@ class Pack:
     blurb: str
     entries: tuple[dict, ...]       # as written, by n ascending (``why`` included)
     path: Path | None = None
+    group: str = ""                 # the sheet's heading for it ("Little ones", "Grown-ups" ...)
 
 
 def _check_entry(raw: Any, where: str) -> dict:
@@ -220,7 +231,8 @@ def load_pack(path: Path) -> Pack:
         raise ValueError(f"{path}: no presets")
     entries.sort(key=lambda e: e["n"])
     return Pack(name=name, title=" ".join(str(doc.get("title") or name).split()),
-                blurb=" ".join(str(doc.get("blurb") or "").split()), entries=tuple(entries), path=path)
+                blurb=" ".join(str(doc.get("blurb") or "").split()), entries=tuple(entries), path=path,
+                group=" ".join(str(doc.get("group") or "").split())[:40])
 
 
 def load_packs(directory: Path) -> dict[str, Pack]:
@@ -313,6 +325,16 @@ class Starters:
     def pack(self, name: str) -> Pack | None:
         return self.packs.get(name)
 
+    def known(self, name: Any) -> str | None:
+        """``name`` if this release has it, else the set that took its place
+        (``PACK_ALIASES``), else None."""
+        if not isinstance(name, str) or not name:
+            return None
+        if name in self.packs:
+            return name
+        successor = PACK_ALIASES.get(name)
+        return successor if successor in self.packs else None
+
     def chosen(self, box_starter: Any, settings: Any) -> str | None:
         """The set in force: the page's (settings.json ``starter``) over
         box.yaml's, over the default. An unknown name is a log line, not a
@@ -321,23 +343,26 @@ class Starters:
         for name, where in ((page, "settings.json"), (box_starter, "box.yaml")):
             if name in (None, ""):
                 continue
-            if isinstance(name, str) and name in self.packs:
-                return name
+            found = self.known(name)
+            if found:
+                if found != name:
+                    log.info("%s names starter set %r, which is %r now", where, name, found)
+                return found
             log.warning("%s names starter set %r, which this release doesn't have", where, name)
         return self.default
 
     def source(self, box_starter: Any, settings: Any) -> str:
         """Where the set in force came from: "page", "box" or "default"."""
         page = settings.get("starter") if isinstance(settings, dict) else None
-        if isinstance(page, str) and page in self.packs:
+        if self.known(page):
             return "page"
-        if isinstance(box_starter, str) and box_starter in self.packs:
+        if self.known(box_starter):
             return "box"
         return "default"
 
     def specs(self, name: str | None) -> list[dict]:
         """The set's preset specs for this cabinet ([] for a set we don't have)."""
-        pack = self.packs.get(name or "")
+        pack = self.packs.get(self.known(name) or "")
         if pack is None:
             return []
         return resolve_pack(pack, self.slots, collection(self.release), catalogue(self.release))
@@ -354,7 +379,7 @@ class Starters:
                     "spotify" if entry.get("spotify") else "ytm"
                 keys.append({"n": entry["n"], "name": entry["name"], "short": entry.get("short", ""),
                              "source": source, "why": entry.get("why", "")})
-            out.append({"id": pack.name, "title": pack.title, "blurb": pack.blurb,
+            out.append({"id": pack.name, "title": pack.title, "blurb": pack.blurb, "group": pack.group,
                         "default": pack.name == self.default, "keys": keys})
         return out
 
@@ -365,7 +390,7 @@ def default_specs(variant_path: Path, slots: int, pack: str | None = None) -> li
     starters = Starters.near(variant_path, slots)
     if not starters:
         return []
-    name = pack if pack in starters.packs else starters.default
+    name = starters.known(pack) or starters.default
     return starters.specs(name)
 
 

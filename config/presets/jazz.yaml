@@ -1,7 +1,8 @@
 # Starter set: Jazz & soul (the format: eclectic.yaml).
 pack: jazz
 title: "Jazz & soul"
-blurb: "From the classic quartets to funk and the groove: two jazz stations, FIP's groove channel, and lists for a dinner or a dance."
+group: "Grown-ups"
+blurb: "Jazz from Switzerland, Paris and New Orleans, Motown for the kitchen and a quiet list for dinner."
 presets:
   - {n: 1, name: "Radio Swiss Jazz", short: "Swiss Jazz", station: ch-radio-swiss-jazz,
      why: "Jazz around the clock, no presenters."}
@@ -9,11 +10,11 @@ presets:
      why: "Paris's jazz station: the standards, the new names, the odd live set."}
   - {n: 3, name: "Essential Jazz", short: "Essential", ytm: RDCLAK5uy_m7EF_vYZXBhXNuduyXmhT00DYapc8cobs,
      why: "The records everyone should hear once, from YouTube Music. Tap again to skip."}
-  - {n: 4, name: "FIP Groove", short: "FIP Groove", station: fr-fip-groove,
-     why: "Funk, soul and groove from Radio France."}
-  - {n: 5, name: "Funk & Soul Power", short: "Funk & Soul", ytm: RDCLAK5uy_kOJNgwq4_Es1d2f9Z95etYKgzaQ6l5xd8,
-     why: "For the kitchen on a Saturday."}
+  - {n: 4, name: "WWOZ New Orleans", short: "WWOZ", station: us-wwoz-90-7-new-orleans,
+     why: "Live from New Orleans: brass bands, trad jazz and R&B, the city's own station."}
+  - {n: 5, name: "Essential Motown Hits", short: "Motown", ytm: RDCLAK5uy_md9QGmtE2Pn3CLaFPcx9AhVuY7CmE2yes,
+     why: "The Supremes, Marvin, Stevie: soul for a Saturday kitchen."}
   - {n: 6, name: "Dinner Party Jazz", short: "Dinner Jazz", ytm: RDCLAK5uy_l_2hw6aZpjgIxEsMFWku27S5_WJDv9m1E,
      why: "Quiet enough to talk over."}
-  - {n: 7, name: "Worldwide FM", short: "Worldwide FM", station: gb-worldwide-fm,
-     why: "Gilles Peterson's station: jazz, soul and the world's music."}
+  - {n: 7, name: "Django Reinhardt radio", short: "Django", ytm: RDEM45IwSGXIUbZbdkR_o8HioQ,
+     why: "Start with Django's guitar and keep going: an endless gypsy-jazz radio."}

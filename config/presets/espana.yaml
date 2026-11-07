@@ -1,0 +1,22 @@
+# Starter set: España (the format: eclectic.yaml). Pop, flamenco, the movida
+# and Spain's own radio; it replaces 1.5's "Pop & hits" and "Raíces" sets
+# (haslerd/presets.py PACK_ALIASES).
+pack: espana
+title: "España"
+group: "Grown-ups"
+blurb: "Spanish pop, flamenco live from Andalusia, Camarón without end, the movida and Radio 3."
+presets:
+  - {n: 1, name: "Pop español", short: "Pop español", ytm: RDCLAK5uy_mODoXSJeiOpgt_UVHmVsURrDfXEx3Ruok,
+     why: "The Spanish pop hits as a list, from YouTube Music. Tap again to skip."}
+  - {n: 2, name: "Flamenco Radio", short: "Flamenco", station: es-flamenco-radio,
+     why: "Canal Sur's flamenco channel: cante, guitarra and baile, all day, at 320k."}
+  - {n: 3, name: "Cadena Dial", short: "Dial", station: es-cadena-dial,
+     why: "Pop en español, all day."}
+  - {n: 4, name: "Camarón de la Isla radio", short: "Camarón", ytm: RDEM10QoLzBTeIlRCYcRC3ZOGQ,
+     why: "An endless radio around Camarón's voice."}
+  - {n: 5, name: "La movida", short: "Movida", ytm: RDCLAK5uy_nMjH-zwJOKTmoBGmVBQlTCML5WXHqxDOA,
+     why: "Spanish rock of the '80s and '90s, the movida and what came after."}
+  - {n: 6, name: "RNE Radio 3", short: "Radio 3", station: es-rne-radio-3,
+     why: "RTVE's music station: indie, roots and the long night programmes."}
+  - {n: 7, name: "Paco de Lucía radio", short: "Paco", ytm: RDEMYNquyZQPgZzsix5KOOjUWA,
+     why: "An endless radio around Paco de Lucía's guitar."}

@@ -61,7 +61,11 @@ That's all you need. The rest is for when you want more.
 ### The keys
 
 The radio has six numbered keys and one key marked **PU**. (The Excelsior has
-more; see [below](#the-excelsiors-keys).)
+more; see [below](#the-excelsiors-keys).) The keys start with a set
+chosen to show what the radio can do; there are ten, by who's listening
+(little ones, kids, teens, indie, grown-up eclectic, classical, jazz, golden
+oldies, España, world). Pick another in [Edit keys](#edit-keys) → **Start
+from a set…**.
 
 | You do this | What happens |
 |---|---|

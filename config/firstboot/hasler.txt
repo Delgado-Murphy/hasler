@@ -14,8 +14,9 @@ update_mode = auto
 variant = hasler-hm-hat
 
 # The built-in stations: the starter set on the keys out of the box. One of
-# eclectic, classical, jazz, pop, raices, family (config/presets in the
-# release); the owner can pick another on the key page.
+# eclectic, little, family, teens, indie, classical, jazz, oldies, espana,
+# world (config/presets in the release); the owner can pick another on the
+# key page.
 starter = eclectic
 
 # The login you set in Raspberry Pi Imager. Empty = the first user (uid 1000).
