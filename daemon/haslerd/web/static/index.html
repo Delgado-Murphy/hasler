@@ -108,6 +108,10 @@ button{cursor:pointer}
 .st-nm{position:absolute;top:34px;left:6px;right:6px;font:11.5px/14px var(--serif);color:#5A4428;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .st.on .st-n{font-weight:700;color:#2E1F10}
 .st.on .st-nm{font-weight:700;font-size:12.5px;color:#1E1308}
+/* The end stops: a phone at the left, the page at the right - quieter than the keys until the needle is on them */
+.st-n svg{width:10px;height:10px;vertical-align:-1px}
+.st.end .st-nm{color:#7A5E38;font-style:italic}
+.st.end.on .st-nm{color:#1E1308;font-style:normal}
 .needle{position:absolute;left:calc(50% - 1.5px);top:0;width:3px;height:21px;border-radius:1.5px;background:var(--needle);box-shadow:0 0 0 .5px rgba(120,30,10,.2)}
 .dial-wrap{position:relative}
 
@@ -126,9 +130,16 @@ button{cursor:pointer}
 .key.pu{flex-grow:1.15;margin-left:6px;color:var(--cream);background:linear-gradient(180deg,#4B3827 0%,#35271B 85%,#2A1E14 100%);box-shadow:0 5px 0 #1C130C,0 6px 10px rgba(0,0,0,.5)}
 .key.pu .key-n{font-size:20px}
 .key.pu .key-l{color:var(--brass)}
-.key.down{transform:translateY(5px);background:linear-gradient(180deg,#FAF2DF 0%,#E8DCC0 82%,#D0C19E 100%);
-  box-shadow:inset 0 3px 0 var(--amber),0 0 0 #8F7F5E,0 0 18px rgba(255,178,56,.55)}
-.key.pu.down{background:linear-gradient(180deg,#5A4430 0%,#40301F 85%,#33261A 100%);box-shadow:inset 0 3px 0 var(--amber),0 0 0 #1C130C,0 0 18px rgba(255,178,56,.45)}
+/* .down = the key is physically down (held here or on the cabinet, latched, a tap's flash): the
+   depression, no glow. .lit = its preset is what plays: the amber bar and glow, the cap where it
+   is. A latching key that plays is both; a momentary key is lit, not down, once the finger lifts. */
+.key.down{transform:translateY(5px);box-shadow:0 0 0 #8F7F5E,0 1px 4px rgba(0,0,0,.5)}
+.key.pu.down{box-shadow:0 0 0 #1C130C,0 1px 4px rgba(0,0,0,.5)}
+.key.lit{background:linear-gradient(180deg,#FAF2DF 0%,#E8DCC0 82%,#D0C19E 100%);
+  box-shadow:inset 0 3px 0 var(--amber),0 5px 0 #8F7F5E,0 6px 10px rgba(0,0,0,.5),0 0 18px rgba(255,178,56,.55)}
+.key.pu.lit{background:linear-gradient(180deg,#5A4430 0%,#40301F 85%,#33261A 100%);box-shadow:inset 0 3px 0 var(--amber),0 5px 0 #1C130C,0 6px 10px rgba(0,0,0,.5),0 0 18px rgba(255,178,56,.45)}
+.key.lit.down{box-shadow:inset 0 3px 0 var(--amber),0 0 0 #8F7F5E,0 0 18px rgba(255,178,56,.55)}
+.key.pu.lit.down{box-shadow:inset 0 3px 0 var(--amber),0 0 0 #1C130C,0 0 18px rgba(255,178,56,.45)}
 .key:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
 /* Excelsior: key 0 pops the latched key - narrower, a darker cap; a bank of 8 + key 0 packs tighter */
 .key.rel{flex-grow:.72;margin-right:4px;background:linear-gradient(180deg,#E2D6BC 0%,#CDBF9F 82%,#B5A57F 100%)}
@@ -1650,10 +1661,14 @@ function currentKey(){
   }
   return null;
 }
-const RENDERERS = ['bluetooth','airplay'];
-function puEngaged(){ return !!(status && !status.standby && !status.playing && (RENDERERS.includes(status.source) || (status.source === 'spotify' && status.renderer))); }
+const RENDERERS = ['bluetooth','airplay','dlna'];
+// A phone has the speaker, or PU waits for one: Next goes to the phone.
+function puEngaged(){ return !!(status && !status.standby && !status.playing && (status.played_from === 'phone' || status.waiting)); }
+// PU is lit only when the PU key put the radio on this source (status.pu_source): waiting for a
+// phone, or the phone it waited for plays. A phone that took the speaker by itself lights nothing.
+function puLit(){ return !!(status && !status.standby && (status.waiting || (status.played_from === 'phone' && status.pu_source && status.pu_source === status.source))); }
 function paintBank(){
-  const cur = currentKey(), pressed = new Set((status && status.pressed) || []), now = Date.now();
+  const cur = currentKey(), pressed = new Set((status && status.pressed) || []), now = Date.now(), latching = latchingBank();
   for (const btn of $('bank').children){
     const id = btn.dataset.key;
     if (btn.dataset.fixed) continue;   // key 0: cabinetKeys() paints it
@@ -1663,22 +1678,40 @@ function paintBank(){
     const short = id === 'pu' && !cfg ? 'Source' : keyCap(k, name);
     if (lbl.textContent !== short) lbl.textContent = short;
     capFit(lbl, short);
-    const down = localDown.has(id) || (flashUntil[id] || 0) > now || pressed.has(id) || cur === id || (id === 'pu' && puEngaged()) || latchedKey() === id;
+    // What is down (a finger, the cabinet's key, a latched key) and what plays are two things: on
+    // the Excelsior key 3 stays down while the page or a phone plays, and is drawn down, not lit.
+    const down = localDown.has(id) || (flashUntil[id] || 0) > now || pressed.has(id) || latchedKey() === id;
+    const lit = id === 'pu' ? puLit() : cur === id;
     btn.classList.toggle('down', down);
+    btn.classList.toggle('lit', lit);
     const hk = cfg && cfg.keys.find(x => x.id === id), hv = verbOf(hk && hk.hold), miss = hv !== 'none' && !!missingFor(id, 'hold');
     const hm = btn.querySelector('.key-h');
     if (hm){ hm.hidden = hv === 'none'; hm.classList.toggle('miss', miss); }
     const holdTxt = hv === 'none' ? '' : '. Hold: ' + holdName(hk) + (miss ? ', missing in Home Assistant' : '');
-    btn.setAttribute('aria-label', (k.label ? keyLabel(k) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : '') + holdTxt);
+    btn.setAttribute('aria-label', (k.label ? keyLabel(k) : id) + (name && name !== '—' ? ': ' + name : '') + (lit ? ', playing' : latching && down ? ', down' : '') + holdTxt);
     btn.title = hv === 'none' ? '' : 'Hold: ' + holdName(hk) + (miss ? ' (missing in Home Assistant)' : '');
-    btn.setAttribute('aria-pressed', String(cur === id));
+    btn.setAttribute('aria-pressed', String(latching ? down : lit));
   }
 }
 
 /* ================= remote: dial ================= */
 let stripSig = '', stripX = null, dialNameText = '', dialNameW = 0, lastLive = '';
+// Where the needle rests when nothing plays, and since when. It stays put (a phone that just
+// stopped, a page play that ended) for the radio's grace - actions.py CAST_END_GRACE_S, in which it
+// may bring a key back - and then parks at the last key, un-bolded.
+let parkedAt = null, quietSince = 0;
+const PARK_AFTER_MS = 20000;
+// The dial's stops: a phone at the left end, the keys, the page (Browse, Test) at the right end.
+// The end stops carry the name of what plays there - the phone, the station - else what they are.
+function phoneStopName(){ const p = status && status.phone; return (p && p.device) || 'Phone'; }
+function pageStopName(){
+  if (!status) return 'From the page';
+  if (status.played_from === 'room') return roomName(grp && grp.leader);
+  if (status.played_from === 'page' && status.playing && status.playing.name) return status.playing.name;
+  return 'From the page';
+}
 function stations(){
-  const out = [];
+  const out = [{id:'_phone', label:'', glyph:'phone', name: phoneStopName()}];
   for (const k of remoteKeys()){
     if (k.id === 'pu') continue;
     let name = '';
@@ -1686,30 +1719,45 @@ function stations(){
     else { const sk = status.keys.find(x => x.id === k.id); if (!sk || sk.n == null) continue; name = sk.name; }
     out.push({id:k.id, label:k.label, name: name || 'Key ' + k.label});
   }
+  out.push({id:'_page', label:'·', name: pageStopName()});
   return out;
 }
-function renderScale(curId){
+// at: the stop the needle points to (a key, '_phone', '_page'), null = nothing plays; bold: it is
+// what plays. The strip is one translated element, so every change of stop is a slide.
+function renderScale(at, bold){
   const scale = $('scale'), strip = $('stripEl');
   const cw = scale.clientWidth;
   if (!cw) return;
   const st = stations();
   const sp = Math.max(92, Math.min(124, cw / 3));
   const pad = sp * 6;
-  const sig = cw + '|' + st.map(s => s.id + s.name).join('|');
+  // Built once per set of stops; names are patched in place below, so a stop taking the name of
+  // what plays (the phone, the station) doesn't rebuild the strip and lose the slide.
+  const sig = cw + '|' + st.map(s => s.id).join('|');
   if (sig !== stripSig){
     stripSig = sig;
     strip.textContent = '';
     strip.style.setProperty('--sp', sp + 'px');
     strip.style.setProperty('--minor', (sp / 4) + 'px');
     strip.style.width = (pad * 2 + Math.max(0, st.length - 1) * sp) + 'px';
-    st.forEach((s, i) => strip.append(h('div', {class:'st', 'data-id':s.id, style:'left:' + (pad + i * sp) + 'px'},
-      h('span', {class:'st-n'}, s.label), h('span', {class:'st-nm'}, s.name))));
+    st.forEach((s, i) => strip.append(h('div', {class:'st' + (s.id[0] === '_' ? ' end' : ''), 'data-id':s.id, style:'left:' + (pad + i * sp) + 'px'},
+      h('span', {class:'st-n'}, s.glyph ? btIcon(s.glyph) : s.label), h('span', {class:'st-nm'}, s.name))));
     strip.classList.add('still'); stripX = null;
   }
-  const id = curId || lastKey || (st.length ? st[st.length - 1].id : null);
+  st.forEach((s, i) => { const nm = strip.children[i].querySelector('.st-nm'); if (nm.textContent !== s.name) nm.textContent = s.name; });
+  let id = at;
+  if (id){ parkedAt = id; quietSince = 0; }
+  else if (status && status.standby) id = parkedAt;   // asleep: the needle stays where it was
+  else {
+    if (!quietSince) quietSince = Date.now();
+    else if (Date.now() - quietSince > PARK_AFTER_MS) parkedAt = null;
+    id = parkedAt || lastKey;
+  }
+  const keys = st.filter(s => s.id[0] !== '_');
   let i = st.findIndex(s => s.id === id);
-  if (i < 0) i = st.length - 1;
-  for (const el of strip.children) el.classList.toggle('on', !!curId && el.dataset.id === curId);
+  if (i < 0) i = keys.length ? st.indexOf(keys[keys.length - 1]) : 0;
+  for (const el of strip.children) el.classList.toggle('on', !!(at && bold) && el.dataset.id === at);
+  strip.dataset.at = st[i].id;      // where the needle points (tests read it)
   const x = Math.round(cw / 2 - (pad + Math.max(0, i) * sp));
   if (x !== stripX){
     strip.style.transform = 'translateX(' + x + 'px)';
@@ -1751,48 +1799,60 @@ function renderDial(){
   if (cur) lastKey = cur;
   glass.classList.toggle('off', !!(status && status.standby));
   glass.classList.toggle('offline', !online);
-  let head = '', name = '', live = '';
+  // at: the dial stop the needle points to; bold: it is what plays (the key, the phone, the page).
+  let head = '', name = '', live = '', at = null, bold = false;
   if (!online){
     head = 'Can’t reach the radio'; name = 'Hasler'; setSong('Is your phone on the home Wi-Fi? Trying again…', '', '', 'none');
   } else if (!status){
     head = 'Tuning…'; name = 'Hasler'; setSong('', '', '', 'none');
   } else if (status.standby){
     head = 'Standby'; name = 'Standby'; setSong('', 'Tap any key to wake the radio', '', 'none');
-  } else if (!status.playing && mrOn() && grp.role === 'follow'){
-    const L = roomName(grp.leader);
+  } else if (!status.playing && (status.played_from === 'room' || (mrOn() && grp.role === 'follow'))){
+    const L = roomName(grp && grp.leader);
     head = 'Rooms · with ' + L; name = L; setSong('Playing along', 'Same music as ' + L, '', 'note');
-    live = 'Playing with ' + L;
+    live = 'Playing with ' + L; at = '_page'; bold = true;
   } else if (cur && (!status.playing || status.current_key !== cur) && optimistic){
     const k = cfg.keys.find(x => x.id === cur), p = presetIn(cfg, k.tap.n);
     head = keyLabel(k) + ' · ' + (SRC_HEAD[p && p.source] || ''); name = p ? p.name : keyLabel(k);
     setSong('Tuning in…', '', '', p && p.source === 'radio' ? 'radio' : 'note');
+    at = cur; bold = true;
   } else if (status.recovering){
-    // MPD stopped by itself; the radio's watchdog is bringing it back.
+    // MPD stopped by itself; the radio's watchdog is bringing it back. After two minutes the
+    // trouble is more likely the station than the Wi-Fi: say so, and suggest another key.
     const k = cur && cfg && cfg.keys.find(x => x.id === cur), p = k && k.tap && k.tap.n != null ? presetIn(cfg, k.tap.n) : null;
-    head = (k ? keyLabel(k) + ' · ' : '') + (SRC_HEAD[p && p.source] || ''); name = p ? p.name : 'Reconnecting';
-    setSong('Reconnecting…', 'The stream stopped; the radio is bringing it back', '', p && p.source === 'radio' ? 'radio' : 'note');
-    live = 'Reconnecting';
+    const long = (status.stalled_s || 0) > 120;
+    head = (k ? keyLabel(k) + ' · ' : '') + (SRC_HEAD[p && p.source] || ''); name = p ? p.name : (long ? 'Off the air?' : 'Reconnecting');
+    if (long) setSong('The station may be off the air', 'Try another key', '', p && p.source === 'radio' ? 'radio' : 'note');
+    else setSong('Reconnecting…', 'The stream stopped; the radio is bringing it back', '', p && p.source === 'radio' ? 'radio' : 'note');
+    live = long ? 'The station may be off the air' : 'Reconnecting';
   } else if (status.playing){
     const pl = status.playing, k = cur && remoteKeys().find(x => x.id === cur);
-    head = (k ? keyLabel(k) : 'Playing') + ' · ' + (SRC_HEAD[pl.source] || pl.source || '');
+    head = (k ? keyLabel(k) : 'From the page') + ' · ' + (SRC_HEAD[pl.source] || pl.source || '');
     name = pl.name || 'Playing';
     const t = status.track;
     if (pl.source === 'radio') setSong(t && t.title ? t.title : '', t && t.title ? (t.artist || 'Live radio') : 'Live radio', t && t.thumb, 'radio');
     else setSong(t && t.title ? t.title : '', t ? t.artist || t.album || '' : (pl.source === 'spotify' ? 'Spotify' : ''), t && (t.art || t.thumb), 'note', !!(t && t.explicit));
-    live = 'Now playing ' + name;
-  } else if (RENDERERS.includes(status.source) || (status.source === 'spotify')){
-    const nm = SRC_HEAD[status.source] || status.source, r = status.renderer || {};
-    head = 'PU · ' + nm; name = status.source === 'spotify' ? 'Spotify Connect' : nm;
-    if (status.waiting || (!r.title && !r.device)) setSong('Waiting for a phone', status.source === 'bluetooth' ? 'Pair it with “Hasler”' : 'Choose “Hasler” on your phone', '', 'bt');
-    else setSong(r.title || r.device, [r.artist, r.title ? r.device : ''].filter(Boolean).join(' · '), '', 'bt');
-    live = name;
+    live = 'Now playing ' + name; at = cur || '_page'; bold = true;
+  } else if (status.played_from === 'phone' || status.waiting){
+    // A phone has the speaker (on any renderer), or PU parked the radio and waits for one.
+    const nm = SRC_HEAD[status.source] || status.source || 'Phone', p = status.phone;
+    const viaPu = status.waiting || (status.pu_source && status.pu_source === status.source);
+    head = (viaPu ? 'PU' : 'Phone') + ' · ' + nm;
+    name = (p && p.device) || (status.source === 'spotify' ? 'Spotify Connect' : nm);
+    if (!p){
+      const left = status.pairing_left_s;
+      const open = left != null ? ' · Pairing open ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0') : '';
+      setSong('Waiting for a phone', (status.source === 'bluetooth' ? 'Pair it with “Hasler”' : 'Choose “Hasler” on your phone') + open, '', 'bt');
+    } else if (!p.title && !p.device) setSong('Playing from a phone', nm, '', 'bt');
+    else setSong(p.title || p.device, [p.artist, p.title ? p.device : ''].filter(Boolean).join(' · '), '', 'bt');
+    live = name; at = '_phone'; bold = !!p && status.played_from === 'phone';
   } else {
     head = 'Ready'; name = 'Quiet'; setSong('', 'Tap a key to play', '', 'none');
   }
   $('dialHead').textContent = head;
   $('dialMark').textContent = online && failStreak ? 'Reconnecting…' : 'Hasler · D&M';
   setDialName(name);
-  renderScale(status && !status.standby && status.playing ? cur : (optimistic ? cur : null));
+  renderScale(at, bold);
   if (live !== lastLive){ lastLive = live; if (live) $('nowLive').textContent = live; }
   paintYtmNow();
 }

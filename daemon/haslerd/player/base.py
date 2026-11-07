@@ -178,6 +178,8 @@ class FakePlayer:
     speaker: int | None = None
     shutdown_called: bool = False
     fail_play: Exception | None = None
+    # A phone casting to us: {"device", "title", "artist"} (what renderer_info reports).
+    phone: dict | None = None
 
     def play_preset(self, preset: Preset) -> None:
         self.calls.append(("play_preset", preset.n, preset.source))
@@ -236,6 +238,25 @@ class FakePlayer:
 
     def bluetooth_pair(self, seconds: int) -> None:
         self.calls.append(("bluetooth_pair", seconds))
+
+    def renderer_info(self) -> dict:
+        info = {"device": "", "title": "", "artist": "", "codec": None, "rate": None}
+        info.update(self.phone or {})
+        return info
+
+    def phone_casts(self, source: str = "bluetooth", device: str = "Phone", title: str = "", artist: str = "") -> None:
+        """A phone takes the speaker, as moOde's renderer flag would say: what
+        we were playing is no longer what sounds."""
+        self.calls.append(("phone_casts", source, device))
+        self.source = source
+        self.playing = None
+        self.phone = {"device": device, "title": title, "artist": artist}
+
+    def phone_leaves(self) -> None:
+        """The phone stops; the path is back with MPD, idle."""
+        self.calls.append(("phone_leaves",))
+        self.source = "radio"
+        self.phone = None
 
     def route_speaker(self, position: int) -> None:
         self.calls.append(("route_speaker", position))

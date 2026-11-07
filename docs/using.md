@@ -336,6 +336,20 @@ It looks like the radio. Tap a key to play it, turn the volume on the screen,
 put the radio to sleep or skip to the next song, and see what is playing.
 **Also play on…** is here too (see [several rooms](#music-in-several-rooms)).
 
+The dial says where the music is coming from. Its needle has a stop for each
+key, a stop at the left end for a phone and one at the right end for anything
+started from the page (Browse, a playlist that isn't on a key). The stop the
+needle rests on is shown in bold while it plays, with the station or the
+phone's name under it. When a phone stops, the needle stays where it is for a
+moment, in case the radio brings the last key back; after that it parks at the
+last key until something plays. In the key bank, a key with an amber bar is
+the one whose music you hear; a key drawn pressed in is one that is physically
+down (on an Excelsior, where the keys stay down, key 3 can be down while a
+phone plays - then it is drawn down but without the bar). PU gets the bar only
+when it chose the phone: a phone that connected by itself lights nothing. If a
+station stays silent for more than two minutes, the dial says it may be off the
+air and suggests another key.
+
 ### Browse music
 
 Tap **Browse music**. Each kind of music has its own tab: **Radio**,

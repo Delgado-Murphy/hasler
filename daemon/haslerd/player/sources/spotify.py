@@ -155,19 +155,40 @@ class SpotifySource:
             self._active = active
             self._checked_at = time.monotonic()
 
-    def _fetch_active(self) -> bool:
+    def now_playing(self) -> dict | None:
+        """The track go-librespot plays, for the page: ``{"device", "title",
+        "artist"}`` from ``/status``'s ``track`` (``name``, ``artist_names``).
+        None when paused, stopped or unreachable. ``device`` is empty: the
+        API names our own player, not the phone that chose it."""
+        status = self._fetch_status()
+        if status is None or status.get("stopped", True) or status.get("paused", True):
+            return None
+        track = status.get("track") or {}
+        if not isinstance(track, dict):
+            track = {}
+        artists = track.get("artist_names") or []
+        return {"device": "",
+                "title": str(track.get("name") or ""),
+                "artist": ", ".join(str(a) for a in artists) if isinstance(artists, list) else str(artists)}
+
+    def _fetch_status(self) -> dict | None:
+        """``GET /status`` as a dict; None for 204 (no session) or any failure."""
         request = urllib.request.Request(self.base_url + "/status", method="GET")
         try:
             with self._opener.open(request, timeout=self.status_timeout) as response:
                 if response.status != 200:
-                    return False  # 204: no session, so certainly not playing
+                    return None  # 204: no session, so certainly not playing
                 status = json.loads(response.read() or b"{}")
         except (urllib.error.URLError, OSError, ValueError) as exc:
             # Expected whenever go-librespot is down or restarting. Debug, not
             # info: this would otherwise log once a second.
             log.debug("spotify status unavailable (%s)", exc)
-            return False
-        if not isinstance(status, dict):
+            return None
+        return status if isinstance(status, dict) else None
+
+    def _fetch_active(self) -> bool:
+        status = self._fetch_status()
+        if status is None:
             return False
         return not status.get("stopped", True) and not status.get("paused", True)
 

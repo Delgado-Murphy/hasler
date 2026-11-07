@@ -1033,6 +1033,10 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     apply_bluetooth(actions, settings)         # the Bluetooth keys, reconnecting the phone
     actions.dsp = build_knob_functions(actions, player, settings)
     web, app = build_web(config, actions, panel, state, ha is not None, paths=paths)
+    if args.fake:
+        # POST /api/fake/phone: a page test's phone taking the speaker (web/fake_api.py).
+        from .web.fake_api import FakeApi
+        app.extra_routes.append(FakeApi(app))
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))

@@ -198,7 +198,7 @@ def now_playing(app: Any) -> tuple[str | None, dict | None, dict | None]:
     """(source, playing preset as the page sees it, ytm track) from a WebApp."""
     from . import keymap
     current = app.actions.player.current()
-    source, _, _ = app._source(current)
+    source = app._source(current)[0]
     playing = keymap.preset_to_page(current) if current else None
     track = app._track() if source == "ytm" else None
     return source, playing, track

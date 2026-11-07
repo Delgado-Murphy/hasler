@@ -183,7 +183,14 @@ EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "
                   "/api/help",                                # web/help_api.py
                   "/api/spotify",                             # web/spotify_account_api.py
                   "/api/sleep",                               # web/sleep_api.py
-                  "/api/stations/try", "/api/stations/mine", "/api/stations/report")  # web/stations_api.py
+                  "/api/stations/try", "/api/stations/mine", "/api/stations/report",  # web/stations_api.py
+                  "/api/fake")                                # web/fake_api.py (--fake only)
+
+# What a phone on AirPlay plays: moOde's aplmeta.py writes shairport-sync's
+# metadata here as {"title", "artist", "album", ...}.
+APLMETA_FILE = Path("/var/local/www/aplmeta.json")
+# The PU cycle's stops where a phone does the playing (actions.cycle_position).
+PHONE_STOPS = ("bluetooth", "airplay", "dlna", "spotify")
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
 TAP_LABELS = {
@@ -332,6 +339,8 @@ class WebApp:
         self.extra_routes: list[Any] = []
         # multiroom.group.Group (web/group_api.py), or None: multiroom not installed.
         self.group: Any = None
+        # What a phone on AirPlay plays (moOde's aplmeta.json); a test points it elsewhere.
+        self.aplmeta: Path = APLMETA_FILE
         # Called with the whole saved settings doc after the lamp's location or
         # night mode changes, so the lamp needn't re-read settings.json.
         self.lamp_listeners: list[Callable[[dict], None]] = []
@@ -687,7 +696,7 @@ class WebApp:
             volume = self.actions.player.get_volume()
         except Exception:
             volume = None
-        source, waiting, renderer = self._source(current)
+        source, waiting, renderer, phone = self._source(current)
         playing = keymap.preset_to_page(current) if current else None
         # MPD stopped it by itself (player/watchdog.py): not playing, whatever
         # current() says, until the watchdog has it back.
@@ -698,16 +707,44 @@ class WebApp:
         # A phone has the speaker (Bluetooth, AirPlay, Spotify Connect from a
         # phone): the last preset isn't what's playing, the phone is - the page
         # shows the phone's track (renderer) instead of the old station.
+        phone_plays = False
         try:
-            if playing is not None and source and self.actions.phone_has_it(source):
+            phone_plays = bool(source) and self.actions.phone_has_it(source) and not waiting
+            if playing is not None and phone_plays:
                 playing = None
         except Exception:
             pass
+        current_key = self._current_key(current)
+        # Where the music comes from, for the dial's needle: a key, the page
+        # (Browse, Test: no key has it), a phone, another room; None = quiet.
+        if self.actions.standby:
+            played_from = None
+        elif playing is not None:
+            played_from = "key" if current_key else "page"
+        elif self._following():
+            played_from = "room"
+        elif phone_plays:
+            played_from = "phone"
+        else:
+            played_from = None
+        parked = self.actions.cycle_position
         with mpd_patience(SOURCE_MPD_S):      # the page polls: never wait long on MPD
             track = self._track() if source == "ytm" else None
         return {
             "pressed": pressed,
             "playing": playing,
+            # "key" | "page" | "phone" | "room" | None (standby, quiet, waiting for a phone).
+            "played_from": played_from,
+            # The phone that has the speaker, whatever it came in on:
+            # {"device", "title", "artist", "source"}; None when none has it.
+            "phone": phone,
+            # The source the PU key (or a Bluetooth key) put the radio on and
+            # nothing of ours has played since: "bluetooth" | "airplay" |
+            # "spotify" | None. The page lights PU for this, not for a phone
+            # that took the speaker by itself.
+            "pu_source": parked if parked in PHONE_STOPS else None,
+            # Seconds of pairing still open after PU was held, None when closed.
+            "pairing_left_s": self._pairing_left(),
             # True while MPD should be playing and isn't, and the radio is
             # bringing it back; stalled_s = for how long (None = not stalled).
             "recovering": stream["recovering"],
@@ -717,9 +754,10 @@ class WebApp:
             "standby": self.actions.standby,
             "volume": None if volume is None else round(volume),
             # What owns the speaker: radio | spotify | ytm | bluetooth | airplay.
-            # waiting = selected with PU but nothing connected yet.
+            # waiting = PU parked the radio on a source and no phone has come yet.
             "source": source,
             "waiting": waiting,
+            # Bluetooth only, as before (codec, rate); "phone" has every renderer.
             "renderer": renderer,
             # The YouTube Music track playing, named: {title, artist, album, thumb} or None.
             "track": track,
@@ -728,7 +766,7 @@ class WebApp:
             "art": None if self.actions.standby else self.art.url_for(source, playing, track),
             # The remote's keys, k1..k6 then PU, and which one is lit.
             "keys": self._keys(),
-            "current_key": self._current_key(current),
+            "current_key": current_key,
             # GET /api/config's "rev": a page sees here that the keys changed elsewhere.
             "config_rev": self._config_rev(),
             "volume_limit": self._volume_limit(),
@@ -826,6 +864,23 @@ class WebApp:
             return group.status_doc()
         except Exception:
             log.debug("multiroom status failed", exc_info=True)
+            return None
+
+    def _following(self) -> bool:
+        """This radio plays another room's music (multiroom/group.py)."""
+        try:
+            return bool(self.group is not None and self.group.following)
+        except Exception:
+            return False
+
+    def _pairing_left(self) -> int | None:
+        """Seconds of Bluetooth pairing still open (PU held), None when closed."""
+        actions = self.actions
+        try:
+            if not actions.pairing:
+                return None
+            return max(0, int(round(actions.pairing_until - actions.clock())))
+        except Exception:
             return None
 
     def manifest(self) -> dict:
@@ -1949,27 +2004,83 @@ class WebApp:
         self.ytm_api.note_playing(vid)
         return track
 
-    def _source(self, current: Any) -> tuple[str, bool, dict | None]:
+    def _source(self, current: Any) -> tuple[str, bool, dict | None, dict | None]:
+        """(source, waiting, renderer, phone) for /api/status.
+
+        ``waiting`` is true only when PU parked the radio on a phone source and
+        no phone has it yet; ``phone`` is who has the speaker, on any renderer.
+        """
         player = self.actions.player
         try:
-            source = player.active_source()
+            live = player.active_source()
         except Exception:
-            source = "radio"
-        waiting = False
-        if current is None and source == "radio":
+            live = "radio"
+        source = live
+        parked = self.actions.cycle_position
+        if current is None and live == "radio" and parked and parked != "radio":
             # MPD idle and nothing else reporting: if PU parked us on a
             # renderer, say so rather than "radio".
-            parked = self.actions.cycle_position
-            if parked and parked != "radio":
-                source, waiting = parked, True
+            source = parked
         renderer = None
         if source == "bluetooth":
             info = getattr(player, "renderer_info", None)
-            renderer = info() if callable(info) else None
-            if renderer is not None:
-                # Connected but paused is not "waiting for a phone".
-                waiting = not renderer.get("device")
-        return source, waiting, renderer
+            try:
+                renderer = info() if callable(info) else None
+            except Exception:
+                log.debug("renderer_info failed", exc_info=True)
+        phone = self._phone(source, live, renderer, current)
+        waiting = source == parked and source in PHONE_STOPS and phone is None
+        return source, waiting, renderer, phone
+
+    def _phone(self, source: str, live: str, renderer: dict | None, current: Any) -> dict | None:
+        """The phone that has the speaker: {"device", "title", "artist", "source"}.
+
+        Bluetooth from the player's ``renderer_info`` (BlueZ, btmeta.json);
+        AirPlay from shairport-sync's metadata as moOde writes it (aplmeta.json);
+        Spotify Connect from go-librespot's status; UPnP from what upmpdcli
+        queued in MPD. None when no phone has it: PU merely parked on the
+        source (``live`` is still "radio"), or Bluetooth naming nobody.
+        """
+        who = {"device": "", "title": "", "artist": "", "source": source}
+        if source == "bluetooth":
+            if not renderer or not renderer.get("device"):
+                return None
+            who.update({k: str(renderer.get(k) or "") for k in ("device", "title", "artist")})
+        elif live != source:
+            return None
+        elif source == "airplay":
+            try:
+                meta = json.loads(self.aplmeta.read_text() or "{}")
+                who["title"] = str(meta.get("title") or "")
+                who["artist"] = str(meta.get("artist") or "")
+            except (OSError, ValueError, AttributeError):
+                pass
+        elif source == "spotify":
+            # go-librespot playing with no preset of ours on: a phone cast it.
+            if current is not None and current.source == "spotify":
+                return None
+            spotify = (getattr(self.actions.player, "sources", None) or {}).get("spotify")
+            now = getattr(spotify, "now_playing", None)
+            if callable(now):
+                try:
+                    info = now()
+                except Exception:
+                    log.debug("spotify now_playing failed", exc_info=True)
+                    info = {}
+                if not info:
+                    return None       # paused or stopped: nobody has it
+                who.update({k: str(info.get(k) or "") for k in ("device", "title", "artist")})
+        elif source == "dlna":
+            radio = (getattr(self.actions.player, "sources", None) or {}).get("radio")
+            try:
+                song = radio.mpd().currentsong() if radio is not None else {}
+                who["title"] = str(song.get("title") or song.get("name") or "")
+                who["artist"] = str(song.get("artist") or "")
+            except Exception:
+                log.debug("dlna currentsong failed", exc_info=True)
+        else:
+            return None
+        return who
 
     def cover(self, vid: str) -> str | None:
         """Cover URL for a YouTube video id, or None if it isn't one / no ytm."""
