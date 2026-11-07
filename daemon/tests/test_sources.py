@@ -204,6 +204,59 @@ class TestResumeAfterCast:
         assert actions.watch_cast("radio", 101 + CAST_END_GRACE_S) is False
         assert player.current() is None
 
+    def test_standby_while_a_phone_plays_stays_in_standby(self, rig):
+        # Seen on the bench (1.2.0): Standby or the tone knob with a Bluetooth
+        # phone playing woke the radio again within milliseconds.
+        _, player, actions = rig
+        player.source = "bluetooth"
+        asked = []
+        player.bluetooth = type("BT", (), {"control_async": lambda self, c: asked.append(c)})()
+        actions.dispatch(Event("power", "off"))
+        assert actions.standby and asked == ["pause"]
+        actions.watch_asleep("bluetooth")
+        assert actions.keeps_asleep("bluetooth")          # the main loop leaves it asleep
+        assert not actions.keeps_asleep("airplay")        # another phone starting still wakes it
+
+    def test_the_slept_through_phone_wakes_it_once_it_starts_again(self, rig):
+        _, player, actions = rig
+        player.source = "airplay"
+        actions.dispatch(Event("power", "off"))
+        actions.watch_asleep("airplay")
+        assert actions.keeps_asleep("airplay")
+        player.source = "radio"                            # the phone stopped
+        actions.watch_asleep("radio")
+        player.source = "airplay"                          # and later casts again: a new start
+        actions.watch_asleep("airplay")
+        assert not actions.keeps_asleep("airplay")
+
+    def test_pause_then_play_on_the_phone_wakes_it(self, rig):
+        _, player, actions = rig
+        player.source = "bluetooth"
+        paused = [False]
+        player.cast_paused = lambda: paused[0]
+        actions.dispatch(Event("power", "off"))
+        actions.watch_asleep("bluetooth")
+        assert actions.keeps_asleep("bluetooth")
+        paused[0] = True
+        actions.watch_asleep("bluetooth")
+        assert actions.keeps_asleep("bluetooth")
+        paused[0] = False                                  # play pressed on the phone
+        actions.watch_asleep("bluetooth")
+        assert not actions.keeps_asleep("bluetooth")
+
+    def test_waking_forgets_the_slept_through_phone(self, rig):
+        _, player, actions = rig
+        player.source = "bluetooth"
+        actions.dispatch(Event("power", "off"))
+        actions.dispatch(Event("power", "on"))
+        assert not actions.standby and not actions.keeps_asleep("bluetooth")
+
+    def test_standby_without_a_phone_keeps_nothing(self, rig):
+        _, player, actions = rig
+        actions.dispatch(Event("k1", "tap"))
+        actions.dispatch(Event("power", "off"))
+        assert not actions.keeps_asleep(player.active_source())
+
     def test_spotify_connect_is_left_alone(self, rig):
         _, player, actions = rig
         actions.resume_after_cast = True

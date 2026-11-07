@@ -289,11 +289,10 @@ class SleepTimer:
         log.info("sleep timer: time's up - standby")
         source = None
         try:
+            # enter_standby asks a Bluetooth phone to pause, as any standby does.
             source = actions.player.active_source()
-            if source == "bluetooth" and actions.bluetooth is not None:
-                actions.bluetooth.control_async("pause")    # the phone stops sending
         except Exception:
-            log.debug("sleep timer: could not ask the phone to pause", exc_info=True)
+            log.debug("sleep timer: could not read the source", exc_info=True)
         try:
             phone = bool(source) and actions.phone_has_it(source)
         except Exception:

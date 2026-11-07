@@ -411,7 +411,8 @@ class LampKeeper:
         actions, player, state = self.actions, self.actions.player, self.state
         sleep = self.sleep
         phone = actions.phone_has_it(self.source)
-        if phone and actions.standby and sleep is not None and sleep.keeps_asleep(self.source):
+        if phone and (actions.keeps_asleep(self.source)
+                      or (actions.standby and sleep is not None and sleep.keeps_asleep(self.source))):
             phone = False
         if phone:
             self._cast_seen = now
@@ -1175,12 +1176,15 @@ def main(argv=None) -> int:
                 phone_volume.tick(now, source == "bluetooth" and not actions.standby)
             if actions.group is not None:
                 actions.group.tick(now, source)     # multiroom: keep in touch (on its own thread)
+            actions.watch_asleep(source)
             if (actions.standby or actions.pairing) and actions.phone_has_it(source) and not (
-                actions.standby and sleep is not None and sleep.keeps_asleep(source)
+                actions.keeps_asleep(source)
+                or (actions.standby and sleep is not None and sleep.keeps_asleep(source))
             ):
                 # The phone wakes the radio: standby ends, nothing of ours
                 # resumes. A phone that connected also ends the pairing breath.
-                # (Not the phone the sleep timer slept through: it didn't start anything.)
+                # (Not the phone that was playing when the radio went to standby:
+                # it didn't start anything.)
                 actions.wake_for_phone(source)
                 actions.end_pairing(paired=True)
 

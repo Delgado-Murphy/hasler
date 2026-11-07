@@ -262,6 +262,10 @@ class Actions:
         # What standby interrupted: "bluetooth" if the radio slept on it, so
         # waking goes back there (and calls the phone) rather than to a preset.
         self.standby_source: str | None = None
+        # The phone that was playing when the radio went to standby: it doesn't
+        # wake it again just by going on (keeps_asleep / watch_asleep).
+        self._asleep_on: str | None = None
+        self._asleep_paused = False
         self._bt_selected_at = float("-inf")
         # Bumped by every hand on the radio that chooses what plays (a preset,
         # the cycle, standby): a cast that ends after one of those is not ours
@@ -449,7 +453,7 @@ class Actions:
                 return
             if preset.source == "radio":
                 self._reply("stop")
-                self._standby(None, {})
+                self._standby(None, {}, source=active)
             else:
                 self._reply("next")
                 self.player.next_track()
@@ -844,6 +848,7 @@ class Actions:
 
     def _wake(self) -> None:
         self.standby = False
+        self._asleep_on, self._asleep_paused = None, False
         self._changed()
         self.player.set_mute(False)
 
@@ -855,6 +860,34 @@ class Actions:
             return True
         current = self.player.current()
         return active == "spotify" and (current is None or current.source != "spotify")
+
+    def keeps_asleep(self, source: str | None) -> bool:
+        """Is ``source`` the phone that was playing when the radio went to standby?
+
+        The main loop's "a phone wakes the radio" and the lamp's blue leave it
+        alone: it didn't start anything, it just went on (until watch_asleep
+        sees it stop, or pause and play again)."""
+        return self.standby and self._asleep_on is not None and source == self._asleep_on
+
+    def watch_asleep(self, source: str | None) -> None:
+        """Main loop, every pass: forget the slept-through phone once it is no
+        longer that phone playing - it stopped, or it paused and then played
+        again (a new start, which wakes the radio as any cast does)."""
+        kept = self._asleep_on
+        if kept is None:
+            return
+        if not self.standby or source != kept or not self.phone_has_it(source):
+            self._asleep_on, self._asleep_paused = None, False
+            return
+        paused = getattr(self.player, "cast_paused", None)
+        try:
+            now_paused = bool(paused()) if callable(paused) else False
+        except Exception:
+            now_paused = False
+        if now_paused:
+            self._asleep_paused = True
+        elif self._asleep_paused:
+            self._asleep_on, self._asleep_paused = None, False
 
     def wake_for_phone(self, source: str) -> None:
         """A phone started casting while asleep: the phone wakes the radio.
@@ -873,26 +906,43 @@ class Actions:
         self._wake()
         self._persist()
 
-    def _standby(self, event, spec):
+    def _standby(self, event, spec, source: str | None = None):
         """Silence, but stay on the network.
 
         Deliberately not a power cut: the box remains an AirPlay/Bluetooth
         target and an HA entity while the knob is off.
         """
-        self.enter_standby()
+        self.enter_standby(source=source)
 
-    def enter_standby(self, persist: bool = True) -> None:
+    def enter_standby(self, persist: bool = True, source: str | None = None) -> None:
         """Standby; ``persist=False`` keeps it out of state.json.
 
         The boot resume's "power cut at night" sleeps without remembering it,
         so the next daytime power cut still comes back playing.
+        ``source``: what is making sound, when the caller has just read it (a
+        key press reads it at most once).
         """
-        try:
-            # No phones without the player's Bluetooth: no source read then.
-            on_bt = self.bluetooth is not None and self._in_bluetooth()
-        except Exception:
-            on_bt = False
+        if source is None:
+            try:
+                source = self.player.active_source()
+            except Exception:
+                source = None
+        # No phones without the player's Bluetooth.
+        on_bt = self.bluetooth is not None and (source == "bluetooth" or (
+            source == "radio" and self.player.current() is None and self._cycle_at == "bluetooth"))
         self.standby_source = "bluetooth" if on_bt else None
+        # A phone that had the speaker goes on sending after standby: asked to
+        # pause where we can (Bluetooth), and either way it is not "a phone
+        # started casting" - only a new start wakes the radio (keeps_asleep).
+        kept = None
+        try:
+            if source and self.phone_has_it(source):
+                kept = source
+                if source == "bluetooth" and self.bluetooth is not None:
+                    self.bluetooth.control_async("pause")
+        except Exception:
+            log.debug("standby: could not pause the phone", exc_info=True)
+        self._asleep_on, self._asleep_paused = kept, False
         self.standby = True
         self._cycle_at = None
         self._hand += 1
