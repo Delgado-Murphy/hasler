@@ -1,0 +1,24 @@
+#!/bin/bash
+# hasler-own-state USER - give the radio's own files back to the user haslerd
+# runs as, before it starts (haslerd.service ExecStartPre=+).
+#
+# An updater older than 1.5.1 copied the state into its snapshot as root and
+# handed a migrated keys.yaml / box.yaml back as root 0600: the page then can't
+# read the keys (the radio plays the built-in stations) or save settings. A
+# radio jumping from such an updater to a migration release (Stable 1.1.4 ->
+# 1.6) gets that once; this undoes it on the first start of the new release
+# and is a no-op ever after.
+#
+# Only these, never anything else: /etc/hasler/box.yaml, /etc/hasler/variant.d/
+# (its files), and /var/lib/haslerd/ (files and folders, links not followed).
+# /etc/hasler/trust stays root's.
+set -u
+user="${1:-pi}"
+id -u "$user" >/dev/null 2>&1 || exit 0
+group="$(id -gn "$user")"
+fix() { find "$@" -xdev \( -user root -o -group root \) ! -type l -print0 2>/dev/null \
+          | xargs -0 -r chown -h "$user:$group"; }
+[[ -e /etc/hasler/box.yaml ]] && fix /etc/hasler/box.yaml -maxdepth 0
+[[ -d /etc/hasler/variant.d ]] && fix /etc/hasler/variant.d -mindepth 1 -maxdepth 1 -type f
+[[ -d /var/lib/haslerd ]] && fix /var/lib/haslerd
+exit 0

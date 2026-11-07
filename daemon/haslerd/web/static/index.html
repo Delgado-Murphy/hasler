@@ -9716,9 +9716,9 @@ function swMode(mode, from){
 // channel that is behind leaves the radio where it is until it catches up.
 // Two channels only: Stable (everyone) and Bench (new versions first, on the makers' radios; may break).
 // [id, name, picker label]
-const CHANNELS = [['stable','Stable','recommended'], ['bench','Bench','may break']];
+const CHANNELS = [['stable','Stable','recommended'], ['bench','Bench versions','may break']];
 const CHANNEL_TEXT = {stable:'Recommended. Each version is tested on the makers’ radio first.',
-  bench:'Bench: new versions reach the makers’ radios first and may break.'};
+  bench:'Bench versions: new versions reach the makers’ radios first and may break.'};
 const chName = c => (CHANNELS.find(x => x[0] === c) || [c, c])[1];
 const chRank = c => ({bench:0, stable:1})[c] ?? 1;
 // After a switch: {channel, behind} until the next check, so "Check now" sits by it.

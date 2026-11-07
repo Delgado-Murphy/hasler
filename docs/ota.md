@@ -340,7 +340,7 @@ leaves is marked bad, so auto mode won't reinstall it.
 
 ## 5. Channels and the fleet
 
-- **Two channels:** `bench` (**Bench**: new versions first, on the makers' radios; may break) and `stable`
+- **Two channels:** `bench` (**Bench versions**: new versions first, on the makers' radios; may break) and `stable`
   (**Stable**: everyone). Each is a signed `channels/<channel>.json` naming its `current`
   release, the `halted` ones and optional rings.
 - The key page's **Update channel** picker (Settings → This radio → Updates)

@@ -49,6 +49,9 @@ WatchdogSec=30
 # SIGTERM leaves the LED at its last duty, so there is no dark gap. After
 # READY, by which time haslerd has taken the LED over (a no-op then).
 ExecStartPost=-+/usr/bin/systemctl stop hasler-lamp-boot.service
+# The radio's own files back to its user if an older updater left them root's
+# (scripts/hasler-own-state; a no-op normally).
+ExecStartPre=-+/usr/local/sbin/hasler-own-state %u
 # Between two haslerds (a restart, a crash, an update) the boot script
 # breathes on from the LED's last frame - never dark, which means unplug.
 # Not at a shutdown: haslerd left a steady ember for the halt hook.

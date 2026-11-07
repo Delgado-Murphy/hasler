@@ -131,7 +131,7 @@ outside the release, in `/etc/hasler/variant.d/`
 
 See [release.md](release.md). In short: bump the version in
 `daemon/pyproject.toml` and `daemon/haslerd/__init__.py`, add a section to
-`CHANGELOG.md`, tag it, publish it to **Bench** (the makers' radios; it may
+`CHANGELOG.md`, tag it, publish it to **Bench versions** (the makers' radios; it may
 break there), live with it, then promote it to **Stable**. Signing and
 publishing are the maintainers' job.
 
@@ -152,7 +152,7 @@ publishing are the maintainers' job.
   and [multiroom.md](multiroom.md) are the designs the code follows; the owner's
   side is in [using.md](using.md). Add a line to `CHANGELOG.md` for anything an
   owner or a maker would notice.
-- The update channels are **Bench** (new versions first, on the makers'
+- The update channels are **Bench versions** (new versions first, on the makers'
   radios; may break) and **Stable** (everyone). Use those words.
 
 ## Commits and pull requests

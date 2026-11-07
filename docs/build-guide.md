@@ -702,7 +702,7 @@ owner should not stumble on:
 
 With Maker tools on, Settings → This radio → Updates also shows the **update
 channel**: **Stable** (each version tried on the makers' own radio first) or
-**Bench** (new versions reach the makers' radios first, and may break). The
+**Bench versions** (new versions reach the makers' radios first, and may break). The
 choice also shows while a radio is on Bench.
 Switching asks for a press on the radio. Going back to Stable, the radio
 keeps the version it has until Stable catches up; it never goes back to an
