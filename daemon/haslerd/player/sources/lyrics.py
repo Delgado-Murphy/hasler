@@ -41,7 +41,13 @@ LRCLIB = "https://lrclib.net/api"
 LRCLIB_TIMEOUT_S = 4.0
 # LRCLIB asks clients to name themselves and link to the project.
 USER_AGENT = f"Hasler-radio/{__version__} (https://github.com/Delgado-Murphy/hasler)"
-DURATION_SLACK_S = 3.0          # a search hit this close in length is the same recording
+DURATION_SLACK_S = 2.0          # a hit this close in length is the same recording
+# YouTube Music's timed lines belong to the song's album recording; the vid
+# playing may be its music video (an intro, a skit, a longer outro). Lines that
+# run on past the end, or stop this long (and this share of the song) before
+# it, are for another version: the page shouldn't light them on this clock.
+FIT_EARLY_END_S = 40.0
+FIT_EARLY_END_SHARE = 0.2
 MAX_LINES = 400
 
 _STAMP = re.compile(r"\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]")
@@ -167,6 +173,21 @@ def timed_from_ytm(raw: Any) -> tuple[list[dict] | None, str | None]:
     return (lines or None), plain
 
 
+def timing_misfit(lines: list[dict] | None, duration: float | None) -> str | None:
+    """Why timed ``lines`` don't fit a recording ``duration`` s long, or None when
+    they do (or the length isn't known). The last line's end (else its start) is
+    compared with the song: past its end by more than DURATION_SLACK_S, or ending
+    more than FIT_EARLY_END_S and FIT_EARLY_END_SHARE of it before the end."""
+    if not lines or not duration or duration <= 0:
+        return None
+    last = max(float(d.get("end") or d.get("t") or 0.0) for d in lines)
+    if last > duration + DURATION_SLACK_S:
+        return f"the lines run to {last:.0f} s, the song is {duration:.0f} s"
+    if duration - last > max(FIT_EARLY_END_S, FIT_EARLY_END_SHARE * duration):
+        return f"the lines end at {last:.0f} s, the song runs to {duration:.0f} s"
+    return None
+
+
 def clean_title(title: str) -> str:
     """"La Perla (Official Video)" -> "La Perla", for LRCLIB's lookup."""
     return _NOISE.sub("", title or "").strip() or (title or "").strip()
@@ -217,7 +238,7 @@ class Lrclib:
         if album and duration:
             q = {"artist_name": artist, "track_name": title, "album_name": album, "duration": int(duration)}
             hit = fetch(f"{self.base}/get?{urllib.parse.urlencode(q)}", self.timeout)
-            if not isinstance(hit, dict):
+            if not isinstance(hit, dict) or self._off_length(hit, duration):
                 hit = None
         if hit is None or not (hit.get("syncedLyrics") or hit.get("plainLyrics")):
             q = {"artist_name": artist, "track_name": title}
@@ -225,7 +246,21 @@ class Lrclib:
             hit = self._pick(found if isinstance(found, list) else [], duration) or hit
         if not isinstance(hit, dict):
             return None
-        return self._doc(hit)
+        doc = self._doc(hit)
+        if doc and doc["synced"] and timing_misfit(doc["lines"], duration):
+            log.info("LRCLIB's timing for %s doesn't fit (%s): its words only", title,
+                     timing_misfit(doc["lines"], duration))
+            doc = {**doc, "synced": False, "lines": None}
+        return doc
+
+    @staticmethod
+    def _off_length(hit: dict, duration: int | None) -> bool:
+        """True when LRCLIB says ``hit`` is a recording of another length."""
+        try:
+            got = float(hit.get("duration") or 0)
+        except (TypeError, ValueError):
+            return False
+        return bool(duration and got and abs(got - duration) > DURATION_SLACK_S)
 
     @staticmethod
     def _pick(found: list, duration: int | None) -> dict | None:

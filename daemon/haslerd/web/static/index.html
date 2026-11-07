@@ -685,10 +685,21 @@ dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);max-height:min(88dvh,760
 .lyr-tag{display:inline-flex;align-items:center;gap:6px;flex:none;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.08em;text-transform:uppercase}
 .lyr-tag.on{color:var(--amber)}
 .lyr-tag.on::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px rgba(255,178,56,.7)}
-.lyr-nudge{display:flex;flex:none}
-.lyr-nudge button{min-width:44px;height:44px;padding:0 8px;border:0;background:none;color:var(--text2);font:12px/1 var(--sans);cursor:pointer;border-radius:8px}
+.lyr-foot:not(.plain){flex-wrap:wrap}
+.lyr-nudge{display:flex;align-items:center;flex:none;margin-left:auto}
+.lyr-nudge button{min-width:44px;height:44px;padding:0 8px;border:0;background:none;color:var(--text2);font:12px/1 var(--sans);cursor:pointer;border-radius:8px;
+  touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .lyr-nudge button:hover{color:var(--title);background:rgba(255,233,194,.05)}
 .lyr-nudge button:focus-visible{outline:2px solid var(--amber);outline-offset:-4px}
+.lyr-nudge .lyr-sync{margin-right:4px;color:var(--amber)}
+.lyr-nudge .lyr-sync[aria-pressed="true"]{background:rgba(255,178,56,.12)}
+.lyr-off{min-width:58px;text-align:center;color:var(--title);font:12px/1 var(--mono);font-variant-numeric:tabular-nums}
+@media (max-width:560px){ .lyr-nudge{flex-basis:100%;justify-content:flex-end;margin:-6px 0 0} }
+.lyr-hint{position:absolute;left:50%;top:10px;transform:translateX(-50%);margin:0;padding:6px 12px;border-radius:14px;background:#2A1B10;
+  border:1px solid rgba(255,178,56,.55);color:var(--amber);font:12px/1.2 var(--sans);white-space:nowrap;pointer-events:none}
+.lyr-box.tapping .lyl{cursor:pointer;border-radius:6px}
+.lyr-box.tapping .lyl:hover{background:rgba(255,178,56,.07)}
+.lyr-box.tapping .lyl:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 @media (prefers-reduced-motion:reduce){ .lyl{transition:none} }
 
 /* ---------- settings / HA ---------- */
@@ -4699,24 +4710,33 @@ function paintYtmNow(){
    steps by ~46 ms on the radio: a hard snap each poll would jitter); more than 0.75 s
    off, a new song, or play/pause snaps it (a seek, a skip, a key pressed again).
    offset_ms (settings ytm.lyrics_offset_ms) is the output buffer between MPD and the
-   speaker, less a short lead: a line lights a moment before it is heard. */
-const LS = {vid:'', base:0, t0:0, playing:false, at:0, off:250, idx:-1, word:-1, snap:true, raf:0,
-  manualUntil:0, manualTimer:null, saving:null, autoAt:0};
-const LYR_JUMP_S = 0.75, LYR_PULL = 0.3, LYR_MANUAL_MS = 5000, LYR_NUDGE_MS = 100;
+   speaker, less a short lead: a line lights a moment before it is heard. On the Amp4
+   bench radio that chain is ~1.7 s (web/server.py LYRICS_OFFSET_MS has the breakdown). */
+const LS = {vid:'', base:0, t0:0, playing:false, at:0, off:1600, idx:-1, word:-1, snap:true, raf:0,
+  manualUntil:0, manualTimer:null, saving:null, savedAt:0, autoAt:0, tapping:false, tapTimer:null};
+const LYR_JUMP_S = 0.75, LYR_PULL = 0.3, LYR_MANUAL_MS = 5000;
+// Earlier / Later: a quarter second a press; held, again every LYR_REPEAT_MS after LYR_HOLD_MS.
+const LYR_NUDGE_MS = 250, LYR_OFF_MAX = 5000, LYR_HOLD_MS = 450, LYR_REPEAT_MS = 140;
+// Sync: a tap comes a moment after the line is heard begin; this much of it is taken off.
+const LYR_TAP_LAG_S = 0.15, LYR_TAP_WAIT_MS = 15000;
 const lyrClock = now => LS.base + (LS.playing ? (now - LS.t0) / 1000 : 0);
 function lyrFeed(st, sent, got){
   const p = st && st.position, t = st && st.track;
   if (!p || !t || !t.vid || !isFinite(p.elapsed_s)){ if (LS.playing){ LS.base = lyrClock(got); LS.t0 = got; LS.playing = false; } return; }
   const fresh = t.vid !== LS.vid;
   if (!fresh && p.at && p.at < LS.at) return;            // an older answer overtaken by a newer one
-  if (typeof p.offset_ms === 'number' && !LS.saving) LS.off = p.offset_ms;
+  // The radio's offset (another phone may have set it), unless this page's own change is
+  // still on its way, or this answer was asked for before that change was saved.
+  if (typeof p.offset_ms === 'number' && LS.saving === null && sent > LS.savedAt && p.offset_ms !== LS.off){
+    LS.off = p.offset_ms; LS.snap = true; lyrShowOff();
+  }
   const mid = (sent + got) / 2, obs = p.elapsed_s, playing = p.state === 'play';
   const pred = lyrClock(mid), off = Math.abs(pred - obs);
   // A slow answer (a weak phone signal) only corrects a jump: its timing is too loose to fine-tune.
   if (!fresh && playing === LS.playing && off <= LYR_JUMP_S && got - sent > 900) return;
   if (fresh || playing !== LS.playing || off > LYR_JUMP_S){ LS.base = obs; LS.snap = true; }
   else LS.base = pred + LYR_PULL * (obs - pred);
-  if (fresh){ LS.idx = -1; LS.word = -1; }
+  if (fresh){ LS.idx = -1; LS.word = -1; lyrTapEnd(); }
   LS.vid = t.vid; LS.t0 = mid; LS.playing = playing; LS.at = p.at || LS.at;
   lyrKick();
 }
@@ -4800,24 +4820,95 @@ function lyrBuild(dr, doc, song){
   box.addEventListener('keydown', e => { if (keys.has(e.key)) lyrManual(); });
   box.addEventListener('pointerdown', e => { if (e.target === box && e.pointerType === 'mouse') lyrManual(); });   // the scrollbar
   const chip = h('button', {type:'button', class:'lyr-back', id:'lyrBack', hidden:true, onclick: lyrResume}, 'Back to the song');
-  dr.append(h('div', {class:'lyr-wrap'}, box, chip), lyrFoot(doc, true));
-  LS.idx = -1; LS.word = -1; LS.snap = true; LS.manualUntil = 0;
+  const hint = h('p', {class:'lyr-hint', id:'lyrHint', hidden:true}, 'Tap the line you hear now');
+  // Sync: while it waits, a tap (or Enter) on a line says "this one is being sung now".
+  ol.addEventListener('click', e => { const li = LS.tapping && e.target.closest('.lyl'); if (li) lyrTap(li); });
+  ol.addEventListener('keydown', e => {
+    const li = LS.tapping && (e.key === 'Enter' || e.key === ' ') && e.target.closest('.lyl');
+    if (li){ e.preventDefault(); lyrTap(li); }
+  });
+  box.addEventListener('keydown', e => { if (e.key === 'Escape' && LS.tapping){ e.stopPropagation(); lyrTapEnd(true); } });
+  dr.append(h('div', {class:'lyr-wrap'}, box, hint, chip), lyrFoot(doc, true));
+  LS.idx = -1; LS.word = -1; LS.snap = true; LS.manualUntil = 0; LS.tapping = false;
 }
 function lyrFoot(doc, synced){
   const src = doc.source ? String(doc.source).replace(/^Source:\s*/i, '') : '';
+  const tm = synced && doc.timing ? String(doc.timing) : '';
+  let say = src ? 'Source: ' + src : '';
+  if (tm) say = src === tm ? 'Lyrics and timing from ' + tm : (say ? say + ' · timing from ' + tm : 'Timing from ' + tm);
+  if (!synced && doc.note) say = say ? say + ' · ' + doc.note : String(doc.note);
+  const step = ms => {
+    const b = h('button', {type:'button', class:'lyr-step', title: ms < 0 ? 'Light each line sooner (hold to keep going)' : 'Light each line later (hold to keep going)',
+      'aria-label': ms < 0 ? 'Lyrics earlier' : 'Lyrics later', 'aria-describedby':'lyrOff'}, ms < 0 ? 'Earlier' : 'Later');
+    lyrHold(b, ms);
+    return b;
+  };
   return h('div', {class:'lyr-foot' + (synced ? '' : ' plain')},
     h('span', {class:'lyr-tag' + (synced ? ' on' : ''), title: synced ? 'The line being sung lights up' : 'No timing for these lyrics'}, synced ? 'Synced' : 'Plain'),
-    h('p', {class:'ytn-src'}, src ? 'Source: ' + src : ''),
+    h('p', {class:'ytn-src', title: say}, say),
     synced ? h('div', {class:'lyr-nudge', role:'group', 'aria-label':'Lyrics timing'},
-      h('button', {type:'button', title:'Light each line a little sooner', 'aria-label':'Lyrics earlier', onclick: () => lyrNudge(-LYR_NUDGE_MS)}, 'Earlier'),
-      h('button', {type:'button', title:'Light each line a little later', 'aria-label':'Lyrics later', onclick: () => lyrNudge(LYR_NUDGE_MS)}, 'Later')) : null);
+      h('button', {type:'button', class:'lyr-sync', id:'lyrSync', 'aria-pressed':'false', title:'Then tap the line you hear now',
+        'aria-label':'Sync the lyrics: then tap the line being sung now', onclick: () => LS.tapping ? lyrTapEnd(true) : lyrTapStart()}, 'Sync'),
+      step(-LYR_NUDGE_MS),
+      h('span', {class:'lyr-off', id:'lyrOff', title:'How far behind the radio the lines light'}, lyrFmt(LS.off)),
+      step(LYR_NUDGE_MS)) : null);
 }
-// Earlier / Later: 0.1 s at a time, at once on screen, saved on the radio for every phone.
+// "+1.25 s": how much later than MPD's position the lines light.
+function lyrFmt(ms){ return (ms > 0 ? '+' : ms < 0 ? '−' : '') + (Math.abs(ms) / 1000).toFixed(2) + ' s'; }
+function lyrShowOff(){ const el = $('lyrOff'); if (el) el.textContent = lyrFmt(LS.off); }
+// A press steps once; held, it keeps stepping until let go. Keys (Enter / Space) step once a press.
+function lyrHold(btn, ms){
+  let wait = null, rep = null;
+  const stop = () => { clearTimeout(wait); clearInterval(rep); wait = rep = null; };
+  btn.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    stop(); lyrNudge(ms);
+    wait = setTimeout(() => { rep = setInterval(() => { if (btn.isConnected) lyrNudge(ms); else stop(); }, LYR_REPEAT_MS); }, LYR_HOLD_MS);
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture', 'blur']) btn.addEventListener(t, stop);
+  btn.addEventListener('click', e => { if (e.detail === 0) lyrNudge(ms); });   // a key: pointers stepped on pointerdown
+  btn.addEventListener('contextmenu', e => e.preventDefault());                  // a long press isn't a menu
+}
+function lyrNudge(ms){ lyrSetOff(LS.off + ms); }
+// Sync: the owner taps the line being sung; the offset becomes whatever makes it start now.
+function lyrTapStart(){
+  const box = $('ytnSync'); if (!box) return;
+  LS.tapping = true; box.classList.add('tapping');
+  box.querySelectorAll('.lyl').forEach(li => { li.setAttribute('role', 'button'); li.tabIndex = 0; });
+  const hint = $('lyrHint'); if (hint) hint.hidden = false;
+  const b = $('lyrSync'); if (b){ b.setAttribute('aria-pressed', 'true'); b.textContent = 'Cancel'; }
+  clearTimeout(LS.tapTimer); LS.tapTimer = setTimeout(() => lyrTapEnd(), LYR_TAP_WAIT_MS);
+}
+function lyrTapEnd(refocus){
+  clearTimeout(LS.tapTimer); LS.tapTimer = null;
+  if (!LS.tapping) return;
+  LS.tapping = false;
+  const box = $('ytnSync');
+  if (box){ box.classList.remove('tapping'); box.querySelectorAll('.lyl').forEach(li => { li.removeAttribute('role'); li.removeAttribute('tabindex'); }); }
+  const hint = $('lyrHint'); if (hint) hint.hidden = true;
+  const b = $('lyrSync'); if (b){ b.setAttribute('aria-pressed', 'false'); b.textContent = 'Sync'; if (refocus) b.focus({preventScroll:true}); }
+}
+function lyrTap(li){
+  const box = $('ytnSync'), lines = ytNow.lyr && ytNow.lyr.lines;
+  const i = box && lines ? Array.prototype.indexOf.call(box.querySelectorAll('.lyl'), li) : -1;
+  if (i < 0 || !lines[i]) return;
+  const ln = lines[i], next = lines[i + 1];
+  // Taken off the tap: the moment between hearing the line begin and tapping it, but never so
+  // much that the next line would light instead.
+  const lag = next ? Math.max(0, Math.min(LYR_TAP_LAG_S, next.t - ln.t - 0.1)) : LYR_TAP_LAG_S;
+  const want = Math.floor((lyrClock(performance.now()) - ln.t - lag) * 100) * 10;
+  lyrTapEnd(true);
+  if (Math.abs(want) > LYR_OFF_MAX) toast('That’s more than 5 s off: these lyrics may be for another version of the song.', true);
+  lyrSetOff(want);
+}
+// The offset, at once on screen (the line snaps), then saved on the radio for every phone.
 let lyrSaveTimer = null;
-function lyrNudge(ms){
-  LS.off = Math.max(-3000, Math.min(3000, LS.off + ms));
+function lyrSetOff(ms){
+  LS.off = Math.max(-LYR_OFF_MAX, Math.min(LYR_OFF_MAX, Math.round(ms)));
   LS.saving = LS.off; LS.snap = true;
-  if (!LS.playing){ const b = $('ytnSync'); if (b) lyrPaint(performance.now()); }
+  lyrShowOff();
+  if ($('ytnSync') && ytNow.lyr && ytNow.lyr.lines) lyrPaint(performance.now());
   clearTimeout(lyrSaveTimer);
   lyrSaveTimer = setTimeout(async () => {
     const want = LS.off;
@@ -4826,7 +4917,7 @@ function lyrNudge(ms){
       if (!(r.ok && r.json && r.json.ok !== false)) toast('The radio didn’t keep that timing. Try again.', true);
       else if (settings) settings.ytm = Object.assign({}, settings.ytm, {lyrics_offset_ms:want});
     } catch (_) { toast(NET_ERR, true); }
-    if (LS.saving === want) LS.saving = null;
+    if (LS.saving === want){ LS.saving = null; LS.savedAt = performance.now(); }
   }, 600);
 }
 async function ytLyrics(vid){

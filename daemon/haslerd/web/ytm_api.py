@@ -23,8 +23,10 @@ items of the one shape documented in player/sources/ytm_browse.py, each with a
          (no section: the playlists, Liked first - what older pages ask for)
     GET  /api/ytm/related/<vid>       -> {available, vid, sections: [{title, items}]}
     GET  /api/ytm/lyrics/<vid>        -> {available, vid, lyrics: str|null, source, synced: bool,
-                                          lines: [{t, end, text, words?}]|null}  (player/sources/lyrics.py:
-                                          YouTube Music's timed lines, else LRCLIB's, else plain)
+                                          lines: [{t, end, text, words?}]|null, timing: "YouTube Music"|
+                                          "LRCLIB"|"", note: str}  (player/sources/lyrics.py: YouTube
+                                          Music's timed lines when they fit the song's length, else
+                                          LRCLIB's within 2 s of it, else plain)
     POST /api/ytm/radio {seed: "song:<vid>"|"album:<OLAK…>"|"artist:<UC…>", name?}
          -> plays it here; {ok, preset}
     POST /api/ytm/like {vid, rating: LIKE|INDIFFERENT}
@@ -232,7 +234,8 @@ class YtmApi:
         if kind == "lyrics" and ident:
             if not ytm_refs.VIDEO_ID.match(ident):
                 raise ValueError("not a video id")
-            doc = browse.lyrics(ident) if browse else {"lyrics": None, "source": "", "synced": False, "lines": None}
+            doc = browse.lyrics(ident) if browse else {"lyrics": None, "source": "", "synced": False, "lines": None,
+                                                       "timing": "", "note": ""}
             return 200, {"available": browse is not None, "vid": ident, **doc}
         return 404, {"ok": False, "errors": [], "error": "not found"}
 
