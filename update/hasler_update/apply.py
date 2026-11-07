@@ -345,8 +345,30 @@ def copy_tree(src: Path, dst: Path, exclude: tuple[str, ...] = ()) -> None:
                         ignore=lambda d, names: [n for n in names
                                                  if (Path(d) / n).relative_to(src).as_posix() in exclude
                                                  or _special(Path(d) / n)])
+        mirror_owners(src, dst)
     else:
         dst.mkdir(parents=True)
+
+
+def mirror_owners(src: Path, dst: Path) -> None:
+    """Give every file and directory under ``dst`` the owner its counterpart
+    under ``src`` has. copytree keeps modes, never owners: run as root it
+    leaves a snapshot owned by root, so keep_owners (which reads owners from
+    the snapshot) handed the migrated keys.yaml back to haslerd as root 0600 -
+    unreadable by the pi user, and 1.5.0 came up on the built-in keys. Root
+    only; elsewhere the owners are already right."""
+    if os.geteuid() != 0 or not dst.is_dir():
+        return
+    for dirpath, dirs, files in os.walk(src):
+        rel = Path(dirpath).relative_to(src)
+        for name in [""] + dirs + files:
+            s, d = Path(dirpath) / name, dst / rel / name
+            try:
+                st = os.lstat(s)
+                if d.exists() or d.is_symlink():
+                    os.lchown(d, st.st_uid, st.st_gid)
+            except OSError:
+                continue
 
 
 # --- the applier -----------------------------------------------------------------------------

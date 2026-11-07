@@ -107,3 +107,24 @@ def test_copy_tree_skips_named_pipes_and_sockets(tmp_path):
     copy_tree(src, dst)
     assert (dst / "settings.json").read_text() == "{}"
     assert not (dst / ".lgd-nfy0").exists()
+
+
+def test_copy_tree_mirrors_owners_as_root(tmp_path, monkeypatch):
+    """A snapshot keeps the live files' owners (keep_owners reads them back from it):
+    the 1.5.0 migration left keys.yaml as root 0600 because copytree had made the
+    'before' copy root-owned."""
+    import os
+    from hasler_update import apply as mod
+    src = tmp_path / "state"
+    (src / "secrets").mkdir(parents=True)
+    (src / "keys.yaml").write_text("schema: 2")
+    (src / "secrets" / "ha.json").write_text("{}")
+    owners = {}
+    monkeypatch.setattr(os, "geteuid", lambda: 0)
+    monkeypatch.setattr(os, "lchown", lambda path, uid, gid: owners.__setitem__(str(path), (uid, gid)))
+    dst = tmp_path / "snap"
+    mod.copy_tree(src, dst)
+    me = (os.lstat(src / "keys.yaml").st_uid, os.lstat(src / "keys.yaml").st_gid)
+    assert owners[str(dst / "keys.yaml")] == me
+    assert owners[str(dst / "secrets" / "ha.json")] == me and owners[str(dst / "secrets")] == me
+    assert str(dst) in owners                       # the root of the copy too

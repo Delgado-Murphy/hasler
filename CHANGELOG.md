@@ -1,9 +1,12 @@
 # Changelog
 
-## 1.5.1 - unreleased
+## 1.5.1 - 2026-11-07
 
 - Updating no longer trips over a stray named pipe in the radio's state folder
   (it stopped the switch to 1.5.0 on the bench radio).
+- An update that rewrites your keys keeps them yours: 1.5.0 handed the
+  migrated keys file to the radio as root, so it came up on the built-in
+  stations until the owner was put back by hand.
 - The 1.5.0 notes below, rewritten so they can be read.
 
 ## 1.5.0 - 2026-11-07
