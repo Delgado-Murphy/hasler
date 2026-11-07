@@ -195,6 +195,61 @@ const down = keys => Object.keys(keys).filter(k => keys[k].down);
       await page.close();
     });
 
+    // A YouTube Music song on the dial: two small buttons beside it (Lyrics, More), none for
+    // live radio or a phone. The fake radio can't play YouTube Music, so the page's /api/status
+    // is answered with the song added (route), and the lyrics and account calls likewise.
+    await check('HM: a YouTube Music song gets Lyrics and More beside it; radio and a phone don’t', async () => {
+      await play(hm.base, 'Radio Uno');
+      let song = null, posted = null;
+      const page = await ctx.newPage();
+      page.on('pageerror', e => errors.push(e.message));
+      await page.route('**/api/status', async route => {
+        const resp = await route.fetch(), j = await resp.json();
+        if (song){ j.standby = false; j.playing = Object.assign({}, j.playing || {}, {source: 'ytm', name: 'Rosalía radio'}); j.track = song; }
+        route.fulfill({response: resp, json: j});
+      });
+      await page.route('**/api/ytm/account', route => route.fulfill({json: {available: true, signed_in: false}}));
+      await page.route('**/api/ytm/lyrics/**', route => route.fulfill({json: {lyrics: 'First line\nSecond line', source: 'Source: Test'}}));
+      await page.route('**/api/ytm/radio', route => { posted = route.request().postDataJSON(); route.fulfill({json: {ok: true, preset: {name: 'La Perla radio'}}}); });
+      await page.goto(hm.base + '/#');
+      await until(async () => (await dial(page)).name === 'Radio Uno', 5000, 'the radio on the dial');
+      const hidden = () => page.evaluate(() => document.getElementById('songActs').hidden);
+      assert(await hidden(), 'live radio shows the song buttons');
+      const keysBefore = await page.$eval('#bank', b => b.getBoundingClientRect().top);
+      song = {title: 'La Perla', artist: 'ROSALÍA', vid: 'w7pjt9ZH3NM'};
+      await until(async () => !(await hidden()), 5000, 'the song buttons');
+      const box = await page.evaluate(() => ['ytnLyr', 'ytnMore'].map(id => { const b = document.getElementById(id), r = b.getBoundingClientRect();
+        return {w: r.width, h: r.height, label: b.getAttribute('aria-label'), exp: b.getAttribute('aria-expanded')}; }));
+      assert(box[0].label === 'Lyrics for La Perla' && box[0].exp === 'false' && box[1].label === 'More for La Perla', 'labels: ' + JSON.stringify(box));
+      assert(box.every(b => b.w >= 44 && b.h >= 44), 'hit targets: ' + JSON.stringify(box));
+      const keysAfter = await page.$eval('#bank', b => b.getBoundingClientRect().top);
+      assert(Math.abs(keysAfter - keysBefore) < 1, `the keys moved when the song came: ${keysBefore} → ${keysAfter}`);
+      assert(!(await page.$('#ytnRadio')) && !(await page.$('#ytnKey')), 'the old big buttons are still there');
+      // Lyrics opens under the dial and closes again; focus stays on the button.
+      await page.click('#ytnLyr');
+      await page.waitForSelector('#ytnLyrics .ytn-text');
+      assert((await page.$eval('#ytnLyrics', e => e.textContent)).includes('Second line'), 'the lyrics');
+      assert(await page.evaluate(() => document.activeElement.id === 'ytnLyr' && document.activeElement.getAttribute('aria-expanded') === 'true'), 'focus / expanded');
+      await page.click('#ytnLyr');
+      assert(await page.evaluate(() => document.getElementById('ytmNow').hidden), 'the lyrics didn’t close');
+      // More: the song's sheet with Start a radio and Put on a key.
+      await page.click('#ytnMore');
+      await page.waitForSelector('dialog.yt-sheet[open]');
+      const acts = await page.$$eval('dialog.yt-sheet .sts-acts button', bs => bs.map(b => b.textContent));
+      assert(acts.join('|') === 'Start a radio from this song|Put on a key', 'sheet: ' + acts.join('|'));
+      await page.click('#ytsPlay');
+      await until(() => posted, 3000, 'the radio request');
+      assert(posted.seed === 'song:w7pjt9ZH3NM' && posted.name === 'La Perla radio', 'radio: ' + JSON.stringify(posted));
+      await page.keyboard.press('Escape');
+      await until(() => page.evaluate(() => document.activeElement.id === 'ytnMore'), 3000, 'focus back on More');
+      song = null;
+      assert((await phone(hm.base, 'bluetooth', 'Pixel 11', 'So What', 'Miles Davis')).ok, 'phone refused');
+      await until(async () => (await dial(page)).bold === '_phone', 5000, 'the phone stop bold');
+      assert(await hidden(), 'a phone shows the song buttons');
+      await phone(hm.base, null);
+      await page.close();
+    });
+
     await check('no console errors', async () => {
       assert(!errors.length, errors.join('\n     '));
     });
