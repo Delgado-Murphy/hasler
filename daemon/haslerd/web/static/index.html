@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#17100B">
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hasler">
 <title>Hasler</title>
 <!-- Fonts (Fraunces 600/700/600i, JetBrains Mono 400; latin subset, SIL OFL) are embedded so the page needs no network. -->
 <style id="fonts">
@@ -75,6 +81,7 @@ button{cursor:pointer}
   background:radial-gradient(circle farthest-corner at 50% 35%,#FBF0D4 0%,#EFDAA8 62%,#D6BA7E 100%);transition:filter .6s ease}
 .glass.off{filter:brightness(.72) saturate(.55)}
 .glass.offline{filter:brightness(.6) saturate(.3)}
+.glass.offline .song-title,.glass.offline .song-sub{white-space:normal;overflow:visible}
 .dial-head{display:flex;justify-content:space-between;gap:10px;color:#6E5330;font:9.5px/13px var(--mono);letter-spacing:.18em;text-transform:uppercase}
 .dial-head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dial-head span:last-child{flex:none}
@@ -141,6 +148,12 @@ button{cursor:pointer}
 .cab-line{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 18px;margin:0;color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
 .cab-line b{color:var(--brass);font-weight:400}
 .cab-line b.on{color:var(--amber)}
+/* A key with a hold job: a short bar at the top of the cap; a red "!" when Home Assistant lacks its target. */
+.key-h{position:absolute;top:5px;left:50%;width:14px;height:3px;margin-left:-7px;border-radius:2px;background:#A8916A;pointer-events:none}
+.key.pu .key-h{background:var(--brass)}
+.key-h.miss,.skey .hm.miss{top:3px;width:13px;height:13px;margin-left:-6.5px;border-radius:50%;background:var(--red);color:#FFF3E6;font:800 9px/13px var(--sans);text-align:center}
+.key-h.miss::before,.skey .hm.miss::before{content:"!"}
+.key-h[hidden],.skey .hm[hidden]{display:none}
 @media (max-width:379px){ .key{height:164px} .key-l{font-size:8px;line-height:10px;letter-spacing:.02em} .key-n{font-size:21px} .bank{gap:5px;padding-inline:8px} }
 
 /* ---------- controls ---------- */
@@ -154,18 +167,39 @@ button{cursor:pointer}
 .ctl-btn:disabled + .ctl-lbl{opacity:.5}
 .ctl-btn[aria-pressed="true"]{border-color:var(--amber);box-shadow:0 0 14px rgba(255,178,56,.35)}
 .ctl-lbl{color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+/* The sleep timer: a small clock beside Standby (a tap on Standby stays instant), and a chip while set. */
+.ctl.sb{position:relative}
+.sleep-btn{position:absolute;top:-6px;right:-14px;width:30px;height:30px;border-radius:50%;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;
+  background:#1F150E;color:var(--muted);transition:color .2s,border-color .2s,box-shadow .2s}
+.sleep-btn[hidden]{display:none}
+.sleep-btn::after{content:"";position:absolute;inset:-8px}
+.sleep-btn:hover{color:var(--brass);border-color:#7A5A36}
+.sleep-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber);box-shadow:0 0 10px rgba(255,178,56,.3)}
+.sleep-btn:focus-visible,.sleep-chip:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.sleep-row{display:flex;justify-content:center;padding:10px 0 0}
+.sleep-row[hidden]{display:none}
+.sleep-chip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:4px 14px;border:1px solid var(--line2);border-radius:999px;background:none;
+  color:var(--brass);font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.sleep-chip .x{opacity:.6;font:400 15px/1 var(--sans)}
+.sleep-chip.fading{color:var(--amber);border-color:var(--amber)}
+.sleep-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px}
+.sleep-opts .btn{flex:none}
+.sleep-opts .btn[aria-current="true"]{border-color:var(--amber);color:var(--amber)}
 .knob{display:block;touch-action:none;cursor:grab;border-radius:50%}
 .knob:active{cursor:grabbing}
 .knob:focus-visible{outline:2px solid var(--amber);outline-offset:-6px}
 .vol-lbl{color:var(--brass);font:9.5px/12px var(--mono);letter-spacing:.14em;font-variant-numeric:tabular-nums}
-.tone{display:flex;align-items:center;gap:10px;margin:14px 14px 0;color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.tone{position:relative;display:flex;align-items:center;gap:10px;margin:14px 14px 0;color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:default}
 .tone[hidden]{display:none}
-.tone-bar{position:relative;flex:1;height:4px;border-radius:2px;background:linear-gradient(90deg,#6B4A2A,#3A2A1C 50%,#E8CA8A)}
+.tone-bar{position:relative;flex:1;height:2px;border-radius:1px;background:linear-gradient(90deg,#6B4A2A,#3A2A1C 50%,#E8CA8A);outline-offset:6px}
 .tone-mid{position:absolute;left:50%;top:-3px;width:1px;height:10px;background:#5A4128}
-.tone-dot{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#F0D59A,#9A7638);box-shadow:0 0 6px rgba(255,178,56,.35);transition:left .25s}
+.tone-dot{position:absolute;top:50%;width:2px;height:12px;margin:-6px 0 0 -1px;border-radius:1px;background:#E8CA8A;transition:left .25s}
+.tone-tip{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);padding:4px 8px;border-radius:6px;background:#2A1D13;color:var(--cream);font:12px/16px var(--sans);letter-spacing:0;text-transform:none;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s}
+.tone:hover .tone-tip,.tone:focus-within .tone-tip{opacity:1}
 .tone-db{min-width:5.5em;text-align:right;color:var(--brass);font-variant-numeric:tabular-nums}
-.tone-off{color:var(--red-text)}
+.tone-off{color:var(--muted)}
 .remote.offline .controls,.remote.offline .tone,.remote.offline .bank,.remote.offline .cab{opacity:.55;filter:saturate(.5);transition:opacity .3s}
+.remote.offline .bank{opacity:.35;filter:saturate(.3)}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
 .hint-line{margin:0;color:var(--muted);font:12px/16px var(--sans);text-align:center}
 
@@ -184,6 +218,16 @@ button{cursor:pointer}
 .skey.pu[aria-current="true"]{background:#6A5038}
 .skey .dot{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--red)}
 .skey .dot.dirty{background:var(--amber)}
+.skey .hm{position:absolute;bottom:6px;left:50%;width:12px;height:3px;margin-left:-6px;border-radius:2px;background:#A8916A}
+.skey.pu .hm{background:var(--brass)}
+.skey .hm.miss{top:auto;bottom:4px}
+/* Tap | Hold switch on a key: each half says what it does, a dot when it has a problem or unsaved change. */
+.slot-seg button{position:relative;padding:6px 14px}
+.slot-seg button small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none}
+.slot-seg .dot{position:absolute;top:6px;right:7px;width:7px;height:7px;border-radius:50%;background:var(--red)}
+.slot-seg .dot.dirty{background:var(--amber)}
+.choice.hold .choice-name{white-space:normal;overflow-wrap:anywhere}
+.choice.hold.miss{border-color:rgba(217,68,43,.6)}
 .sheet{position:relative;display:flex;flex-direction:column;gap:16px;margin:0 -16px;padding:18px 18px 0;border-top:1px solid var(--line2);border-radius:22px 22px 0 0;
   background:linear-gradient(180deg,#261A11 0%,#1F150D 100%);min-height:60vh}
 .grab{align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line2);flex:none}
@@ -271,15 +315,16 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .actions{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;margin:auto -18px 0;padding:14px 18px calc(16px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(31,21,13,0),#1F150D 22%)}
 .btn{flex:1 1 0;min-height:48px;padding:12px 14px;border:1px solid var(--line2);border-radius:12px;background:none;color:var(--brass);font:700 15px/20px var(--sans);display:inline-flex;align-items:center;justify-content:center;gap:8px}
-.btn:hover:not(:disabled){border-color:#7A5A36}
+.btn:hover:not(:disabled):not([aria-disabled="true"]){border-color:#7A5A36}
 .btn.primary{border:0;background:var(--amber);color:#1A1208;font-weight:800;box-shadow:0 0 18px rgba(255,178,56,.3)}
-.btn.primary:hover:not(:disabled){filter:brightness(1.05)}
-.btn:disabled{opacity:.55;cursor:default}
+.btn.primary:hover:not(:disabled):not([aria-disabled="true"]){filter:brightness(1.05)}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:default}
 .btn.small{flex:none;min-height:44px;padding:10px 18px;border-radius:10px;font-size:14px}
 .btn.inline{flex:none}
 .save-msg{margin:-6px 0 0;font-size:13px;color:var(--muted);text-align:center}
 .save-msg.bad{color:#F07A62;font-weight:600}
 .save-msg:empty{display:none}
+.tp-row{display:flex;justify-content:center;margin:-4px 0 0}
 .keylist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .keylist button{display:flex;align-items:center;gap:14px;width:100%;min-height:56px;padding:8px 4px;border:0;border-bottom:1px solid var(--line);background:none;text-align:left}
 .keylist button:hover{background:rgba(201,161,90,.05)}
@@ -289,6 +334,15 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .kl-name{color:var(--cream);font:600 15px/20px var(--serif);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kl-sub{color:var(--muted);font:10px/13px var(--mono);letter-spacing:.08em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chev{flex:none;color:var(--muted)}
+/* The key list: a Tap line and a Hold line per key, each its own button, never cut short. */
+.keylist.slots li{display:flex;align-items:center;gap:14px;padding:6px 4px;border-bottom:1px solid var(--line)}
+.keylist.slots .kl-n{cursor:pointer}
+.keylist.slots button{display:flex;align-items:baseline;gap:8px;min-height:32px;padding:5px 2px;border:0;border-radius:6px}
+.kl-k{flex:none;width:34px;color:var(--muted);font:10px/20px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.kl-v{flex:1;min-width:0;color:var(--cream);font:600 15px/20px var(--serif);overflow-wrap:anywhere}
+.kl-line.hold .kl-v{color:var(--text2);font:500 14px/20px var(--sans)}
+.kl-line.hold.none .kl-v{color:var(--muted)}
+.kl-miss{display:block;color:#F07A62;font:12.5px/16px var(--sans)}
 /* key combinations (Edit keys) */
 .combos{display:flex;flex-direction:column;gap:8px;margin-top:14px}
 .combo-h{margin:0;color:var(--title);font:600 18px/24px var(--serif)}
@@ -659,8 +713,6 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .fx-ph label{color:var(--cream);font:600 14px/18px var(--sans)}
 .fx-pos{display:flex;flex-direction:column;gap:6px}
 .fx-ends{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font:11px/14px var(--sans)}
-.fx-try{margin:0;padding:10px 12px;border-left:2px solid var(--amber);background:rgba(255,178,56,.06);color:var(--cream);font:13.5px/18px var(--sans)}
-.fx-try b{color:var(--amber);font-variant-numeric:tabular-nums}
 .fx-pars details.how > div{display:flex;flex-direction:column;gap:4px}
 .wz{display:flex;flex-direction:column;gap:14px}
 .wz-say{margin:0;color:var(--title);font:600 26px/31px var(--serif)}
@@ -855,7 +907,7 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .savebar .btn.small{min-width:84px}
 @media (min-width:960px){ .savebar{margin:8px 0 0;border:1px solid var(--line2);border-radius:14px} }
 html.has-bar{scroll-padding-bottom:110px}
-html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
+html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
 .toast.act{pointer-events:auto;display:flex;align-items:center;gap:14px;text-align:left;padding:6px 6px 6px 16px;width:max-content;max-width:min(400px,calc(100vw - 32px))}
 .toast.act > span{flex:1;min-width:0}
 .toast-undo{flex:none;min-height:44px;min-width:64px;padding:0 14px;border:1px solid var(--line2);border-radius:10px;background:none;color:var(--amber);font:800 14px/18px var(--sans)}
@@ -864,6 +916,78 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
 .chk:last-child{border-bottom:0}
 .chk b{font-weight:600}.chk .ok{color:#8FCF9F}.chk .no{color:#F07A62}
 .danger-row{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--sheet)}
+</style>
+<style id="extras">
+/* ---------- key-cap label field (in Rename) ---------- */
+.rename-box{display:flex;flex-direction:column;gap:8px}
+.key-l.long{font-size:8px;letter-spacing:0}
+.key-l.longer{font-size:7px;letter-spacing:-.02em}
+.short-field{display:flex;align-items:center;gap:10px;padding:0 2px}
+.short-field .mono{flex:none}
+.short-field input[type=text]{flex:1;min-width:0;min-height:36px;padding:6px 8px;font:12px/16px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.short-field input::placeholder{text-transform:uppercase}
+.print-link{display:flex;justify-content:center;padding:4px 0 8px}
+
+/* ---------- key card (#print) ---------- */
+.app[data-view="print"] #remote{display:none !important}
+@media (min-width:960px){ .app[data-view="print"]{display:block;max-width:1100px} }
+.print-tools{display:flex;flex-direction:column;gap:12px}
+.print-tools .actions{position:static;margin:0;padding:0;background:none}
+.card-sheet{display:flex;padding:18px 0 28px;overflow-x:auto}
+.card-sheet > .keycard{margin:0 auto}
+.keycard{--ink:#2A1C10;--soft:#7A6346;--rule:#D9C9A6;--accent:#B9781E;flex:none;display:flex;flex-direction:column;color:var(--ink);
+  background:#FBF6EA;font:9pt/1.3 var(--sans);box-shadow:0 10px 40px rgba(0,0,0,.45);border-radius:2px;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+.keycard.kc-a6{width:105mm;height:148mm;overflow:hidden;padding:7mm 8mm 5mm;gap:2.4mm}
+.keycard.kc-strip{width:calc(var(--n,7) * 30mm + 52mm);padding:4mm 5mm;gap:2mm}
+.kc-head{display:flex;align-items:baseline;gap:2.5mm;padding-bottom:2mm;border-bottom:.5pt solid var(--rule)}
+.kc-title{margin:0;font:italic 600 18pt/1 var(--serif);color:var(--ink)}
+.kc-room{font:600 11pt/1 var(--serif);color:var(--soft)}
+.kc-kind{margin-left:auto;font:7pt/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--soft)}
+.kc-keys{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1.6mm}
+.kc-key{display:flex;align-items:flex-start;gap:3mm;min-width:0;break-inside:avoid}
+.kc-cap{flex:none;width:7.5mm;height:8.5mm;border-radius:1.2mm;background:#EFE4CB;border:.5pt solid #CDB98F;border-bottom-width:1.6pt;
+  display:flex;align-items:center;justify-content:center;font:800 10pt/1 var(--sans);color:var(--ink)}
+.kc-cap.pu{background:#4A3726;border-color:#2E2016;color:#F3E7CC;font-size:7.5pt}
+.kc-jobs{min-width:0;display:flex;flex-direction:column;gap:.6mm;padding-top:.4mm}
+.kc-tap{font:600 10pt/1.1 var(--serif);color:var(--ink);overflow-wrap:anywhere}
+.kc-src{font:6.5pt/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+.kc-hold{font:8pt/1.25 var(--sans);color:var(--ink);overflow-wrap:anywhere}
+.kc-lbl{font:6.5pt/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.kc-sec{display:flex;flex-direction:column;gap:.8mm;padding-top:1.6mm;border-top:.5pt solid var(--rule)}
+.kc-sec h2{margin:0;font:6.5pt/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+.kc-sec p{margin:0;font:8pt/1.3 var(--sans)}
+.kc-sec b{font-weight:700}
+.kc-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:3mm;padding-top:2mm;color:var(--soft);font:7pt/1.2 var(--sans)}
+.kc-mark{display:flex;align-items:center;gap:2mm;font:600 6pt/1 var(--sans);letter-spacing:.28em;text-transform:uppercase;color:#8A7F6E;white-space:nowrap}
+.kc-mark::before{content:"";width:5mm;height:.5pt;background:#B8A888}
+.kc-mark .amp{font:italic 400 7pt/1 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;letter-spacing:0;text-transform:none}
+/* the strip: one column per key, in the order they sit on the cabinet */
+.keycard.kc-strip .kc-head{padding-bottom:1.2mm}
+.keycard.kc-strip .kc-title{font-size:12pt}
+.keycard.kc-strip .kc-room{font-size:9pt}
+.keycard.kc-strip .kc-body{display:flex;gap:3mm;align-items:stretch}
+.keycard.kc-strip .kc-keys{flex:1;display:grid;grid-template-columns:repeat(var(--n,7),minmax(0,1fr));gap:2mm}
+.keycard.kc-strip .kc-key{flex-direction:column;align-items:center;text-align:center;gap:1.2mm;padding:0 .5mm}
+.keycard.kc-strip .kc-key + .kc-key{border-left:.5pt solid var(--rule)}
+.keycard.kc-strip .kc-jobs{align-items:center}
+.keycard.kc-strip .kc-tap{font-size:8.5pt}
+.keycard.kc-strip .kc-hold{font-size:7pt}
+.keycard.kc-strip .kc-src{display:none}
+.keycard.kc-strip .kc-more{flex:0 0 44mm;display:flex;flex-direction:column;gap:1.6mm;padding-left:3mm;border-left:.5pt solid var(--rule)}
+.keycard.kc-strip .kc-sec{padding-top:0;border-top:0}
+.keycard.kc-strip .kc-sec p{font-size:7pt}
+.keycard.kc-strip .kc-foot{padding-top:1mm}
+.keycard.kc-a6 .kc-body,.keycard.kc-a6 .kc-more{display:contents}
+@media print{
+  html,body{background:#fff !important;min-height:0}
+  .app[data-view="print"]{max-width:none;margin:0;padding:0 !important;display:block}
+  .app[data-view="print"] #panel{display:block;min-height:0;padding:0}
+  .app[data-view="print"] .print-tools,#toast,#dlg{display:none !important}
+  .card-sheet{display:block;padding:0;overflow:visible}
+  .keycard{box-shadow:none;border-radius:0;margin:0 auto;background:#fff}
+  .keycard.kc-strip{outline:.4pt dashed #B8A888;outline-offset:0;max-width:100%}
+}
 </style>
 </head>
 <body>
@@ -902,7 +1026,10 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
     <div class="bank" id="bank" role="group" aria-label="Piano keys"></div>
 
     <div class="controls">
-      <div class="ctl">
+      <div class="ctl sb">
+        <button type="button" class="sleep-btn" id="sleepBtn" aria-haspopup="dialog" aria-pressed="false" aria-label="Sleep timer" title="Sleep timer">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 5.6v3.1l2 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <button type="button" class="ctl-btn" id="standbyBtn" aria-pressed="false" aria-label="Standby">
           <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M5.8 5.6a6 6 0 1 0 8.4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
@@ -933,10 +1060,15 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
       </div>
     </div>
 
+    <div class="sleep-row" id="sleepRow" hidden>
+      <button type="button" class="sleep-chip" id="sleepChip"><span id="sleepTxt">Sleep</span><span class="x" aria-hidden="true">×</span></button>
+    </div>
+
     <div class="tone" id="tone" hidden aria-live="off">
       <span>Tone</span>
       <span aria-hidden="true" id="toneLo">Dark</span>
-      <div class="tone-bar" role="meter" id="toneBar" aria-label="Tone" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="tone-mid"></span><span class="tone-dot" id="toneDot" style="left:50%"></span></div>
+      <div class="tone-bar" role="meter" id="toneBar" tabindex="0" aria-label="Tone" aria-describedby="toneTip" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="tone-mid"></span><span class="tone-dot" id="toneDot" style="left:50%"></span></div>
+      <span class="tone-tip" id="toneTip" role="tooltip">Turn the knob on the radio</span>
       <span aria-hidden="true" id="toneHi">Bright</span>
       <span class="tone-db" id="toneDb">—</span>
     </div>
@@ -955,6 +1087,7 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
 
 <dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<p class="sr" id="pairSay" aria-live="polite"></p>
 
 <script>
 (() => {
@@ -1005,12 +1138,28 @@ const IC = {
 let netFails = 0;          // changes (not reads) that never got an answer
 // A change refused only because of the address the page is open at (web/hosts.py):
 // offer to allow it, and once allowed send the same request again, so whoever
-// asked gets the real answer (a key's Save, a Try it, a setting).
+// asked gets the real answer (a key's Save, a Try it, a setting). opts.onAllow():
+// the request now waits on the person (the offer, a key press), so a "Still trying…" timer can stop.
 async function api(method, url, body, opts = {}){
   const r = await apiOnce(method, url, body, opts);
-  if (r.status === 403 && r.json && r.json.allow_host && await allowHost(r.json.allow_host))
-    return apiOnce(method, url, body, opts);
+  if (hostOf(r)){
+    if (opts.onAllow) opts.onAllow();
+    if (await allowHost(r.json.allow_host)) return apiOnce(method, url, body, opts);
+  }
   return r;
+}
+// A refusal only for the page's address, in plain words, with the way to allow it.
+const hostOf = r => (r && r.status === 403 && r.json && r.json.allow_host) || null;
+const hostWords = host => 'This page is open at ' + host + ', which can’t make changes yet.';
+// "Allow this address": the offer again (even after Not now); once allowed, again() sends what was refused.
+// Focus then goes to the message the link was in (by id), or to `back`.
+function hostLink(host, msgId, again, back){
+  return h('button', {type:'button', class:'link', onclick: async () => {
+    const ok = await allowHost(host, true);
+    if (ok && again) await again();
+    const f = $(msgId) || (back && $(back));
+    if (f){ if (!f.hasAttribute('tabindex') && !/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(f.tagName)) f.tabIndex = -1; f.focus({preventScroll:true}); }
+  }}, 'Allow this address');
 }
 async function apiOnce(method, url, body, opts = {}){
   // Every change goes as JSON: the radio refuses anything else (its CSRF guard).
@@ -1086,7 +1235,7 @@ let settings = null, haState = null, haEnts = null, haEntsErr = '', browseData =
 let ytm = {available:null, signed_in:false, name:''};
 const acctUi = {open:false, text:'', err:'', busy:false};
 const ytmPicked = new Map(), stationMeta = new Map(), autoName = {}, srcMemo = {}, linkMode = {};
-const ed = {key:null, pick:null, ent:null, rename:false, entQ:'', lp:null, lpQ:'', combo:null};
+const ed = {key:null, slot:'tap', pick:null, ent:null, rename:false, entQ:'', lp:null, lpQ:'', combo:null};   // slot: the Tap or Hold tab
 const tryRes = {};          // "k1.hold" -> what the last "Try it" said
 let view = 'remote';
 
@@ -1097,7 +1246,7 @@ const SHORT = {none:'Nothing', preset:'Play music', cycle_source:'Cycle sources'
   ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler', bluetooth:'Bluetooth'};
 // What each choice in the "A tap… / Holding…" list says under its name.
 const VERB_DESC = {
-  cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Keys & knobs',
+  cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Source key & knobs',
   join_group:'Join the music playing on another Hasler',
   bluetooth:'Plays a phone through the radio. Press again for the next track, hold to pause',
   ha_light:'Turn lights on or off, dim them, change their colour',
@@ -1195,7 +1344,7 @@ function payload(d){
     presets: d.presets
       .filter(p => refCount(d, p.n) || (p.uri || '').trim())
       .map(p => Object.assign({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(),
-        shuffle: p.source === 'radio' || isRadioUri(p.uri) || ytmEndless(p) ? false : !!p.shuffle}, ytmRef(p))),
+        shuffle: p.source === 'radio' || isRadioUri(p.uri) || ytmEndless(p) ? false : !!p.shuffle}, ytmRef(p), shortOut(p))),
   };
   // Only on a radio that has combinations; one still missing a key or an action isn't sent.
   if (Array.isArray(d.combos)) out.combos = d.combos.filter(comboReady).map(comboOut);
@@ -1243,7 +1392,7 @@ function comboWhat(a, lower){
 }
 function keySig(d, k){
   const ps = ['tap','hold'].map(s => k[s] && k[s].do === 'preset' ? presetIn(d, k[s].n) : null)
-    .map(p => p ? Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle}, ytmRef(p)) : null);
+    .map(p => p ? Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle}, ytmRef(p), shortOut(p)) : null);
   return JSON.stringify([normAct(k.tap), normAct(k.hold), ps]);
 }
 const isDirty = () => !!draft && JSON.stringify(payload(draft)) !== baseline;
@@ -1279,7 +1428,7 @@ function applyServerErrors(list){
     if ((m = /^presets\[(\d+)\](?:\.(\w+))?/.exec(where))){
       const p = lastSent && lastSent.presets[+m[1]];
       if (p){
-        const f = ['name','source','uri','shuffle'].includes(m[2]) ? m[2] : '_';
+        const f = ['name','source','uri','shuffle','short'].includes(m[2]) ? m[2] : '_';
         const kk = 'p' + p.n + '.' + f; errs[kk] = errs[kk] ? errs[kk] + ' ' + msg : msg;
         if (!refCount(draft, p.n)) general.push('Preset “' + (p.name || p.n) + '”: ' + msg);
         continue;
@@ -1300,7 +1449,7 @@ function keyErrCount(k){
   for (const s of ['tap','hold','_']) if (errs[k.id + '.' + s]) c++;
   for (const s of ['tap','hold']){
     const a = k[s];
-    if (a && a.do === 'preset') for (const f of ['name','source','uri','shuffle','_']) if (errs['p' + a.n + '.' + f]) c++;
+    if (a && a.do === 'preset') for (const f of ['name','source','uri','shuffle','short','_']) if (errs['p' + a.n + '.' + f]) c++;
   }
   return c;
 }
@@ -1354,6 +1503,7 @@ function buildBank(){
   const bank = $('bank'); bank.textContent = '';
   for (const k of remoteKeys()){
     const btn = h('button', {type:'button', class:'key' + (k.id === 'pu' ? ' pu' : ''), 'data-key':k.id},
+      h('span', {class:'key-h', 'aria-hidden':'true', hidden:''}),
       h('span', {class:'key-n' + (String(k.label).length > 2 ? ' word' : ''), 'aria-hidden':'true'}, k.label), h('span', {class:'key-l', 'aria-hidden':'true', lang:'es'}));
     bindKey(btn, k.id);
     bank.append(btn);
@@ -1362,12 +1512,11 @@ function buildBank(){
   paintBank();
 }
 function holdVerb(id){ const k = cfg && cfg.keys.find(x => x.id === id); return verbOf(k && k.hold); }
+// A press longer than 600 ms is a hold, by finger, mouse or keyboard (Space / Enter kept down).
 function bindKey(btn, id){
-  let timer = null, rep = null, held = false, active = false;
-  btn.addEventListener('pointerdown', e => {
-    if (e.button !== 0) return;
-    active = true; held = false;
-    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+  let timer = null, rep = null, held = false, active = null;   // active: 'ptr' | 'kbd' while down
+  const start = src => {
+    active = src; held = false;
     localDown.add(id); paintBank();
     if (!keyLatches(id)) timer = setTimeout(() => {   // a latching key has no hold
       held = true;
@@ -1377,19 +1526,33 @@ function bindKey(btn, id){
       press(id, 'hold');
       if (v === 'volume_up' || v === 'volume_down') rep = setInterval(() => press(id, 'hold', true), 150);
     }, 600);
-  });
-  const end = fire => {
-    if (!active) return;
-    active = false; clearTimeout(timer); clearInterval(rep); rep = null;
+  };
+  const end = (fire, src) => {
+    if (!active || active !== src) return;
+    active = null; clearTimeout(timer); clearInterval(rep); rep = null;
     localDown.delete(id);
     if (fire && !held) tap(id);
     paintBank();
   };
-  btn.addEventListener('pointerup', () => end(true));
-  btn.addEventListener('pointercancel', () => end(false));
-  btn.addEventListener('lostpointercapture', () => end(false));
+  btn.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || active) return;
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+    start('ptr');
+  });
+  btn.addEventListener('pointerup', () => end(true, 'ptr'));
+  btn.addEventListener('pointercancel', () => end(false, 'ptr'));
+  btn.addEventListener('lostpointercapture', () => end(false, 'ptr'));
   btn.addEventListener('contextmenu', e => e.preventDefault());
-  btn.addEventListener('click', e => { if (e.detail === 0) tap(id); });   // keyboard: Enter / Space
+  // Keyboard: the press starts on keydown and ends on keyup; the browser's own click is held back.
+  const actKey = e => e.key === ' ' || e.key === 'Enter';
+  btn.addEventListener('keydown', e => {
+    if (!actKey(e) || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    if (!e.repeat && !active) start('kbd');
+  });
+  btn.addEventListener('keyup', e => { if (actKey(e)){ e.preventDefault(); end(true, 'kbd'); } });
+  btn.addEventListener('blur', () => end(false, 'kbd'));
+  btn.addEventListener('click', e => { if (e.detail === 0 && !active) tap(id); });   // a screen reader's "activate"
 }
 function holdName(k){
   if (!k) return '';
@@ -1401,15 +1564,18 @@ function holdName(k){
 function tap(id){
   flashUntil[id] = Date.now() + 260;
   const k = cfg && cfg.keys.find(x => x.id === id);
-  if (k && k.tap && k.tap.do === 'preset') optimistic = {key:id, until: Date.now() + 3500};
+  // The key of the station playing, again: the radio goes to standby (actions.py "again").
+  const off = !!(k && k.tap && k.tap.do === 'preset' && currentKey() === id && status && status.playing && status.playing.source === 'radio');
+  if (k && k.tap && k.tap.do === 'preset' && !off) optimistic = {key:id, until: Date.now() + 3500};
   paintBank(); renderDial();
   setTimeout(paintBank, 280);
-  press(id, 'tap');
+  press(id, 'tap', false, off ? 'Standby — tap again to play' : null);
 }
-async function press(id, event, quiet){
+async function press(id, event, quiet, okMsg){
   try {
     const r = await api('POST', '/api/press', {key:id, event});
     if (!r.ok && !quiet) toast((r.json && r.json.error) || 'The radio didn’t take that press.', true);
+    else if (r.ok && okMsg) toast(okMsg);
   } catch (_) { if (!quiet) toast(NET_ERR, true); }
   if (!quiet) pollSoon();
 }
@@ -1437,11 +1603,17 @@ function paintBank(){
     const k = remoteKeys().find(x => x.id === id) || {id, label:id};
     const name = keyName(k);
     const lbl = btn.querySelector('.key-l');
-    const short = id === 'pu' && !cfg ? 'Source' : shortLabel(name);
+    const short = id === 'pu' && !cfg ? 'Source' : keyCap(k, name);
     if (lbl.textContent !== short) lbl.textContent = short;
+    capFit(lbl, short);
     const down = localDown.has(id) || (flashUntil[id] || 0) > now || pressed.has(id) || cur === id || (id === 'pu' && puEngaged()) || latchedKey() === id;
     btn.classList.toggle('down', down);
-    btn.setAttribute('aria-label', (k.label ? keyLabel(k) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : ''));
+    const hk = cfg && cfg.keys.find(x => x.id === id), hv = verbOf(hk && hk.hold), miss = hv !== 'none' && !!missingFor(id, 'hold');
+    const hm = btn.querySelector('.key-h');
+    if (hm){ hm.hidden = hv === 'none'; hm.classList.toggle('miss', miss); }
+    const holdTxt = hv === 'none' ? '' : '. Hold: ' + holdName(hk) + (miss ? ', missing in Home Assistant' : '');
+    btn.setAttribute('aria-label', (k.label ? keyLabel(k) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : '') + holdTxt);
+    btn.title = hv === 'none' ? '' : 'Hold: ' + holdName(hk) + (miss ? ' (missing in Home Assistant)' : '');
     btn.setAttribute('aria-pressed', String(cur === id));
   }
 }
@@ -1655,6 +1827,67 @@ $('standbyBtn').addEventListener('click', async () => {
   } catch (_) { toast(NET_ERR, true); }
   renderRemote(); pollSoon();
 });
+/* ================= remote: sleep timer (/api/sleep) ================= */
+// The clock beside Standby offers 15 · 30 · 60 min; while set, a chip says what is
+// left and a tap on it cancels (with Undo). The radio counts, fades its last minute
+// and goes to standby itself; any key or knob on the radio cancels it there.
+const SLEEP_MINUTES = [15, 30, 60];
+function sleepLeft(s){ return s.fading ? 'under a minute' : Math.ceil(s.ends_in_s / 60) + ' min'; }
+function paintSleep(){
+  const s = status && !status.standby ? status.sleep : null, sb = !!(status && status.standby);
+  $('sleepBtn').hidden = sb || !status;       // asleep already: nothing to time
+  $('sleepBtn').disabled = !online;
+  $('sleepBtn').setAttribute('aria-pressed', String(!!s));
+  $('sleepBtn').setAttribute('aria-label', s ? 'Sleep timer: ' + sleepLeft(s) + ' left' : 'Sleep timer');
+  $('sleepRow').hidden = !s;
+  if (!s) return;
+  const txt = s.fading ? 'Sleep · fading' : 'Sleep · ' + sleepLeft(s);
+  if ($('sleepTxt').textContent !== txt) $('sleepTxt').textContent = txt;
+  $('sleepChip').classList.toggle('fading', !!s.fading);
+  $('sleepChip').setAttribute('aria-label', 'Sleep timer, ' + sleepLeft(s) + ' left. Cancel it');
+}
+async function setSleep(minutes, quiet){
+  try {
+    const r = await api('POST', '/api/sleep', {minutes}, {retry:1});
+    if (r.ok && r.json){
+      if (status) status.sleep = r.json.sleep;
+      if (!quiet) toast('Sleeps in ' + Math.round(minutes) + ' min');
+    } else toast((r.json && r.json.error) || 'The sleep timer didn’t start.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  renderRemote(); pollSoon();
+}
+async function cancelSleep(){
+  const was = status && status.sleep;
+  try {
+    const r = await api('DELETE', '/api/sleep');
+    if (!r.ok){ toast((r.json && r.json.error) || 'The sleep timer is still on.', true); return; }
+    if (status) status.sleep = null;
+    // Undo sets back what was left, to the second.
+    toast('Sleep timer off', was ? {undo: () => setSleep(was.ends_in_s / 60, true)} : undefined);
+  } catch (_) { toast(NET_ERR, true); }
+  renderRemote(); pollSoon();
+}
+function openSleep(){
+  const s = status && status.sleep, opener = $('sleepBtn');
+  const dlg = h('dialog', {id:'sleepDlg', 'aria-labelledby':'sleepTitle', 'aria-describedby':'sleepSub'});
+  const close = () => dlg.close();
+  dlg.addEventListener('close', () => { dlg.remove(); if (!opener.hidden) opener.focus(); });
+  dlg.append(
+    h('h2', {id:'sleepTitle'}, 'Sleep timer'),
+    h('p', {class:'sub', id:'sleepSub'}, s ? 'The radio sleeps in ' + sleepLeft(s) + '. Choose again, or cancel.'
+      : 'Play on for a while, fade out over the last minute, then standby. Any key or knob on the radio cancels it.'),
+    h('div', {class:'sleep-opts', role:'group', 'aria-label':'Sleep in'}, SLEEP_MINUTES.map(m =>
+      h('button', {type:'button', class:'btn', 'data-min': String(m), 'aria-label': 'Sleep in ' + m + ' minutes',
+        'aria-current': s && Math.abs(s.minutes - m) < 0.01 ? 'true' : null,
+        onclick: () => { close(); setSleep(m); }}, m + ' min'))),
+    h('div', {class:'sleep-opts', style:'grid-template-columns:1fr' + (s ? ' 1fr' : '')},
+      s ? h('button', {type:'button', class:'btn', id:'sleepOff', onclick: () => { close(); cancelSleep(); }}, 'Turn the timer off') : null,
+      h('button', {type:'button', class:'btn', onclick: close}, s ? 'Keep it' : 'Cancel')));
+  document.body.append(dlg); dlg.showModal();
+  const first = dlg.querySelector('[data-min]'); if (first) first.focus();
+}
+$('sleepBtn').addEventListener('click', openSleep);
+$('sleepChip').addEventListener('click', cancelSleep);
 $('nextBtn').addEventListener('click', async () => {
   try {
     const r = await api('POST', '/api/next', {});
@@ -1667,15 +1900,14 @@ function renderRemote(){
   paintBank(); renderDial(); syncKnob();
   const sb = !!(status && status.standby);
   $('remote').classList.toggle('offline', !online);   // last-known knob and keys, dimmed
+  // A toggle: always called Standby, pressed while the radio sleeps.
   $('standbyBtn').setAttribute('aria-pressed', String(sb));
-  $('standbyBtn').setAttribute('aria-label', sb ? 'Wake the radio' : 'Standby');
-  $('standbyLbl').textContent = sb ? 'Wake' : 'Standby';
   // A live radio station has no next song: grey Next out rather than let it do nothing.
   const pl = status && status.playing;
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
   $('nextBtn').disabled = !canNext;
   $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
-  paintTone(); paintCabinet(); paintRooms();
+  paintTone(); paintCabinet(); paintRooms(); paintSleep();
 }
 function paintTone(){
   const t = status && status.tone, row = $('tone');
@@ -1685,8 +1917,8 @@ function paintTone(){
   $('toneBar').setAttribute('aria-valuenow', String(t.value));
   const db = t.treble_db, off = status.knob_on === false;
   // Newer radios say what the knob does ("Warmer · 40%"); older ones only a treble dB.
-  const txt = off ? 'Knob off' : (t.text ? t.text
-    : (db === 0 ? 'Flat' : (db > 0 ? '+' : '−') + Math.abs(db).toFixed(1) + ' dB'));
+  const txt = off ? 'Off' : (t.text ? t.text
+    : (!db ? 'Middle' : db > 0 ? 'Brighter' : 'Darker'));
   $('toneDb').textContent = txt;
   const ends = Array.isArray(t.ends) && t.ends.length === 2 ? t.ends : ['Dark', 'Bright'];
   $('toneLo').textContent = ends[0]; $('toneHi').textContent = ends[1];
@@ -1726,6 +1958,8 @@ function latchHint(){ return 'Pick a key to change what it plays. These keys sta
 function latchNote(sheet, k){
   sheet.append(h('p', {class:'hint', id:'latchNote'}, keyLabel(k) + ' stays down once pressed, so it has no hold.' + releaseWords()));
 }
+// The printed card's footer for keys that latch (the cabinet's own keys: pressed, not tapped).
+function latchCardHint(){ const f = fixedKeys()[0]; return 'Press a key to play' + (f && fixedWord(f) ? ' · ' + f.label + ' for standby' : ''); }
 // The cabinet's name under Settings: the descriptor's title (cfg.title).
 function modelLine(){ return ((cfg && cfg.title) || 'Hasler HM · Bern 1964') + ' · restored 2026'; }
 function paintFixed(){
@@ -1762,6 +1996,13 @@ function paintCabinet(){
 
 /* ================= router ================= */
 let route = {view:'remote', arg:null, arg2:null}, prevHash = location.hash;
+// Each history entry carries its place (hidx), so a page change that is called off can
+// step back to where it was and every entry stays: a second Back asks again instead of
+// leaving the app. replaceState elsewhere passes null: the place is kept.
+let hIdx = history.state && typeof history.state.hidx === 'number' ? history.state.hidx : 0, routeHold = null;
+const replaceRaw = history.replaceState.bind(history);
+history.replaceState = (st, title, url) => replaceRaw(st == null ? {hidx: hIdx} : st, title, url);
+history.replaceState(null, '');
 // Settings: #settings (the list), #settings/<page>[/<section>], two sub-pages under This radio.
 // Old addresses still work and are rewritten in place.
 const SET_ALIAS = {sources:'phones', multiroom:'rooms', about:'radio', knobs:'keys'};
@@ -1772,7 +2013,7 @@ function parseHash(){
   if (p[0] === 'ha'){ p = ['settings', 'radio', 'ha']; fixed = true; }
   if (p[0] === 'settings' && SET_ALIAS[p[1]]){ p[1] = SET_ALIAS[p[1]]; fixed = true; }
   if (fixed) history.replaceState(null, '', '#' + p.join('/'));
-  return {view: ['edit','browse','settings'].includes(p[0]) ? p[0] : 'remote', arg: p[1] || null, arg2: p[2] || null};
+  return {view: ['edit','browse','settings','print'].includes(p[0]) ? p[0] : 'remote', arg: p[1] || null, arg2: p[2] || null};
 }
 // "home", "sound", "radio/updates"… or null away from Settings.
 function pageKey(r){
@@ -1783,18 +2024,66 @@ function pageKey(r){
 const curPage = () => pageKey(route);
 const onPage = (...keys) => view === 'settings' && keys.includes(curPage());
 function go(hash){ if (location.hash.replace(/^#/, '') === hash) onRoute(); else location.hash = hash; }
-function onRoute(){
-  const next = parseHash();
-  if (route.view === 'edit' && next.view !== 'edit' && isDirty()){
-    if (!confirm('Leave without saving your key changes?')){ history.replaceState(null, '', prevHash || '#edit'); return; }
-    errs = {}; hints = {}; general = []; adopt(cfg);
+/* ---------- leaving unsaved changes behind ---------- */
+// One question wherever unsaved work would be left (Done, Back, another page):
+// resolves 'save', 'discard' or 'keep'. With #dlg already open (the key chooser, a
+// key press being waited for) nothing opens on top of it: the answer is 'keep'.
+function askLeave(what){
+  return new Promise(resolve => {
+    const dlg = $('dlg');
+    if (dlg.open){ resolve('keep'); return; }
+    dlg.textContent = '';
+    let answer = 'keep';
+    const pick = a => () => { answer = a; dlg.close(); };
+    dlg.append(h('h2', {id:'dlgTitle'}, 'Save your changes?'),
+      h('p', {class:'sub'}, what ? 'Not saved yet: ' + what + '.' : 'Some changes here aren’t saved yet.'),
+      h('div', {style:'display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;margin-top:14px'},
+        h('button', {type:'button', class:'btn small', id:'leaveKeep', onclick: pick('keep')}, 'Keep editing'),
+        h('button', {type:'button', class:'btn small', id:'leaveDiscard', onclick: pick('discard')}, 'Discard'),
+        h('button', {type:'button', class:'btn small primary', id:'leaveSave', onclick: pick('save')}, 'Save and close')));
+    // A close event that comes late, from whatever #dlg showed before, finds it open again: not this one's.
+    dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; resolve(answer); };
+    dlg.onclick = null;
+    dlg.showModal();
+  });
+}
+// "Key 2 and PU": what Edit keys holds unsaved, for that question.
+const keysWhat = () => nameAnd(draft.keys.filter(keyDirty).map(keyLabel).concat((draft.combos || []).filter(comboDirty).map(comboName)));
+const dropKeyChanges = () => { errs = {}; hints = {}; general = []; ed.combo = null; adopt(cfg); };
+// The address changed (Back, a link) away from unsaved work: step back to where the page
+// was, ask, then go on with the same step - or stay. page = the Settings page left, or
+// null for Edit keys. landed = the entry's place, null for a new one.
+function holdRoute(landed, page){
+  const target = location.hash, delta = landed == null ? null : landed - hIdx;
+  let back = Promise.resolve();
+  if (delta !== 0){
+    back = new Promise(res => {
+      const done = () => { if (routeHold === hold) routeHold = null; res(); };
+      const hold = routeHold = {hash: prevHash, done};
+      setTimeout(done, 1000);       // in case the browser never says it got there
+    });
+    if (delta == null) history.back(); else history.go(-delta);
   }
+  Promise.all([askLeave(page ? (page.what ? page.what() : '') : keysWhat()), back]).then(async ([a]) => {
+    if (a === 'keep') return;
+    if (a === 'save'){
+      if (page){ await page.save(); if (page.dirty()) return; }
+      else { await save(); if (isDirty()) return; }
+    } else if (page){ if (page.discard) page.discard(); }
+    else dropKeyChanges();
+    if (delta == null) location.hash = target; else if (delta) history.go(delta); else onRoute();
+  });
+}
+function onRoute(){
+  const st = history.state, landed = st && typeof st.hidx === 'number' ? st.hidx : null;
+  // Arrived back where the page was after a called-off step: nothing changes.
+  if (routeHold && location.hash === routeHold.hash){ routeHold.done(); return; }
+  const next = parseHash();
   const fromKey = curPage(), toKey = pageKey(next);
   const leaving = fromKey && fromKey !== toKey ? SET_PAGE[fromKey] : null;
-  if (leaving && leaving.dirty && leaving.dirty()){
-    if (!confirm('Leave without saving? Your changes on this page will be lost.')){ history.replaceState(null, '', prevHash || '#settings'); return; }
-    if (leaving.discard) leaving.discard();
-  }
+  if (route.view === 'edit' && next.view !== 'edit' && isDirty()){ holdRoute(landed, null); return; }
+  if (leaving && leaving.dirty && leaving.dirty()){ holdRoute(landed, leaving); return; }
+  hIdx = landed == null ? hIdx + 1 : landed; replaceRaw({hidx: hIdx}, '');
   if (leaving && leaving.leave) leaving.leave();
   if (toastUndo && (fromKey || toKey) && fromKey !== toKey) hideToast();   // an Undo belongs to the page it was made on
   const changed = next.view !== route.view, pageChanged = changed || fromKey !== toKey;
@@ -1806,7 +2095,11 @@ function onRoute(){
   $('app').dataset.view = view;
   if (view === 'edit'){
     ed.key = next.arg === 'reset' || next.arg === 'combos' ? null : next.arg && cfg && cfg.keys.some(k => k.id === next.arg) ? next.arg : (changed ? null : ed.key);
-    ed.pick = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null; ed.ent = null; ed.lp = null; ed.rename = false; ed.combo = null;
+    // #edit/<key>/hold opens the Hold tab; #edit/<key>/tap the Tap tab with its choices open.
+    const sl = next.arg2 === 'hold' || next.arg2 === 'tap' ? next.arg2 : null;
+    ed.slot = sl || 'tap';
+    ed.pick = sl === 'tap' ? 'tap' : null; ed.ent = null; ed.lp = null; ed.rename = false; ed.combo = null;
+    edArrive = sl && next.arg ? {key: next.arg, slot: sl, until: Date.now() + 8000} : null;
   }
   renderPanel();
   if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); }
@@ -1823,6 +2116,7 @@ function onRoute(){
     if (f) f.focus({preventScroll:true});
     setUi.backTo = null;
   }
+  if (view === 'edit' && edArrive) arriveSlot();
   setDeepLink();
 }
 window.addEventListener('hashchange', onRoute);
@@ -1843,11 +2137,15 @@ $('goSettings').addEventListener('click', () => go('settings'));
 function renderPanel(){
   const panel = $('panel');
   const v = view === 'remote' ? (wide.matches ? 'browse' : null) : view;
-  if (!v){ panel.textContent = ''; return; }
-  if (v === 'edit') renderEdit();
+  if (!v) panel.textContent = '';
+  else if (v === 'edit') renderEdit();
   else if (v === 'browse') renderBrowse();
   else if (v === 'settings') renderSettings();
+  else if (v === 'print') renderPrint();
+  paintActionsBar();
 }
+// Edit keys' sticky Test / Save bar: the toast sits above it, as above Settings' save bar.
+function paintActionsBar(){ document.documentElement.classList.toggle('has-actions', view === 'edit' && !!$('panel').querySelector('.actions')); }
 function screenTop(title, backTo, extra){
   const kids = [];
   if (backTo !== false) kids.push(h('button', {type:'button', class:'round', 'aria-label': backTo === 'settings' ? 'Back to Settings' : 'Back', onclick: () => go(backTo || '')}, IC.back()));
@@ -1877,30 +2175,85 @@ function renderEdit(){
   const strip = h('div', {class:'strip-keys', role:'group', 'aria-label':'Choose a key'});
   for (const k of draft.keys){
     const bad = keyErrCount(k) > 0, dirty = keyDirty(k);
+    const hasHold = verbOf(k.hold) !== 'none', hMiss = hasHold && !!missingFor(k.id, 'hold');
     strip.append(h('button', {type:'button', class:'skey' + (k.id === 'pu' ? ' pu' : '') + (String(k.label).length > 2 ? ' word' : ''), 'aria-current': String(k.id === ed.key),
-        'aria-label': keyLabel(k) + (bad ? ', has a problem' : dirty ? ', unsaved' : ''),
+        'aria-label': keyLabel(k) + (bad ? ', has a problem' : dirty ? ', unsaved' : '') + (hasHold ? '. Hold: ' + slotSummary(k, 'hold') + (hMiss ? ', missing in Home Assistant' : '') : ''),
         onclick: () => selectKey(k.id)}, k.label,
-      bad ? h('span', {class:'dot', 'aria-hidden':'true'}) : dirty ? h('span', {class:'dot dirty', 'aria-hidden':'true'}) : null));
+      bad ? h('span', {class:'dot', 'aria-hidden':'true'}) : dirty ? h('span', {class:'dot dirty', 'aria-hidden':'true'}) : null,
+      hasHold ? h('span', {class:'hm' + (hMiss ? ' miss' : ''), 'aria-hidden':'true'}) : null));
   }
   panel.append(strip);
   const sheet = h('section', {class:'sheet', 'aria-label': ed.key ? 'Key settings' : 'Keys'}, h('div', {class:'grab', 'aria-hidden':'true'}));
-  if (general.length) sheet.append(h('div', {class:'alert', role:'alert'}, h('strong', null, 'The radio didn’t accept these settings:'), h('ul', null, general.map(g => h('li', null, g)))));
+  if (general.length && general[0].host) sheet.append(h('div', {class:'alert', role:'alert', id:'genAlert'}, hostWords(general[0].host), ' ', hostLink(general[0].host, 'genAlert', save, 'saveMsg')));
+  else if (general.length) sheet.append(h('div', {class:'alert', role:'alert'}, h('strong', null, 'The radio didn’t accept these settings:'), h('ul', null, general.map(g => h('li', null, g)))));
   const k = ed.key && draft.keys.find(x => x.id === ed.key);
   const cb = !k && ed.combo && comboById(ed.combo);
   if (cb){ sheet.setAttribute('aria-label', 'Key combination'); comboSheet(sheet, cb); }
   else if (!k) sheet.append(keyList());
   else keySheet(sheet, k);
   panel.append(sheet);
+  if (!k && !cb) panel.append(printLink());
+  paintActionsBar();
 }
-function selectKey(id){
+// Another key keeps the tab that's open (or opens `slot`); the address follows: #edit/k3, #edit/k3/hold.
+function selectKey(id, slot){
   ed.key = id; ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; ed.rename = false; saveMsg = {text:'', bad:false};
-  history.replaceState(null, '', '#edit/' + id); prevHash = location.hash;
+  if (slot) ed.slot = slot;
+  edArrive = null;
+  history.replaceState(null, '', slotHash(id)); prevHash = location.hash;
   renderEdit();
   const t = $('keyTitle'); if (t) t.focus({preventScroll:true});
 }
-function done(){
-  if (isDirty() && !confirm('Discard the changes you haven’t saved?')) return;
-  errs = {}; hints = {}; general = []; ed.combo = null; adopt(cfg);
+const slotHash = id => '#edit/' + id + (ed.slot === 'hold' ? '/hold' : '');
+// The Tap | Hold switch: no new history entry, so it never asks about unsaved changes.
+function setSlot(s){
+  if (ed.slot === s) return;
+  ed.slot = s; ed.pick = null; ed.ent = null; ed.lp = null; ed.rename = false; edArrive = null;
+  if (ed.key){ history.replaceState(null, '', slotHash(ed.key)); prevHash = location.hash; }
+  rerender();
+  const b = $('slot-' + s); if (b) b.focus({preventScroll:true});
+}
+// What a slot was when last saved, beside what it is now (a preset by what it plays, not its number).
+function slotSig(d, k, s){
+  const a = k && k[s], p = a && a.do === 'preset' ? presetIn(d, a.n) : null;
+  return JSON.stringify(p ? Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle}, ytmRef(p)) : normAct(a));
+}
+const slotDirty = (k, s) => !!cfg && slotSig(draft, k, s) !== slotSig(cfg, cfg.keys.find(x => x.id === k.id), s);
+function slotErr(k, s){
+  if (errs[k.id + '.' + s]) return true;
+  const a = k[s];
+  return !!(a && a.do === 'preset' && ['name','source','uri','shuffle','_'].some(f => errs['p' + a.n + '.' + f]));
+}
+// Arriving on a key's Tap or Hold by its address (or Reassign in Home Assistant): a target Home
+// Assistant doesn't have opens its search at once; otherwise the tab itself gets the focus.
+let edArrive = null;
+function arriveSlot(){
+  const a = edArrive;
+  if (!a || view !== 'edit' || Date.now() > a.until || (draft && ed.key !== a.key)){ edArrive = null; return; }
+  if (!draft) return;                     // the keys aren't here yet; onRoute runs again when they are
+  const k = draft.keys.find(x => x.id === a.key), v = verbOf(k && k[a.slot]);
+  if (!k){ edArrive = null; return; }
+  if (isHa(v) && missingFor(k.id, a.slot) && haOn()){
+    edArrive = null;
+    ed.slot = a.slot; ed.pick = null;
+    if (v === 'ha_light' || v === 'ha_service'){ ed.lp = a.slot; ed.lpQ = ''; } else { ed.ent = a.slot; ed.entQ = ''; }
+    rerender();
+    const f = $(ed.lp ? 'lpq' : 'entq') || $('chg-' + a.slot);
+    if (f){ f.scrollIntoView({block:'center'}); f.focus({preventScroll:true}); }
+    return;
+  }
+  if (!isHa(v) || haState) edArrive = null;   // still waiting to hear from Home Assistant: try again then
+  const t = $('slot-' + a.slot), ae = document.activeElement;
+  const busy = ae && ae !== t && ae.closest && ae.closest('.sheet');   // already at work in the sheet: leave the focus be
+  if (t && !busy) t.focus({preventScroll:true});
+}
+async function done(){
+  if (isDirty()){
+    const a = await askLeave(keysWhat());
+    if (a === 'keep') return;
+    if (a === 'save'){ await save(); if (isDirty()) return; }
+  }
+  dropKeyChanges();
   go('');
 }
 function slotSummary(k, s){
@@ -1911,13 +2264,17 @@ function slotSummary(k, s){
   return verbShort(v);
 }
 function keyList(){
-  const ul = h('ul', {class:'keylist'});
+  const ul = h('ul', {class:'keylist slots'});
   for (const k of draft.keys){
-    ul.append(h('li', null, h('button', {type:'button', onclick: () => selectKey(k.id)},
-      h('span', {class:'kl-n' + (k.id === 'pu' ? ' pu' : '') + (String(k.label).length > 2 ? ' word' : ''), 'aria-hidden':'true'}, k.label),
-      h('span', {class:'kl-txt'}, h('span', {class:'kl-name'}, keyLabel(k) + ' · ' + slotSummary(k, 'tap').split(' · ')[0]),
-        h('span', {class:'kl-sub'}, tapWord(k) + ' · ' + slotSummary(k, 'tap') + (k.latching ? '' : '  /  Hold · ' + slotSummary(k, 'hold')))),
-      h('span', {class:'chev'}, IC.chev()))));
+    const hNone = verbOf(k.hold) === 'none', hMiss = !hNone && missingFor(k.id, 'hold');
+    const line = (slot, word, txt, extra) => h('button', {type:'button', class:'kl-line ' + slot + (slot === 'hold' && hNone ? ' none' : ''), id:'kl-' + k.id + '-' + slot,
+        'aria-label': keyLabel(k) + ', ' + slot + ': ' + txt + (extra ? ', ' + extra : ''), onclick: () => selectKey(k.id, slot)},
+      h('span', {class:'kl-k', 'aria-hidden':'true'}, word), h('span', {class:'kl-v', 'aria-hidden':'true'}, txt, extra ? h('span', {class:'kl-miss'}, extra) : null));
+    ul.append(h('li', null,
+      h('span', {class:'kl-n' + (k.id === 'pu' ? ' pu' : '') + (String(k.label).length > 2 ? ' word' : ''), 'aria-hidden':'true', onclick: () => selectKey(k.id, 'tap')}, k.label),
+      h('span', {class:'kl-txt'},
+        line('tap', tapWord(k), slotSummary(k, 'tap')),
+        k.latching ? null : line('hold', 'Hold', slotSummary(k, 'hold'), hMiss ? 'Missing in Home Assistant' : ''))));   // a latching key has no hold
   }
   return h('div', {class:'field'}, h('p', {class:'hint'}, latchingBank() ? latchHint() : 'Pick a key to change what it plays, and what it does when you hold it.'), ul,
     combosOn() ? comboSection() : null,
@@ -1934,21 +2291,28 @@ function ownPreset(k){
   return p;
 }
 function keySheet(sheet, k){
-  const tapV = verbOf(k.tap);
+  const tapV = verbOf(k.tap), onHold = ed.slot === 'hold' && !k.latching;
   sheet.append(h('div', {class:'sheet-head'},
     h('h2', {id:'keyTitle', tabindex:'-1'}, keyLabel(k)),
-    h('span', {class:'mono'}, k.latching ? (tapV === 'preset' ? 'Selected, plays' : 'Selected, does') : tapV === 'preset' ? 'Tap plays' : 'Tap does')));
+    h('span', {class:'mono'}, onHold ? 'Hold does' : k.latching ? (tapV === 'preset' ? 'Selected, plays' : 'Selected, does') : tapV === 'preset' ? 'Tap plays' : 'Tap does')));
+  if (!k.latching) sheet.append(slotSwitch(k));   // a latching key: the Select job only
   const cNote = comboNote(k); if (cNote) sheet.append(cNote);
   const kErr = errText(k.id + '._'); if (kErr) sheet.append(h('p', {class:'err', role:'alert'}, kErr));
-  if (tapV === 'preset' && ed.pick !== 'tap') presetSection(sheet, k);
+  // The radio turned down the other half of this key: say where.
+  const other = onHold ? 'tap' : 'hold';
+  if (slotErr(k, other) && !slotErr(k, ed.slot)) sheet.append(h('p', {class:'note-bad'}, 'The radio didn’t accept what ' + (onHold ? 'a tap does' : 'holding does') + '. ',
+    h('button', {type:'button', class:'link', style:'min-height:0;padding:0', onclick: () => setSlot(other)}, onHold ? 'Show Tap' : 'Show Hold')));
+  if (onHold) holdSection(sheet, k);
+  else if (tapV === 'preset' && ed.pick !== 'tap') presetSection(sheet, k);
   else actionSection(sheet, k, 'tap');
-  if (k.latching) latchNote(sheet, k); else holdRow(sheet, k);
-  const p = tapV === 'preset' ? presetIn(draft, k.tap.n) : null;
+  if (k.latching) latchNote(sheet, k);
+  const p = !onHold && tapV === 'preset' ? presetIn(draft, k.tap.n) : null;
   const dirty = isDirty();
-  sheet.append(h('p', {class:'save-msg' + (saveMsg.bad ? ' bad' : ''), role:'status', 'aria-live':'polite'}, saveMsg.text));
+  const pill = testPill(k); if (pill) sheet.append(h('div', {class:'tp-row'}, pill));
+  sheet.append(saveMsgView());
   sheet.append(h('div', {class:'actions'},
-    h('button', {type:'button', class:'btn', id:'testBtn', disabled: !p, onclick: () => testPreset(p)}, 'Test on the radio'),
-    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': keyLabel(k).replace(/^Key/, 'key'), disabled: saving || !dirty, onclick: save},
+    onHold ? null : h('button', {type:'button', class:'btn', id:'testBtn', disabled: !p, 'aria-disabled': testUi.busy ? 'true' : null, onclick: () => testPreset(p, k.id)}, testUi.busy ? 'Tuning in…' : 'Test on the radio'),
+    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': keyLabel(k).replace(/^Key/, 'key'), 'aria-disabled': saving || !dirty ? 'true' : null, onclick: save},
       saveLbl(dirty, keyLabel(k).replace(/^Key/, 'key')))));
 }
 function presetSection(sheet, k){
@@ -2012,7 +2376,7 @@ function choiceCard(k, p){
     const m = /(playlist|album|track|artist|show|episode)/i.exec(uri);
     type = 'Spotify' + (m ? ' · ' + m[1] : '');
   }
-  const nameErr = errText(pk + '.name');
+  const nameErr = errText(pk + '.name'), capErr = errText(pk + '.short');
   if (!uri && !(p.source === 'ytm' && p.kind)){
     return h('div', {class:'choice unset'}, thumbEl, h('div', {class:'choice-txt'},
       h('span', {class:'choice-name'}, 'Nothing chosen yet'),
@@ -2022,23 +2386,29 @@ function choiceCard(k, p){
   if (ed.rename){
     const inp = h('input', {type:'text', id:'renameInp', value:p.name, 'aria-label':'Name for this key', autocomplete:'off', maxlength:'80',
       'aria-invalid': nameErr ? 'true' : 'false',
-      onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); commit(); } else if (e.key === 'Escape'){ e.preventDefault(); ed.rename = false; rerender(); $('renameBtn') && $('renameBtn').focus(); } },
-      onblur: () => commit()});
+      onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); commit(); } else if (e.key === 'Escape'){ e.preventDefault(); cancel(); } }});
+    const cancel = () => { ed.rename = false; rerender(); $('renameBtn') && $('renameBtn').focus(); };
+    const cap = shortField(p, () => commit(), cancel);
     const commit = () => {
       if (!ed.rename) return;
       ed.rename = false;
-      const v = inp.value.trim();
+      const v = inp.value.trim(), sv = capValue(cap);
       if (v !== p.name){ const pp = ownPreset(k); pp.name = v; autoName[pp.n] = null; clearErr(pk + '.name'); }
+      if (sv !== (p.short || '')){ const pp = ownPreset(k); if (sv) pp.short = sv; else delete pp.short; clearErr(pk + '.short'); }
       rerender(); const b = $('renameBtn'); if (b) b.focus();
     };
     txt = h('div', {class:'choice-txt'}, inp);
-    setTimeout(() => { inp.focus(); inp.select(); }, 0);
-    return h('div', null, h('div', {class:'choice'}, thumbEl, txt), nameErr ? h('p', {class:'err'}, nameErr) : null);
+    if (renameFocus){ renameFocus = false; setTimeout(() => { inp.focus(); inp.select(); }, 0); }
+    // Leaving both fields (not moving between them) keeps what was typed.
+    const box = h('div', {class:'rename-box', onfocusout: e => { if (!box.contains(e.relatedTarget)) commit(); }},
+      h('div', {class:'choice'}, thumbEl, txt), cap);
+    return h('div', null, box, nameErr ? h('p', {class:'err'}, nameErr) : null, capErr ? h('p', {class:'err'}, capErr) : null);
   }
+  if (p.short) type += ' · key: ' + p.short;
   txt = h('div', {class:'choice-txt'}, h('span', {class:'choice-name'}, p.name || 'Untitled'), h('span', {class:'choice-type'}, type));
   return h('div', null, h('div', {class:'choice'}, thumbEl, txt,
-      h('button', {type:'button', class:'link', id:'renameBtn', 'aria-label':'Rename ' + (p.name || 'this'), onclick: () => { ed.rename = true; rerender(); }}, 'Rename')),
-    nameErr ? h('p', {class:'err', role:'alert'}, nameErr) : null);
+      h('button', {type:'button', class:'link', id:'renameBtn', 'aria-label':'Rename ' + (p.name || 'this'), onclick: () => { ed.rename = true; renameFocus = true; rerender(); }}, 'Rename')),
+    nameErr ? h('p', {class:'err', role:'alert'}, nameErr) : null, capErr ? h('p', {class:'err', role:'alert'}, capErr) : null);
 }
 function pickInto(k, fields){
   const p = ownPreset(k);
@@ -2067,7 +2437,7 @@ function spotifySection(body, k, p){
     oninput: e => {
       const pp = ownPreset(k); pp.uri = e.target.value; clearErr('p' + pp.n + '.uri');
       if (!(pp.name || '').trim() && pp.uri.trim()){ const m = /(playlist|album|track|artist|show|episode)/i.exec(pp.uri); pp.name = 'Spotify ' + (m ? m[1].toLowerCase() : 'link'); autoName[pp.n] = pp.name; }
-      const btn = $('saveBtn'); if (btn){ btn.disabled = !isDirty(); btn.textContent = saveLbl(isDirty(), keyLabel(k).replace(/^Key/, 'key')); }
+      paintSave();
     },
     onblur: () => { const i = presetIssues(presetIn(draft, k.tap.n)); if (i.uri && p.uri.trim()) hints['p' + k.tap.n + '.uri'] = i.uri; rerender(); }});
   body.append(h('label', {for:'spuri'}, 'Spotify link'), inp, h('p', {class:'hint', id:'sphint'}, 'A playlist, album or track. In Spotify: Share → Copy link.'));
@@ -2145,19 +2515,41 @@ function actionSection(sheet, k, slot){
   const err = errText(k.id + '.' + slot); if (err) sheet.append(h('p', {class:'err', role:'alert'}, err));
   if (slot === 'tap') sheet.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { setVerb(k, 'tap', 'preset'); ed.pick = null; rerender(); }}, 'Play music on this key instead')));
 }
-function holdRow(sheet, k){
+// Tap | Hold, right under the key's name: each half shows what it does now.
+function slotSwitch(k){
+  const seg = h('div', {class:'seg slot-seg', role:'radiogroup', 'aria-label':'Edit what a tap or a hold does'});
+  for (const [s, word] of [['tap', 'Tap'], ['hold', 'Hold']]){
+    const on = ed.slot === s, sum = slotSummary(k, s);
+    const bad = slotErr(k, s) || (verbOf(k[s]) !== 'none' && !!missingFor(k.id, s)), dirty = !bad && slotDirty(k, s);
+    seg.append(h('button', {type:'button', role:'radio', id:'slot-' + s, 'aria-checked': String(on), tabindex: on ? '0' : '-1',
+        'aria-label': word + ': ' + sum + (bad ? ', has a problem' : dirty ? ', unsaved' : ''), onclick: () => setSlot(s)},
+      word, h('small', {'aria-hidden':'true'}, sum),
+      bad ? h('span', {class:'dot', 'aria-hidden':'true'}) : dirty ? h('span', {class:'dot dirty', 'aria-hidden':'true'}) : null));
+  }
+  return seg;
+}
+// The hold card: what it does and on what ("Scene · Evening", not just "Scene").
+function holdCard(k){
   const a = k.hold, v = verbOf(a);
-  let val = verbShort(v), small = '';
-  if (v === 'preset'){ const p = presetIn(draft, a.n); val = 'Plays ' + (p ? p.name : 'a preset'); }
-  if (v === 'bt_pair') small = (a.seconds || 120) + ' s';
-  if (v === 'custom') val = a.label || 'Custom';
-  const row = h('div', {class:'row'},
-    h('div', {class:'row-txt'}, h('span', {class:'mono'}, 'Hold'), h('span', {class:'row-val'}, val, small ? [' ', h('small', null, '· ' + small)] : null)),
-    h('button', {type:'button', class:'link', id:'chg-hold', 'aria-expanded': String(ed.pick === 'hold'), 'aria-label':'Change what holding ' + keyLabel(k) + ' does',
-      onclick: () => { ed.pick = ed.pick === 'hold' ? null : 'hold'; ed.ent = null; ed.lp = null; rerender(); }}, ed.pick === 'hold' ? 'Close' : 'Change'));
-  sheet.append(row);
-  if (ed.pick === 'hold') sheet.append(verbPicker(k, 'hold'));
-  else if (v !== 'preset') sheet.append(paramsFor(k, 'hold'));
+  let name = verbShort(v), type = VERB_DESC[v] || (verbDef(v) ? verbDef(v).label : '');
+  if (v === 'none'){ name = 'Nothing yet'; type = 'Holding this key does nothing'; }
+  else if (v === 'preset'){ const p = presetIn(draft, a.n); name = p ? p.name || 'Untitled' : 'Play music'; type = 'Plays' + (p ? ' · ' + (SRC_HEAD[p.source] || p.source) : ''); }
+  else if (isHa(v)){ name = haTarget(a) || 'Nothing chosen yet'; type = verbShort(v) + ' · Home Assistant'; }
+  else if (v === 'bt_pair') type = 'Open for a new phone · ' + durWords(a.seconds || 120);
+  else if (v === 'volume_up' || v === 'volume_down') type = 'Volume';
+  else if (v === 'custom'){ name = a.label || 'Custom'; type = 'Set by hand on the radio'; }
+  return {name, type};
+}
+function holdSection(sheet, k){
+  if (ed.pick === 'hold'){ sheet.append(verbPicker(k, 'hold')); return; }
+  const v = verbOf(k.hold), c = holdCard(k), miss = isHa(v) && !!missingFor(k.id, 'hold');
+  sheet.append(h('div', {class:'choice hold' + (v === 'none' ? ' unset' : '') + (miss ? ' miss' : '')},
+    h('span', {class:'thumb blank', 'aria-hidden':'true'}, IC.dots()),
+    h('div', {class:'choice-txt'}, h('span', {class:'choice-name', id:'holdName'}, c.name), h('span', {class:'choice-type'}, c.type)),
+    h('button', {type:'button', class:'link', id:'chg-hold', 'aria-label': (v === 'none' ? 'Choose' : 'Change') + ' what holding ' + keyLabel(k) + ' does',
+      onclick: () => { ed.pick = 'hold'; ed.ent = null; ed.lp = null; rerender(); }}, v === 'none' ? 'Choose' : 'Change')));
+  sheet.append(h('p', {class:'hint'}, 'Hold the key about half a second to do this. A short press does the Tap job.'));
+  if (v !== 'preset') sheet.append(paramsFor(k, 'hold'));
   const err = errText(k.id + '.hold'); if (err) sheet.append(h('p', {class:'err', role:'alert'}, err));
 }
 function verbPicker(k, slot){
@@ -2167,7 +2559,17 @@ function verbPicker(k, slot){
   const rank = v => { const i = HA_ORDER.indexOf(v); return i < 0 ? 99 : i; };
   const verbs = all.filter(x => !isHa(x.do)).concat(all.filter(x => isHa(x.do)).sort((a, b) => rank(a.do) - rank(b.do)));
   if (cur === 'custom') verbs.push({do:'custom', label: k[slot].label || 'Custom'});
-  const ul = h('div', {class:'picker', role:'radiogroup', 'aria-label': slot === 'tap' ? 'What a tap does' : slot === 'combo' ? 'What the combination does' : 'What holding does'});
+  const ul = h('div', {class:'picker', role:'radiogroup', 'aria-label': slot === 'tap' ? 'What a tap does' : slot === 'combo' ? 'What the combination does' : 'What holding does',
+    // Arrow keys move the choice (one stop in the Tab order); Enter or Space takes it, as a tap does.
+    onkeydown: e => {
+      const d = {ArrowDown:1, ArrowRight:1, ArrowUp:-1, ArrowLeft:-1}[e.key], all = [...ul.querySelectorAll('[role=radio]')];
+      const i = all.indexOf(document.activeElement); if (!d || i < 0) return;
+      e.preventDefault();
+      const nx = all[(i + d + all.length) % all.length];
+      for (const b of all){ b.setAttribute('aria-checked', String(b === nx)); b.tabIndex = b === nx ? 0 : -1; }
+      nx.focus();
+    }});
+  const tabStop = verbs.some(x => x.do === cur) ? cur : verbs.length && verbs[0].do;
   let haHead = false;
   for (const vb of verbs){
     const needsHa = isHa(vb.do) && !(haState && haState.connected), needsMr = vb.do === 'join_group' && !mrOn();
@@ -2175,7 +2577,7 @@ function verbPicker(k, slot){
     const label = vb.do === 'preset' ? 'Play music' : verbShort(vb.do);
     const base = vb.do === 'preset' ? 'A station, playlist or album' : VERB_DESC[vb.do] || (vb.label !== label ? vb.label : '');
     const desc = base + (needsHa ? (base ? ' · ' : '') + 'needs Home Assistant' : '') + (needsMr ? ' · switch on Play in several rooms (Settings → Rooms)' : '');
-    ul.append(h('button', {type:'button', role:'radio', 'aria-checked': String(cur === vb.do),
+    ul.append(h('button', {type:'button', role:'radio', 'aria-checked': String(cur === vb.do), tabindex: vb.do === tabStop ? '0' : '-1',
       onclick: () => {
         if (vb.do !== 'custom') setVerb(k, slot, vb.do);
         const simple = isHa(vb.do) && vb.do !== 'ha_light' && vb.do !== 'ha_service';
@@ -2239,7 +2641,7 @@ function entityField(wrap, k, slot){
     if (a.entity && (miss || (haEnts && !e))) wrap.append(h('p', {class:'note-bad'}, 'Not in this Home Assistant'));
     return;
   }
-  const inp = h('input', {type:'search', id:'entq', value: ed.entQ, placeholder:'Search ' + (domains.length ? domains.join(', ') : 'entities'), autocomplete:'off', 'aria-label':'Search Home Assistant'});
+  const inp = h('input', {type:'search', id:'entq', value: ed.entQ, placeholder:'Search ' + (domains.length ? domains.join(', ') : 'entities'), autocomplete:'off', 'aria-label':'Search Home Assistant', 'aria-describedby': miss && a.entity ? 'entMiss' : null});
   const list = h('div', {class:'picker', role:'radiogroup', 'aria-label':'Home Assistant entities'});
   const paint = () => {
     list.textContent = '';
@@ -2256,6 +2658,8 @@ function entityField(wrap, k, slot){
     }
   };
   inp.addEventListener('input', () => { ed.entQ = inp.value; paint(); });
+  // Reassigning: say what it pointed at, so the replacement is easy to recognise.
+  if (miss && a.entity) wrap.append(h('p', {class:'note-bad', id:'entMiss'}, 'Was ' + a.entity + ', which this Home Assistant doesn’t have. Choose what to use instead.'));
   wrap.append(h('label', {for:'entq'}, 'Choose from Home Assistant'), h('div', {class:'searchbox'}, IC.search(), inp), list,
     h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { ed.ent = null; rerender(); }}, 'Cancel')));
   paint();
@@ -2292,7 +2696,8 @@ function haChanged(k, slot){
 function paintSave(){
   const b = $('saveBtn'); if (!b) return;
   const dirty = isDirty();
-  b.disabled = saving || !dirty;
+  // aria-disabled, not disabled: a focused Save keeps the focus while it saves and after.
+  if (saving || !dirty) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
   b.textContent = saveLbl(dirty, b.dataset.label || '');
 }
 // After a save that got no answer, the button offers to send the same again.
@@ -2432,6 +2837,7 @@ function tryRow(wrap, k, slot){
   wrap.append(h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', id:'trybtn-' + slot, disabled: !!(res && res.busy), onclick: () => tryAction(k, slot)},
     res && res.busy ? [h('span', {class:'spin', 'aria-hidden':'true'}), ' Trying…'] : 'Try it')));
   if (res && !res.busy) wrap.append(h('div', {class:'try-box ' + (res.ok ? 'ok' : 'bad'), id:'try-' + slot, role:'status'}, res.text,
+    res.host ? h('div', null, hostLink(res.host, 'try-' + slot, () => tryAction(k, slot), 'trybtn-' + slot)) : null,
     res.warnings && res.warnings.length ? h('ul', null, res.warnings.map(w => h('li', null, w))) : null));
 }
 async function tryAction(k, slot){
@@ -2440,6 +2846,7 @@ async function tryAction(k, slot){
   try {
     const r = await api('POST', '/api/ha/try', {action: normAct(k[slot])});
     if (r.ok && r.json && r.json.ok !== false) tryRes[key] = {ok:true, text:'Done — Home Assistant did it.', warnings: r.json.warnings || []};
+    else if (hostOf(r)) tryRes[key] = {ok:false, text: hostWords(hostOf(r)), host: hostOf(r)};
     else tryRes[key] = {ok:false, text: r.json && r.json.error ? capFirst(r.json.error) + '.' : 'Home Assistant didn’t do it (error ' + r.status + ').'};
   } catch (_) { tryRes[key] = {ok:false, text:NET_ERR}; }
   if (view === 'edit') rerender();
@@ -2461,6 +2868,8 @@ function lightEditor(wrap, k, slot){
   const box = h('div', {class:'ha-ed'});
   wrap.append(box);
   if (ed.lp === slot){
+    const was = haLights ? a.entities.filter(id => !lightById(id)) : [];
+    if (was.length) box.append(h('p', {class:'note-bad'}, 'Was ' + was.join(', ') + ', which this Home Assistant doesn’t have.'));
     if (haLightsErr) box.append(h('p', {class:'err'}, haLightsErr));
     else if (!haLights) box.append(h('p', {class:'hint'}, 'Asking Home Assistant for the lights…'));
     else box.append(multiPicker(k, slot, haLights.lights.map(l => ({id:l.entity_id, name:l.name, area:l.area, na: l.state === 'unavailable',
@@ -2609,37 +3018,175 @@ function serviceEditor(wrap, k, slot){
 }
 
 /* ---------- test / save ---------- */
-async function testPreset(p){
-  const btn = $('testBtn');
+// The Save line under a key or a combination: one element for the page's life, its text
+// changed in place, so a screen reader hears each new message (a fresh live region says nothing).
+let saveMsgEl = null, saveMsgSig = '';
+function saveMsgView(){
+  if (!saveMsgEl) saveMsgEl = h('p', {class:'save-msg', id:'saveMsg', role:'status', 'aria-live':'polite', tabindex:'-1'});
+  const sig = (saveMsg.text || '') + '|' + (saveMsg.host || '');
+  if (sig !== saveMsgSig){
+    saveMsgSig = sig; saveMsgEl.textContent = saveMsg.text || '';
+    if (saveMsg.host) saveMsgEl.append(' ', hostLink(saveMsg.host, 'saveMsg', () => saveMsg.retry && saveMsg.retry()));
+  }
+  saveMsgEl.classList.toggle('bad', !!saveMsg.bad);
+  return saveMsgEl;
+}
+// "Test on the radio": "Trying on the radio · 0:30 · Back" while it plays, Back putting on what
+// played before (the same station again, standby or quiet). After 30 s it just stays on.
+const TEST_S = 30;
+const testUi = {busy:false, key:null, end:0, back:null};
+function testPill(k){
+  if (testUi.key !== k.id || !(testUi.busy || testUi.end > Date.now())) return null;
+  return h('div', {class:'pv-pill', id:'tpPill', role:'group', 'aria-label':'Trying on the radio'},
+    h('span', {class:'pv-dot', 'aria-hidden':'true'}),
+    testUi.busy ? h('span', null, 'Tuning in…')
+      : h('span', null, h('span', {class:'pv-what'}, 'Trying on the radio · '), h('span', {class:'pv-short', 'aria-hidden':'true'}, 'Trying · '),
+          h('span', {id:'tpLeft'}, pvText({end: testUi.end}))),
+    !testUi.busy && testUi.back ? h('button', {type:'button', id:'tpBack', 'aria-label': testUi.back.label, onclick: testBack}, 'Back') : null);
+}
+// What to go back to after a Test: what the radio is doing now (st: a fresh /api/status).
+function testBackTo(st){
+  if (!st) return null;
+  if (st.standby) return {label:'Back to standby', go: () => api('POST', '/api/standby', {on:true}, {retry:1}), done:'Standby'};
+  const pl = st.playing;
+  if (pl && (pl.uri || pl.kind)) return {label:'Back to ' + (pl.name || 'what was playing'), go: () => api('POST', '/api/play', {preset: pl}, {timeout:30000}), done:'Back to ' + (pl.name || 'what was playing')};
+  if (!pl && !RENDERERS.includes(st.source) && !(st.source === 'spotify' && st.renderer)) return {label:'Back to quiet', go: () => api('POST', '/api/stop', {}), done:'Stopped'};
+  return null;      // a phone over Bluetooth or AirPlay: nothing the page can put back
+}
+async function testBack(){
+  const b = testUi.back; if (!b) return;
+  testUi.end = 0; testUi.back = null; saveMsg = {text:'', bad:false};
+  if (view === 'edit') rerender();
+  const t = $('testBtn'); if (t) t.focus({preventScroll:true});
+  try { const r = await b.go(); if (r.ok) toast(b.done); else toast(capFirst((r.json && r.json.error) || 'The radio didn’t go back (error ' + r.status + ')') + '.', true); }
+  catch (_) { toast(NET_ERR, true); }
+  pollSoon();
+}
+setInterval(() => {
+  if (!testUi.end) return;
+  if (testUi.end > Date.now()){ const el = $('tpLeft'); if (el) el.textContent = pvText({end: testUi.end}); return; }
+  testUi.end = 0; testUi.back = null;
+  const el = $('tpPill');
+  if (el){ const had = el.contains(document.activeElement); el.parentNode.remove(); if (had){ const t = $('testBtn'); if (t) t.focus({preventScroll:true}); } }
+}, 1000);
+async function testPreset(p, keyId){
+  if (testUi.busy) return;
   if (!(p.uri || '').trim() && !ytmRef(p).kind){ saveMsg = {text:'Choose something to play first.', bad:true}; rerender(); return; }
-  if (btn){ btn.disabled = true; btn.textContent = 'Tuning in…'; }
+  const again = testUi.end > Date.now(), was = testUi.back;     // a second Test still goes back to the first "before"
+  Object.assign(testUi, {busy:true, key: keyId || ed.key, end:0, back:null});
+  saveMsg = {text:'', bad:false}; rerender();
+  let back = was;
+  if (!again){
+    let st = null;
+    try { const g = await apiOnce('GET', '/api/status', undefined, {timeout:3000, retry:0}); if (g.ok) st = g.json; } catch (_) {}
+    back = testBackTo(st);
+  }
   try {
     const r = await api('POST', '/api/play', {preset:Object.assign({name:(p.name || '').trim() || 'Test', source:p.source, uri:(p.uri || '').trim(), shuffle: p.source !== 'radio' && !ytmEndless(p) && !!p.shuffle}, ytmRef(p))}, {timeout:30000});
-    if (r.json && r.json.ok){ saveMsg = {text:'Playing on the radio.', bad:false}; }
+    if (r.json && r.json.ok){ saveMsg = {text:'Playing on the radio.', bad:false}; testUi.end = Date.now() + TEST_S * 1000; testUi.back = back; }
+    else if (hostOf(r)) saveMsg = {text: hostWords(hostOf(r)), bad:true, host: hostOf(r), retry: () => testPreset(p, keyId)};
     else saveMsg = {text:(r.json && r.json.error) || 'Couldn’t play that (error ' + r.status + ').', bad:true};
   } catch (e) { saveMsg = {text: e.name === 'TimeoutError' ? 'The radio took too long to answer. Try again.' : NET_ERR, bad:true}; }
-  rerender(); pollSoon();
+  testUi.busy = false;
+  if (saveMsg.bad) toast(saveMsg.text, true);
+  if (view === 'edit') rerender();
+  pollSoon();
 }
 // What a config holds, as the editor would send it: to tell whether a save the
 // reply got lost for has landed.
 const cfgSig = c => JSON.stringify(payload({keys: clone(c.keys || []), presets: clone(c.presets || []),
   combos: Array.isArray(c.combos) ? c.combos.map(x => comboIn(clone(x))) : null}));
+/* ---------- two phones at once ----------
+   Another phone (or Browse, or Home Assistant) changed the keys after this page read
+   them: the radio refuses the save (409) and sends the keys it has now. Start from
+   those and put back only what this page changed since it read them - a key's tap or
+   hold with the music it plays, or a combination - so neither side undoes the other. */
+// A preset as it plays, without its number (numbers differ from phone to phone).
+const presetSig = p => p ? JSON.stringify(Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(),
+  shuffle: p.source === 'radio' || isRadioUri(p.uri) || ytmEndless(p) ? false : !!p.shuffle}, ytmRef(p))) : null;
+function slotSig(d, k, s){
+  const a = k ? normAct(k[s]) : null;
+  if (!a || a.do !== 'preset') return JSON.stringify(a);
+  return JSON.stringify([Object.assign({}, a, {n: undefined}), presetSig(presetIn(d, a.n))]);
+}
+// This page's action for slot s of key k in the rebuilt draft, its preset brought along:
+// same number when the radio has that preset as it is or nothing else plays it, else a new one.
+function placeAct(a, mine, k, s){
+  if (!a || a.do !== 'preset') return a ? clone(a) : null;
+  const p = presetIn(mine, a.n);
+  if (!p) return clone(a);
+  let n = a.n;
+  const at = draft.presets.findIndex(x => x.n === n);
+  const self = k[s] && k[s].do === 'preset' && k[s].n === n ? 1 : 0;
+  if (at >= 0 && presetSig(draft.presets[at]) !== presetSig(p)){
+    if (refCount(draft, n) - self > 0){ n = nextFreeN(draft); draft.presets.push(Object.assign(clone(p), {n})); }
+    else draft.presets[at] = Object.assign(clone(p), {n});
+  } else if (at < 0) draft.presets.push(Object.assign(clone(p), {n}));
+  return Object.assign(clone(a), {n});
+}
+// Rebuild the draft on the radio's keys (fresh) with this page's changes on top.
+// Returns the names of what was changed on both sides (this page's change wins).
+function mergeOnto(fresh){
+  const base = JSON.parse(baseline), mine = payload(draft), theirs = JSON.parse(cfgSig(fresh));
+  const unready = (draft.combos || []).filter(c => !comboReady(c));
+  const both = [], find = (d, id) => d.keys.find(x => x.id === id);
+  adopt(fresh);
+  for (const k of draft.keys){
+    const m = find(mine, k.id), b = find(base, k.id), t = find(theirs, k.id);
+    if (!m) continue;          // a key this page never had
+    for (const s of ['tap', 'hold']){
+      const ms = slotSig(mine, m, s), bs = b ? slotSig(base, b, s) : null, ts = slotSig(theirs, t, s);
+      if (ms === bs || ms === ts) continue;      // not changed here, or the radio has it already
+      if (bs !== ts && !both.includes(keyLabel(k))) both.push(keyLabel(k));
+      k[s] = placeAct(m[s], mine, k, s);
+    }
+  }
+  if (Array.isArray(mine.combos) && Array.isArray(draft.combos)){
+    const byId = d => Object.fromEntries((d.combos || []).map(c => [comboPairId(c.keys || []), JSON.stringify(c)]));
+    const mc = byId(mine), bc = byId(base), tc = byId(theirs);
+    for (const id of new Set([...Object.keys(mc), ...Object.keys(bc)])){
+      const mv = mc[id] || null, bv = bc[id] || null, tv = tc[id] || null;
+      if (mv === bv || mv === tv) continue;
+      const i = draft.combos.findIndex(c => c.id === id);
+      if (bv !== tv) both.push(comboName(i >= 0 ? draft.combos[i] : comboIn(JSON.parse(mv || bv))));
+      if (i >= 0) draft.combos.splice(i, 1);
+      if (mv) draft.combos.push(comboIn(JSON.parse(mv)));
+    }
+    // One still being made (no second key or no action yet) was never sent: it stays.
+    for (const c of unready) if (!draft.combos.some(x => x.id === c.id)) draft.combos.push(c);
+  }
+  return both;
+}
+const bothWords = names => nameAnd(names) + (names.length > 1 ? ' were' : ' was') + ' also changed on another phone — yours '
+  + (names.length > 1 ? 'are' : 'is') + ' saved.';
 async function save(){
   if (saving || !isDirty()) return;
   saving = true; saveMsg = {text:'Saving…', bad:false}; rerender();
-  const body = payload(draft); lastSent = body;
   const cbWas = !ed.key && ed.combo ? comboById(ed.combo) : null;
   const label = cbWas ? comboName(cbWas) : ed.key ? keyLabel(draft.keys.find(k => k.id === ed.key)) : 'Keys';
-  let focusAfter = null, r = null;
+  let focusAfter = null, r = null, body = null, both = [];
   const still = () => { if (saving){ saveMsg = {text:'Still trying…', bad:false}; if (view === 'edit') rerender(); } };
   const slow = setTimeout(still, 4000);
-  try { r = await api('PUT', '/api/config', body, {onRetry: still}); }
-  catch (_) {
-    // The answer may be what got lost: if the radio has these keys already, it saved.
-    try {
-      const g = await api('GET', '/api/config');
-      if (g.ok && g.json && Array.isArray(g.json.keys) && cfgSig(g.json) === JSON.stringify(body)) r = {ok:true, status:200, json:{ok:true, config:g.json}};
-    } catch (_) {}
+  // The offer to allow this address is up: it waits on the person now, not on the network.
+  let asked = false;
+  const onAllow = () => { asked = true; clearTimeout(slow); if (saveMsg.text === 'Still trying…'){ saveMsg = {text:'Saving…', bad:false}; if (view === 'edit') rerender(); } };
+  for (let round = 0; ; round++){
+    body = payload(draft); lastSent = body; r = null;
+    // "rev": the keys this page started from. Changed since, the radio answers 409.
+    const rev = cfg && cfg.rev;
+    try { r = await api('PUT', '/api/config', rev ? Object.assign({rev}, body) : body, {onRetry: still, onAllow}); }
+    catch (_) {
+      // The answer may be what got lost: if the radio has these keys already, it saved.
+      try {
+        const g = await api('GET', '/api/config');
+        if (g.ok && g.json && Array.isArray(g.json.keys) && cfgSig(g.json) === JSON.stringify(body)) r = {ok:true, status:200, json:{ok:true, config:g.json}};
+      } catch (_) {}
+    }
+    const fresh = r && r.status === 409 && r.json && r.json.config;
+    if (!fresh || !Array.isArray(fresh.keys) || round >= 3) break;
+    for (const n of mergeOnto(fresh)) if (!both.includes(n)) both.push(n);
+    // Nothing of this page's is missing on the radio (a save whose answer got lost lands here too).
+    if (!isDirty()){ r = {ok:true, status:200, json:{ok:true, config:fresh}}; break; }
   }
   clearTimeout(slow); saving = false;
   if (!r){
@@ -2647,10 +3194,10 @@ async function save(){
   } else if (r.ok && r.json && r.json.ok){
     errs = {}; hints = {}; general = [];
     adopt(r.json.config || Object.assign({}, cfg, body));
-    saveMsg = {text: label + ' saved to the radio.', bad:false};
+    saveMsg = {text: both.length ? bothWords(both) : label + ' saved to the radio.', bad:false};
     // A saved combination closes its editor, back to its row.
     if (cbWas){ ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; saveMsg = {text:'', bad:false}; focusAfter = 'cedit-' + comboPairId(cbWas.keys); }
-    toast(label + ' saved');
+    toast(both.length ? bothWords(both) : label + ' saved');
     buildBank();
     refreshHa();
   } else if (r.json && Array.isArray(r.json.errors) && r.json.errors.length){
@@ -2664,11 +3211,20 @@ async function save(){
     }
     const bad = draft.keys.filter(k => keyErrCount(k)).map(keyLabel).concat(badC.map(comboName));
     saveMsg = {text:'Not saved — ' + (bad.length ? 'check ' + bad.join(', ') : 'see the message above') + '.', bad:true};
+  } else if (hostOf(r)){
+    general = [{host: hostOf(r)}];
+    saveMsg = {text:'Not saved — this page’s address can’t make changes yet.', bad:true};
   } else {
     general = [(r.json && (r.json.error || r.json.message)) || 'Saving failed (error ' + r.status + ').'];
     saveMsg = {text:'Not saved — the radio said no.', bad:true};
   }
   saving = false; rerender();
+  if (saveMsg.bad){
+    const host = hostOf(r);
+    toast(saveMsg.text, host ? {bad:true, action:'Allow this address', run: async () => { if (await allowHost(host, true)) await save(); const m = $('saveMsg'); if (m) m.focus({preventScroll:true}); }} : true);
+    // Back from the offer to allow this address (Not now): to what it says, and its link.
+    if (asked && view === 'edit'){ const m = $('genAlert') || $('saveMsg'); if (m){ if (!m.hasAttribute('tabindex')) m.tabIndex = -1; m.focus({preventScroll:true}); } }
+  }
   const fa = focusAfter && $(focusAfter); if (fa){ fa.scrollIntoView({block:'center'}); fa.focus({preventScroll:true}); }
   const el = $('panel').querySelector('.err, .alert'); if (el && saveMsg.bad) el.scrollIntoView({block:'center', behavior: reduced.matches ? 'auto' : 'smooth'});
 }
@@ -2676,13 +3232,20 @@ async function save(){
 /* ================= change a key from elsewhere (Browse, HA) ================= */
 // Read the radio's keys, change them, write them back. With no answer the whole
 // round goes once more (it reads again, so nothing lands twice); then null.
+// The PUT carries the read's "rev": changed in between (another phone), the radio
+// answers 409 and the round starts again from what it has now.
 async function freshConfig(build){
-  for (let n = 0; ; n++){
+  for (let n = 0, stale = 0; ; n++){
     try {
       const g = await api('GET', '/api/config');
       if (!g.ok || !g.json || !Array.isArray(g.json.keys)) throw new Error('config');
-      const body = build(g.json);
-      return {g, body, r: await api('PUT', '/api/config', body)};
+      const body = build(g.json), rev = g.json.rev;
+      const r = await api('PUT', '/api/config', rev ? Object.assign({rev}, body) : body);
+      const now = r.status === 409 && r.json && r.json.config;
+      // Already there: a try whose answer got lost had saved it.
+      if (now && Array.isArray(now.keys) && cfgSig(now) === JSON.stringify(body)) return {g, body, r: {ok:true, status:200, json:{ok:true, config:now}}};
+      if (now && stale++ < 3){ n--; continue; }
+      return {g, body, r};
     } catch (_) { if (n) return null; await new Promise(res => setTimeout(res, 1500)); }
   }
 }
@@ -2920,13 +3483,14 @@ function comboSheet(sheet, c){
   if (ed.pick !== 'combo') sheet.append(h('div', {class:'sub-lbl'}, h('span', null, 'Then it does')));
   actionSection(sheet, c, 'combo');
   const dirty = isDirty(), ready = comboReady(c), lbl = two ? name : 'combination';
-  sheet.append(h('p', {class:'save-msg' + (saveMsg.bad ? ' bad' : ''), role:'status', 'aria-live':'polite'}, saveMsg.text));
+  sheet.append(saveMsgView());
   sheet.append(h('div', {class:'actions'},
     h('button', {type:'button', class:'btn', id:'comboTry', disabled: !ready, onclick: () => tryCombo(c)}, 'Try it on the radio'),
-    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': lbl, disabled: saving || !dirty || !ready, onclick: () => saveCombo(c)},
+    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': lbl, 'aria-disabled': saving || !dirty || !ready ? 'true' : null, onclick: () => saveCombo(c)},
       saveLbl(dirty || !ready, lbl))));
 }
 function saveCombo(c){
+  if (saving || !isDirty()) return;
   if (!comboReady(c)){ saveMsg = {text: c.keys.length < 2 ? 'Pick two keys first.' : 'Choose what it does first.', bad:true}; rerender(); return; }
   save();
 }
@@ -2937,6 +3501,7 @@ async function tryCombo(c){
   try {
     const r = await api('POST', '/api/press', {combo: comboOrder(c.keys)});
     if (r.ok && (!r.json || r.json.ok !== false)) saveMsg = {text:'The radio did it: ' + comboWhat(c.combo, true) + '.', bad:false};
+    else if (hostOf(r)) saveMsg = {text: hostWords(hostOf(r)), bad:true, host: hostOf(r), retry: () => tryCombo(c)};
     else saveMsg = {text: ((r.json && r.json.error) ? capFirst(r.json.error) : 'The radio didn’t do it (error ' + r.status + ')') + '. Try again.', bad:true};
   } catch (_) { saveMsg = {text:NET_ERR, bad:true}; }
   if (view === 'edit') rerender();
@@ -3003,7 +3568,7 @@ function chooseKey({title, sub, slots, defaultSlot, allowPu}){
     }
     paintList();
     dlg.append(list, h('div', {style:'display:flex;justify-content:flex-end;margin-top:8px'}, h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Cancel')));
-    dlg.onclose = () => resolve(result);
+    dlg.onclose = () => { if (dlg.open) return; resolve(result); };
     dlg.onclick = e => { if (e.target === dlg) dlg.close(); };
     dlg.showModal();
   });
@@ -3656,16 +4221,16 @@ function ytExplicitRow(){
     h('label', {class:'switch', for:'ytExplicit', style:'flex:1'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Hide explicit songs'),
         h('span', {class:'li-sub'}, 'Leaves songs and albums marked E out of searches and lists. Keys keep playing what they play.')),
-      h('input', {type:'checkbox', role:'switch', id:'ytExplicit', checked:on, onchange: e => ytSaveExplicit(e.target.checked)}))));
+      h('input', {type:'checkbox', role:'switch', id:'ytExplicit', checked:on, onchange: e => ytSaveExplicit(e.target.checked, true)}))));
 }
-async function ytSaveExplicit(on){
+async function ytSaveExplicit(on, undoable){
   const box = $('ytExplicit'); if (box) box.disabled = true;
   try {
     const r = await api('PUT', '/api/settings', {ytm:{hide_explicit:on}});
     if (r.ok && r.json && r.json.ok !== false){
       settings = Object.assign(settings || {}, {ytm:{hide_explicit:on}});
       ytForget(); for (const m in ytSt){ ytSt[m].res = null; ytSt[m].resFor = ''; ytSt[m].more = {}; }
-      toast(on ? 'Explicit songs are hidden' : 'Explicit songs show, marked E');
+      toast(on ? 'Explicit songs are hidden' : 'Explicit songs show, marked E', undoable ? {undo: () => ytSaveExplicit(!on, false)} : null);
     } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t change that') + '. Try again.', true);
   } catch (_) { toast(NET_ERR, true); }
   const b = $('ytExplicit'); if (b){ b.disabled = false; b.checked = !!(settings && settings.ytm && settings.ytm.hide_explicit); }
@@ -4217,7 +4782,7 @@ function paintHome(body, st, opts, refresh){
   body.append(shelf('brh-lang-' + mode, 'Languages', null, ll));
 }
 // Around the world: six regions as buttons on a light map, then that region's countries with counts.
-const WORLD_SPOTS = {'North America':[70, 52], 'Latin America':[112, 122], 'Latin America & Caribbean':[112, 122], 'Europe':[196, 42], 'Africa & Middle East':[214, 104], 'Africa':[200, 112], 'Middle East':[236, 78], 'Asia & Oceania':[300, 76], 'Internet':[316, 140]};
+const WORLD_SPOTS = {'North America':[70, 52], 'Latin America':[100, 128], 'Latin America & Caribbean':[100, 128], 'Europe':[196, 42], 'Africa & Middle East':[214, 104], 'Africa':[208, 130], 'Middle East':[256, 96], 'Asia & Oceania':[302, 58], 'Internet':[316, 140]};
 function worldSection(st, mode, apply, refresh){
   const regs = stn.col.regions || {}, names = Object.keys(regs);
   const count = r => stn.col.stations.filter(s => (regs[r] || []).includes(s.country)).length;
@@ -4701,10 +5266,10 @@ const swVer = () => (software && software.version) || (settings && settings.vers
 function soundSummary(){
   if (!settings) return 'Checking…';
   const lim = settings.volume_limit, fl = settings.volume_floor, bits = [];
-  if (lim != null) bits.push('Ceiling ' + lim);
-  if (fl != null) bits.push('quietest step ' + fl);
+  if (lim != null) bits.push('Loudest ' + lim);
+  if (fl != null) bits.push('quietest ' + fl);
   const tk = fx && fx.knobs && fx.knobs.find(k => k.assignable);
-  if (tk){ const e = fxEffect(tk.effect); if (e){ const m = /\(([^)]+)\)/.exec(e.label); bits.push(fxName(tk).toLowerCase() + ' knob: ' + (m ? m[1] : e.label).toLowerCase()); } }
+  if (tk && fxEffect(tk.effect)) bits.push(fxName(tk).toLowerCase() + ' knob: ' + fxSayWhat(tk));
   if (settings.mono && settings.mono.available && settings.mono.on) bits.push('mono');
   return bits.join(' · ') || 'Volume and tone';
 }
@@ -4712,7 +5277,7 @@ function phonesSummary(){
   if (!castDoc) return srcDoc && (srcDoc.err || srcDoc.missing) ? 'AirPlay, Bluetooth, Spotify' : 'Checking…';
   const ts = castDoc.targets || [];
   if (!ts.some(t => t.available)) return 'Not available right now';
-  const on = ts.filter(t => t.available && (t.on || t.read_only)).map(t => t.id === 'upnp' ? 'UPnP' : t.label);
+  const on = ts.filter(t => t.available && (t.on || t.read_only)).map(t => t.id === 'upnp' || t.id === 'dlna' ? 'other music apps' : t.label);
   const dev = btDoc && (btDoc.devices || []).find(d => d.connected);
   return (on.length ? nameAnd(on) + ' on' : 'All off') + (dev ? ' · ' + (dev.name || 'a phone') + ' connected' : '');
 }
@@ -4733,10 +5298,18 @@ function lampSummary(){
   if (!loc && (settings.night || 'sun') === 'sun') return 'Choose where the radio stands';
   return (tonightText(settings.tonight) || 'Dims at night') + (loc && loc.name ? ' · ' + loc.name : '');
 }
+// A radio with no source key (the Excelsior has no PU) gets no source-key section at all.
+function hasSourceKey(){
+  if (srcDoc && srcDoc.missing) return false;
+  const b = srcDoc && srcDoc.bound_to;
+  if (Array.isArray(b)) return b.length > 0;
+  // Not asked yet: a key bound to "Next source" (the Excelsior's PU plays the phone instead).
+  return cfg && Array.isArray(cfg.keys) ? !noSourceKey() : true;
+}
 function keysSummary(){
+  if (!hasSourceKey()) return 'Knob calibration · reset keys';
   if (!srcDoc) return 'Checking…';
-  if (noSourceKey()) return 'Knobs and keys';
-  if (srcDoc.missing || srcDoc.err || !srcDoc.cycle) return 'Knobs and the source key';
+  if (srcDoc.err || !srcDoc.cycle) return 'The source key and the knobs';
   return 'Source key: ' + srcDoc.cycle.map(id => stopOf(id).label).join(', ');
 }
 function radioSummary(){
@@ -4832,7 +5405,6 @@ document.addEventListener('focusin', e => {
 /* shared: "Trying on the radio · 0:24 · Stop" while a preview plays (knob Try it, lamp colours) */
 function previewNow(){
   const k = curPage(), now = Date.now();
-  if (k === 'sound'){ const ends = Object.values(fxUi.trying).filter(t => t > now); if (ends.length) return {end: Math.max(...ends), stop: fxStopAll}; }
   if (k === 'maker' && lcal.showing){
     const end = lcal.sent + ((lcal.data && lcal.data.preview_s) || 30) * 1000;
     if (end > now || lcal.run) return {end: lcal.run ? 0 : end, stop: () => { lcalStop(false); lcalEnd(); rerender(); }};
@@ -4893,15 +5465,14 @@ function renderSound(panel){
   if (fxs){
     const tune = (fx.knobs || []).filter(k => k.assignable);
     panel.append(setGroup('tone', tune.length === 1 ? 'What the ' + fxName(tune[0]).toLowerCase() + ' knob does' : 'What the knobs do', fxs,
-      h('p', {class:'hint', style:'padding:0 4px'}, 'Try it plays your choice for 30 seconds without saving. Save keeps it.')));
+      h('p', {class:'hint', style:'padding:0 4px'}, 'Changes apply at once, with Undo — turn the knob on the radio to hear them.')));
   } else if (!fx) panel.append(h('p', {class:'loading'}, 'Checking…'));
 }
 function loadSound(){
   loadSettings().then(() => { if (onPage('sound')) rerender(); });
   loadFx(); if (!knobs) loadKnobs();
 }
-function leaveSound(){ fxEndTries(); }
-const fxDirtyKnobs = () => ((fx && fx.knobs) || []).filter(k => fxUi.draft[k.id] && !fxSame(fxUi.draft[k.id], fxSaved(k)));
+function leaveSound(){ fxFlushAll(); }
 
 /* ---- 2 · Phones & casting ---- */
 function renderPhones(panel){
@@ -4913,7 +5484,8 @@ function renderPhones(panel){
   }
   const castList = h('div', {class:'list', id:'castBox'});
   fillCast(castList);
-  panel.append(setGroup('play', 'Play from a phone', castList));
+  panel.append(setGroup('play', 'Play from a phone', castList,
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Switches apply at once. A new name waits for Save at the bottom.')));
   if (srcDoc && !srcDoc.missing && !srcDoc.err)
     panel.append(setGroup('back', 'When a phone stops', h('div', {class:'list'}, h('div', {class:'li'},
       h('label', {class:'switch', for:'resume', style:'flex:1'},
@@ -4939,10 +5511,11 @@ function renderRooms(panel){
   if (!grp){ panel.append(h('p', {class:'loading'}, 'Checking…')); return; }
   if (grp.missing){ panel.append(h('div', {class:'empty'}, h('h2', null, 'Not on this radio yet'), h('p', null, 'This radio’s software can’t play in several rooms yet. Updating it adds that.'))); return; }
   const r = settings && settings.room;
-  if (r && !r.custom){
-    if (!roomUi.edit) Object.assign(roomUi, {edit:true, val:'', err:''});
-    panel.append(setGroup('name', 'First, name this room', h('div', {class:'list', id:'roomBox'}, roomNameRows(true))));
-  }
+  // The name is edited in one place (This radio → Name and address); a room without one is nudged there.
+  if (r && !r.custom)
+    panel.append(setGroup('name', 'First, name this room', h('div', {class:'set-list'},
+      setRow('roomname', 'Name this room', 'The other rooms see this radio by its name. Set it in This radio.', '#settings/radio/name', null,
+        {onclick: () => Object.assign(roomUi, {edit:true, val:'', err:''})}))));
   const box = h('div', {class:'list', id:'mrBox'});
   mrSig = '';
   fillMr(box);
@@ -4960,12 +5533,14 @@ function renderLamp(panel){
 }
 function loadLamp(){ loadSettings().then(() => { if (onPage('lamp')) rerender(); }); }
 
-/* ---- 5 · Keys & knobs ---- */
+/* ---- 5 · Source key & knobs (Keys & knobs before) ---- */
+// What each key plays is in Edit keys; this page holds the source key's list, knob calibration and the way back to defaults.
 function renderKeysPage(panel){
-  const src = sourcesGroup(); if (src) panel.append(src);
+  const src = hasSourceKey() ? sourcesGroup() : null; if (src) panel.append(src);
   const kn = knobLiveGroup(); if (kn) panel.append(kn);
-  panel.append(setGroup('reset', 'Start again', h('div', {class:'set-list'},
-    setRow('reset', 'Reset keys to defaults', 'In Edit keys — every key back to the built-in stations', '#edit/reset'))));
+  panel.append(setGroup('reset', 'The keys', h('div', {class:'set-list'},
+    setRow('editkeys', 'What each key plays', 'Change stations and playlists in Edit keys', '#edit'),
+    setRow('reset', 'Reset keys to defaults', 'Every key back to the built-in stations', '#edit/reset'))));
 }
 function loadKeysPage(){
   loadSources().then(() => { if (onPage('keys')) rerender(); });
@@ -5028,7 +5603,7 @@ function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
   loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp(); loadHosts();
 }
-function loadUpdates(){ loadSoftware(); loadMusic(); }
+function loadUpdates(){ loadSoftware(); loadMusic(); if (!help) loadHelp(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
 
 /* ---- This radio → Help from the makers: remote help for 24 h (web/help_api.py, docs/remote-help.md) ---- */
@@ -5124,7 +5699,7 @@ function helpBody(){
   if (!d) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'));
   if (d.err) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Couldn’t check remote help'), h('span', {class:'li-sub'}, d.err)),
     h('button', {type:'button', class:'li-act', id:'helpRetry', onclick: () => { help = null; paintHelp(); loadHelp(); }}, 'Try again'));
-  if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t installed on this radio yet.'));
+  if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t on this radio yet. The makers can add it — mention it next time you’re in touch.'));
   const stopBtn = (label) => h('button', {type:'button', class:'btn small', id:'helpStop', disabled: !!busy, onclick: helpStop}, label || 'Stop');
   if (st === 'starting' || st === 'ending')
     return h('div', {class:'li col'}, h('span', {class:'li-title'}, h('span', {class:'spin', 'aria-hidden':'true', style:'margin-right:10px'}), st === 'ending' ? 'Ending help…' : 'Starting help…'),
@@ -5269,15 +5844,14 @@ function diagBox(){
 /* the registry: the order is the order of the list */
 const SET_PAGES = [
   {id:'home', render: renderSetHome, load: loadSetHome},
-  {id:'sound', title:'Sound', summary: soundSummary, render: renderSound, load: loadSound, leave: leaveSound,
-    dirty: () => fxDirtyKnobs().length > 0, discard: fxDiscard, save: fxSaveAll, busy: () => !!fxUi.saving,
-    what: () => nameAnd(fxDirtyKnobs().map(k => fxName(k).toLowerCase() + ' knob'))},
-  {id:'phones', title:'Phones & casting', summary: phonesSummary, render: renderPhones, load: loadPhones, leave: leavePhones},
-  {id:'rooms', title:'Rooms', summary: roomsSummary, render: renderRooms, load: loadRooms, shown: () => !(grp && grp.missing),
-    dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
+  {id:'sound', title:'Sound', summary: soundSummary, render: renderSound, load: loadSound, leave: leaveSound},
+  {id:'phones', title:'Phones & casting', summary: phonesSummary, render: renderPhones, load: loadPhones, leave: leavePhones,
+    dirty: () => castNamesDirty().length > 0, discard: () => { castUi.names = {}; }, save: castSaveNames, busy: () => !!castUi.saving,
+    what: () => nameAnd(castNamesDirty().map(castLabel)) + (castNamesDirty().length === 1 ? ' name' : ' names')},
+  {id:'rooms', title:'Rooms', summary: roomsSummary, render: renderRooms, load: loadRooms, shown: () => !(grp && grp.missing)},
   {id:'lamp', title:'Pilot lamp', summary: lampSummary, render: renderLamp, load: loadLamp,
     dirty: () => lampUi.dirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
-  {id:'keys', title:'Keys & knobs', summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
+  {id:'keys', get title(){ return hasSourceKey() ? 'Source key & knobs' : 'Knobs & keys'; }, summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
   {id:'radio', title:'This radio', summary: radioSummary, render: renderRadio, load: loadRadio, leave: leaveHelp,
     dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
   {id:'maker', title:'Maker tools', summary: () => 'Lamp colours, knob curves, the player, diagnostics', shown: makerOn,
@@ -5347,6 +5921,7 @@ function lampSettings(panel){
       h('div', {class:'field'}, h('label', {for:'lampLat'}, 'Latitude'), h('input', {type:'number', id:'lampLat', inputmode:'decimal', step:'any', min:'-90', max:'90', value: lampUi.lat, oninput: edit('lat')})),
       h('div', {class:'field'}, h('label', {for:'lampLon'}, 'Longitude'), h('input', {type:'number', id:'lampLon', inputmode:'decimal', step:'any', min:'-180', max:'180', value: lampUi.lon, oninput: edit('lon')})))),
     lampUi.err ? h('p', {class:'err', role:'alert'}, lampUi.err) : null,
+    h('p', {class:'hint', style:'margin:0'}, 'A new place waits for Save at the bottom. The night choices above apply at once.'),
     navigator.geolocation ? h('div', {class:'acts'},
       h('button', {type:'button', class:'btn small', disabled: lampUi.busy, onclick: useHere}, 'Use this phone’s location')) : null);
   panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box)));
@@ -5550,7 +6125,7 @@ function lampColours(){
   pairs.forEach((p, i) => pseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(lcal.pair === i), tabindex: lcal.pair === i ? '0' : '-1',
     disabled: running === 'compare', onclick: () => { lcal.pair = i; rerender(); }}, lcalName(p[0]), h('small', null, 'and ' + lcalName(p[1]).toLowerCase()))));
   return h('div', {class:'li col lc-wrap', style:'gap:12px'},
-    h('p', {class:'hint'}, 'Best at night with the room light off, looking through the window. Blue should look blue, not green; ember deep orange-red, steady. Moving a slider shows it on the lamp.'),
+    h('p', {class:'hint'}, 'Best at night with the room light off, looking through the window. Blue should look blue, not green; ember deep orange-red, steady. Moving a slider shows it on the lamp; Save at the bottom keeps the colours.'),
     !lcal.data.lamp ? h('p', {class:'note-warn'}, 'No lamp on this radio — the swatches are only a guide.') : null,
     h('div', {class:'lc-list'}, lcalNames().map(lcalColour)),
     h('p', {class:'hint', id:'lcalLive', 'aria-live':'polite'}, lcal.live),
@@ -5675,12 +6250,11 @@ function boundKeys(){
     return {kid, ev, text: (k ? keyLabel(k) : kid.toUpperCase()) + ' ' + (ev || '')};
   });
 }
-// Keys & knobs → what the source key (PU) steps through. Every tick and move applies at once;
+// Source key & knobs → what the source key (PU) steps through. Every tick and move applies at once;
 // the toast offers Undo back to the order before this burst of changes.
 let srcSaveT = null, srcUndoFrom = null;
 function sourcesGroup(){
   if (srcDoc && srcDoc.missing) return null;
-  if (noSourceKey()) return null;
   if (!srcDoc) return setGroup('pu', 'What the source key steps through', h('div', {class:'list'}, h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'))));
   if (srcDoc.err) return setGroup('pu', 'What the source key steps through', h('div', {class:'card-box warn'}, h('p', {class:'body'}, srcDoc.err),
       h('div', null, h('button', {type:'button', class:'btn small inline', onclick: async () => { srcDoc = null; rerender(); await loadSources(); rerender(); }}, 'Try again'))));
@@ -5798,19 +6372,28 @@ function castRow(t){
   row.append(h('label', {class:'switch', for:'cast-' + t.id},
     title, h('input', {type:'checkbox', role:'switch', id:'cast-' + t.id, checked: !!t.on, disabled: dis, 'aria-label':castLabel(t),
       onchange: e => putCast(t.id, {on: e.target.checked}, {on: !e.target.checked})})));
+  // The name is typed text: a draft that the bar at the bottom saves (the switch above applies at once).
   const nameVal = castUi.names[t.id] ?? t.name ?? '';
-  const save = inp => {
-    const v = inp.value.trim() || 'Hasler';
-    delete castUi.names[t.id];
-    if (v !== (t.name || '')) putCast(t.id, {name: v}, t.name ? {name: t.name} : null);
-  };
   row.append(h('div', {class:'field'}, h('label', {for:'cn-' + t.id}, 'Name on phones'),
     h('div', {class:'cast-name'},
       h('input', {type:'text', id:'cn-' + t.id, value: nameVal, placeholder:'Hasler', maxlength:'40', autocomplete:'off', disabled: dis,
-        oninput: e => { castUi.names[t.id] = e.target.value; },
-        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); e.target.blur(); } else if (e.key === 'Escape'){ delete castUi.names[t.id]; e.target.value = t.name || ''; } },
-        onchange: e => save(e.target)}))));
+        oninput: e => { castUi.names[t.id] = e.target.value; paintSaveBar(); },
+        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); if (castNamesDirty().length) castSaveNames(); }
+          else if (e.key === 'Escape'){ delete castUi.names[t.id]; e.target.value = t.name || ''; paintSaveBar(); } }}))));
   return row;
+}
+// Phones → the save bar: the names typed but not saved yet.
+const castNameOf = id => (castUi.names[id] ?? '').trim() || 'Hasler';
+const castNamesDirty = () => ((castDoc && castDoc.targets) || []).filter(t => !t.read_only && t.available && castUi.names[t.id] != null && castNameOf(t.id) !== (t.name || ''));
+async function castSaveNames(){
+  const ts = castNamesDirty(); if (!ts.length || castUi.saving) return;
+  castUi.saving = true; paintSaveBar();
+  for (const t of ts){
+    const v = castNameOf(t.id);
+    if (await putCast(t.id, {name: v}, null)) delete castUi.names[t.id];
+  }
+  castUi.saving = false;
+  if (onPage('phones')) rerender();
 }
 function fillCast(box){
   box.textContent = '';
@@ -5838,7 +6421,7 @@ function pairRow(bt){
   const pairing = left > 0;
   return h('div', {class:'li col', style:'gap:8px'},
     h('span', {class:'li-title'}, 'A new phone'),
-    pairing ? h('p', {class:'li-sub', id:'pairLeft', 'aria-live':'polite'}, pairText(left, bt))
+    pairing ? h('p', {class:'li-sub', id:'pairLeft'}, pairText(left, bt))
       : h('span', {class:'li-sub'}, btOff ? 'Turn Bluetooth on above first.' : 'Opens Bluetooth so a phone can find the radio. Phones that paired before connect on their own.'),
     castUi.pairMsg ? h('p', {class:'err', role:'alert'}, castUi.pairMsg) : null,
     h('div', null, h('button', {type:'button', class:'btn small inline', id:'pairBtn', disabled: pairing || btOff || !!castUi.busy.pair, onclick: pairPhone},
@@ -5860,10 +6443,11 @@ function paintCast(){
 // `back`: the change that undoes this one (offered in the toast), or null.
 async function putCast(id, change, back){
   castUi.busy[id] = true; paintCast();
+  let ok = false;
   try {
     const r = await api('PUT', '/api/casting', {[id]: change});
     if (r.ok && r.json && Array.isArray(r.json.targets)){
-      adoptCasting(r.json);
+      adoptCasting(r.json); ok = true;
       const t = r.json.targets.find(x => x.id === id);
       toast(t ? (change.name ? castLabel(t) + ': phones now see “' + t.name + '”' : castLabel(t) + (t.on ? ' on' : ' off')) : 'Saved',
         back ? {undo: () => putCast(id, back, null)} : null);
@@ -5873,6 +6457,7 @@ async function putCast(id, change, back){
   } catch (_) { castErr = {msg:NET_ERR, retry: () => putCast(id, change)}; }
   delete castUi.busy[id];
   paintCast();
+  return ok;
 }
 // Spotify account: signed in as…, or a pairing code to enter at spotify.com/pair.
 function spAccount(a){
@@ -5957,15 +6542,23 @@ async function pairPhone(){
   } catch (_) { castUi.pairMsg = NET_ERR; }
   delete castUi.busy.pair;
   paintCast();
-  const b = $('pairBtn'); if (b && b.disabled){ const t = $('pairLeft'); if (t){ t.tabIndex = -1; t.focus({preventScroll:true}); } }
+  const b = $('pairBtn'); if (b && b.disabled){ const t = $('pairLeft'); if (t){ t.tabIndex = -1; t.focus({preventScroll:true}); pairSaid = Math.max(1, Math.round((castUi.pairEnd - Date.now()) / 1000)); } }
 }
+// The countdown is read out (#pairSay) when it starts, every 30 s and when it ends - not every second.
+let pairSaid = 0;          // seconds left when it was last read out; 0: not counting
 function startPairTick(){
   clearInterval(pairTimer);
   pairTimer = setInterval(() => {
     const left = Math.max(0, Math.round((castUi.pairEnd - Date.now()) / 1000));
     const el = $('pairLeft');
-    if (left <= 0){ clearInterval(pairTimer); castUi.pairEnd = 0; paintCast(); return; }
-    if (el){ const bt = castDoc && (castDoc.targets || []).find(t => t.id === 'bluetooth'); el.textContent = pairText(left, bt); }
+    if (left <= 0){
+      clearInterval(pairTimer); castUi.pairEnd = 0;
+      if (pairSaid){ pairSaid = 0; $('pairSay').textContent = 'Pairing time is up.'; }
+      paintCast(); return;
+    }
+    const bt = castDoc && (castDoc.targets || []).find(t => t.id === 'bluetooth');
+    if (el) el.textContent = pairText(left, bt);
+    if (!pairSaid || pairSaid - left >= 30){ pairSaid = left; $('pairSay').textContent = pairText(left, bt); }
   }, 1000);
 }
 /* ---- Bluetooth (web/bluetooth_api.py): paired phones, what plays, what the radio keys do ---- */
@@ -6543,6 +7136,7 @@ function offerHost(host, done){
       h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Not now'),
       h('button', {type:'button', class:'btn small primary', id:'hostAllow', onclick: () => { go = true; dlg.close(); }}, 'Allow this address')));
   dlg.onclose = async () => {
+    if (dlg.open) return;          // a late close event from the dialog before this one
     dlg.onclose = null;
     if (!go){ hostUi.declined = true; done(false); return; }
     const token = await pressToConfirm('hostname', null, 'Allow ' + host, 'Then changes made here will reach the radio.');
@@ -6585,9 +7179,9 @@ function hostsGroup(){
       h('span', {class:'li-sub'}, (it.host === d.this ? 'This page · ' : '') + 'allowed ' + (day(new Date(it.added * 1000).toISOString()) || 'with a key press'))),
     h('button', {type:'button', class:'li-act', 'aria-label':'Remove ' + it.host, onclick: () => removeHost(it.host)}, 'Remove')));
   for (const b of d.box || []) rows.push(h('div', {class:'li'},
-    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Set in the radio’s box.yaml'))));
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Allowed by the makers'))));
   if (!rows.length && !d.this_allowable) rows.push(h('div', {class:'li'}, h('span', {class:'li-sub'},
-    'Only the radio’s own addresses can change things. Open it through your own dashboard or address and the page offers to allow it.')));
+    'Changes only come in through the radio’s own address, so another website can’t touch your keys. If you open the radio another way, such as from a home dashboard, this page asks you to allow that address first.')));
   if (d.this_allowable) rows.push(h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, d.this), h('span', {class:'li-sub'}, 'This page’s address · can’t make changes yet')),
     h('button', {type:'button', class:'li-act', onclick: () => allowHost(d.this, true)}, 'Allow')));
@@ -6627,6 +7221,7 @@ function pressToConfirm(action, args, title, sub){
         h('span', {class:'li-sub'}, 'The pilot lamp dips twice while it waits. That press only confirms — it won’t change the station.'))),
       h('div', {style:'display:flex;justify-content:flex-end;margin-top:14px'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
     dlg.onclose = () => {
+      if (dlg.open) return;
       done = true; clearTimeout(timer);
       if (!result) api('DELETE', '/api/confirm/' + encodeURIComponent(j.token)).catch(() => {});
       resolve(result);
@@ -6789,7 +7384,7 @@ function roomNameRows(first){
         oninput: e => { roomUi.val = e.target.value; roomUi.err = ''; paintSaveBar(); },
         onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); if (roomDirty()) roomSaveDraft(); } else if (e.key === 'Escape' && !first){ roomDiscard(); paintRoom(); paintSaveBar(); } }}),
       h('p', {class:'hint', id:'roomHint'}, first ? 'The other rooms see this radio by this name, and so do you on the front page. You can change it later in This radio.'
-        : 'Shown in the rooms list, in Home Assistant and on this page. Leave it empty to go back to “' + r.default + '”. The address doesn’t change.')) : null,
+        : 'Shown in the rooms list, in Home Assistant and on this page. Leave it empty to go back to “' + r.default + '”. The address doesn’t change. Save at the bottom keeps it.')) : null,
     roomUi.edit && roomUi.err ? h('p', {class:'err', role:'alert'}, roomUi.err) : null);
 }
 function roomCastRow(){
@@ -6799,8 +7394,8 @@ function roomCastRow(){
   return h('div', {class:'li col', style:'gap:10px'},
     h('label', {class:'switch', for:'roomCast'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Use the room name on phones'),
-        h('span', {class:'li-sub'}, r.casting_names ? 'Phones see “' + cast + '” for AirPlay, Bluetooth, UPnP and Spotify'
-          : 'Phones see “Hasler”' + (r.custom ? '. On, they see “' + r.casting_name + '”' : '. Name the room first, in This radio') + ' — handy with more than one Hasler')),
+        h('span', {class:'li-sub'}, r.casting_names ? 'Phones see “' + cast + '” in AirPlay, Bluetooth, Spotify and other music apps'
+          : 'Phones see “Hasler”' + (r.custom ? '. On, they see “' + r.casting_name + '”' : '. Name the room first, in This radio → Name and address') + ' — handy with more than one Hasler')),
       h('input', {type:'checkbox', role:'switch', id:'roomCast', checked: !!r.casting_names, disabled: roomUi.busy || (!r.custom && !r.casting_names),
         onchange: e => saveRoom({casting_names: e.target.checked}, {casting_names: !e.target.checked})})),
     applying || (r.apply && r.apply.state !== 'idle') ? roomApplyLine(r.apply) : null);
@@ -6812,7 +7407,7 @@ function roomSaveDraft(){ return saveRoom({name: roomUi.val.trim()}); }
 function paintRoom(){
   paintBrand();
   const a = document.activeElement;
-  for (const [bid, fill] of [['roomBox', () => roomNameRows(onPage('rooms'))], ['roomCastBox', roomCastRow]]){
+  for (const [bid, fill] of [['roomBox', () => roomNameRows(false)], ['roomCastBox', roomCastRow]]){
     const box = $(bid); if (!box) continue;
     const id = a && box.contains(a) ? a.id : null;
     if (id === 'roomInp') continue;     // don't repaint under someone typing
@@ -6911,10 +7506,16 @@ function renderSoftwareUpdates(panel){
   const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
   if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Software'), h('span', {class:'li-sub'}, 'Checking…')))));
-  if (software.missing || software.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+  if (software.missing) return wrap(h('div', {class:'list'}, h('div', {class:'li col', style:'gap:10px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
+      h('span', {class:'li-sub'}, 'Updates aren’t set up on this radio yet, so it stays on this version. It keeps working as it is.')),
+    help && help.available
+      ? h('div', {class:'acts', style:'align-items:center'}, h('a', {class:'btn small inline', href:'#settings/radio/help', id:'swAskHelp'}, 'Ask the makers to set them up'))
+      : h('p', {class:'hint', style:'margin:0'}, 'The makers can set them up — mention it next time you’re in touch.'))));
+  if (software.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
-    h('span', {class:'li-sub'}, software.missing ? 'Updates not installed on this radio yet' : software.err)),
-    software.err ? h('button', {type:'button', class:'li-act', onclick: () => { software = null; rerender(); loadSoftware(); }}, 'Try again') : null)));
+    h('span', {class:'li-sub'}, software.err)),
+    h('button', {type:'button', class:'li-act', onclick: () => { software = null; rerender(); loadSoftware(); }}, 'Try again'))));
   const s = software, a = s.available, res = s.last_result, ap = s.approved;
   const rows = [];
   rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'},
@@ -7114,7 +7715,7 @@ function dialSvg(k, steps, i){
   return svg;
 }
 
-/* Keys & knobs: each knob live, with Calibrate. Maker tools: the curve, raw numbers, factory reset. */
+/* Source key & knobs: each knob live, with Calibrate. Maker tools: the curve, raw numbers, factory reset. */
 function knobState(){
   if (!knobs) return h('div', {class:'list'}, h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…')));
   if (knobs.missing) return h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
@@ -7128,8 +7729,9 @@ function knobLiveGroup(){
   const st = knobState();
   if (st) return setGroup('knobs', 'Knobs', st);
   if (!knobs.knobs.length) return null;
-  return setGroup('knobs', 'Knobs', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If the radio and the knob disagree, calibrate it: a short guide where you turn it to a few positions.'));
+  return setGroup('knobs', 'Knob calibration', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If the radio and the knob disagree, calibrate it: a short guide where you turn it to a few positions. What the tone knob does is in ',
+      h('a', {class:'link', href:'#settings/sound/tone'}, 'Sound'), '.'));
 }
 function knobCurveGroup(){
   const st = knobState();
@@ -7138,7 +7740,7 @@ function knobCurveGroup(){
   return setGroup('curves', 'Knob curves', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, true))),
     h('p', {class:'hint', style:'padding:0 4px'}, 'Each knob’s raw reading is mapped to 0–100 by a curve.'));
 }
-const knobTag = k => k.source === 'box' ? 'Yours' : 'As shipped';
+const knobTag = k => k.source === 'box' ? 'Calibrated' : 'Standard';
 function knobCard(k, maker){
   const id = kid(k.id), s = liveOf(k), sel = isSel(k), box = k.source === 'box';
   const gauge = () => sel
@@ -7208,8 +7810,7 @@ async function resetKnob(k){
 /* ---------- knobs: what each knob does (/api/knobs/functions) ---------- */
 // fx: null = loading, {missing} = an older radio (no such API: the cards stay hidden), {err}, or the GET body.
 let fx = null;
-const fxUi = {open: new Set(), draft: {}, err: {}, busy: {}, trying: {}, tick: null, resend: {}};
-const FX_TRY_S = 30;
+const fxUi = {open: new Set(), draft: {}, err: {}, busy: {}, wait: {}, drag: false, pending: false};
 // What the two ends of the knob mean, per effect (the radio may send its own as `ends`).
 const FX_ENDS = {treble:['Less treble', 'More treble'], bass:['Less bass', 'More bass'], tilt:['Warmer', 'Brighter'],
   loudness:['Off', 'Full'], presence:['Softer voices', 'Clearer voices'], vintage:['Today', '1960s radio'], width:['Mono', 'Wide stereo']};
@@ -7238,8 +7839,8 @@ function fxFmt(e, p, v){
 function fxSummary(k){
   const e = fxEffect(k.effect);
   if (!e) return k.effect || '—';
-  const ps = (e.params || []).slice(0, 1).map(p => fxFmt(e, p, fxParamsFor(e, k.params)[p.id]));
-  return e.label + (ps.length ? ' · ' + ps[0] : '');
+  const what = fxSayWhat(k);
+  return e.id === 'none' || what === (e.label || '').toLowerCase() ? e.label : e.label + ' · ' + what;
 }
 
 async function loadFx(){
@@ -7265,52 +7866,47 @@ function fxSection(){
   if (!ks.length) return null;
   return h('div', {class:'list'}, ks.map(fxCard));
 }
-const fxTag = k => { const d = fxDraft(k); return !fxSame(d, fxSaved(k)) ? 'Not saved' : fxSame(fxSaved(k), fxDefault(k)) ? 'As shipped' : 'Yours'; };
+// The tag on a knob card: the standard setting, or the owner's own.
+const fxTag = k => fxSame(fxDraft(k), fxDefault(k)) ? 'Standard' : 'Yours';
 function fxCard(k){
   const id = kid(k.id);
   if (!k.assignable) return h('div', {class:'li', style:'min-height:64px'}, h('div', {class:'kn-txt'},
     h('span', {class:'kn-name'}, fxName(k)),
     h('span', {class:'fx-now'}, k.note || (/vol/i.test(k.id + ' ' + (k.label || '')) ? 'Always the volume — this one can’t be changed.' : 'This one can’t be changed.'))));
-  const open = fxUi.open.has(k.id), d = fxDraft(k), dirty = !fxSame(d, fxSaved(k));
+  const open = fxUi.open.has(k.id), d = fxDraft(k);
   const head = h('button', {type:'button', class:'kn-head', 'aria-expanded': String(open), 'aria-controls':'fxb-' + id,
       onclick: () => { if (open) fxUi.open.delete(k.id); else fxUi.open.add(k.id); rerender(); knobPoll(true); }},
     h('span', {class:'kn-txt'}, h('span', {class:'kn-name'}, fxName(k)),
       h('span', {class:'fx-now'}, fxSummary(k)),
-      h('span', {class:'kn-tag' + (fxTag(k) === 'As shipped' ? '' : ' box'), id:'fxtag-' + id}, fxTag(k))),
+      h('span', {class:'kn-tag' + (fxTag(k) === 'Standard' ? '' : ' box'), id:'fxtag-' + id}, fxTag(k))),
     h('span', {class:'chev', style:'margin-left:auto'}, IC.chev()));
   const li = h('div', {class:'li kn'}, head);
   if (!open) return li;
-  const e = fxEffect(d.effect), busy = fxUi.busy[k.id], tr = fxUi.trying[k.id];
+  const e = fxEffect(d.effect), busy = fxUi.busy[k.id];
   li.append(h('div', {class:'kn-body', id:'fxb-' + id},
     h('fieldset', {class:'fx-opts'},
       h('legend', {class:'fx-q', style:'padding:0;margin-bottom:6px'}, 'What this knob does'),
       fx.effects.map(ef => h('label', {class:'fx-opt'},
         h('input', {type:'radio', name:'fx-' + id, id:'fxo-' + id + '-' + kid(ef.id), value: ef.id, checked: ef.id === d.effect,
           onchange: () => fxPick(k, ef.id)}),
-        h('span', {class:'fx-ot'}, h('span', {class:'fx-ol'}, ef.label || ef.id, ef.id === k.default_effect ? h('small', null, 'as shipped') : null),
+        h('span', {class:'fx-ot'}, h('span', {class:'fx-ol'}, ef.label || ef.id, ef.id === k.default_effect ? h('small', null, 'standard') : null),
           ef.description ? h('span', {class:'fx-od'}, ef.description) : null)))),
     e && e.description ? h('p', {class:'fx-desc', 'aria-hidden':'true'}, e.description) : null,
-    fxParams(k, e, d),
     fxPosBox(k, e),
-    tr ? h('p', {class:'fx-try', id:'fxt-' + id, 'aria-live':'polite'}, fxTryText(k)) : null,
+    fxParams(k, e, d),
     fxUi.err[k.id] ? h('p', {class:'err', role:'alert'}, fxUi.err[k.id]) : null,
-    h('div', {class:'acts', style:'align-items:center'},
-      h('button', {type:'button', class:'btn small', id:'fxtry-' + id, disabled: !!busy, onclick: () => fxTry(k)}, tr ? 'Play it again' : 'Try it'),
-      tr ? h('button', {type:'button', class:'btn small', onclick: fxStopAll}, 'Stop') : null,
-      !fxSame(d, fxDefault(k)) ? h('button', {type:'button', class:'link quiet', disabled: !!busy, onclick: () => fxReset(k)}, 'Back to as shipped') : null),
-    dirty ? h('p', {class:'hint', style:'margin:0'}, 'Not saved yet — Save at the bottom keeps it.') : null));
+    !fxSame(d, fxDefault(k)) ? h('div', {class:'acts', style:'align-items:center'},
+      h('button', {type:'button', class:'link quiet', id:'fxrs-' + id, disabled: !!busy, onclick: () => fxReset(k)}, 'Back to standard')) : null));
   return li;
 }
+// The fine settings (dB, Hz) are tucked away: the choice above is what most people need.
 function fxParams(k, e, d){
   const ps = (e && e.params) || [];
   if (!e || e.id === 'none') return h('p', {class:'hint'}, 'The knob does nothing while this is chosen.');
   if (!ps.length) return null;
-  const rows = ps.map(p => fxSlider(k, e, p, d.params[p.id]));
-  if (rows.length <= 2) return h('div', {class:'fx-pars'}, rows);
-  return h('div', {class:'fx-pars'}, rows.slice(0, 2),
-    h('details', {class:'how', open: fxUi.more && fxUi.more[k.id] ? true : null,
-        ontoggle: ev => { fxUi.more = fxUi.more || {}; fxUi.more[k.id] = ev.target.open; }},
-      h('summary', null, 'More'), h('div', null, rows.slice(2))));
+  return h('details', {class:'how', open: fxUi.more && fxUi.more[k.id] ? true : null,
+      ontoggle: ev => { fxUi.more = fxUi.more || {}; fxUi.more[k.id] = ev.target.open; }},
+    h('summary', null, 'Fine-tune'), h('div', {class:'fx-pars', style:'margin-top:8px'}, ps.map(p => fxSlider(k, e, p, d.params[p.id]))));
 }
 function fxSlider(k, e, p, v){
   const sid = 'fxp-' + kid(k.id) + '-' + kid(p.id), lo = +p.min, hi = +p.max;
@@ -7320,21 +7916,23 @@ function fxSlider(k, e, p, v){
       h('span', {class:'li-val', id: sid + '-v', 'aria-hidden':'true'}, fxFmt(e, p, v))),
     h('input', {type:'range', id: sid, min: String(lo), max: String(hi), step: String(p.step || 1), value: String(v),
       'aria-valuetext': fxFmt(e, p, v), style:'--pct:' + pct(v),
+      onpointerdown: () => { fxUi.drag = true; },
       oninput: ev => {
-        const n = +ev.target.value, d = fxUi.draft[k.id] || (fxUi.draft[k.id] = clone(fxDraft(k)));
-        d.params[p.id] = n;
+        const n = +ev.target.value;
+        if (!fxUi.draft[k.id]) fxUi.draft[k.id] = clone(fxDraft(k));
+        fxUi.draft[k.id].params[p.id] = n;
         ev.target.style.setProperty('--pct', pct(n));
         ev.target.setAttribute('aria-valuetext', fxFmt(e, p, n));
         $(sid + '-v').textContent = fxFmt(e, p, n);
-        fxPaintDirty(k);
-        // While trying, slider moves go straight to the speaker.
-        if (fxUi.trying[k.id]){ clearTimeout(fxUi.resend[k.id]); fxUi.resend[k.id] = setTimeout(() => fxTry(k, true), 300); }
-      }}));
+        fxPaintTag(k);
+        // It applies once the slider rests a moment: one toast, one Undo per burst.
+        clearTimeout(fxUi.wait[k.id]); fxUi.wait[k.id] = setTimeout(() => fxFlush(k), 600);
+      },
+      onchange: () => { clearTimeout(fxUi.wait[k.id]); fxFlush(k); }}));
 }
-// Save / tag follow the draft in place: a re-render would drop the slider mid-drag.
-function fxPaintDirty(k){
-  const t = $('fxtag-' + kid(k.id)); if (t){ const tg = fxTag(k); t.textContent = tg; t.classList.toggle('box', tg !== 'As shipped'); }
-  paintSaveBar();
+// The tag follows the slider in place: a re-render would drop the slider mid-drag.
+function fxPaintTag(k){
+  const t = $('fxtag-' + kid(k.id)); if (t){ const tg = fxTag(k); t.textContent = tg; t.classList.toggle('box', tg !== 'Standard'); }
 }
 function fxPosBox(k, e){
   const id = kid(k.id), live = knobs && knobs.knobs && knobs.knobs.some(x => x.id === k.id);
@@ -7359,79 +7957,54 @@ function paintFxLive(knobId){
   const f = $('fxf-' + id); if (f) f.style.width = (v == null ? 0 : v) + '%';
   const m = $('fxm-' + id); if (m && v != null) m.setAttribute('aria-valuenow', String(Math.round(v)));
 }
+// Every choice and slider applies at once (PUT /api/knobs/functions); the toast offers Undo.
 function fxPick(k, effectId){
   const saved = fxSaved(k), def = fxDefault(k);
   const params = effectId === saved.effect ? saved.params : effectId === def.effect ? def.params : fxParamsFor(fxEffect(effectId), null);
-  fxUi.draft[k.id] = {effect: effectId, params: clone(params)};
-  if (fxSame(fxUi.draft[k.id], saved)) delete fxUi.draft[k.id];
-  fxUi.err[k.id] = '';
-  rerender();
-  if (fxUi.trying[k.id]) fxTry(k, true);
+  clearTimeout(fxUi.wait[k.id]);
+  const want = {effect: effectId, params: clone(params)};
+  if (fxSame(want, saved)){ delete fxUi.draft[k.id]; return; }
+  fxUi.draft[k.id] = want;
+  fxApply(k, want, saved);
 }
-
-/* try: the radio plays the draft for 30 s without saving */
-function fxTryText(k){
-  const left = Math.max(0, Math.ceil(((fxUi.trying[k.id] || 0) - Date.now()) / 1000));
-  return h('span', null, 'Trying it for ', h('b', null, left + ' s'), ' — turn the ' + fxName(k) + ' knob to hear it. Nothing is saved yet.');
+function fxReset(k){ fxPick(k, k.default_effect); }
+// A slider burst at rest: send what it shows.
+function fxFlush(k){
+  const d = fxUi.draft[k.id];
+  if (!d) return;
+  if (fxSame(d, fxSaved(k))){ delete fxUi.draft[k.id]; return; }
+  fxApply(k, clone(d), fxSaved(k));
 }
-function fxTickAll(){
-  let any = false;
-  for (const [knobId, end] of Object.entries(fxUi.trying)){
-    const k = fxKnob(knobId);
-    if (!k || Date.now() >= end){ delete fxUi.trying[knobId]; if (k && onPage('sound')) toast(fxName(k) + ' knob is back to how it was'); if (view === 'settings') rerender(); continue; }
-    any = true;
-    const el = $('fxt-' + kid(k.id)); if (el){ el.textContent = ''; el.append(fxTryText(k)); }
-  }
-  if (!any){ clearInterval(fxUi.tick); fxUi.tick = null; }
+function fxSayWhat(k){
+  const e = fxEffect(k.effect); if (!e) return 'changed';
+  const ends = e.ends || FX_ENDS[e.id];
+  return e.id === 'none' ? 'does nothing' : ends && ends[0] ? ends[0].toLowerCase() + ' to ' + ends[1].toLowerCase() : (e.label || e.id).toLowerCase();
 }
-async function fxTry(k, quiet){
-  const d = fxDraft(k);
-  fxUi.err[k.id] = '';
+// `undoTo`: what the toast's Undo puts back (none when this *is* the undo). The standard setting is sent as null.
+async function fxApply(k, want, undoTo){
+  fxUi.busy[k.id] = true; fxUi.err[k.id] = '';
+  const sameEffect = undoTo && undoTo.effect === want.effect;
   try {
-    const r = await api('POST', '/api/knobs/try', {knob: k.id, effect: d.effect, params: d.params});
-    if (r.ok){
-      const s = r.json && isFinite(r.json.seconds) ? +r.json.seconds : r.json && isFinite(r.json.expires_in) ? +r.json.expires_in : FX_TRY_S;
-      const was = fxUi.trying[k.id];
-      fxUi.trying[k.id] = Date.now() + s * 1000;
-      if (!fxUi.tick) fxUi.tick = setInterval(fxTickAll, 1000);
-      if (!quiet || !was) rerender(); else fxTickAll();
-      return;
-    }
-    fxUi.err[k.id] = r.status === 404 ? 'Trying it needs a newer version of the radio’s software. Update it in This radio → Updates.' : capFirst((r.json && r.json.error) || 'The radio couldn’t play it (error ' + r.status + ')') + '. Try again.';
-  } catch (_) { fxUi.err[k.id] = NET_ERR; }
-  rerender();
-}
-// Sound → the save bar: every knob with a draft in one go (as shipped is saved as "no override").
-async function fxSaveAll(){
-  const ks = fxDirtyKnobs(); if (!ks.length || fxUi.saving) return;
-  const body = {};
-  for (const k of ks){ const d = fxDraft(k); body[k.id] = fxSame(d, fxDefault(k)) ? null : {effect: d.effect, params: d.params}; }
-  fxUi.saving = true; ks.forEach(k => { fxUi.err[k.id] = ''; }); paintSaveBar();
-  try {
-    const r = await api('PUT', '/api/knobs/functions', body);
+    const r = await api('PUT', '/api/knobs/functions', {[k.id]: fxSame(want, fxDefault(k)) ? null : {effect: want.effect, params: want.params}});
     if (r.ok){
       adoptFx(r.json);
-      for (const k of ks){ delete fxUi.draft[k.id]; delete fxUi.trying[k.id]; }
-      toast(nameAnd(ks.map(k => { const nk = fxKnob(k.id) || k; return fxName(nk) + ' knob: ' + ((fxEffect(nk.effect) || {}).label || nk.effect).toLowerCase(); })) + ' — saved');
-    } else { const m = capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. Check it and save again.'; ks.forEach(k => { fxUi.err[k.id] = m; }); toast(m, true); }
-  } catch (_) { toast(NET_ERR, true); }
-  fxUi.saving = false;
-  if (view === 'settings') rerender();
+      const d = fxUi.draft[k.id];
+      if (d && fxSame(d, want)) delete fxUi.draft[k.id];
+      const nk = fxKnob(k.id) || k;
+      toast(fxName(nk) + ' knob: ' + (sameEffect ? 'adjusted' : fxSayWhat(nk)), undoTo ? {undo: () => { delete fxUi.draft[k.id]; fxApply(k, undoTo, null); }} : null);
+    } else {
+      fxUi.err[k.id] = capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. It’s back to how it was.';
+      delete fxUi.draft[k.id];
+    }
+  } catch (_) { fxUi.err[k.id] = NET_ERR; delete fxUi.draft[k.id]; }
+  fxUi.busy[k.id] = false;
+  if (fxUi.drag) fxUi.pending = true; else if (onPage('sound')) rerender();
 }
-function fxDiscard(){ fxUi.draft = {}; fxUi.err = {}; fxEndTries(); }
-// Stop every "Try it": the radio goes back to the saved effect at once.
-function fxEndTries(){
-  if (!Object.keys(fxUi.trying).length) return;
-  fxUi.trying = {}; clearInterval(fxUi.tick); fxUi.tick = null;
-  try { fetch('/api/knobs/try', {method:'DELETE', keepalive:true, cache:'no-store', headers:{'Content-Type':'application/json'}, body:'{}'}).catch(() => {}); } catch (_) {}
+// Leaving Sound with a slider still settling: send it now.
+function fxFlushAll(){
+  for (const id of Object.keys(fxUi.draft)){ clearTimeout(fxUi.wait[id]); const k = fxKnob(id); if (k) fxFlush(k); }
 }
-function fxStopAll(){ fxEndTries(); toast('Back to how it was'); if (view === 'settings') rerender(); }
-function fxReset(k){
-  fxUi.draft[k.id] = clone(fxDefault(k));
-  if (fxSame(fxUi.draft[k.id], fxSaved(k))) delete fxUi.draft[k.id];
-  fxUi.err[k.id] = ''; rerender();
-  if (fxUi.trying[k.id]) fxTry(k, true);
-}
+window.addEventListener('pointerup', () => { if (!fxUi.drag) return; fxUi.drag = false; if (fxUi.pending){ fxUi.pending = false; if (onPage('sound')) rerender(); } });
 
 /* the wizard: one capture per step, then fit, try, save */
 const POT_STEPS = [
@@ -7463,7 +8036,7 @@ function openWizard(k){
   const dlg = $('dlg');
   dlg.onclick = null;   // no backdrop dismiss: the owner is turning a knob with the other hand
   dlg.oncancel = e => { if (!wizLeave()) e.preventDefault(); };
-  dlg.onclose = () => { wiz = null; dlg.oncancel = null; dlg.onclose = null; if (view === 'settings') rerender(); };
+  dlg.onclose = () => { if (dlg.open) return; wiz = null; dlg.oncancel = null; dlg.onclose = null; if (view === 'settings') rerender(); };
   renderWiz();
   if (!dlg.open) dlg.showModal();
   knobPoll(true);
@@ -7688,6 +8261,7 @@ async function refreshHa(){
   if (!(haState && haState.connected)){ haEnts = null; haEntsErr = ''; haLights = null; haLightsErr = ''; }
   paintBank();
   if (view === 'settings' || view === 'edit') rerender();
+  if (view === 'edit' && edArrive) arriveSlot();
 }
 let entsLoading = null;
 function loadEntities(refresh){
@@ -7907,6 +8481,8 @@ async function poll(){
   try {
     const r = await api('GET', '/api/status', undefined, {timeout:4000, retry:0});
     if (r.ok && r.json){ status = r.json; online = true; failStreak = 0; lastOk = Date.now(); } else missed();
+    // The keys changed elsewhere (another phone, Home Assistant): show them, unless this page has unsaved ones.
+    if (r.ok && r.json && r.json.config_rev && cfg && cfg.rev && r.json.config_rev !== cfg.rev && !saving && !isDirty()) refreshConfig();
   } catch (_) { missed(); }
   polling = false;
   renderRemote();
@@ -7930,6 +8506,117 @@ document.addEventListener('visibilitychange', () => { if (document.hidden){ clea
 window.addEventListener('online', () => { poll().then(schedule); });
 window.addEventListener('pageshow', e => { if (e.persisted){ graceUntil = Date.now() + 8000; poll().then(schedule); refreshConfig(); } });
 
+/* ================= key-cap labels · key card ================= */
+// The owner's own key-cap label: a preset's "short" (up to cfg.short_max), else the
+// name shortened by shortLabel().
+const shortMax = () => (cfg && cfg.short_max) || 12;
+const shortOut = p => { const v = String((p && p.short) || '').replace(/\s+/g, ' ').trim(); return v ? {short: v} : {}; };
+function keyCap(k, name){
+  if (cfg){
+    const a = k.tap, p = a && a.do === 'preset' ? presetIn(cfg, a.n) : null;
+    if (p && p.short) return p.short;
+  } else {
+    const sk = status && status.keys && status.keys.find(x => x.id === k.id);
+    if (sk && sk.short) return sk.short;
+  }
+  return shortLabel(name);
+}
+// An owner's label may hold a word too long for the cap at its usual size: a smaller face.
+function capFit(el, text){
+  const w = Math.max(0, ...String(text || '').split(/\s+/).map(x => x.length));
+  el.classList.toggle('long', w >= 7 && w < 10); el.classList.toggle('longer', w >= 10);
+}
+let renameFocus = false;
+// The small "On the key" field under Rename's name field.
+function shortField(p, commit, cancel){
+  const max = shortMax();
+  const inp = h('input', {type:'text', id:'shortInp', value: p.short || '', maxlength: String(max), autocomplete:'off', spellcheck:'false',
+    placeholder: shortLabel(p.name), 'aria-label':'Label on the key cap, up to ' + max + ' characters (blank: shortened from the name)',
+    onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); commit(); } else if (e.key === 'Escape'){ e.preventDefault(); cancel(); } }});
+  return h('label', {class:'short-field', for:'shortInp'}, h('span', {class:'mono', 'aria-hidden':'true'}, 'On the key'), inp);
+}
+const capValue = el => { const i = el.querySelector('input'); return i ? i.value.replace(/\s+/g, ' ').trim().slice(0, shortMax()) : ''; };
+
+function printLink(){
+  return h('div', {class:'print-link'}, h('a', {class:'link quiet', href:'#print', id:'printLink'}, 'Print a key card'));
+}
+let cardSize = 'a6';
+try { if (localStorage.getItem('hasler.card') === 'strip') cardSize = 'strip'; } catch (_) {}
+// What a key's tap or hold does, in a few words for paper ('' = nothing).
+function cardWhat(a){
+  const v = verbOf(a);
+  if (v === 'none') return '';
+  if (v === 'preset'){ const p = presetIn(cfg, a.n); return p ? (p.name || 'Untitled').trim() : 'Play music'; }
+  if (isHa(v)){ const t = haTarget(a); return verbShort(v) + (t ? ' · ' + t : ''); }
+  if (v === 'custom') return a.label || 'Custom';
+  if (v === 'bt_pair') return 'Pair a phone';
+  return verbShort(v);
+}
+function cardSrc(a){
+  if (verbOf(a) !== 'preset') return '';
+  const p = presetIn(cfg, a.n); return p ? SRC_HEAD[p.source] || p.source : '';
+}
+const ctlWord = id => String(id || '').replace(/[_-]+/g, ' ');
+// How to switch it off, from the cabinet's descriptor (GET /api/config "power").
+function powerLines(){
+  const out = [];
+  for (const w of (cfg && cfg.power) || []){
+    if (w.kind === 'end_switch'){
+      out.push([h('b', null, 'Off: '), 'turn the ' + ctlWord(w.control) + ' knob to its end until it clicks — the radio goes to standby.' +
+        (w.off_held === 'shutdown' ? ' Left there ' + (w.held_s || 5) + ' s, it shuts down safely.' : '')]);
+    } else if (w.kind === 'release_key'){
+      out.push([h('b', null, 'Off: '), 'press ' + (fixedKeys()[0] ? 'key ' + fixedKeys()[0].label : 'the release key') + ' — standby.' + (w.hold === 'shutdown' ? ' Hold it to shut down.' : '')]);
+    }
+  }
+  return out;
+}
+function keyCard(size){
+  const room = settings && settings.room && settings.room.custom ? settings.room.name : '';
+  const keys = cfg.keys || [];
+  const list = h('ol', {class:'kc-keys'}, keys.map(k => {
+    const tap = cardWhat(k.tap), hold = cardWhat(k.hold), src = cardSrc(k.tap);
+    return h('li', {class:'kc-key', 'data-key':k.id},
+      h('span', {class:'kc-cap' + (k.id === 'pu' ? ' pu' : ''), 'aria-label': keyLabel(k)}, k.label),
+      h('div', {class:'kc-jobs'},
+        h('span', {class:'kc-tap'}, tap || '—'),
+        src ? h('span', {class:'kc-src'}, src) : null,
+        hold ? h('span', {class:'kc-hold'}, h('span', {class:'kc-lbl'}, 'Hold '), hold) : null));
+  }));
+  const combos = (cfg.combos || []).filter(c => Array.isArray(c.keys) && c.keys.length === 2 && verbOf(c) !== 'none');
+  const more = [];
+  if (combos.length) more.push(h('section', {class:'kc-sec kc-combos'}, h('h2', null, 'Two keys together'),
+    combos.map(c => h('p', null, h('b', null, comboOrder(c.keys).map(id => comboKey(id).label).join(' + ')),
+      ' held ' + holdWords(c.hold_s) + ': ' + comboWhat(c)))));
+  const pw = powerLines();
+  if (pw.length) more.push(h('section', {class:'kc-sec kc-power'}, h('h2', null, 'Switching off'), pw.map(l => h('p', null, l))));
+  return h('article', {class:'keycard kc-' + size, id:'keyCard', style:'--n:' + keys.length, 'aria-label':'Key card'},
+    h('header', {class:'kc-head'}, h('h1', {class:'kc-title'}, 'Hasler'), room ? h('span', {class:'kc-room'}, room) : null,
+      h('span', {class:'kc-kind'}, 'The keys')),
+    h('div', {class:'kc-body'}, list, more.length ? h('div', {class:'kc-more'}, more) : null),
+    h('footer', {class:'kc-foot'}, h('span', null, latchingBank() ? latchCardHint() : 'Tap a key to play · hold for its second job'),
+      h('span', {class:'kc-mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
+}
+function renderPrint(){
+  const panel = $('panel'); panel.textContent = '';
+  const SIZES = [{id:'a6', label:'Card · A6'}, {id:'strip', label:'Strip · under the keys'}];
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Size'}, SIZES.map(z =>
+    h('button', {type:'button', role:'radio', 'aria-checked': String(cardSize === z.id), tabindex: cardSize === z.id ? '0' : '-1', 'data-size': z.id,
+      onclick: () => { cardSize = z.id; try { localStorage.setItem('hasler.card', z.id); } catch (_) {} renderPrint(); const b = panel.querySelector('[data-size="' + z.id + '"]'); if (b) b.focus(); }}, z.label)));
+  panel.append(h('div', {class:'print-tools'}, screenTop('Key card', 'edit'),
+    h('p', {class:'hint'}, 'What each key does, to keep by the radio. ' + (isDirty() ? 'It shows the keys as last saved.' : 'It shows the keys as saved now.')),
+    seg, h('div', {class:'actions'}, h('button', {type:'button', class:'btn primary', id:'printBtn', disabled: !cfg, onclick: () => window.print()}, 'Print'))));
+  if (!cfg){ panel.append(h('p', {class:'loading'}, cfg === null ? 'Warming up the valves…' : 'Couldn’t load the keys.')); return; }
+  panel.append(h('div', {class:'card-sheet'}, keyCard(cardSize)));
+}
+// The paper size goes in only while the card prints, so other pages print as before.
+const PAGE_SIZE = {a6:'@page{size:105mm 148mm;margin:0}', strip:'@page{size:A4 landscape;margin:10mm}'};
+window.addEventListener('beforeprint', () => {
+  if (view !== 'print') return;
+  const st = $('cardPage') || document.head.appendChild(h('style', {id:'cardPage'}));
+  st.textContent = PAGE_SIZE[cardSize] || '';
+});
+window.addEventListener('afterprint', () => { const st = $('cardPage'); if (st) st.remove(); });
+
 /* ================= boot ================= */
 // Pick up changes made elsewhere (another phone, Browse) before editing.
 async function refreshConfig(){
@@ -7946,6 +8633,7 @@ async function loadConfig(){
   } catch (_) { cfg = cfg || undefined; }
   buildBank(); renderRemote(); paintMr();
   if (view === 'edit'){ onRoute(); }
+  else if (view === 'print') renderPanel();
 }
 window.addEventListener('beforeunload', e => { const pg = SET_PAGE[curPage()]; if (isDirty() || (pg && pg.dirty && pg.dirty())){ e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 's' && view === 'edit'){ e.preventDefault(); save(); } });

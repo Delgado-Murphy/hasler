@@ -519,6 +519,63 @@ class TestHttp:
         assert json.loads(self.call(url + "/api/status")[1])["playing"]["n"] == 0
         assert self.call(url + "/api/stop", "POST", {})[0] == 200
 
+    def put(self, url, body, headers=None):
+        req = urllib.request.Request(url + "/api/config", data=json.dumps(body).encode(), method="PUT",
+                                     headers={"Content-Type": "application/json", **(headers or {})})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                return resp.status, json.loads(resp.read())
+        except urllib.error.HTTPError as err:
+            return err.code, json.loads(err.read())
+
+    def test_config_carries_a_revision_that_follows_the_keys(self, base):
+        url, app = base
+        cfg = json.loads(self.call(url + "/api/config")[1])
+        status = json.loads(self.call(url + "/api/status")[1])
+        assert cfg["rev"] and status["config_rev"] == cfg["rev"]
+        doc = doc_from(app)
+        key(doc, "k2")["tap"] = {"do": "standby_toggle"}
+        code, reply = self.put(url, {**doc, "rev": cfg["rev"]})
+        assert code == 200 and reply["config"]["rev"] != cfg["rev"]
+        assert json.loads(self.call(url + "/api/status")[1])["config_rev"] == reply["config"]["rev"]
+        # Saving the same keys again keeps it: it is the content, not a counter.
+        assert self.put(url, doc)[1]["config"]["rev"] == reply["config"]["rev"]
+
+    def test_two_phones_a_stale_put_is_a_409_with_the_current_keys(self, base):
+        url, app = base
+        rev = app.config()["rev"]
+        phone_b = doc_from(app)
+        key(phone_b, "k2")["tap"] = {"do": "standby_toggle"}
+        assert self.put(url, {**phone_b, "rev": rev})[0] == 200
+        phone_a = doc_from(app)          # its keys as they were before B saved
+        key(phone_a, "k2")["tap"] = {"do": "next"}
+        key(phone_a, "k3")["tap"] = {"do": "volume_up"}
+        code, reply = self.put(url, {**phone_a, "rev": rev})
+        assert code == 409 and reply["stale"] is True and reply["ok"] is False
+        assert key(reply["config"], "k2")["tap"] == {"do": "standby_toggle"}   # B's change, untouched
+        assert reply["config"]["rev"] == app.config()["rev"]
+        assert key(app.config(), "k3")["tap"] != {"do": "volume_up"}           # nothing of A's landed
+
+    def test_a_matching_revision_saves_by_body_or_if_match(self, base):
+        url, app = base
+        doc = doc_from(app)
+        key(doc, "k3")["tap"] = {"do": "volume_up"}
+        code, reply = self.put(url, {**doc, "rev": app.config()["rev"]})
+        assert code == 200 and key(reply["config"], "k3")["tap"] == {"do": "volume_up"}
+        key(doc, "k4")["tap"] = {"do": "volume_down"}
+        code, reply = self.put(url, doc, {"If-Match": '"' + app.config()["rev"] + '"'})
+        assert code == 200 and key(reply["config"], "k4")["tap"] == {"do": "volume_down"}
+        code, _ = self.put(url, doc, {"If-Match": '"0123456789ab"'})
+        assert code == 409
+
+    def test_a_put_without_a_revision_still_saves(self, base):
+        url, app = base
+        doc = doc_from(app)
+        key(doc, "k5")["tap"] = {"do": "standby_toggle"}
+        code, reply = self.put(url, doc)
+        assert code == 200 and reply["ok"] is True
+        assert key(app.config(), "k5")["tap"] == {"do": "standby_toggle"}
+
     def test_garbage_body_is_a_400_not_a_crash(self, base):
         url, _ = base
         req = urllib.request.Request(url + "/api/config", data=b"{not json", method="PUT",

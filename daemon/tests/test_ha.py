@@ -358,7 +358,7 @@ class TestDiscovery:
         def runner(*a, **k):
             raise FileNotFoundError("avahi-browse")
         instances, note = discover.discover(runner=runner, probe=lambda url: False)
-        assert instances == [] and "avahi-utils" in note
+        assert instances == [] and "type its address instead" in note and "avahi" not in note
 
     def test_timeout_keeps_partial_output(self):
         def runner(*a, **k):

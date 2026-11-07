@@ -227,7 +227,7 @@ class TestDiscovery:
         def missing(*a, **k):
             raise FileNotFoundError("avahi-browse")
         peers = Peers(lambda: "x", fetch=lan.fetch, runner=missing, spawn=inline)
-        assert peers.refresh() == [] and "avahi-browse isn't installed" in peers.note
+        assert peers.refresh() == [] and "Couldn't look for other Haslers" in peers.note
 
     def test_a_slow_browse_keeps_what_resolved(self, lan):
         out = lan.runner(["avahi-browse", "-rtp", "_hasler._tcp"]).stdout

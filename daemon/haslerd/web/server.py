@@ -18,7 +18,8 @@ The sign-in body is the account's cookie: it is never logged or echoed back.
 ``ytm.hide_explicit`` (settings) drops explicit songs and albums from them.
 
 The remote control (``/api/press``, ``/api/volume``, ``/api/next``,
-``/api/standby``) drives the radio exactly as the cabinet does: a pressed key is
+``/api/standby``, and the sleep timer ``/api/sleep`` - web/sleep_api.py)
+drives the radio exactly as the cabinet does: a pressed key is
 dispatched as the same ``Event`` the panel would emit, so "press the playing
 key again" means the same thing from the phone as from the wood. Volume is on
 the knob's 0-100 scale; the player maps it inside ``volume_limit``, which
@@ -121,9 +122,21 @@ from . import wifi_page
 
 log = logging.getLogger(__name__)
 
+
+class Stale(Exception):
+    """A key layout PUT made from an older revision: answered 409 with ``config``."""
+
+    def __init__(self, config: dict):
+        super().__init__("the keys were changed elsewhere")
+        self.config = config
+
 STATIC = Path(__file__).parent / "static"
 FONTS = STATIC / "fonts"
 FONT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.woff2$")
+# Home-screen icons (drawn by scripts/make_icons.py) and the web app manifest.
+ICONS = STATIC / "icons"
+ICON_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}\.png$")
+MANIFEST_THEME = "#17100B"      # the page's --ground, as its theme-color meta
 MAX_BODY = 256 * 1024
 
 PRESS_EVENTS = ("tap", "hold")
@@ -150,6 +163,7 @@ EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "
                   "/api/knobs/functions", "/api/knobs/try",   # web/knobs_api.py
                   "/api/help",                                # web/help_api.py
                   "/api/spotify",                             # web/spotify_account_api.py
+                  "/api/sleep",                               # web/sleep_api.py
                   "/api/stations/try", "/api/stations/mine", "/api/stations/report")  # web/stations_api.py
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
@@ -309,6 +323,8 @@ class WebApp:
         self.lamp: Any = None
         # player/watchdog.StreamWatchdog (main.py): MPD stopping a preset by itself.
         self.stream_watch: Any = None
+        # sleep.SleepTimer (main.build_web, web/sleep_api.py), or None.
+        self.sleep: Any = None
         self.station_db = station_db
         # /api/info and /api/art/current, for the Home Assistant integration (web/integration.py).
         self.art = integration.ArtProxy(station_db)
@@ -571,8 +587,15 @@ class WebApp:
             log.debug("ha connected check failed", exc_info=True)
             return False
 
-    def save(self, doc: Any) -> dict:
+    def save(self, doc: Any, rev: str | None = None) -> dict:
+        """PUT /api/config. ``rev`` = the revision the page started from (body
+        "rev" or If-Match); when the keys changed since, Stale (409) with the
+        radio's current config, so the page can merge instead of undoing them."""
         with self.lock:
+            if rev is not None:
+                current = self.config()
+                if current["rev"] != rev:
+                    raise Stale(current)
             specs, table, combos = keymap.parse_layout(doc, self.actions)   # raises keymap.Invalid
             if self.keys_file is not None:
                 if combos is None:
@@ -663,6 +686,8 @@ class WebApp:
             # The remote's keys, k1..k6 then PU, and which one is lit.
             "keys": self._keys(),
             "current_key": self._current_key(current),
+            # GET /api/config's "rev": a page sees here that the keys changed elsewhere.
+            "config_rev": self._config_rev(),
             "volume_limit": self._volume_limit(),
             # The tone knob: 0-100 and what it does (None = no tone pot read yet):
             # {"value", "treble_db", "effect", "label", "text": "Warmer · 40%"}.
@@ -671,6 +696,8 @@ class WebApp:
             "knob_on": states.get("power") if isinstance(states.get("power"), bool) else None,
             # Multiroom: None alone, else {"role", "joining", "leader": {id, name}|None, "members": n}.
             "group": self._group_status(),
+            # The sleep timer (haslerd/sleep.py): {"ends_in_s", "fading", "minutes"} or None.
+            "sleep": self.sleep.status() if self.sleep is not None else None,
             # The cabinet's other controls, from its descriptor (the Excelsior's):
             # latched = the latching key down now ("k3"; None = none, or no latching bank);
             # switches = [{"id", "label", "on"}] (SP); selectors = [{"id", "label",
@@ -726,6 +753,13 @@ class WebApp:
         doc["label"] = str(spec.get("label") or cid.capitalize())
         return doc
 
+    def _config_rev(self) -> str | None:
+        try:
+            return keymap.layout_rev(keymap.layout_doc(self.actions))
+        except Exception:
+            log.debug("config revision failed", exc_info=True)
+            return None
+
     def _tone_doc(self, tone: Any) -> dict | None:
         if not isinstance(tone, (int, float)) or isinstance(tone, bool):
             return None
@@ -747,6 +781,36 @@ class WebApp:
         except Exception:
             log.debug("multiroom status failed", exc_info=True)
             return None
+
+    def manifest(self) -> dict:
+        """``GET /manifest.webmanifest``: what a phone needs to put the key page
+        on its home screen. Named after the room when the owner gave it one
+        ("Hasler (Kitchen)"), else plain "Hasler". No service worker: the page
+        is live and must never come from a cache."""
+        try:
+            room = " ".join(str(self.room.custom() or "").split())
+        except Exception:
+            log.debug("manifest: no room name", exc_info=True)
+            room = ""
+        icons = [
+            {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            # The mark sits inside the central safe zone, so it also masks well.
+            {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ]
+        return {
+            "name": f"Hasler ({room})" if room else "Hasler",
+            "short_name": room[:12] if room else "Hasler",
+            "description": "The keys, dial and settings of this Hasler radio.",
+            "id": "/",
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "orientation": "portrait",
+            "background_color": MANIFEST_THEME,
+            "theme_color": MANIFEST_THEME,
+            "icons": icons,
+        }
 
     def info(self) -> dict:
         """``GET /api/info``: who this radio is, for the Home Assistant integration
@@ -781,6 +845,7 @@ class WebApp:
         for cid in labels:
             tap = keymap.to_page(table.get(f"{cid}.tap"))
             n = name = source = None
+            short = ""
             if tap is None:
                 name = ""
             elif tap["do"] == "preset":
@@ -788,11 +853,15 @@ class WebApp:
                 preset = presets.get(n)
                 name = preset.name if preset is not None else f"Preset {n}"
                 source = preset.source if preset is not None else None
+                short = preset.short if preset is not None else ""
             elif tap["do"] == "custom":
                 name = str(tap.get("label") or "")
             else:
                 name = TAP_LABELS.get(tap["do"], tap["do"])
-            out.append({"id": cid, "label": labels.get(cid, cid), "n": n, "name": name, "source": source})
+            entry = {"id": cid, "label": labels.get(cid, cid), "n": n, "name": name, "source": source}
+            if short:
+                entry["short"] = short        # the owner's own key-cap label
+            out.append(entry)
         return out
 
     def _current_key(self, current: Any) -> str | None:
@@ -873,6 +942,8 @@ class WebApp:
             else:
                 raise ValueError("expected {\"value\": 0-100} or {\"delta\": ±n}")
             target = max(0.0, min(100.0, target))
+            if self.sleep is not None:
+                self.sleep.volume_set()     # during the sleep fade: the timer is off, this level stands
             player.set_volume(target)
         return round(target)
 
@@ -1943,6 +2014,19 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 return
             self._send(200, path.read_bytes(), "font/woff2", "public, max-age=31536000, immutable")
 
+        def _icon(self, name: str) -> None:
+            path = ICONS / name
+            if not ICON_NAME.match(name) or not path.is_file():
+                self._send(404, b"not found", "text/plain")
+                return
+            # Not content-hashed names: a day, then the phone asks again.
+            self._send(200, path.read_bytes(), "image/png", "public, max-age=86400")
+
+        def _manifest(self) -> None:
+            body = json.dumps(app.manifest(), ensure_ascii=False).encode()
+            # The room name can change: revalidate rather than cache.
+            self._send(200, body, "application/manifest+json; charset=utf-8", "no-cache")
+
         def do_GET(self) -> None:
             if self._extra("GET"):
                 return
@@ -1977,6 +2061,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(*app.ytm_api.get(url.path, parse_qs(url.query))))
             elif url.path.startswith("/fonts/"):
                 self._guard(lambda: self._font(url.path[len("/fonts/"):]))
+            elif url.path == "/manifest.webmanifest":
+                self._guard(self._manifest)
+            elif url.path.startswith("/icons/"):
+                self._guard(lambda: self._icon(url.path[len("/icons/"):]))
+            elif url.path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+                # iOS asks the site root for these before it reads the page's link tag.
+                self._guard(lambda: self._icon("apple-touch-icon.png"))
             elif url.path == "/api/settings":
                 self._guard(lambda: self._json(200, app.settings(self.headers.get("Host"))))
             elif url.path == "/api/lamp/palette":
@@ -2074,7 +2165,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 return
             path = urlparse(self.path).path
             if path == "/api/config":
-                self._guard(lambda: self._json(200, {"ok": True, "config": app.save(self._body())}))
+                self._guard(self._put_config)
             elif path == "/api/settings":
                 self._guard(lambda: self._json(
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
@@ -2087,6 +2178,18 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
             else:
                 self._send(404, b"not found", "text/plain")
+
+        def _put_config(self) -> None:
+            body = self._body()
+            rev = body.pop("rev", None) if isinstance(body, dict) else None
+            if rev is None:
+                tag = (self.headers.get("If-Match") or "").strip()
+                rev = tag.removeprefix("W/").strip('"') if tag and tag != "*" else None
+            try:
+                self._json(200, {"ok": True, "config": app.save(body, None if rev is None else str(rev))})
+            except Stale as exc:
+                self._json(409, {"ok": False, "stale": True, "errors": [], "config": exc.config,
+                                 "error": "the keys were changed elsewhere since this page read them"})
 
         def _wifi_page(self, lang: str | None, status: int = 200, form: dict | None = None, **kw: Any) -> None:
             """The Wi-Fi setup page, rendered for this phone (web/wifi_page.py)."""

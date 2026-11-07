@@ -32,6 +32,15 @@ from typing import Callable
 from .rest import urllib_fetch
 
 log = logging.getLogger(__name__)
+_warned: set[str] = set()
+
+
+def _warn_once(msg: str) -> None:
+    """The technical cause goes to the log once; the owner gets plain words."""
+    if msg not in _warned:
+        _warned.add(msg)
+        log.warning(msg)
+
 
 AVAHI_CMD = ["avahi-browse", "-rtp", "_home-assistant._tcp"]
 TIMEOUT = 4.0
@@ -106,7 +115,8 @@ def browse(runner: Runner = subprocess.run, timeout: float = TIMEOUT) -> tuple[l
         done = runner(AVAHI_CMD, capture_output=True, text=True, timeout=timeout)
         output = done.stdout or ""
     except FileNotFoundError:
-        return [], "avahi-browse isn't installed on the radio (apt install avahi-utils), so only homeassistant.local was tried"
+        _warn_once("avahi-browse isn't installed (apt install avahi-utils): only homeassistant.local was tried")
+        return [], "Couldn't look for Home Assistant on the network - type its address instead"
     except subprocess.TimeoutExpired as exc:
         # Whatever resolved before the deadline is still good.
         raw = exc.stdout or b""

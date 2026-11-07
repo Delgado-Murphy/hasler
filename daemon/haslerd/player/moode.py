@@ -238,6 +238,10 @@ class MoodePlayer:
         self._mixer_gen = 0
         self._hold: int | None = None      # mixer percent a swell will rise to
         self._swelling = False
+        # The sleep timer's fade (haslerd/sleep.py): the mixer percent it fades
+        # down from, while one runs. The knob's level stays what it was.
+        self._fade_from: int | None = None
+        self._mute_switch = True           # False: this mixer mutes by going to 0%
         # Starting and stopping, off the caller's thread (start_preset /
         # stop_soon). MPD blocks *every* client for 0.5-4 s while it stops a
         # stream (its output closes through moOde's CamillaDSP plugin; measured
@@ -539,11 +543,52 @@ class MoodePlayer:
         with self._mixer_lock:
             self._mixer_gen += 1
             self._hold = None
+            self._fade_from = None          # the knob wins over a sleep fade too
             self._mixer_level(percent)
         self._volume = float(percent)
         self._knob = max(0.0, min(100.0, float(value)))
         if self._muted and percent > 0:
             self._muted = False
+
+    # -- the sleep timer's fade -------------------------------------------
+
+    def fade_level(self, fraction: float) -> None:
+        """Mixer at ``fraction`` (0..1) of the level the fade began at (haslerd/sleep.py).
+
+        Linear in mixer percent - linear in dB on the Amp4 Pro, so it reads as
+        a smooth fade. The knob's level is left as it is, and ``get_volume``
+        keeps reporting it while the fade runs: the owner's volume never moves.
+        The mixer's mute switch isn't touched. A knob turned meanwhile
+        (``set_volume``) ends the fade; ``end_fade`` puts the level back.
+        """
+        with self._mixer_lock:
+            if self._fade_from is None:
+                start = self._volume
+                if start is None:
+                    percent = self._read_mixer()
+                    if percent is None:
+                        return
+                    start = min(percent, max(1, min(100, int(self.config.volume_limit))))
+                self._fade_from = int(start)
+                self._hold = None
+                self._mixer_gen += 1       # a swell still rising stops here
+            fraction = max(0.0, min(1.0, float(fraction)))
+            self._amixer(f"{int(round(self._fade_from * fraction))}%")
+
+    def end_fade(self) -> None:
+        """Back to the level the fade began at, without unmuting.
+
+        After the timer's standby the mixer is muted: the level goes back
+        under the mute, so the next wake is as loud as the knob says. A mixer
+        that mutes by going to 0% is left at 0% (its unmute sets the level).
+        Nothing to do if no fade runs (or the knob already ended it).
+        """
+        with self._mixer_lock:
+            start, self._fade_from = self._fade_from, None
+            if start is None or (self._muted and not self._mute_switch):
+                return
+            self._mixer_gen += 1
+            self._amixer(f"{start}%")
 
     # -- the boot resume's swell ------------------------------------------
 
@@ -653,7 +698,8 @@ class MoodePlayer:
         AirPlay all move the same hardware mixer behind our back. Falls back to
         the last value we set if amixer cannot be read.
         """
-        percent = self._read_mixer()
+        fading = self._fade_from
+        percent = self._read_mixer() if fading is None else fading    # the owner's, not the fade's
         if percent is None:
             return self._knob
         return unscale_volume(percent, self.config.volume_limit, self.config.volume_floor)
@@ -666,7 +712,9 @@ class MoodePlayer:
             self._hold = None
             try:
                 self._amixer("mute" if muted else "unmute")
+                self._mute_switch = True
             except subprocess.CalledProcessError:
+                self._mute_switch = False
                 self._amixer("0%" if muted else f"{int(self._volume or 40)}%")
         self._muted = muted
 

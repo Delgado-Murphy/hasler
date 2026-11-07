@@ -262,7 +262,7 @@ class Room:
     def _moode(self, sid: str, name: str) -> tuple[str, str]:
         renderers = self.renderers()
         if renderers is None:
-            return "skipped", "moOde isn't on this radio"
+            return "skipped", "not on this radio"
         try:
             target = next((t for t in renderers.describe() if t["id"] == sid), None)
         except Exception:
@@ -281,7 +281,7 @@ class Room:
             except RendererError as exc:
                 if "busy" not in str(exc) or self.clock() >= deadline:
                     return "failed", str(exc)
-                self._step(sid, "working", "waiting for moOde")
+                self._step(sid, "working", "waiting for the player")
                 self.sleep(BUSY_POLL_S)
 
     def _spotify(self, name: str) -> tuple[str, str]:

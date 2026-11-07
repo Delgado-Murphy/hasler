@@ -212,6 +212,9 @@ class Actions:
         # Standby, pairing or shutdown changed: the lamp should look again now,
         # before whatever blocking call comes next.
         self.on_change: Callable[[], None] | None = None
+        # Every event, before it is acted on - a hand on the radio, from the
+        # cabinet or the page's remote (sleep.SleepTimer.hand: the timer is off).
+        self.on_hand: Callable[[Event], None] | None = None
         # player/watchdog.StreamWatchdog.stalled_on when wired (main.py): a
         # preset MPD stopped playing by itself. Its key then means "play it",
         # not "again" (which would put a silent radio into standby).
@@ -334,6 +337,11 @@ class Actions:
             if kid is not None and self.variant.actions.get(f"{kid}.tap"):
                 self.dispatch(Event(kid, "tap", LATCHED))
                 return
+        if self.on_hand is not None:
+            try:
+                self.on_hand(event)
+            except Exception:
+                log.debug("on_hand hook failed", exc_info=True)
         if event.kind == "tap":
             now = self.clock()
             last = self._last_tap.get(event.control)

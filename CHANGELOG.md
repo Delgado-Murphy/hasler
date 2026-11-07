@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.2.0 - 2026-11-07
+
+Keys
+- Tap | Hold on every key: each key's page has two tabs, each showing what it
+  does now; the hold is one tap away instead of below the whole station
+  browser. "Reassign" from Home Assistant's "needs attention" opens the Hold
+  tab with the search ready and the missing name shown.
+- See what holding does: Edit keys lists "Tap ·" and "Hold ·" for every key,
+  and the keys show a small mark when they have a hold job (a "!" when Home
+  Assistant no longer has its target). Holding a key works from the keyboard
+  too (Space or Enter, longer than half a second).
+- Your own short label for a key's cap (up to 12 letters), under Rename.
+- A printable key card (A6, or a strip for behind the keys): Edit keys ->
+  Print a key card.
+- Done never throws work away: with unsaved changes it asks "Save and close /
+  Discard / Keep editing", the same question as Back and leaving Settings.
+- Two phones can't undo each other: a save that started from older keys is
+  merged with the other phone's change instead of wiping it, and says so if
+  both changed the same key. An idle page shows the other phone's change.
+- Test on the radio shows "Trying on the radio · 0:30" with Back; tapping
+  the station that's playing says "Standby - tap again to play"; the toast no
+  longer covers Save; a refused change explains "This page is open at ...,
+  which can't make changes yet" with "Allow this address".
+- Back no longer leaves the page after a cancelled Back.
+
+Sleep timer
+- The clock on the Standby button: 15, 30 or 60 minutes. In the last minute
+  the volume fades and the lamp dims, then the radio goes to standby; the
+  next wake plays at your usual volume. Any key or knob cancels it; a chip on
+  the front page shows the time left.
+
+Settings
+- One rule: switches and choices apply at once, with Undo; names and places
+  wait for Save. The tone knob's effect applies straight away.
+- Plain words instead of internal names (no more "moOde" or "avahi").
+- The room name lives in This radio -> Name and address only; "Source key &
+  knobs" (or "Knobs & keys" on a radio without a source key).
+- The front page's tone bar no longer looks like a slider you can drag.
+
+Also
+- Add the page to your phone's home screen: it opens like an app, named
+  after the room.
+- Keyboard and screen reader: focus stays put while saving, status messages
+  are announced, the pairing countdown no longer talks every second.
+
 ## 1.1.8 - 2026-11-07
 
 - After "Allow this address", whatever was refused now goes through with its
