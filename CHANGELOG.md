@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 - 2026-11-07
 
 Support
 - **Write to the makers**: with nothing sent, the page is where you write.
