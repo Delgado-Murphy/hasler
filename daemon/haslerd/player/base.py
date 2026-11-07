@@ -42,6 +42,8 @@ class Preset:
     shuffle: bool = False
     # ((field, value), ...) sorted: hashable, so the preset stays frozen.
     ref: tuple[tuple[str, str], ...] = ()
+    # The owner's own label for the key cap ("" = the page shortens ``name``).
+    short: str = ""
 
     @property
     def ytm_ref(self) -> dict[str, str]:
@@ -94,6 +96,7 @@ class Preset:
             source="radio" if key == "url" else key,
             shuffle=bool(spec.get("shuffle", False)),
             ref=ref,
+            short=str(spec.get("short") or "").strip(),
         )
 
 

@@ -124,6 +124,10 @@ log = logging.getLogger(__name__)
 STATIC = Path(__file__).parent / "static"
 FONTS = STATIC / "fonts"
 FONT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.woff2$")
+# Home-screen icons (drawn by scripts/make_icons.py) and the web app manifest.
+ICONS = STATIC / "icons"
+ICON_NAME = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}\.png$")
+MANIFEST_THEME = "#17100B"      # the page's --ground, as its theme-color meta
 MAX_BODY = 256 * 1024
 
 PRESS_EVENTS = ("tap", "hold")
@@ -694,6 +698,36 @@ class WebApp:
             log.debug("multiroom status failed", exc_info=True)
             return None
 
+    def manifest(self) -> dict:
+        """``GET /manifest.webmanifest``: what a phone needs to put the key page
+        on its home screen. Named after the room when the owner gave it one
+        ("Hasler (Kitchen)"), else plain "Hasler". No service worker: the page
+        is live and must never come from a cache."""
+        try:
+            room = " ".join(str(self.room.custom() or "").split())
+        except Exception:
+            log.debug("manifest: no room name", exc_info=True)
+            room = ""
+        icons = [
+            {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            # The mark sits inside the central safe zone, so it also masks well.
+            {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+        ]
+        return {
+            "name": f"Hasler ({room})" if room else "Hasler",
+            "short_name": room[:12] if room else "Hasler",
+            "description": "The keys, dial and settings of this Hasler radio.",
+            "id": "/",
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "orientation": "portrait",
+            "background_color": MANIFEST_THEME,
+            "theme_color": MANIFEST_THEME,
+            "icons": icons,
+        }
+
     def info(self) -> dict:
         """``GET /api/info``: who this radio is, for the Home Assistant integration
         and for other Haslers (``multiroom``: {enabled, role, leader, members,
@@ -726,6 +760,7 @@ class WebApp:
         for cid in keymap.key_ids(self.actions):
             tap = keymap.to_page(table.get(f"{cid}.tap"))
             n = name = source = None
+            short = ""
             if tap is None:
                 name = ""
             elif tap["do"] == "preset":
@@ -733,11 +768,15 @@ class WebApp:
                 preset = presets.get(n)
                 name = preset.name if preset is not None else f"Preset {n}"
                 source = preset.source if preset is not None else None
+                short = preset.short if preset is not None else ""
             elif tap["do"] == "custom":
                 name = str(tap.get("label") or "")
             else:
                 name = TAP_LABELS.get(tap["do"], tap["do"])
-            out.append({"id": cid, "label": keymap.label_for(cid), "n": n, "name": name, "source": source})
+            entry = {"id": cid, "label": keymap.label_for(cid), "n": n, "name": name, "source": source}
+            if short:
+                entry["short"] = short        # the owner's own key-cap label
+            out.append(entry)
         return out
 
     def _current_key(self, current: Any) -> str | None:
@@ -1883,6 +1922,19 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 return
             self._send(200, path.read_bytes(), "font/woff2", "public, max-age=31536000, immutable")
 
+        def _icon(self, name: str) -> None:
+            path = ICONS / name
+            if not ICON_NAME.match(name) or not path.is_file():
+                self._send(404, b"not found", "text/plain")
+                return
+            # Not content-hashed names: a day, then the phone asks again.
+            self._send(200, path.read_bytes(), "image/png", "public, max-age=86400")
+
+        def _manifest(self) -> None:
+            body = json.dumps(app.manifest(), ensure_ascii=False).encode()
+            # The room name can change: revalidate rather than cache.
+            self._send(200, body, "application/manifest+json; charset=utf-8", "no-cache")
+
         def do_GET(self) -> None:
             if self._extra("GET"):
                 return
@@ -1917,6 +1969,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(*app.ytm_api.get(url.path, parse_qs(url.query))))
             elif url.path.startswith("/fonts/"):
                 self._guard(lambda: self._font(url.path[len("/fonts/"):]))
+            elif url.path == "/manifest.webmanifest":
+                self._guard(self._manifest)
+            elif url.path.startswith("/icons/"):
+                self._guard(lambda: self._icon(url.path[len("/icons/"):]))
+            elif url.path in ("/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"):
+                # iOS asks the site root for these before it reads the page's link tag.
+                self._guard(lambda: self._icon("apple-touch-icon.png"))
             elif url.path == "/api/settings":
                 self._guard(lambda: self._json(200, app.settings(self.headers.get("Host"))))
             elif url.path == "/api/lamp/palette":
