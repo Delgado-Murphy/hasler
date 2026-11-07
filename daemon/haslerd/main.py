@@ -55,6 +55,7 @@ from .audio import MonoError, MonoSwitch, mono_default
 from .web.server import (SETTINGS_FILE, WebApp, WebServer, load_settings, volume_floor_from, volume_limit_from,
                          volume_limit_range)
 from .web.bluetooth_api import BluetoothApi
+from .web.front import WebFront
 from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
 from .web.sleep_api import SleepApi
@@ -1300,6 +1301,12 @@ def build_web(
     except OSError:
         log.exception("key page could not listen on port %s; carrying on without it", server.port)
         return None, app
+    # http://hasler.local/ through moOde's nginx (web/front.py), which hands
+    # port 80 to 127.0.0.1:8080 - so only for a page on 8080. web.front: false
+    # gives port 80 back to moOde.
+    if server.port == 8080:
+        app.front = WebFront(enabled=spec.get("front", True) is not False)
+        app.front.start()
     return server, app
 
 

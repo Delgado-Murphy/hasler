@@ -431,6 +431,7 @@ SETUP_MAP: tuple[tuple[str, str], ...] = (
     ("config/hasler-help-resume.service", "integration/systemd/hasler-help-resume.service"),
     ("config/configtxt/hasler.block", "integration/configtxt/hasler.block"),
     ("scripts/hasler-audio-mono", "integration/sbin/hasler-audio-mono"),
+    ("scripts/hasler-web-front", "integration/sbin/hasler-web-front"),
     ("scripts/hasler-ytdlp-update", "integration/sbin/hasler-ytdlp-update"),
     ("update/hasler_update", "app/hasler_update"),
     ("update/bin/hasler-update", "integration/sbin/hasler-update"),

@@ -113,6 +113,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("scripts/hasler-bt-accept", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-help", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-timezone", "integration/sbin/", mode=0o755),
+    Rule("scripts/hasler-web-front", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-help-rescue", "integration/sbin/", mode=0o755),
     Rule("scripts/hasler-note", "integration/bin/", mode=0o755),
     Rule("scripts/hasler-lamp-boot", "integration/sbin/", mode=0o755),

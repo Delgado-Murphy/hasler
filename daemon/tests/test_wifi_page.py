@@ -46,7 +46,7 @@ def text(page):
 
 def test_page_is_small_and_self_contained():
     assert len(PAGE.encode()) < 60_000
-    assert not re.search(r"""(src|href)=["']?(https?:)?//""", PAGE.replace('href=\\"http://hasler.local:8080/\\"', ""))
+    assert not re.search(r"""(src|href)=["']?(https?:)?//""", PAGE.replace('href=\\"http://hasler.local/\\"', ""))
     assert "url(http" not in PAGE and "@import" not in PAGE and "localStorage" not in PAGE
 
 

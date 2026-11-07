@@ -37,7 +37,7 @@ plays.
    or playlist. Press the key of the station that is playing again, and the
    radio goes to sleep.
 4. **Open the key page.** On a phone or computer on the same Wi-Fi, open
-   **http://hasler.local:8080**. On a new radio it says so under the keys:
+   **http://hasler.local**. On a new radio it says so under the keys:
    *New radio? Make it yours.* Tap the gear: **Make it yours** lists what is
    still yours to choose, in order. The first one protects the old speaker.
 5. **Set how loud it may go.** Settings → **Sound** → Volume ceiling. The
@@ -369,10 +369,11 @@ How it works inside: [multiroom.md](multiroom.md).
 The key page is a web page that controls the radio. Open it on a phone or
 computer on the **same Wi-Fi** as the radio:
 
-**http://hasler.local:8080**
+**http://hasler.local**
 
-(If that doesn't open, try the radio's IP address from your router, with
-`:8080` at the end. A second Hasler on the same network gets
+(If that doesn't open, try the radio's IP address from your router.
+`http://hasler.local:8080` is the same page, and older bookmarks to it keep
+working. A second Hasler on the same network gets
 `hasler-2.local` by itself; **Settings → Rooms** shows each radio's
 address.)
 
@@ -564,7 +565,7 @@ Wi-Fi. (Resetting the keys keeps the old layout for a day: the message
 offers **Undo**.)
 
 One honest line about that guard: the player underneath the radio (moOde)
-has pages of its own on the radio's address without the `:8080`, and they ask
+has pages of its own on the radio's address with `:8081` at the end, and they ask
 for no key press. Anyone on your Wi-Fi who knows about them can change the
 Wi-Fi there. The radio trusts your home network, as your printer does; if you
 keep guests on a separate network, that is enough.
@@ -696,7 +697,7 @@ radio goes back to the old one when it is in range, and otherwise makes the
    new password at the same time, should you have lost the old one.
 
 A network cable from the router to the radio's Ethernet socket also works:
-the radio is then at **http://hasler.local:8080** and you can set the Wi-Fi
+the radio is then at **http://hasler.local** and you can set the Wi-Fi
 there.
 
 **Forgetting a network.** **Settings → This radio → Moving this radio** lists
@@ -883,7 +884,7 @@ makers** at the bottom puts a report together to send by message (see
 - **The lamp is fine and music plays, but the page doesn't open:** your
   phone is on another network. Check it is on the same Wi-Fi as the radio
   (not mobile data, not a guest network; a router with "client isolation"
-  keeps phones apart too). Try `http://hasler.local/` without the `:8080`:
+  keeps phones apart too). Try `http://hasler.local:8081/`:
   that is the player's own page, and if it opens, the radio is on the
   network and only the key page is the problem. Try the radio's IP address
   instead of `hasler.local`, and wait a minute after the radio starts. A key

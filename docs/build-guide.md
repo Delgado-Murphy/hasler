@@ -235,7 +235,7 @@ Do these in order, with a meter. The details and the reasons are in
       playing with no account). Pick another with `starter:` in box.yaml if
       you like; later the owner picks one on the key page (**Start from a
       set…**) or changes the keys one by one.
-- [ ] **Set the volume ceiling.** On the key page (`http://hasler.local:8080`),
+- [ ] **Set the volume ceiling.** On the key page (`http://hasler.local`),
       Settings → **Sound** → **Volume ceiling**. Start at 50. The knobs are not
       wired yet, so **hold key 6** (volume up) until the volume stops rising,
       with dense music playing. Raise the ceiling in steps of 5 until it is as
@@ -610,7 +610,7 @@ password, press **Connect**; the radio restarts onto it. The owner's steps are i
   cut where the router boots slower than the radio heals by itself.
 - **Captive portal.** The hotspot's DNS answers every name with `172.24.1.1`
   (`config/captive/dnsmasq-hotspot.conf`), and nginx sends every `http://`
-  request that arrives at that address to `:8080/wifi`
+  request that arrives at that address to haslerd's `:8080/wifi`
   (`config/captive/nginx-captive.conf`) - that is what opens the phone's
   "sign in to network" sheet. moOde stays reachable on the hotspot at
   `http://172.24.1.1/index.php`, and its Network page at
@@ -624,13 +624,58 @@ password, press **Connect**; the radio restarts onto it. The owner's steps are i
   optionally `hotspot_password = …`): `hasler-wifi-rescue.service` applies it
   before moOde's worker looks for a network, deletes it and writes
   `hasler-wifi-result.txt` ([Using your Hasler](using.md#if-nothing-works-a-file-on-the-memory-card)).
-- **What a release doesn't bring.** The rescue unit and the captive portal are
-  put in place by `scripts/bootstrap.sh` (a new SD card from 1.0.1 on runs
-  it), not by the updater. A radio that reached 1.0.1 over the air has the
-  older captive files and no `hasler-wifi-rescue.service` until
-  `sudo scripts/bootstrap.sh` is run on it from a 1.0.1 checkout (safe to
-  repeat). The hotspot password and the retries are haslerd's, so every
-  1.0.1 radio has those.
+- **What a release doesn't bring.** The rescue unit is put in place by
+  `scripts/bootstrap.sh` (a new SD card from 1.0.1 on runs it), not by the
+  updater: a radio that reached 1.0.1 over the air has no
+  `hasler-wifi-rescue.service` until `sudo scripts/bootstrap.sh` is run on it
+  from a 1.0.1 checkout (safe to repeat). The captive portal's nginx file was
+  bootstrap-only too until the key page moved to port 80; now haslerd puts
+  the release's copy back when it is missing or older (next section). The hotspot password and the retries
+  are haslerd's, so every 1.0.1 radio has those.
+
+### The key page on port 80
+
+`http://hasler.local/` opens the key page; moOde's own pages are at
+`http://hasler.local:8081/` (Maker tools → Inside the player links there).
+haslerd itself still listens on **8080**, and `http://hasler.local:8080`
+keeps working for good: Home Assistant (the `_hasler._tcp` record says 8080),
+multiroom peers, the radio's own scripts and the updater's health check use
+it, and so may old bookmarks.
+
+- **How.** moOde's nginx already owns port 80. `scripts/hasler-web-front`
+  (shipped in every release as `integration/sbin/`, run by haslerd through
+  sudo) writes one file of ours, `/etc/nginx/sites-enabled/hasler-web.conf`:
+  port 80 hands every Host name but `localhost`/`127.0.0.1`/`[::1]` to
+  `127.0.0.1:8080`, and a second server puts moOde's site
+  (`moode-locations.conf`) on 8081. moOde's own `moode-http.conf` is not
+  edited: a name beats its `default_server`, so its local display
+  (`http://localhost/`) and its scripts still reach moOde on port 80. The
+  captive portal's servers listen on the hotspot's own addresses, so the
+  hotspot is unchanged (still `:8080/wifi`). While haslerd restarts, port 80
+  answers a small "starting" page that reloads itself.
+- **Why 8081 and not 8000 or a swap.** 8000 is MPD's HTTP stream in moOde's
+  `mpd.conf`. Moving haslerd off 8080 would break Home Assistant, multiroom
+  and bookmarks; putting moOde under a path (`/moode/`) doesn't work, its
+  pages use absolute paths (`/js/`, `/command/`, `/imagesw/`).
+- **Kept across moOde updates.** moOde's package install and its HTTPS switch
+  empty `sites-enabled/`. haslerd (`web/front.py`) asks port 80 for
+  `/api/front` at start and every 10 minutes; when the answer doesn't come
+  from itself through nginx it runs `sudo hasler-web-front ensure`, which
+  puts the file back (and the captive portal's, from the release in use),
+  checks `nginx -t` and reloads nginx. A file nginx rejects is taken out
+  again: moOde's site is never left broken. Until then the key page is on
+  :8080 only, and the page prints `hasler.local:8080` on its cards.
+- **Who asked.** nginx tells haslerd the client's address and the address it
+  used (`X-Hasler-Peer`, `X-Hasler-Local`, replacing any a client sent);
+  haslerd believes them only from loopback. The Host/Origin check, the IPv6
+  "this network only" rule and the loopback-only yt-dlp canary all see the
+  real client.
+- **Off.** `web: {front: false}` in box.yaml takes the file away again at
+  haslerd's next start (moOde back on port 80).
+- **Check on a radio:** `sudo hasler-web-front status`;
+  `curl -s -H 'Host: hasler.local' http://127.0.0.1/api/front` answers
+  `"via_front": true`; `curl -sI http://127.0.0.1:8081/` is moOde;
+  `journalctl -u haslerd | grep 'port 80'`.
 
 ---
 

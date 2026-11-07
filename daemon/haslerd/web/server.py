@@ -78,7 +78,10 @@ DNS rebinding: an attacker's name pointed at the box is refused) and an
 ``Origin`` / ``Referer``, when sent, on that same host. Anything else is a 403.
 The server listens on IPv6 and IPv4 together (``WebServer._bind``); IPv6 has
 no NAT in front of it, so a native IPv6 client off this network is dropped
-before it is read (``local_peer``). Each change is one INFO line in the journal.
+before it is read (``local_peer``). Through the front on port 80 (moOde's
+nginx, web/front.py) every one of these checks uses the client and the
+address nginx reports (``front_addrs``, believed from loopback only).
+Each change is one INFO line in the journal.
 ``/api/components/yt-dlp/canary`` is the yt-dlp lane's canary, loopback only
 (haslerd/ytdlp_lane.py); ``/api/software/yt-dlp/update|rollback`` are the
 Music services buttons.
@@ -133,6 +136,7 @@ from ..player.glr_config import SpotifyGuests, guests_from
 from ..player.moode import SOURCE_MPD_S, treble_db
 from ..player.sources.radio import mpd_patience
 from . import clock as clock_mod
+from . import front as front_mod
 from . import keymap, lamp_api, stations
 from ..lamp import meanings as lamp_meanings
 from ..net import HOTSPOT_ADDRS
@@ -459,6 +463,8 @@ class WebApp:
         # The room name and the casting names that follow it (web/room.py).
         self.room = Room(settings_file, renderers=lambda: getattr(self.actions.player, "renderers", None))
         self.room.load(load_settings(settings_file))
+        # The key page on port 80 through moOde's nginx (web/front.py); main.build_web.
+        self.front: Any = None
         # Spotify for guests on the Wi-Fi: go-librespot's zeroconf_enabled follows
         # settings.json spotify_guests (player/glr_config.py). main.build_web
         # applies it at start; put_settings on every change.
@@ -1391,6 +1397,8 @@ class WebApp:
         except Exception:
             log.debug("could not read the Wi-Fi name", exc_info=True)
             ssid = ""
+        front_doc = self.front.doc() if self.front is not None else \
+            {"active": False, "port": front_mod.FRONT_PORT, "moode_port": front_mod.MOODE_PORT}
         return {
             "volume_limit": self._volume_limit(),
             # What PUT accepts for volume_limit: 30 up to the maker's cap
@@ -1422,7 +1430,10 @@ class WebApp:
             # when they hid the list ({"skipped": [...], "hidden_at": time|null}).
             "made_mine": self._made_mine(),
             "version": f"haslerd {__version__}",
-            "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
+            # The key page on port 80 (web/front.py): moOde's pages then on MOODE_PORT.
+            "front": front_doc,
+            "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}"
+                         f"{':' + str(front_doc['moode_port']) if front_doc['active'] else ''}/",
         }
 
     def _timezone(self, fresh: bool = False) -> str:
@@ -2738,6 +2749,24 @@ def local_peer(peer: str | None, local: str | None, prefixes: dict | None = None
     return any(ip in net for net in nets.values())
 
 
+def front_addrs(peer: str | None, headers: Any) -> tuple[str, str] | None:
+    """(client, local address) as the front on port 80 saw them, or None.
+
+    nginx (scripts/hasler-web-front) hands port 80 to haslerd from loopback and
+    says who asked (``X-Hasler-Peer``) on which of the radio's addresses
+    (``X-Hasler-Local``), replacing any such header a client sent. Believed
+    only from loopback: a client on the network that sends them itself is
+    still itself. Without both headers a loopback request is the radio's own
+    (its scripts, the updater's health check), as before."""
+    if plain_addr(peer) not in LOOPBACK:
+        return None
+    client = (headers.get("X-Hasler-Peer") or "").strip()
+    local = (headers.get("X-Hasler-Local") or "").strip()
+    if not client or not local:
+        return None
+    return plain_addr(client), plain_addr(local)
+
+
 def _log_path(path: str | None) -> str:
     """The request path for the journal: no query string, and no segment that
     may be a token (a confirm id is 24 characters: long, or digits in it)."""
@@ -2783,13 +2812,25 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             return self._client() or "?"
 
         def _client(self) -> str | None:
-            """The client's address, IPv4-mapped shown as plain IPv4 (plain_addr)."""
+            """The client's address, IPv4-mapped shown as plain IPv4 (plain_addr);
+            through the front on port 80 (web/front.py), the one nginx saw."""
+            fwd = getattr(self, "_fwd", None)
+            if fwd is not None:
+                return fwd[0]
             return plain_addr(self.client_address[0]) if self.client_address else None
 
         def parse_request(self) -> bool:
+            self._fwd = None
             ok = super().parse_request()
             if ok:
                 self._t0 = time.monotonic()
+                self._fwd = front_addrs(self.client_address[0] if self.client_address else None, self.headers)
+                if self._fwd is not None and not local_peer(*self._fwd):
+                    # The front listens on IPv6 too: the same "this network only" as _Server.
+                    log.info("web: refused a request through port 80 from %s (not on this network)", self._fwd[0])
+                    self.close_connection = True
+                    self.send_error(403, "not on this network")
+                    return False
             return ok
 
         def _aborted(self, why: str) -> None:
@@ -2861,6 +2902,9 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._json(500, {"ok": False, "errors": [], "error": str(exc) or type(exc).__name__})
 
         def _local_addr(self) -> str | None:
+            fwd = getattr(self, "_fwd", None)
+            if fwd is not None:
+                return fwd[1]       # the radio's address the client used, through the front
             try:
                 return plain_addr(str(self.connection.getsockname()[0]))
             except (OSError, AttributeError, IndexError):
@@ -2987,6 +3031,9 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             elif url.path == "/api/keys/state":
                 client = self._client()
                 self._guard(lambda: self._json(*app.keys_state(client)))
+            elif url.path == "/api/front":
+                # web/front.py's probe: did this come through port 80's front?
+                self._json(200, {"ok": True, "via_front": self._fwd is not None})
             elif url.path == "/api/info":
                 self._guard(lambda: self._json(200, app.info()))
             elif url.path == "/api/art/current":

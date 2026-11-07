@@ -46,12 +46,17 @@ moode:
 # (StateDirectory=haslerd); it must be writable by the service user.
 state_file: /var/lib/haslerd/state.json
 
-# The key page: http://hasler.local:8080 - choose what each key does on tap
+# The key page: http://hasler.local - choose what each key does on tap
 # and hold. LAN only, no login (like moOde's own UI). Choices are saved to
 # keys.yaml next to state_file and laid over the descriptor's defaults.
+# haslerd listens on 8080 (http://hasler.local:8080 keeps working: Home
+# Assistant, multiroom and old bookmarks use it); moOde's nginx hands port 80
+# to it, and moOde's own pages move to :8081 (web/front.py,
+# scripts/hasler-web-front). front: false gives port 80 back to moOde.
 web:
   enabled: true
   port: 8080
+  # front: true
   # Remote help (docs/remote-help.md): the makers' Tailscale tailnet. A radio
   # that joins any other tailnet ends help at once. Default
   # delgado-murphy.org.github; "" switches the check off.

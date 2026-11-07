@@ -169,7 +169,7 @@ a radio included, also waits for an admin's click under Machines.
 
    ```sh
    ssh pi@100.x.y.z                 # or pi@hasler-kitchen-ab12 with MagicDNS
-   open http://100.x.y.z:8080/      # the key page
+   open http://100.x.y.z:8080/      # the key page (haslerd's own port; :80 is the same page)
    ```
 
    The radio's own ssh keys stay the gate: your key has to be in

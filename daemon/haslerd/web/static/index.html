@@ -2178,7 +2178,9 @@ function latchCardHint(){ const f = fixedKeys()[0]; return 'Press a key to play'
 // (/api/info short_id: what the makers see as the tail of its name during remote help) for owners who phone.
 function modelLine(){ return ((cfg && cfg.title) || 'Hasler HM · Bern 1964') + ' · restored 2026' + (radioInfo && radioInfo.short_id ? ' · ' + radioInfo.short_id : ''); }
 // When the radio can't be reached this page is the only helper: the two things that usually explain it.
-function cantReachWords(){ return 'A guest network or a router with client isolation keeps phones apart. Try http://hasler.local/ without :8080 — the player’s own page.'; }
+function cantReachWords(){ return 'A guest network or a router with client isolation keeps phones apart. Try ' + ((settings && settings.moode_url) || 'http://hasler.local:8081/') + ' — the player’s own page.'; }
+// The key page's address as printed: no port while port 80 reaches it (settings.front, web/front.py), else :8080.
+function pagePort(){ return settings && settings.front && settings.front.active ? '' : ':8080'; }
 function paintFixed(){
   const now = Date.now();
   for (const btn of $('bank').querySelectorAll('[data-fixed]')) btn.classList.toggle('down', (flashUntil[btn.dataset.key] || 0) > now);
@@ -6819,7 +6821,7 @@ function cardMoveBlock(){
   const addr = (r && r.address) || 'hasler.local';
   return h('section', {class:'kc-sec kc-move', id:'kcMove'}, h('h2', null, 'If it moves'),
     h('p', null, 'Setup network: ', h('b', null, (s && s.ssid) || 'Hasler'), ' · Password: ', h('b', {id:'kcPw'}, pw)),
-    h('p', null, 'Page: ', h('b', null, addr + ':8080'), r && r.ip ? ' (' + r.ip + ')' : ''),
+    h('p', null, 'Page: ', h('b', null, addr + pagePort()), r && r.ip ? ' (' + r.ip + ')' : ''),
     h('p', null, 'No phone? A file called ', h('b', null, 'hasler-wifi.txt'), ' on the memory card.'));
 }
 // The key card's "Include the setup password" box (the welcome card has its own; both set the one flag).
@@ -10983,8 +10985,8 @@ function cardLampLegend(){
 const cardUi = {pw:false};
 function welcomeCard(){
   const r = settings && settings.room, room = roomNow(), info = radioInfo || {};
-  const addr = ((r && r.address) || 'hasler.local') + ':8080';
-  const ip = /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname) && location.hostname !== '127.0.0.1' ? location.hostname + ':8080' : '';
+  const addr = ((r && r.address) || 'hasler.local') + pagePort();
+  const ip = /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname) && location.hostname !== '127.0.0.1' ? location.hostname + pagePort() : '';
   const first = cfg.keys.find(k => k.id !== 'pu');
   const sn = setupNet || {}, ssid = sn.ssid || 'Hasler';
   const pw = cardUi.pw && sn.password_set && sn.password ? sn.password : '';

@@ -36,7 +36,7 @@ the pilot lamp and the original speaker all still work.
   to sleep.
 - **A pilot lamp that talks:** amber for the radio, blue for a phone, a dim
   ember when asleep, dark when it is safe to unplug.
-- **A key page** in your browser (`http://hasler.local:8080`) to choose the
+- **A key page** in your browser (`http://hasler.local`) to choose the
   music on each key and change settings.
 - **Safe updates.** Small ones install by themselves at night, in standby;
   bigger ones ask first. If an update doesn't work, the radio goes back to the
@@ -91,7 +91,7 @@ knobs ──▶ ADS1115 ────────────────┤
                                haslerd ──▶ pilot lamp
                     ┌─────────────┼──────────────┬───────────────────┐
                     ▼             ▼              ▼                   ▼
-             MPD (moOde)    go-librespot     key page :8080    Home Assistant
+             MPD (moOde)    go-librespot     key page :80/:8080   Home Assistant
           radio, YouTube      Spotify                            (optional)
               Music
 

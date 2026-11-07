@@ -11,8 +11,9 @@ as UPnP files. Two consequences, each fixed by one line here:
    isn't one, so it shows its default cover. Our line makes moOde's PHP ask
    haslerd (127.0.0.1:8080/art/<id>, on the Pi) where the cover is and hand
    the browser that public image URL. Not haslerd's URL itself: Chrome blocks
-   an http page on :80 loading from :8080 on the same LAN host (Private
-   Network Access).
+   an http page on moOde's port (:8081 behind the key page's front, :80
+   without it) loading from :8080 on the same LAN host (Private Network
+   Access).
 2. Track-change delay (inc/music-library.php, getEncodedAt): for a UPnP file
    moOde runs `mediainfo` on the stream URL to label its format - ~3.8 s on
    the Pi, through our proxy to YouTube, before the new title shows. Our line
