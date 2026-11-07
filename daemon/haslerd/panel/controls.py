@@ -4,7 +4,8 @@ Six kinds cover every cabinet we have or expect:
 
 ``momentary``          spring-back key. Emits ``tap`` on release, ``hold`` at the
                        threshold while still held (and again every ``repeat_ms``
-                       if set - a volume key that ramps while held).
+                       if set - a volume key that ramps while held), and
+                       ``down`` the moment it is pressed (see below).
 ``latching_toggle``    independent stay-put switch. Emits ``on`` / ``off``.
 ``interlocked_bank``   mechanically ganged keys where exactly one is down.
                        Emits ``select`` / ``hold`` / ``clear``. Its ``keys:``
@@ -31,6 +32,18 @@ handlers fire a spurious "cleared" every single time. The fix is to debounce the
 bank as a **vector**: no state is committed until the whole pattern has held
 still for ``settle_ms``. The changeover gap is shorter than that, so it never
 commits; a real release (key 0) is longer, so it does.
+
+THE PRESS HINT
+--------------
+A tap is only a tap once the key is let go, so a lamp that waited for it
+answered a press 150-300 ms late. Keys (momentary keys, and the keys of an
+interlocked bank) also emit ``down`` from the first poll that reads the
+contact closed (``DOWN_S``, no debounce: two agreeing polls would add 20 ms
+and miss the lamp's 50 ms target). It is a hint for the pilot lamp only
+(Actions answers it with the lamp's reply and nothing else): every action
+still waits for its debounced tap, hold or select, one press hints once
+however its contact bounces, and a glitch that never commits costs at most
+one reply - never an action.
 """
 
 from __future__ import annotations
@@ -47,6 +60,9 @@ log = logging.getLogger(__name__)
 
 DEFAULT_HOLD_S = 0.8
 DEFAULT_BOUNCE_S = 0.03
+# The press hint (module docstring): a closed contact read this long is a
+# key going down, for the lamp only. 0 = the first poll that sees it.
+DOWN_S = 0.0
 DEFAULT_BANK_SETTLE_S = 0.06
 DEFAULT_OFF_HOLD_S = 5.0
 DEFAULT_MEDIAN_N = 5
@@ -95,6 +111,35 @@ class _Settled:
         return False
 
 
+class _PressHint:
+    """The press hint (module docstring): which key went down, once per press.
+
+    Fed what the raw contacts say is pressed - True for a single key, a
+    position for a bank, None for nothing - it answers that value once it has
+    read the same for ``down_s``, and not again until nothing has been
+    pressed for ``clear_s`` (a bouncing contact is still the same press).
+    """
+
+    def __init__(self, down_s: float, clear_s: float) -> None:
+        self.down_s = down_s
+        self.clear_s = clear_s
+        self._value: Any = None
+        self._since = 0.0
+        self._sent: Any = None
+
+    def update(self, now: float, raw: Any) -> Any:
+        if raw != self._value:
+            self._value, self._since = raw, now
+        if raw is None:
+            if now - self._since >= self.clear_s:
+                self._sent = None
+            return None
+        if raw != self._sent and now - self._since >= self.down_s:
+            self._sent = raw
+            return raw
+        return None
+
+
 class Control:
     """Base: an id, and a way to turn an input snapshot into events."""
 
@@ -122,6 +167,10 @@ class Momentary(Control):
 
     ``repeat_s`` makes ``hold`` fire again at that interval for as long as the
     key stays down. Off by default: a hold that starts a scene must not repeat.
+
+    ``down_s`` (build_controls passes DOWN_S) adds ``down`` that long after
+    the contact closes, before anything else (the press hint, module
+    docstring); None, the constructor's default, leaves it out.
     """
 
     kind = "momentary"
@@ -133,19 +182,30 @@ class Momentary(Control):
         hold_s: float = DEFAULT_HOLD_S,
         bounce_s: float = DEFAULT_BOUNCE_S,
         repeat_s: float | None = None,
+        down_s: float | None = None,
     ) -> None:
         super().__init__(id)
         self.pin = pin
         self.hold_s = hold_s
         self.repeat_s = repeat_s
         self._settled = _Settled(False, bounce_s)
+        self._hint = _PressHint(min(down_s, bounce_s), bounce_s) if down_s is not None else None
         self._down_at = 0.0
         self._hold_fired = False
         self._last_hold = 0.0
 
+    @property
+    def down_since(self) -> float | None:
+        """When this press went down (debounced), None while the key is up."""
+        return self._down_at if self._settled.committed else None
+
     def update(self, now, digital, analog):
         events: list[Event] = []
-        changed = self._settled.update(now, digital.get(self.pin, False))
+        raw = bool(digital.get(self.pin, False))
+        if self._hint is not None and self._hint.update(now, True if raw else None) \
+                and not self._settled.committed:
+            events.append(Event(self.id, "down"))
+        changed = self._settled.update(now, raw)
         if changed:
             if self._settled.committed:
                 self._down_at = now
@@ -277,11 +337,15 @@ class InterlockedBank(Control):
         pins: list[str],
         settle_s: float = DEFAULT_BANK_SETTLE_S,
         hold_s: float = DEFAULT_HOLD_S,
+        down_s: float | None = None,
     ) -> None:
         super().__init__(id)
         self.pins = list(pins)
         self.hold_s = hold_s
         self._settled = _Settled(tuple([False] * len(pins)), settle_s)
+        # The press hint (``down_s``, as Momentary's): a new key going down,
+        # long before the vector settles.
+        self._hint = _PressHint(min(down_s, settle_s), settle_s) if down_s is not None else None
         self._selected: int | None = None
         self._selected_at = 0.0
         self._hold_fired = False
@@ -296,6 +360,9 @@ class InterlockedBank(Control):
     def update(self, now, digital, analog):
         events: list[Event] = []
         raw = tuple(digital.get(p, False) for p in self.pins)
+        going = self._hint.update(now, self._decode(raw)) if self._hint is not None else None
+        if going is not None and going != self._selected:
+            events.append(Event(self.id, "down", going))
         if self._settled.update(now, raw):
             committed = self._settled.committed
             stuck = sum(committed) > 1
@@ -783,14 +850,18 @@ def build_controls(specs: list[dict]) -> list[Control]:
         if kind == "interlocked_bank":
             release = release_key({"id": cid, **spec})
             hold_s = spec.get("hold_ms", DEFAULT_HOLD_S * 1000) / 1000
+            # Key 0's own hold (the Excelsior's: 5 s to shut down, the HM
+            # tone knob's countdown), else the bank's.
+            release_hold = (spec.get("release") or {}).get("hold_ms") if release else None
             if not bank_latching(spec):
                 # A modified cabinet: the keys spring back. Each is a plain
                 # momentary key (tap / hold / repeat, combinations) under its
                 # bank id, key 0 first as it sits on the panel.
                 if release:
-                    controls.append(Momentary(release["id"], pin=release["pin"], hold_s=hold_s))
+                    controls.append(Momentary(release["id"], pin=release["pin"], down_s=DOWN_S,
+                                              hold_s=release_hold / 1000 if release_hold else hold_s))
                 for key, pin in zip(bank_keys({"id": cid, **spec}), spec["pins"]):
-                    controls.append(Momentary(key["id"], pin=pin, hold_s=hold_s))
+                    controls.append(Momentary(key["id"], pin=pin, hold_s=hold_s, down_s=DOWN_S))
                 continue
             controls.append(
                 InterlockedBank(
@@ -798,12 +869,14 @@ def build_controls(specs: list[dict]) -> list[Control]:
                     pins=spec["pins"],
                     settle_s=spec.get("settle_ms", DEFAULT_BANK_SETTLE_S * 1000) / 1000,
                     hold_s=spec.get("hold_ms", DEFAULT_HOLD_S * 1000) / 1000,
+                    down_s=DOWN_S,
                 )
             )
             # Key 0 on the Excelsior. It may have no contacts at all, in which
             # case Phase 0 says so and the bank's own `clear` covers it.
             if release:
-                controls.append(Momentary(release["id"], pin=release["pin"]))
+                controls.append(Momentary(release["id"], pin=release["pin"], down_s=DOWN_S,
+                                          hold_s=release_hold / 1000 if release_hold else DEFAULT_HOLD_S))
             continue
 
         if kind == "pot":
@@ -851,6 +924,7 @@ def build_controls(specs: list[dict]) -> list[Control]:
                     pin=spec["pin"],
                     hold_s=spec.get("hold_ms", DEFAULT_HOLD_S * 1000) / 1000,
                     repeat_s=spec["repeat_ms"] / 1000 if spec.get("repeat_ms") else None,
+                    down_s=DOWN_S,
                 )
             )
         elif kind == "latching_toggle":

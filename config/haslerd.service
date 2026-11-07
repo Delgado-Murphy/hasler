@@ -22,11 +22,14 @@ Wants=hasler-bootcfg-guard.service hasler-bootcfg-save.timer
 Wants=hasler-wifi-rescue.service
 # Debian security updates at night (docs/ota.md §6; the script decides when).
 Wants=hasler-os-update.timer
-# The early boot lamp (hasler-lamp-boot) breathes until haslerd starts.
-# After= so haslerd never starts before it; ExecStartPre= below stops it so
-# only one of them ever writes the LED. Not Conflicts=: both are in the same
-# boot transaction, and systemd would resolve the conflict by dropping the
-# lamp's start job - no boot breath at all.
+# The early boot lamp (hasler-lamp-boot) breathes until haslerd takes the
+# LED: haslerd asks it to let go (/run/hasler-lamp/takeover) right before its
+# first frame, so it breathes through Python's start instead of freezing.
+# After= so haslerd never starts before it; ExecStartPost= below stops it
+# anyway (for a lamp script too old to answer), so only one of them ever
+# writes the LED. Not Conflicts=: both are in the same boot transaction, and
+# systemd would resolve the conflict by dropping the lamp's start job - no
+# boot breath at all. docs/lamp.md "Boot and shutdown", lamp/handover.py.
 After=hasler-lamp-boot.service
 # Update failsafe: a crash loop (5 starts in 120 s) ends in "failed", which
 # starts the updater's rollback - it acts only during an update's trial or
@@ -40,8 +43,13 @@ Type=notify
 NotifyAccess=main
 WatchdogSec=30
 # '+' = as root (we are User=pi); '-' = fine if the unit is not installed.
-# SIGTERM leaves the LED at its last duty, so there is no dark gap.
-ExecStartPre=-+/usr/bin/systemctl stop hasler-lamp-boot.service
+# SIGTERM leaves the LED at its last duty, so there is no dark gap. After
+# READY, by which time haslerd has taken the LED over (a no-op then).
+ExecStartPost=-+/usr/bin/systemctl stop hasler-lamp-boot.service
+# Between two haslerds (a restart, a crash, an update) the boot script
+# breathes on from the LED's last frame - never dark, which means unplug.
+# Not at a shutdown: haslerd left a steady ember for the halt hook.
+ExecStopPost=-+/usr/local/sbin/hasler-lamp-boot --handover
 # The release's own venv; box settings, calibration and trust in /etc/hasler,
 # web-written config, state and secrets in /var/lib/haslerd.
 ExecStart=/opt/hasler/current/venv/bin/python -m haslerd.main --etc /etc/hasler

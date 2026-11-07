@@ -778,6 +778,26 @@ class MoodePlayer:
         self._source_cache = (now, source)
         return source
 
+    def renderer_flags(self) -> dict[str, str] | None:
+        """moOde's phone flags as they are now ({"bluetooth": "1", ...}).
+
+        One read-only sqlite query (~2 ms), never cached: the lamp watches it
+        every RENDERER_POLL_S (main.py) to see a phone start casting at once,
+        and a change makes it drop the cached source (``forget_source``).
+        None without moOde (or while its db is mid-write).
+        """
+        flags = self.config.source_flags
+        if not flags:
+            return None
+        values = self._moode_flags(list(flags.values()))
+        if values is None:
+            return None
+        return {source: values.get(flag, "") for source, flag in flags.items()}
+
+    def forget_source(self) -> None:
+        """Drop the cached active_source(): the next ask probes afresh."""
+        self._source_cache = None
+
     def _probe_source(self) -> str:
         for name in ("spotify", "ytm"):
             source = self.sources.get(name)

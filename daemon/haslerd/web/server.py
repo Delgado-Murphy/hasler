@@ -650,6 +650,11 @@ class WebApp:
         if group is not None and group.following:
             group.leave("the Test button")      # it plays here, alone
         with self.lock:
+            play_test = getattr(self.actions, "play_test", None)
+            if callable(play_test):
+                # As a key press: the lamp's dip and loading breath, red if it fails.
+                play_test(preset)
+                return
             if self.actions.standby:
                 self.actions._wake()
             self.actions.player.play_preset(preset)

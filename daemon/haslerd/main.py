@@ -39,9 +39,11 @@ from .bootresume import AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night
 from .ha.rest import HomeAssistant
 from .player.bluetooth import Bluetooth
 from .player.btvolume import PhoneVolume
+from .lamp import handover, policy
 from .lamp.contract import BoxState, LampDriver, Look
 from .lamp import meanings as lamp_meanings
 from .lamp import policy as lamp_policy
+from .lamp.outputs import remember_period
 from .lamp.policy import look_for, reply_for
 from .web import lamp_api
 from .web import stations
@@ -104,7 +106,14 @@ log = logging.getLogger("haslerd")
 
 POLL_HZ = 50.0
 SOURCE_POLL_S = 2.0     # active_source() asks go-librespot and moOde; no need to ask often
+# ... but a phone casting should turn the lamp blue at once: moOde's renderer
+# flags (one read-only sqlite query, ~2 ms) are watched this often, and a
+# change asks active_source() afresh (LampKeeper._poll).
+RENDERER_POLL_S = 0.25
 LAMP_TICK_S = 0.05
+# The main loop stops telling the engine for this long (a hang): the engine
+# falls back to its busy ember breath (engine.watchdog), never a frozen frame.
+LAMP_WATCHDOG_S = 3.0
 HA_PUBLISH_S = 5.0      # status to Home Assistant at most this often (HaApi throttles too)
 # Long enough for the power switch's debounce to report a knob that is off at
 # boot (EndSwitch assumes "on"), so we never blip a station before going quiet.
@@ -160,6 +169,48 @@ def power_switch(panel: Panel, actions: Actions):
     return None
 
 
+def shutdown_keys(panel: Panel, actions: Actions) -> list:
+    """Keys whose hold shuts the box down (the Excelsior's key 0): their hold
+    draws the same countdown as the HM's tone knob held off."""
+    keys = []
+    for control in getattr(panel, "controls", ()):
+        if getattr(control, "kind", None) != "momentary":
+            continue
+        spec = actions.variant.actions.get(f"{control.id}.hold") or {}
+        if spec.get("do") == "shutdown":
+            keys.append(control)
+    return keys
+
+
+# A reply word the engine doesn't know -> the nearest it does, in order.
+REPLY_WORDS: dict[str, tuple[str, ...]] = {
+    "ack": ("kick",), "kick": ("ack",),
+    "next": ("kick", "ack"), "nudge": ("kick", "ack"),
+    "confirmed": ("kick", "ack"),
+    "fail": ("refuse3", "refuse"), "refuse3": ("fail", "refuse"),
+    "refuse": ("refuse1", "fail"), "refuse1": ("refuse", "fail"),
+    "ha": ("kick", "ack"),
+}
+
+
+def _engine_knows(driver: Any, name: str) -> bool:
+    """Does the lamp engine draw the reply ``name``? (Its REPLY_S table.)"""
+    tables = [getattr(driver, "REPLY_S", None), getattr(driver, "REPLY_ALIASES", None)]
+    if tables == [None, None]:
+        try:
+            from .lamp import engine as lamp_engine
+            tables = [getattr(lamp_engine, "REPLY_S", None), getattr(lamp_engine, "REPLY_ALIASES", None)]
+        except Exception:
+            pass
+    known = [t for t in tables if t is not None]
+    if not known:
+        return True         # can't tell: say it as it is
+    try:
+        return any(name in t for t in known)
+    except TypeError:
+        return True
+
+
 class LampKeeper:
     """Gathers a BoxState each tick and keeps the lamp engine told.
 
@@ -168,6 +219,13 @@ class LampKeeper:
     and ``countdown`` while the power knob is held off. Actions' hooks land
     here too, so a slow preset start or a shutdown is already showing before
     the blocking call that follows.
+
+    Seamless hands (lamp/handover.py): ``take_over`` stops the boot breath
+    and starts the engine from the frame the LED shows (``engine.seed``), the
+    daemon's warm-up carries on the boot script's own breath, a hang falls
+    back to the engine's busy breath (``engine.watchdog``, fed by ``show``
+    every tick) and ``close`` leaves a steady ember at a shutdown, or a note
+    for the boot script to breathe on through a restart or an update.
     """
 
     def __init__(
@@ -208,7 +266,18 @@ class LampKeeper:
         self._next_loading_poll = 0.0
         self._cast_seen: float | None = None
         self._next_source_poll = 0.0
+        self._next_renderer_poll = 0.0
+        self._renderer_flags: dict | None = None
         self._next_night = 0.0
+        # The boot script's breath (lamp/handover.py), read by take_over: the
+        # daemon's warm-up stage goes on breathing it.
+        self.boot_breath: Look | None = None
+        self.run_dir = handover.RUN_DIR
+        self._fed = False                   # engine.watchdog armed (first show): feed() each tick
+        self._refused_panel = False         # the missing panel board said once (refuse3)
+        # web/confirm.ConfirmBroker (set by main): a press on the radio is
+        # asked for - the engine's beckon (BoxState.confirming).
+        self.confirm = None
         # Is an update being installed (web/software.py Software.installing)?
         # Set by main; None = never.
         self.updating: Callable[[], bool] | None = None
@@ -245,10 +314,12 @@ class LampKeeper:
             phone = False
             if name.startswith("source:"):
                 try:
+                    # The PU and Bluetooth keys have just asked the player, so
+                    # this is its cached answer, not another round trip.
                     phone = bool(self.actions.phone_has_it())
                 except Exception:
                     phone = False
-            self.driver.reply(reply_for(name, phone))
+            self.driver.reply(self._word(reply_for(name, phone)))
         except Exception:
             log.debug("lamp reply failed", exc_info=True)
 
@@ -345,6 +416,17 @@ class LampKeeper:
         if self._loading is not None:
             self._loading_since = self.clock()  # a fresh LOADING_FAIL_S from here
 
+    def _word(self, name: str) -> str:
+        """A reply in the engine's own vocabulary (REPLY_WORDS): the newer
+        engine says kick/refuse/confirmed, the older ack/fail."""
+        kind = name.partition(":")[0]
+        if _engine_knows(self.driver, kind):
+            return name
+        for other in REPLY_WORDS.get(kind, ()):
+            if _engine_knows(self.driver, other):
+                return other
+        return name
+
     # -- the tick ---------------------------------------------------------
 
     def tick(self, now: float) -> None:
@@ -353,11 +435,20 @@ class LampKeeper:
             self._poll(now)
             self._countdown(now)
             self.refresh(now)
+            if self._fed:
+                self.driver.feed()      # alive: holds off engine.watchdog's busy breath
+            if not self._refused_panel and self.panel is not None and getattr(self.panel, "absent", False):
+                self._refused_panel = True
+                self.reply("refuse3")   # the panel board is missing: said once, at start
         except Exception:
             log.exception("lamp tick failed")
 
     def _poll(self, now: float) -> None:
         player = self.actions.player
+        if now >= self._next_renderer_poll:
+            self._next_renderer_poll = now + RENDERER_POLL_S
+            if self._renderers_changed(player):
+                self._next_source_poll = now    # ask afresh, this tick
         if now >= self._next_source_poll:
             self._next_source_poll = now + SOURCE_POLL_S
             try:
@@ -393,6 +484,28 @@ class LampKeeper:
                 except Exception:
                     log.debug("lamp set_night failed", exc_info=True)
 
+    def _renderers_changed(self, player: Any) -> bool:
+        """moOde's phone flags moved since the last look: a phone started or
+        stopped casting. The player's cached source is dropped then, so the
+        next active_source() asks (and stays the one answer for everyone)."""
+        flags_of = getattr(player, "renderer_flags", None)
+        if not callable(flags_of):
+            return False
+        try:
+            flags = flags_of()
+        except Exception:
+            log.debug("renderer flags unreadable", exc_info=True)
+            return False
+        if flags is None:
+            return False
+        before, self._renderer_flags = self._renderer_flags, flags
+        if before is None or flags == before:
+            return False
+        forget = getattr(player, "forget_source", None)
+        if callable(forget):
+            forget()
+        return True
+
     def _update_now(self) -> bool:
         if self.updating is None:
             return False
@@ -421,6 +534,14 @@ class LampKeeper:
             off_at = getattr(sw, "_off_at", 0.0)
             if off_at >= self._armed_at and not getattr(sw, "_off_held_fired", False):
                 progress = max(0.0, min(1.0, (now - off_at) / max(sw.off_hold_s, 1e-3)))
+        if progress is None and self.panel is not None and not self.actions.shutting_down:
+            # A key held for shutdown (the Excelsior's key 0): the same 5 s.
+            for key in shutdown_keys(self.panel, self.actions):
+                since = getattr(key, "down_since", None)
+                if since is None or since < self._armed_at or getattr(key, "hold_fired", False):
+                    continue
+                progress = max(0.0, min(1.0, (now - since) / max(key.hold_s, 1e-3)))
+                break
         if progress is None and not self._counting:
             return
         self._counting = progress is not None
@@ -486,6 +607,12 @@ class LampKeeper:
         state.source = current.source if current is not None else self.source
         state.panel_missing = bool(self.panel is not None and getattr(self.panel, "absent", False))
         state.sleeping = bool(sleep is not None and sleep.fading)
+        if hasattr(state, "confirming"):
+            pending = getattr(self.confirm, "pending", None)
+            try:
+                state.confirming = bool(pending()) if callable(pending) else False
+            except Exception:
+                state.confirming = False
         group = getattr(actions, "group", None)
         if group is not None:
             try:
@@ -498,7 +625,10 @@ class LampKeeper:
     def refresh(self, now: float | None = None) -> Look:
         """Recompute the Look; tell the engine only if it changed."""
         now = self.clock() if now is None else now
-        look, fade = look_for(self.gather(now))
+        state = self.gather(now)
+        look, fade = look_for(state)
+        if self.boot_breath is not None and state.boot == "daemon" and look == policy.BOOT.get("daemon"):
+            look = self.boot_breath     # the boot script's breath, carried on
         look = self._scaled(look)
         if look != self.look:
             log.debug("lamp %s -> %s (%.1f s)", self.look, look, fade)
@@ -507,18 +637,66 @@ class LampKeeper:
                 self.driver.show(look, fade)
             except Exception:
                 log.debug("lamp show failed", exc_info=True)
+            if not self._fed:
+                self._arm_watchdog()
         return look
 
-    def close(self) -> None:
-        # Shutting down: leave the ember on through the halt - the
-        # system-shutdown hook darkens it last, so dark means safe to unplug.
-        # Any other exit (a restart, a crash) goes dark at once.
-        # Likewise while an update is installed: the updater restarts haslerd
-        # mid-trial, and the lamp must hold (the PWM keeps its last duty) until
-        # the new haslerd breathes again - never dark, which means unplug.
+    def _arm_watchdog(self) -> None:
+        """After the first show: a main loop that stops ticking (feed) ends in
+        the engine's busy ember breath within LAMP_WATCHDOG_S."""
+        watchdog = getattr(self.driver, "watchdog", None)
+        if not (callable(watchdog) and callable(getattr(self.driver, "feed", None))):
+            return
         try:
-            halt_dark = not (self.actions.shutting_down or self._update_now())
-            self.driver.close(halt_dark=halt_dark)
+            watchdog(LAMP_WATCHDOG_S)
+            self._fed = True
+        except Exception:
+            log.debug("lamp watchdog unavailable", exc_info=True)
+
+    def take_over(self) -> None:
+        """Before the first frame: the boot breath lets go, the engine starts
+        from what the LED shows (no dark gap, no jump), and the boot script
+        learns this lamp's PWM period for the next boot. Never raises."""
+        try:
+            doc = handover.take_over(self.run_dir)
+            if doc and doc.get("colour") == "amber":
+                floor, peak = float(doc.get("floor", 0.25)), float(doc.get("peak", 0.60))
+                period = float(doc.get("period_s", 3.0))
+                if 0.0 <= floor < peak <= 1.0 and period > 0:
+                    self.boot_breath = Look("amber", peak, "breath", period, floor)
+            output = getattr(self.driver, "output", None)
+            period_ns = getattr(output, "period_ns", None)
+            if isinstance(period_ns, int):
+                remember_period(period_ns)
+            read = getattr(output, "read", None)
+            seed = getattr(self.driver, "seed", None)
+            duty = read() if callable(read) else None
+            if callable(seed) and duty is not None and max(duty) > 0.0:
+                seed(tuple(duty))       # linear duty; the engine glides from it
+        except Exception:
+            log.warning("lamp: taking over from the boot breath failed", exc_info=True)
+
+    def close(self) -> None:
+        # Dark means safe to unplug, and only the halt hook says that.
+        # Shutting down: a steady ember (not a breath frozen at a random
+        # phase) through the halt; the system-shutdown hook darkens it last.
+        # A restart, a crash or an update being installed: the LED keeps its
+        # last frame and the boot script breathes on from it (ExecStopPost,
+        # lamp/handover.py) until the next haslerd takes over - amber, or the
+        # busy ember breath while an update installs.
+        shutting = self.actions.shutting_down
+        try:
+            mode = "hold" if shutting else "ember" if self._update_now() else "amber"
+            self.driver.close(halt_dark=False)
+            if shutting:
+                output = getattr(self.driver, "output", None)
+                hold = getattr(output, "hold", None)
+                if callable(hold):
+                    palette = getattr(self.driver, "palette", None) or {}
+                    ratio = palette.get("ember", (1.0, 0.10, 0.0))
+                    balance = getattr(self.driver, "balance", (1.0, 1.0, 1.0))
+                    hold(*handover.hold_duty(ratio, bool(self.state.night), balance))
+            handover.write_handover(mode, self.run_dir)
         except Exception:
             log.debug("lamp close failed", exc_info=True)
 
@@ -1012,6 +1190,9 @@ def settle(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S) -> N
     while time.monotonic() < end:
         actions.dispatch_all(panel.poll(time.monotonic()))
         time.sleep(0.01)
+    take_downs = getattr(panel, "take_downs", None)
+    if callable(take_downs):
+        take_downs()    # a key held at power-up is no press to answer
 
 
 def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet: bool = False) -> bool:
@@ -1160,6 +1341,9 @@ def main(argv=None) -> int:
     signal.signal(signal.SIGINT, stop)
 
     watchdog = Watchdog()
+    if keeper is not None:
+        keeper.confirm = confirm    # a pending press request: the lamp beckons
+        keeper.take_over()      # before READY: ExecStartPost's stop is the fallback
     # Ready before resuming: starting a playlist can take seconds (yt-dlp),
     # and systemd should not count that against the start timeout.
     watchdog.ready()
@@ -1184,6 +1368,11 @@ def main(argv=None) -> int:
             now = time.monotonic()
 
             events = panel.poll(now)
+            take_downs = getattr(panel, "take_downs", None)
+            if callable(take_downs):
+                # A key going down: the lamp's dip now, ~20-40 ms after the
+                # contact closed; the press's tap/hold/select does the rest.
+                actions.dispatch_all(take_downs())
             if any(event.kind != "change" for event in events):
                 resume.cancel("a hand on the radio")    # wheels don't count
             if confirm is not None:

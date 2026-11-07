@@ -165,7 +165,7 @@ class TestConfirm:
         actions.dispatch_all(left)
         assert not any(call[0] == "play_preset" for call in player.calls)
         assert c.poll(req["token"])["state"] == "confirmed"
-        assert replies[-1] == "ack"
+        assert replies[-1] == "confirmed"
         c.consume(req["token"], "update", {"version": "1.2.0"})
         assert c.poll(req["token"])["state"] == "used"
         with pytest.raises(ConfirmError):              # once only

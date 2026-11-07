@@ -32,6 +32,12 @@ for a phone paired),
 ``on_start`` hears that a preset is about to start (the loading breath must be
 up *before* a slow start blocks the loop) and ``on_change`` that standby,
 pairing or shutdown flipped.
+
+Replies come first. A key's ``down`` (panel/controls.py, the press hint) is
+answered with the dip at once - its tap, hold or select still does the work,
+without a second dip - and every verb that replies on its own does so before
+its slow calls (the player's active_source, select_source, waking the
+mixer), so the lamp answers the hand, not the player.
 """
 
 from __future__ import annotations
@@ -93,6 +99,9 @@ ACK_KINDS = ("tap", "select", "combo")
 LATCHED = "latched"
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
 SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source", "bluetooth")
+# A key's down was answered with the dip (Actions.key_down): its tap, select
+# or combination this soon after doesn't dip again. Longer than any tap.
+KICK_FRESH_S = 2.0
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation", "ha_light", "ha_service")
 DEFAULT_PAIR_S = 120
 # A held volume key repeats every 0.15 s (web/keymap.py) and a new press
@@ -221,6 +230,13 @@ class Actions:
         self.stalled: Callable[[Preset], bool] | None = None
         self.clock = clock
         self._started_at = float("-inf")   # clock() when a preset last started
+        # Key id -> clock() of its press hint's dip (key_down), until the
+        # press's own event comes.
+        self._kicked: dict[str, float] = {}
+        self._last_kick: dict[str, float] = {}     # ... and the last one, for bounce
+        # True while dispatching a press whose down already dipped: its "ack"
+        # is not drawn twice.
+        self._quiet_ack = False
         self._last_tap: dict[str, float] = {}  # control id -> clock() of its last tap
         # Wall clock (time.time) of the last start: which Hasler started most
         # recently, for another radio's join_group (multiroom/group.py).
@@ -333,6 +349,9 @@ class Actions:
     # -- dispatch ---------------------------------------------------------
 
     def dispatch(self, event: Event) -> None:
+        if event.kind == "down":
+            self.key_down(event)
+            return
         if event.kind == "select" and event.value is not None:
             # An interlocked bank's key went down: that key's own tap
             # (k3.tap), as on a cabinet whose keys spring back. Falls through
@@ -378,15 +397,62 @@ class Actions:
         log.log(logging.DEBUG if event.kind == "change" else logging.INFO, "%s -> %s", event, verb)
         if event.kind != "change":
             self.touch()
-        if event.kind in ACK_KINDS and verb not in SELF_REPLYING and verb not in HA_VERBS:
-            self._reply("ack")
+        kicked = event.kind in (*ACK_KINDS, "hold") and self._was_kicked(event)
+        self._quiet_ack = kicked and event.kind in ACK_KINDS
         try:
+            if event.kind in ACK_KINDS and verb not in SELF_REPLYING and verb not in HA_VERBS:
+                self._reply("ack")
             handler(event, spec)
         except Exception:
             # Never let a failing action break the panel loop.
             log.exception("action %r failed for %s", verb, event)
             if event.kind != "change":
                 self._reply("fail")
+        finally:
+            self._quiet_ack = False
+
+    def key_down(self, event: Event) -> None:
+        """A key's press hint (panel/controls.py): the lamp's dip now, nothing else.
+
+        Only for a key that does something (a tap, hold or select bound, or a
+        combination it is part of); the action itself waits for the key's
+        own event, whose "ack" then isn't drawn again (``_was_kicked``).
+        """
+        if self.shutting_down:
+            return
+        kid = event.control
+        if event.value is not None:
+            kid = self.bank_key(event.control, event.value) or f"{event.control}:{event.value}"
+        if not self._binds(kid, event.control):
+            return
+        now = self.clock()
+        if now - self._last_kick.get(kid, float("-inf")) < TAP_BOUNCE_S:
+            return      # the same press bouncing (see TAP_BOUNCE_S): one dip
+        self._kicked[kid] = self._last_kick[kid] = now
+        self._reply("ack")
+
+    def _binds(self, kid: str, control: str) -> bool:
+        table = self.variant.actions
+        if any(table.get(f"{kid}.{kind}") for kind in ("tap", "hold")):
+            return True
+        if kid != control and any(table.get(f"{control}.{kind}") for kind in ("select", "hold")):
+            return True
+        return any(isinstance(c, dict) and kid in (c.get("keys") or ()) for c in self.variant.combos or ())
+
+    def _was_kicked(self, event: Event) -> bool:
+        """This press's down already dipped (and is used up by asking)."""
+        if event.kind == "combo":
+            keys = event.control.split("+")
+        elif event.kind == "select" and event.value is not None:
+            keys = [self.bank_key(event.control, event.value) or "", f"{event.control}:{event.value}"]
+        else:
+            keys = [event.control]
+        now = self.clock()
+        fresh = False
+        for key in keys:
+            at = self._kicked.pop(key, None)
+            fresh = fresh or (at is not None and now - at < KICK_FRESH_S)
+        return fresh
 
     def bank_key(self, control: str, index: Any) -> str | None:
         """The id of interlocked bank ``control``'s key at ``index`` (0-based):
@@ -418,7 +484,7 @@ class Actions:
         self._reply(name)
 
     def _reply(self, name: str) -> None:
-        if self.on_reply is None:
+        if self.on_reply is None or (name == "ack" and self._quiet_ack):
             return
         try:
             self.on_reply(name)
@@ -458,16 +524,23 @@ class Actions:
                 group.forward_preset(preset)
                 return
             group.leave("a preset key (follower_keys: leave)")
-        # Asked once: on the real player this is an HTTP call plus shell-outs.
-        active = self.player.active_source()
-        current = self.player.current()
-        # "Again": this key's preset is what we started, and its source is
-        # still the one making sound (not ended, not taken over by a phone).
-        if (
+        current = self.player.current()     # what we started: no I/O
+        # Could this be "again"? Only then does the reply wait for the
+        # player; any other press dips before the slow calls below.
+        maybe_again = (
             not self.standby
             and current is not None
             and current.n == preset.n
             and current.source == preset.source
+        )
+        if not maybe_again:
+            self._reply("ack")
+        # Asked once: on the real player this is an HTTP call plus shell-outs.
+        active = self.player.active_source()
+        # "Again": this key's preset is what we started, and its source is
+        # still the one making sound (not ended, not taken over by a phone).
+        if (
+            maybe_again
             and active == current.source
             and not self._stalled(current)
         ):
@@ -488,7 +561,8 @@ class Actions:
                 self._reply("next")
                 self.player.next_track()
             return
-        self._reply("ack")
+        if maybe_again:
+            self._reply("ack")      # it was not "again" after all
         # A renderer holds the audio path; take it back before starting ours.
         if active in RENDERERS:
             self.player.select_source("radio")
@@ -497,6 +571,22 @@ class Actions:
         self._remember(n)
         self._persist()
         self._start(preset)
+
+    def play_test(self, preset: Preset) -> None:
+        """The page's Test button (web/server.py): ``preset`` as a key would.
+
+        The dip and the loading breath first (``on_start``), then the start
+        itself, waited for; red pulses if it fails, then the error is raised
+        for the page. Not remembered: a preset being tried is nobody's key.
+        """
+        self._reply("ack")
+        if self.standby:
+            self._wake()
+        try:
+            self._start(preset, wait=True)
+        except Exception:
+            self._reply("fail")
+            raise
 
     def _stalled(self, preset: Preset) -> bool:
         """MPD stopped this preset by itself (the stream watchdog is on it)."""
@@ -722,6 +812,11 @@ class Actions:
                 break
         else:
             log.info("no source in the cycle %s can be used now; radio", list(order))
+        pool = self._cycle_pool(nxt, order)
+        preset = self._recent_preset(pool) if pool else None
+        # The lamp's signature of where we go: known now, so drawn before
+        # waking the mixer, switching the renderer and a slow start.
+        self._reply(f"source:{nxt}" + (f":{preset.source}" if preset is not None else ""))
         self._hand += 1
         if self.standby:
             self._wake()
@@ -731,10 +826,6 @@ class Actions:
         if nxt == "bluetooth" and self.bt_reconnect.get("on_select"):
             self._bt_selected_at = self.clock()
             self.reconnect_phone()
-        pool = self._cycle_pool(nxt, order)
-        preset = self._recent_preset(pool) if pool else None
-        # The lamp's signature of where we went (before a slow start blocks).
-        self._reply(f"source:{nxt}" + (f":{preset.source}" if preset is not None else ""))
         if preset is not None:
             self._remember(preset.n)
             self._persist()
@@ -836,6 +927,7 @@ class Actions:
 
     def _select_bluetooth(self, reconnect: bool | None = None) -> None:
         """Hand the speaker to Bluetooth and, unless told not to, call the phone."""
+        self._reply("source:bluetooth")     # the blue first, then the slow switch
         self._hand += 1
         if self.standby:
             self._wake()
@@ -843,7 +935,6 @@ class Actions:
         self.player.select_source("bluetooth")
         self._cycle_at = "bluetooth"
         self._bt_selected_at = self.clock()
-        self._reply("source:bluetooth")
         if self.bt_reconnect.get("on_select") if reconnect is None else reconnect:
             self.reconnect_phone()
 

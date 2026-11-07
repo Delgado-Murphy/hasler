@@ -10,6 +10,14 @@ Every Output takes linear duty 0..1 meaning "LED on fraction" and handles the
 LED's ``common`` itself: with a common anode the GPIO sinks current, so the
 pin is lit while low (sysfs: polarity ``inversed``; gpiozero: active_high
 off). None of them raise after construction.
+
+Two extras for the handovers with scripts/hasler-lamp-boot (no dark gap at a
+start, a restart or an update; docs/lamp.md "Boot and shutdown"): ``read()``
+is the duty the LED shows now (what the boot script left, so the engine can
+start from it) and ``hold(r, g, b)`` writes one last frame after the engine
+has closed (the defined ember a shutdown leaves for the halt hook). The PWM
+period is remembered in ``PERIOD_FILE`` for the next boot's breath, so a
+configured ``pwm_hz`` holds from the very first boot frame.
 """
 
 from __future__ import annotations
@@ -29,6 +37,10 @@ DEFAULT_PINS = {"red": 17, "green": 22, "blue": 27}   # the descriptor's map
 DEFAULT_FREQUENCY_HZ = 800
 GPIOZERO_FREQUENCY_HZ = 400
 SYSFS_PWM = Path("/sys/class/pwm")
+# The period hasler-lamp-boot starts with at the next boot (one integer, ns).
+# haslerd writes it whenever the configured period differs, so the boot
+# breath, the engine and the handovers between them run one period.
+PERIOD_FILE = Path("/var/lib/haslerd/lamp-period")
 
 
 class NullOutput:
@@ -40,13 +52,28 @@ class NullOutput:
     def close(self) -> None:
         pass
 
+    def read(self) -> tuple[float, float, float] | None:
+        return None
+
+    def hold(self, r: float, g: float, b: float) -> None:
+        pass
+
 
 class FakeOutput:
-    """Records writes, for tests."""
+    """Records writes, for tests. ``initial`` is what ``read()`` finds before
+    the first write (the boot script's glow); ``clock`` stamps each write."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        initial: tuple[float, float, float] | None = None,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
         self.writes: list[tuple[float, float, float]] = []
+        self.times: list[float] = []
+        self.held: tuple[float, float, float] | None = None
         self.closed = False
+        self._initial = initial
+        self._clock = clock
 
     @property
     def last(self) -> tuple[float, float, float] | None:
@@ -54,9 +81,18 @@ class FakeOutput:
 
     def write(self, r: float, g: float, b: float) -> None:
         self.writes.append((r, g, b))
+        if self._clock is not None:
+            self.times.append(self._clock())
 
     def close(self) -> None:
         self.closed = True
+
+    def read(self) -> tuple[float, float, float] | None:
+        return self.last if self.writes else self._initial
+
+    def hold(self, r: float, g: float, b: float) -> None:
+        self.held = (r, g, b)
+        self.write(r, g, b)
 
 
 def _clamp(v: float) -> float:
@@ -153,9 +189,13 @@ class _SysfsChannel:
                 self._put("enable", 0)
             self._put("polarity", polarity)
             enabled = False
-        if _read(self.pwm / "period") != str(period_ns):
-            self._put("duty_cycle", 0)      # duty must never exceed period
-            self._put("period", period_ns)
+        old = _int(_read(self.pwm / "period"))
+        if old != period_ns:
+            if enabled and old:
+                self._retime(old, period_ns)    # lit: keep the glow, no blink
+            else:
+                self._put("duty_cycle", 0)      # duty must never exceed period
+                self._put("period", period_ns)
         if not enabled:
             self._put("duty_cycle", 0)
             self._put("enable", 1)
@@ -164,6 +204,31 @@ class _SysfsChannel:
 
     def _put(self, name: str, value: int) -> None:
         (self.pwm / name).write_text(str(value))
+
+    def _retime(self, old: int, new: int) -> None:
+        """An enabled channel to a new period at the same lit fraction.
+
+        The boot breath (or an older release) ran another period: duty 0
+        first would blink the LED dark at the handover. The kernel refuses a
+        duty over the period, so the order depends on the direction.
+        """
+        duty = _int(_read(self.pwm / "duty_cycle")) or 0
+        scaled = min(new, round(duty * new / old))
+        if new > old:
+            self._put("period", new)
+            self._put("duty_cycle", scaled)
+        else:
+            self._put("duty_cycle", scaled)
+            self._put("period", new)
+
+    def read(self) -> float | None:
+        """The lit fraction the channel shows now (0 while disabled), from sysfs."""
+        duty = _int(_read(self.pwm / "duty_cycle"))
+        if duty is None:
+            return None
+        if _read(self.pwm / "enable") != "1":
+            return 0.0
+        return _clamp(duty / self.period)
 
     def _open_duty(self) -> int:
         # Held open: a write per frame at 50 Hz shouldn't cost an open/close.
@@ -174,13 +239,18 @@ class _SysfsChannel:
         return round(_clamp(duty) * self.period)
 
     def write(self, duty: float) -> None:
+        if self._duty is None:              # closed: a last frame (hold)
+            self._put("duty_cycle", self._duty_ns(duty))
+            return
         os.lseek(self._duty, 0, os.SEEK_SET)
         os.write(self._duty, f"{self._duty_ns(duty)}\n".encode())
 
     def close(self) -> None:
         # Left exported and enabled at its last duty for the halt hook
         # (scripts/hasler-lamp-halt) to take over.
-        os.close(self._duty)
+        if self._duty is not None:
+            fd, self._duty = self._duty, None
+            os.close(fd)
 
 
 class SysfsPwmOutput:
@@ -197,9 +267,24 @@ class SysfsPwmOutput:
         chips = discover_chips(pins, root)
         if chips is None:
             raise OSError(f"no pwm-gpio chips for pins {pins} under {root}")
-        period_ns = max(1000, round(1e9 / float(frequency_hz)))
+        period_ns = period_for(frequency_hz)
+        self.period_ns = period_ns
         self.channels = [_SysfsChannel(chips[c], period_ns, common == "anode") for c in CHANNELS]
         self._failed = False
+
+    def read(self) -> tuple[float, float, float] | None:
+        """Linear duty per channel as the LED shows it now; None if unreadable."""
+        try:
+            duties = [channel.read() for channel in self.channels]
+        except (OSError, ValueError):
+            return None
+        if any(d is None for d in duties):
+            return None
+        return (duties[0], duties[1], duties[2])  # type: ignore[return-value]
+
+    def hold(self, r: float, g: float, b: float) -> None:
+        """One last frame, also after close (the engine closes its output)."""
+        self.write(r, g, b)
 
     def write(self, r: float, g: float, b: float) -> None:
         try:
@@ -259,12 +344,64 @@ class GpiozeroOutput:
             log.debug("lamp: gpiozero close failed", exc_info=True)
 
 
+def _int(text: str | None) -> int | None:
+    try:
+        return int(text.split()[0]) if text else None
+    except (ValueError, IndexError):
+        return None
+
+
+def period_for(frequency_hz: float) -> int:
+    """The pwm-gpio period (ns) for a PWM frequency: 800 Hz -> 1250000."""
+    return max(1000, round(1e9 / float(frequency_hz)))
+
+
+def sysfs_frequency(spec: dict) -> float:
+    """The pwm-sysfs frequency an ``io.lamp`` block asks for.
+
+    ``pwm_hz`` (e.g. 400: twice the pulse width at the lowest duties, still
+    far above flicker) wins over the older ``frequency_hz``; default 800 Hz.
+    """
+    for key in ("pwm_hz", "frequency_hz"):
+        value = spec.get(key)
+        if value is None:
+            continue
+        try:
+            hz = float(value)
+        except (TypeError, ValueError):
+            hz = 0.0
+        if hz > 0:
+            return hz
+        log.warning("lamp %s must be a frequency above 0, not %r; ignored", key, value)
+    return float(DEFAULT_FREQUENCY_HZ)
+
+
+def remember_period(period_ns: int, path: Path = PERIOD_FILE) -> bool:
+    """Leave ``period_ns`` for the next boot's breath; True if the file changed.
+
+    Never raises: a state dir that can't be written only means the next boot
+    breath runs its default period, and the engine retimes it without a blink.
+    """
+    try:
+        if path.exists() and _int(path.read_text().strip()) == period_ns:
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(f"{period_ns}\n")
+        os.replace(tmp, path)
+        return True
+    except OSError:
+        log.debug("lamp: could not remember the PWM period", exc_info=True)
+        return False
+
+
 def open_output(spec: dict) -> Output:
     """The Output for the descriptor's ``io.lamp`` block; NullOutput on any failure.
 
     ``backend``: ``pwm-sysfs`` (default) | ``gpio`` | ``none``; plus ``pins``
-    ({red, green, blue} BCM numbers), ``common`` (anode | cathode) and
-    ``frequency_hz``.
+    ({red, green, blue} BCM numbers), ``common`` (anode | cathode) and, for
+    pwm-sysfs, ``pwm_hz`` or ``frequency_hz`` (``sysfs_frequency``); gpio
+    takes ``frequency_hz`` only.
     """
     backend = spec.get("backend", "pwm-sysfs")
     pins = {**DEFAULT_PINS, **(spec.get("pins") or {})}
@@ -274,8 +411,7 @@ def open_output(spec: dict) -> Output:
         return NullOutput()
     try:
         if backend == "pwm-sysfs":
-            freq = spec.get("frequency_hz", DEFAULT_FREQUENCY_HZ)
-            return SysfsPwmOutput(pins, common, freq)
+            return SysfsPwmOutput(pins, common, sysfs_frequency(spec))
         if backend == "gpio":
             freq = spec.get("frequency_hz", GPIOZERO_FREQUENCY_HZ)
             return GpiozeroOutput(pins, common, freq)
