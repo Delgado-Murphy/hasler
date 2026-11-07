@@ -90,28 +90,52 @@ async function until(fn, ms, what){
       page.on('pageerror', e => errors.push(name + ': ' + e.message));
       page.on('console', m => { if (m.type() === 'error' && !m.text().startsWith('Failed to load resource')) errors.push(name + ': ' + m.text()); });
 
-      await check(name + ': the front page says the lamp in words', async () => {
+      await check(name + ': no lamp line on the front page; Pilot lamp says it in words', async () => {
         await send('POST', '/api/standby', {on: true});
         await page.goto(radio.base + '/');
-        await until(() => page.isVisible('#lampLine'), 5000, 'the lamp line');
-        const t = (await page.textContent('#lampLine')).trim();
-        assert(t === 'Lamp: asleep', 'line says ' + JSON.stringify(t));
-        await shot(page, name + '-front-asleep');
+        await sleep(1500);
+        assert(!(await page.$('#lampLine')), 'the front page still narrates the lamp');
+        await page.goto(radio.base + '/#settings/lamp');
+        await until(async () => (await page.isVisible('#lampNow')) && /asleep/.test(await page.textContent('#lampNow')), 6000, 'Now: asleep');
+        assert((await page.textContent('#lampNow')).trim() === 'Now: asleep', await page.textContent('#lampNow'));
+        assert(await page.$('#lampNow .lm-sw[data-c="ember"]'), 'no ember swatch by Now');
+        await shot(page, name + '-lamp-now-asleep');
         await send('POST', '/api/standby', {on: false});
-        await until(async () => !/asleep/.test(await page.textContent('#lampLine')), 6000, 'the line to wake');
-        const awake = (await page.textContent('#lampLine')).trim();
-        assert(/^Lamp: (ready|playing|starting)$/.test(awake), 'awake line says ' + JSON.stringify(awake));
+        await until(async () => !/asleep/.test(await page.textContent('#lampNow')), 8000, 'Now to wake');
+        const awake = (await page.textContent('#lampNow')).trim();
+        assert(/^Now: (ready|playing|starting)$/.test(awake), 'awake says ' + JSON.stringify(awake));
       });
 
-      await check(name + ': the meanings list, each with Show me', async () => {
+      await check(name + ': the meanings list v2, grouped, with rhythms and Show me where the lamp knows it', async () => {
         await page.goto(radio.base + '/#settings/lamp');
         await until(() => page.isVisible('#lampMeans'), 5000, 'the meanings');
         const rows = await page.$$eval('#lampMeans [data-mean]', els => els.map(e => e.dataset.mean));
-        assert(rows.join() === 'playing,ready,asleep,phone,busy,heard,no,asking,setup', 'rows: ' + rows.join());
+        assert(rows.join() === 'playing,ready,asleep,phone,starting,pairing,busy,heard,ok,no,hello,asking,setup,identify,no_internet,fault,dark', 'rows: ' + rows.join());
+        const groups = await page.$$eval('#lampMeans .lm-group', els => els.map(e => e.textContent));
+        assert(groups.join() === 'Everyday,Replies,Needs you,Problems', 'groups: ' + groups.join());
         const titles = await page.$$eval('#lampMeans .li-title', els => els.map(e => e.textContent));
-        assert(titles.includes('Busy — don’t unplug') && titles.includes('A phone is playing'), 'titles: ' + titles.join(' | '));
-        assert(await page.$$eval('#lampMeans button', b => b.length) === 9, 'not 9 Show me buttons');
+        assert(titles.includes('Busy — don’t unplug') && titles.includes('A phone is playing') && titles.includes('Something needs a maker'), 'titles: ' + titles.join(' | '));
+        const cq = await page.textContent('#lampMeans [data-mean="setup"] .lm-rhythm');
+        assert(cq.includes('– · – ·') && cq.includes('(CQ)'), 'CQ caption: ' + cq);
+        assert(await page.$eval('#lampMeans [data-mean="fault"] .lm-sw', el => getComputedStyle(el).animationName.startsWith('lm-morse')), 'SOS swatch not tapping Morse');
+        // Show me for what this lamp's engine knows (meanings.LOOKS/REPLIES) and Identify; never for Dark.
+        const lp = (await get('/api/settings')).lamp;
+        const want = lp.looks.length + lp.replies.length + 1;
+        const buttons = await page.$$eval('#lampMeans button', b => b.map(x => x.id.replace('lampShow-', '')));
+        assert(buttons.length === want && !buttons.includes('dark') && buttons.includes('identify'), 'Show me buttons: ' + buttons.join());
         await shot(page, name + '-lamp-page');
+      });
+
+      await check(name + ': Show me everything plays each in turn with a caption, Stop ends it', async () => {
+        posts.length = 0;
+        await page.click('#lampTourBtn');
+        await until(() => posts.some(p => p[0] === '/api/lamp/preview'), 3000, 'the first preview');
+        assert(JSON.parse(posts[0][1]).look === 'playing', 'first: ' + posts[0][1]);
+        await until(async () => /^1 of \d+ — Playing: steady amber/.test(await page.textContent('#lampTour')), 2000, 'the caption');
+        assert((await page.textContent('#lampTourBtn')) === 'Stop', 'no Stop');
+        await page.click('#lampTourBtn');
+        await until(() => posts.some(p => p[1] && JSON.parse(p[1]).look === null), 3000, 'the end of the tour');
+        await until(async () => (await page.textContent('#lampTourBtn')) === 'Show me everything', 2000, 'the button back');
       });
 
       await check(name + ': Show me posts the right preview', async () => {
@@ -151,12 +175,30 @@ async function until(fn, ms, what){
         await send('PUT', '/api/settings', {lamp: {key_replies: true}});
       });
 
+      await check(name + ': geek mode is off by default, applies at once with Undo, and takes a callsign', async () => {
+        await page.reload();
+        await until(() => page.isVisible('#lampGeek'), 5000, 'the geek switch');
+        assert(!(await page.isChecked('#lampGeek')) && !(await page.$('#lampCall')), 'geek mode on by default');
+        await page.click('label[for="lampGeek"]');
+        await until(async () => (await get('/api/settings')).lamp.geek === true, 3000, 'geek on the radio');
+        await until(() => page.isVisible('#lampCall'), 3000, 'the callsign field');
+        await page.fill('#lampCall', 'pa3');
+        await page.press('#lampCall', 'Enter');
+        await until(async () => (await get('/api/settings')).lamp.callsign === 'PA3', 3000, 'the callsign saved');
+        await until(async () => /\(PA3\)/.test(await page.textContent('#lampCallMorse')), 3000, 'the callsign in Morse');
+        await page.click('label[for="lampGeek"]');
+        await until(async () => (await get('/api/settings')).lamp.geek === false, 3000, 'geek off');
+        await page.click('.toast-undo');
+        await until(async () => (await get('/api/settings')).lamp.geek === true, 3000, 'Undo to geek on');
+        await send('PUT', '/api/settings', {lamp: {geek: false, callsign: ''}});
+      });
+
       await check(name + ': the place shows only for By the sun, with no doubled heading', async () => {
         await page.reload();
         await until(() => page.isVisible('#lampName'), 5000, 'the place');
         assert(!(await page.$('#sec-place')), 'a separate "Where the radio stands" section');
         const heads = await page.$$eval('#panel h3', hs => hs.map(x => x.textContent.trim().toLowerCase()));
-        assert(heads.join() === 'what the lamp means,brightness,at night', 'headings: ' + heads.join());
+        assert(heads.join() === 'what the lamp means,brightness,geek mode,at night', 'headings: ' + heads.join());
         await page.click('#sec-night .seg button:has-text("Never")');
         await until(async () => !(await page.isVisible('#lampName')), 3000, 'the place to hide for Never');
         await page.click('.toast-undo');

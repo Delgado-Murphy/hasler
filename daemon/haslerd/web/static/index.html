@@ -202,8 +202,31 @@ button{cursor:pointer}
 .remote.offline .bank{opacity:.35;filter:saturate(.3)}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
 .hint-line{margin:0;color:var(--muted);font:12px/16px var(--sans);text-align:center}
-.lamp-line{margin-bottom:-8px;color:var(--text2)}
-.lamp-line b{color:var(--brass);font-weight:600}
+/* the pilot lamp's meanings: a small swatch per rhythm (colour + motion) */
+.lm-sw{flex:0 0 auto;width:14px;height:14px;border-radius:50%;background:var(--lm,#ffa733);box-shadow:0 0 8px var(--lm,#ffa733);margin-right:12px}
+.lm-sw[data-c="amber"]{--lm:#ffa733}.lm-sw[data-c="ember"]{--lm:#c2410c}.lm-sw[data-c="blue"]{--lm:#6d8cff}
+.lm-sw[data-c="green"]{--lm:#4ade80}.lm-sw[data-c="red"]{--lm:#ef4444}
+.lm-sw[data-c="off"]{background:transparent;box-shadow:inset 0 0 0 1.5px var(--text3,#777)}
+.lm-sw[data-c="ready"]{--lm:#ffa733;opacity:.55}
+.lm-sw[data-m="breath"]{animation:lm-breath 3.4s ease-in-out infinite}
+.lm-sw[data-m="slow"]{animation:lm-breath 6s ease-in-out infinite}
+.lm-sw[data-m="kick"]{animation:lm-kick 2.2s ease-out infinite}
+.lm-sw[data-m="beckon"]{animation:lm-beckon 2.8s linear infinite}
+.lm-sw[data-m="bloom"]{animation:lm-bloom 3s ease-in-out infinite}
+.lm-sw[data-m="eye"]{animation:lm-eye 3.2s ease-in-out infinite}
+.lm-sw[data-m="alert"]{animation:lm-alert 6s linear infinite}
+@keyframes lm-breath{0%,100%{opacity:.4}40%{opacity:1}}
+@keyframes lm-kick{0%{opacity:.55}3%{opacity:1;transform:scale(1.15)}25%,100%{opacity:.55;transform:none}}
+@keyframes lm-beckon{0%,16%,100%{opacity:.5}3%,12%{opacity:1}}
+@keyframes lm-bloom{0%,100%{opacity:.15;transform:scale(.8)}35%{opacity:1;transform:scale(1.15)}}
+@keyframes lm-eye{0%,100%{opacity:.25}50%{opacity:1}}
+@keyframes lm-alert{0%,2.5%,6%,100%{opacity:.1}1%,4%{opacity:1}}
+.lm-rhythm{display:block;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--brass);letter-spacing:.06em;margin-top:2px}
+.lm-group{margin:14px 4px 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
+.lm-now{display:flex;align-items:center;padding:12px 4px 4px}
+.lm-now b{color:var(--brass);font-weight:600}
+.lm-tour{min-height:1.4em}
+@media (prefers-reduced-motion: reduce){.lm-sw{animation:none!important}}
 
 /* ---------- maker's mark ---------- */
 .mark{display:flex;align-items:center;justify-content:center;gap:10px;margin:0;color:#7D766B;
@@ -1103,7 +1126,6 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
     <div class="rooms" id="rooms" role="region" aria-label="Rooms"></div>
 
     <div class="foot">
-      <p class="hint-line lamp-line" id="lampLine" hidden></p>
       <p class="hint-line" id="hintLine">Tap a key to play · hold for its second job</p>
       <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
     </div>
@@ -1934,16 +1956,7 @@ function renderRemote(){
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
   $('nextBtn').disabled = !canNext;
   $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
-  paintTone(); paintCabinet(); paintRooms(); paintSleep(); paintLampLine();
-}
-// "Lamp: asleep" in words under the keys, for anyone who can't tell the colours apart.
-function paintLampLine(){
-  const el = $('lampLine'); if (!el) return;
-  const m = online && status && status.lamp, words = m ? LAMP_WORDS[m] || m.replace(/_/g, ' ') : '';
-  el.hidden = !words;
-  if (el.dataset.m === (words || '')) return;
-  el.dataset.m = words || ''; el.textContent = '';
-  if (words) el.append('Lamp: ', h('b', null, words));
+  paintTone(); paintCabinet(); paintRooms(); paintSleep(); paintLampNow();
 }
 function paintTone(){
   const t = status && status.tone, row = $('tone');
@@ -5576,47 +5589,131 @@ function renderLamp(panel){
 function loadLamp(){ loadSettings().then(() => { if (onPage('lamp')) rerender(); }); }
 
 /* ---- pilot lamp: what it means, Show me (POST /api/lamp/preview {look|reply}), brightness, key replies ---- */
-// The lamp's meanings (lamp/meanings.py): looks it settles into, then the one-off replies.
+// Morse for the captions and swatches only (the engine taps the real thing).
+const MORSE = {A:'.-', B:'-...', C:'-.-.', D:'-..', E:'.', F:'..-.', G:'--.', H:'....', I:'..', J:'.---', K:'-.-', L:'.-..', M:'--',
+  N:'-.', O:'---', P:'.--.', Q:'--.-', R:'.-.', S:'...', T:'-', U:'..-', V:'...-', W:'.--', X:'-..-', Y:'-.--', Z:'--..',
+  0:'-----', 1:'.----', 2:'..---', 3:'...--', 4:'....-', 5:'.....', 6:'-....', 7:'--...', 8:'---..', 9:'----.'};
+const morseCaption = w => String(w).toUpperCase().split('').map(c => (MORSE[c] || '').split('').map(x => x === '.' ? '·' : '–').join(' ')).join('   ') + '  (' + w + ')';
+// A swatch tapping ``word`` in Morse: one @keyframes per word, made once.
+const morseMade = new Set();
+function morseAnim(word){
+  const name = 'lm-morse-' + word.replace(/[^A-Z0-9]/gi, '');
+  if (morseMade.has(name)) return name;
+  const seq = [];
+  String(word).toUpperCase().split('').forEach((c, i) => {
+    if (i) seq.push([0, 3]);
+    (MORSE[c] || '').split('').forEach((x, j) => { if (j) seq.push([0, 1]); seq.push([1, x === '.' ? 1 : 3]); });
+  });
+  seq.push([0, 7]);
+  const total = seq.reduce((n, [, u]) => n + u, 0);
+  let at = 0, frames = '0%{opacity:.15}';
+  for (const [on, u] of seq){
+    const p0 = (at / total * 100).toFixed(2), p1 = ((at + u) / total * 100 - 0.01).toFixed(2);
+    frames += p0 + '%,' + p1 + '%{opacity:' + (on ? 1 : .15) + '}';
+    at += u;
+  }
+  const st = document.createElement('style');
+  st.textContent = '@keyframes ' + name + '{' + frames + '}';
+  document.head.append(st);
+  morseMade.add(name);
+  return name + ' ' + (total * 0.11).toFixed(2) + 's linear infinite';
+}
+// The lamp's meanings, light language v2, grouped. kind: look | reply (POST /api/lamp/preview),
+// identify (POST /api/lamp/identify), none (nothing to show). A row's Show me appears when
+// this radio's lamp knows the name (settings.lamp.looks / replies).
 const LAMP_MEANS = [
-  ['look', 'playing', 'Playing', 'Music from the radio’s own keys'],
-  ['look', 'ready', 'Ready', 'On and quiet — press a key to play'],
-  ['look', 'asleep', 'Asleep', 'Standby. A key or the knob wakes it'],
-  ['look', 'phone', 'A phone is playing', 'Bluetooth, AirPlay or Spotify from a phone'],
-  ['look', 'busy', 'Busy — don’t unplug', 'Updating or shutting down. When the lamp is dark, it’s safe to unplug'],
-  ['reply', 'heard', 'I heard you', 'A key press reached the radio'],
-  ['reply', 'no', 'No — something failed', 'What you asked for didn’t work. Try again in a moment'],
-  ['look', 'asking', 'Press a key on the radio', 'This page is asking you to confirm on the radio itself'],
-  ['look', 'setup', 'Set me up', 'The radio needs your Wi-Fi details'],
+  ['Everyday', 'look', 'playing', 'Playing', 'Music from the radio’s own keys', 'amber', 'steady', 'steady amber'],
+  ['Everyday', 'look', 'ready', 'Ready', 'On and quiet — press a key to play', 'ready', 'steady', 'steady, softer amber'],
+  ['Everyday', 'look', 'asleep', 'Asleep', 'Standby. A key or the knob wakes it', 'ember', 'steady', 'a still ember — it never moves'],
+  ['Everyday', 'look', 'phone', 'A phone is playing', 'Bluetooth, AirPlay or Spotify from a phone', 'blue', 'steady', 'steady moon blue'],
+  ['Everyday', 'look', 'starting', 'Starting up', 'Waking up, or tuning in to a station', 'amber', 'breath', 'amber, breathing'],
+  ['Everyday', 'look', 'pairing', 'Pairing', 'Looking for a phone to pair with', 'blue', 'breath', 'blue, breathing'],
+  ['Everyday', 'look', 'busy', 'Busy — don’t unplug', 'Updating or shutting down. When the lamp is dark, it’s safe to unplug', 'amber', 'slow', 'amber, a slow breath'],
+  ['Replies', 'reply', 'heard', 'I heard you', 'A key press reached the radio', 'amber', 'kick', 'one quick flash'],
+  ['Replies', 'reply', 'ok', 'Done', 'An update installed, setup finished, a phone paired', 'green', 'bloom', 'a green bloom, then ' + morseCaption('OK')],
+  ['Replies', 'reply', 'no', 'No', 'What you asked for didn’t work. Try again in a moment', 'red', 'eye', 'a slow red eye'],
+  ['Replies', 'reply', 'hello', 'Hello', 'The radio says hello', 'green', 'bloom', 'a friendly flash'],
+  ['Needs you', 'look', 'asking', 'Press a key on the radio', 'This page is asking you to confirm on the radio itself', 'amber', 'beckon', 'two flashes and a rest, in the colour on show'],
+  ['Needs you', 'look', 'setup', 'Set me up', 'The radio needs your Wi-Fi details', 'amber', 'morse:CQ', morseCaption('CQ')],
+  ['Needs you', 'identify', 'identify', 'It’s me', 'Identify (This radio, Rooms): so you can tell which radio this is', 'green', 'morse:HI', morseCaption('HI')],
+  ['Problems', 'look', 'no_internet', 'No internet', 'Only while the radio is awake and idle', 'red', 'alert', 'two red pulses every 6 seconds'],
+  ['Problems', 'look', 'fault', 'Something needs a maker', 'A fault the radio can’t fix itself — ask the makers', 'red', 'morse:SOS', morseCaption('SOS')],
+  ['Problems', 'none', 'dark', 'Dark', 'Off: safe to unplug', 'off', 'steady', 'no light at all'],
 ];
-// /api/status "lamp" in words, for the front page: "Lamp: asleep".
+// /api/status "lamp" in words, for "Now:" on the lamp page.
 const LAMP_WORDS = {playing:'playing', ready:'ready', asleep:'asleep', phone:'a phone is playing', busy:'busy — don’t unplug',
-  asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone', offline:'no internet'};
-const lampLook = {showing:null, until:0, timer:null, busy:false};
-const lampPrefs = () => Object.assign({brightness:'normal', key_replies:true, present:false, show_s:5, identify_s:10}, (settings && settings.lamp) || {});
+  asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone',
+  offline:'no internet', no_internet:'no internet', fault:'something needs a maker'};
+const lampLook = {showing:null, until:0, timer:null, busy:false, tour:null, caption:''};
+const lampPrefs = () => Object.assign({brightness:'normal', key_replies:true, present:false, show_s:5, identify_s:10, geek:false, callsign:'H',
+  looks:['playing', 'ready', 'asleep', 'phone', 'busy', 'asking', 'setup'], replies:['heard', 'no']}, (settings && settings.lamp) || {});
+// The newer light language (Morse, green and red): this radio's lamp names its looks so.
+const lampV2 = () => lampPrefs().looks.includes('no_internet') || lampPrefs().replies.includes('ok');
+const lampCan = (kind, id) => { const lp = lampPrefs(); return lp.present && (kind === 'identify' || (kind === 'look' ? lp.looks : kind === 'reply' ? lp.replies : []).includes(id)); };
+function lampSwatch(colour, motion){
+  const sw = h('span', {class:'lm-sw', 'data-c': colour, 'data-m': motion.startsWith('morse:') ? 'morse' : motion, 'aria-hidden':'true'});
+  if (motion.startsWith('morse:')) sw.style.animation = morseAnim(motion.slice(6));
+  return sw;
+}
+// What the lamp says now ("Now: asleep" with its swatch), for anyone who can't tell the colours apart.
+function lampNowWords(){
+  const m = online && status && status.lamp;
+  if (!m) return null;
+  // An older lamp shows ready while offline: say what it shows.
+  if (m === 'offline' && !lampV2()) return {m:'ready', words:'ready'};
+  return {m, words: LAMP_WORDS[m] || m.replace(/_/g, ' ')};
+}
+function lampNowRow(){
+  const now = lampNowWords();
+  const row = LAMP_MEANS.find(r => r[2] === (now && (now.m === 'offline' ? 'no_internet' : now.m)));
+  return h('div', {class:'lm-now', id:'lampNow', 'data-m': now ? now.m : '', hidden: !now},
+    row ? lampSwatch(row[5], row[6]) : null, h('span', null, 'Now: ', h('b', null, now ? now.words : '')));
+}
+function paintLampNow(){
+  const el = $('lampNow'); if (!el) return;
+  const now = lampNowWords();
+  if ((el.dataset.m || '') === (now ? now.m : '')) return;
+  el.replaceWith(lampNowRow());
+}
 function lampMeanings(panel){
   const lp = lampPrefs();
   const list = h('div', {class:'list', id:'lampMeans'});
-  for (const [kind, id, title, sub] of LAMP_MEANS){
-    const on = lampLook.showing === id;
+  let group = '';
+  for (const [g, kind, id, title, sub, colour, motion, rhythm] of LAMP_MEANS){
+    if (g !== group){ group = g; list.append(h('div', {class:'lm-group', role:'heading', 'aria-level':'4'}, g)); }
+    const on = lampLook.showing === id, can = lampCan(kind, id);
+    const tip = kind === 'identify' && lampV2() ? 'It taps HI in Morse, in green' : sub;
     list.append(h('div', {class:'li', 'data-mean':id},
-      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, title), h('span', {class:'li-sub'}, sub)),
-      lp.present ? h('button', {type:'button', class:'li-act', id:'lampShow-' + id, 'aria-label':'Show me on the lamp: ' + title,
+      lampSwatch(colour, motion),
+      h('div', {class:'li-txt', style:'flex:1'}, h('span', {class:'li-title'}, title), h('span', {class:'li-sub'}, kind === 'identify' ? tip : sub),
+        h('span', {class:'lm-rhythm'}, rhythm)),
+      can ? h('button', {type:'button', class:'li-act', id:'lampShow-' + id, 'aria-label':'Show me on the lamp: ' + title,
         'aria-pressed': String(on), onclick: () => lampShow(kind, id, title)}, on ? 'Showing…' : 'Show me') : null));
   }
+  const tourOn = !!lampLook.tour;
+  panel.append(lampNowRow());
   panel.append(setGroup('means', 'What the lamp means', list,
-    h('p', {class:'hint', style:'padding:0 4px'}, lp.present ? 'Show me plays it on the radio’s lamp for a few seconds.'
+    lp.present ? h('div', {class:'acts', style:'padding:8px 4px 0'},
+      h('button', {type:'button', class:'btn small', id:'lampTourBtn', 'aria-pressed': String(tourOn), onclick: lampTour}, tourOn ? 'Stop' : 'Show me everything')) : null,
+    h('p', {class:'hint lm-tour', id:'lampTour', 'aria-live':'polite', style:'padding:0 4px'}, lampLook.caption || ''),
+    h('p', {class:'hint', style:'padding:0 4px'}, lp.present ? 'Show me plays it on the radio’s lamp for a few seconds — at night, the night version (dimmer and slower).'
       : 'This radio has no lamp fitted, so there’s nothing to show.')));
+}
+function lampPost(kind, id){
+  return kind === 'identify' ? api('POST', '/api/lamp/identify', {}) : api('POST', '/api/lamp/preview', {[kind]: id});
 }
 async function lampShow(kind, id, title){
   const lp = lampPrefs();
+  lampTourStop(false);
   clearTimeout(lampLook.timer);
-  Object.assign(lampLook, {showing:id, until: Date.now() + (kind === 'look' ? lp.show_s : 2) * 1000});
+  Object.assign(lampLook, {showing:id, until: Date.now() + (kind === 'look' ? lp.show_s : kind === 'identify' ? lp.identify_s : 2) * 1000});
   rerender();
   const back = () => { if (lampLook.showing === id){ lampLook.showing = null; if (onPage('lamp')) rerender(); } };
   try {
-    const r = await api('POST', '/api/lamp/preview', {[kind]: id});
+    const r = await lampPost(kind, id);
     if (r.ok && r.json){
-      toast(r.json.showing ? 'On the lamp now: ' + title : 'This radio has no lamp to show it on');
+      const shown = kind === 'identify' ? r.json.lamp : r.json.showing;
+      toast(shown ? 'On the lamp now: ' + title : 'This radio has no lamp to show it on');
       lampLook.timer = setTimeout(back, Math.max(1500, lampLook.until - Date.now()));
       return;
     }
@@ -5624,8 +5721,36 @@ async function lampShow(kind, id, title){
   } catch (_) { toast(NET_ERR, true); }
   back();
 }
+// "Show me everything": every look and reply this lamp knows, in order, with a caption for each (~1 min).
+function lampTourCaption(text){ lampLook.caption = text; const el = $('lampTour'); if (el) el.textContent = text; }
+function lampTourStop(end = true){
+  if (!lampLook.tour) return;
+  lampLook.tour = null; lampLook.showing = null;
+  if (end) api('POST', '/api/lamp/preview', {look: null}).catch(() => {});
+  if (onPage('lamp')) rerender();
+}
+async function lampTour(){
+  if (lampLook.tour){ lampTourStop(); lampTourCaption('Stopped.'); return; }
+  const lp = lampPrefs(), token = {};
+  const items = LAMP_MEANS.filter(r => lampCan(r[1], r[2]));
+  lampLook.tour = token; rerender();
+  for (let i = 0; i < items.length; i++){
+    if (lampLook.tour !== token) return;
+    const [, kind, id, title, , , , rhythm] = items[i];
+    const secs = kind === 'look' ? lp.show_s : kind === 'identify' ? Math.min(9, lp.identify_s) : 3;
+    lampLook.showing = id;
+    lampTourCaption((i + 1) + ' of ' + items.length + ' — ' + title + ': ' + rhythm);
+    if (onPage('lamp')) document.querySelectorAll('#lampMeans [data-mean]').forEach(el => el.classList.toggle('on', el.dataset.mean === id));
+    try { await lampPost(kind, id); } catch (_) {}
+    await new Promise(r => setTimeout(r, secs * 1000 + 400));
+  }
+  if (lampLook.tour !== token) return;
+  lampTourStop();
+  lampTourCaption('That’s everything the lamp says.');
+}
 // Leaving the page ends a look still showing: the lamp goes back to saying what the radio does.
 function leaveLamp(){
+  if (lampLook.tour){ lampLook.tour = null; lampLook.showing = null; lampLook.caption = ''; api('POST', '/api/lamp/preview', {look: null}).catch(() => {}); }
   if (lampLook.showing && lampLook.until > Date.now())
     api('POST', '/api/lamp/preview', {look: null}).catch(() => {});
   clearTimeout(lampLook.timer); lampLook.showing = null;
@@ -5648,6 +5773,29 @@ function lampGlow(panel){
       h('input', {type:'checkbox', role:'switch', id:'lampKeys', checked: !!lp.key_replies, disabled: lampLook.busy,
         onchange: e => saveLampPrefs({key_replies: e.target.checked}, {key_replies: !e.target.checked})})))),
     h('p', {class:'hint', style:'padding:0 4px'}, 'These apply at once, with Undo.')));
+  panel.append(lampGeek());
+}
+// Geek mode: off by default. The callsign is what Identify taps (and the 73 at a shutdown).
+function lampGeek(){
+  const lp = lampPrefs();
+  return setGroup('geek', 'Geek mode', h('div', {class:'list'},
+    h('div', {class:'li'}, h('label', {class:'switch', for:'lampGeek', style:'flex:1'},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Geek mode'),
+        h('span', {class:'li-sub'}, 'The lamp speaks a little more radio: your callsign for Identify, 73 before it shuts down, a tune after an update — and a surprise or two')),
+      h('input', {type:'checkbox', role:'switch', id:'lampGeek', checked: !!lp.geek, disabled: lampLook.busy,
+        onchange: e => saveLampPrefs({geek: e.target.checked}, {geek: !e.target.checked})}))),
+    lp.geek ? h('div', {class:'li'},
+      h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'lampCall'}, 'Callsign'),
+        h('span', {class:'li-sub'}, 'Up to 3 letters or digits, tapped in Morse when you identify this radio. Empty: the room’s initial')),
+      h('input', {type:'text', id:'lampCall', class:'inp', maxlength:'3', autocapitalize:'characters', spellcheck:'false', style:'width:5em;text-transform:uppercase',
+        value: lp.callsign_saved || '', placeholder: lp.callsign || 'H', 'aria-describedby':'lampCallMorse',
+        onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
+        onchange: e => { const v = e.target.value.trim().toUpperCase(); if (/^[A-Z0-9]{0,3}$/.test(v)) saveLampPrefs({callsign: v}, {callsign: lp.callsign_saved || ''}); else toast('A callsign is up to 3 letters or digits.', true); }}),
+      h('button', {type:'button', class:'li-act', id:'lampEgg', 'aria-label':'A surprise', title:'…', onclick: lampEgg}, '…')) : null,
+    lp.geek ? h('p', {class:'hint lm-rhythm', id:'lampCallMorse', style:'padding:4px 4px 0'}, morseCaption(lp.callsign || 'H')) : null));
+}
+async function lampEgg(){
+  try { const r = await api('POST', '/api/lamp/egg', {}); if (r.ok && r.json && r.json.played) toast('Watch the lamp…'); } catch (_) {}
 }
 // Arrow keys move between the choices of a segmented radio group.
 function segKeys(seg){
@@ -5669,6 +5817,8 @@ async function saveLampPrefs(change, undoTo){
       settings = Object.assign(settings || {}, r.json);
       const lp = lampPrefs();
       const msg = 'brightness' in change ? 'Lamp brightness: ' + capFirst(lp.brightness)
+        : 'geek' in change ? (lp.geek ? 'Geek mode on — 73!' : 'Geek mode off')
+        : 'callsign' in change ? 'Callsign: ' + (lp.callsign || 'H')
         : lp.key_replies ? 'The lamp brightens for key presses' : 'The lamp stays still when you press a key';
       toast(msg, undoTo ? {undo: () => saveLampPrefs(undoTo)} : null);
     } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that').replace(/\.?$/, '.'), true);
@@ -5676,19 +5826,20 @@ async function saveLampPrefs(change, undoTo){
   lampLook.busy = false;
   if (onPage('lamp')){
     rerender();
-    const sel = 'brightness' in change ? '#lampBright [aria-checked="true"]' : '#lampKeys';
+    const sel = 'brightness' in change ? '#lampBright [aria-checked="true"]' : 'geek' in change ? '#lampGeek' : 'callsign' in change ? '#lampCall' : '#lampKeys';
     const f = document.querySelector(sel) || (focus && $(focus)); if (f) f.focus({preventScroll:true});
   }
 }
 
 /* ---- Identify this radio (POST /api/lamp/identify; {peer: id} asks another Hasler) ---- */
-const identUi = {busy:{}};
+const identUi = {busy:{}, note:{}};
 function identifyRow(){
   const lp = lampPrefs();
   if (!settings || !lp.present) return null;
   return h('div', {class:'list', style:'margin-top:8px'}, h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Identify this radio'),
-      h('span', {class:'li-sub'}, 'Its lamp signals for ' + Math.round(lp.identify_s) + ' seconds, so you can tell which radio this is')),
+      h('span', {class:'li-sub'}, lampV2() ? 'It taps HI in Morse, in green, for about ' + Math.round(Math.min(lp.identify_s, 9)) + ' seconds — so you can tell which radio this is'
+        : 'Its lamp signals for ' + Math.round(lp.identify_s) + ' seconds, so you can tell which radio this is')),
     h('button', {type:'button', class:'li-act', id:'identSelf', disabled: !!identUi.busy.self, onclick: () => identify(null, 'self')},
       identUi.busy.self ? 'Signalling…' : 'Identify')));
 }
@@ -5698,9 +5849,14 @@ async function identify(peer, key, name){
   try {
     const r = await api('POST', '/api/lamp/identify', peer ? {peer} : {});
     if (r.ok && r.json){
-      if (r.json.lamp){ secs = r.json.seconds || secs; toast(peer ? 'Look for the lamp on ' + name : 'Look for the lamp on this radio'); }
-      else { toast(peer ? name + ' has no lamp to signal with' : 'This radio has no lamp to signal with'); secs = 0; }
-    } else { toast(capFirst((r.json && r.json.error) || 'That didn’t work').replace(/\.?$/, '.'), true); secs = 0; }
+      const what = lampV2() ? ' — it taps HI in Morse, in green' : '';
+      if (r.json.lamp){ secs = r.json.seconds || secs; identUi.note[key] = ''; toast((peer ? 'Look for the lamp on ' + name : 'Look for the lamp on this radio') + what); }
+      else { identUi.note[key] = 'No lamp on this radio'; toast(peer ? name + ' has no lamp to signal with' : 'This radio has no lamp to signal with'); secs = 0; }
+    } else {
+      const err = (r.json && r.json.error) || 'That didn’t work';
+      if (peer && /software update/.test(err)) identUi.note[key] = 'Needs a software update to identify itself';
+      toast(capFirst(err).replace(/\.?$/, '.'), true); secs = 0;
+    }
   } catch (_) { toast(NET_ERR, true); secs = 0; }
   setTimeout(() => { identUi.busy[key] = false; if (view === 'settings') rerender(); }, Math.min(secs, 10) * 1000);
   if (!secs){ identUi.busy[key] = false; }
@@ -5720,7 +5876,7 @@ function otherRadiosGroup(){
     const k = 'peer-' + rid(r.id), busy = !!identUi.busy[k];
     list.append(h('div', {class:'li', 'data-peer':r.id},
       h('div', {class:'li-txt'}, h('span', {class:'li-title'}, roomName(r)),
-        h('span', {class:'li-sub'}, r.online === false ? 'Not answering right now' : 'Find it by its lamp')),
+        h('span', {class:'li-sub'}, r.online === false ? 'Not answering right now' : identUi.note[k] || 'Find it by its lamp')),
       h('button', {type:'button', class:'li-act', id:'ident-' + rid(r.id), disabled: busy || r.online === false,
         'aria-label':'Identify ' + roomName(r), onclick: () => identify(r.id, k, roomName(r))}, busy ? 'Signalling…' : 'Identify')));
   }
