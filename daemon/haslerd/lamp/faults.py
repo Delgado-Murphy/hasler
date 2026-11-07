@@ -17,13 +17,17 @@ Off a Pi (no /proc/asound, no thermal zone) the hardware checks stay quiet.
 
 from __future__ import annotations
 
+import glob
 import json
 import logging
 import os
+import re
+import shutil
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
@@ -116,31 +120,103 @@ def too_hot(temp_file: Path = CPU_TEMP, hot_c: float = HOT_C) -> bool:
         return False
 
 
-# The firmware's throttle word, readable without root (vcgencmd get_throttled
-# says the same). Measured and shown (web/diagnostics.py), never an SOS of
-# its own: heat already is, and the amp's heat is in the Amp4 Pro, not the Pi.
+# The firmware's throttle word, readable without root. Measured and shown
+# (web/diagnostics.py) and counted for the check-in (daycounters.py), never an
+# SOS of its own: heat already is, and the amp's heat is in the Amp4 Pro, not the Pi.
+#
+# Where it lives depends on the kernel: 6.6 had the sysfs file below, 6.18
+# (rpt-rpi-v8, 2026-11) dropped it. So ``throttled()`` asks in order: that
+# file, the same file anywhere under the firmware node (a glob, remembered),
+# ``vcgencmd get_throttled`` (haslerd's unit has the ``video`` group for
+# /dev/vcio), and last the hwmon ``rpi_volt`` sensor's ``in0_lcrit_alarm``,
+# which knows undervoltage now and nothing else.
 THROTTLED_FILE = Path("/sys/devices/platform/soc/soc:firmware/get_throttled")
+THROTTLED_GLOBS = ("/sys/devices/platform/soc*/*firmware*/get_throttled",
+                   "/sys/devices/platform/*firmware*/get_throttled",
+                   "/sys/devices/platform/*/*/*firmware*/get_throttled")
+VCGENCMD = ("vcgencmd", "get_throttled")
+HWMON = Path("/sys/class/hwmon")
 THROTTLED_BITS = {
     0: "under_voltage_now", 1: "freq_capped_now", 2: "throttled_now", 3: "soft_temp_limit_now",
     16: "under_voltage_seen", 17: "freq_capped_seen", 18: "throttled_seen", 19: "soft_temp_limit_seen",
 }
+_found: dict = {}           # what the chain found once: {"file": Path | None, "vcgencmd": bool}
 
 
-def throttled(path: Path = THROTTLED_FILE) -> dict | None:
-    """The Pi's throttle bits, decoded: ``{"raw": "0x50000", "under_voltage_now":
-    bool, ..., "any_now": bool, "any_seen": bool}``, or None off a Pi.
-    ``*_now`` is this moment; ``*_seen`` since boot (a power supply that
-    sagged once at 3 a.m.). Never raises."""
-    try:
-        text = path.read_text().strip()
-        word = int(text, 16) if text.lower().startswith("0x") else int(text, 16)
-    except (OSError, ValueError):
-        return None
-    doc: dict = {"raw": f"0x{word:x}"}
+def _decode(word: int, source: str) -> dict:
+    doc: dict = {"raw": f"0x{word:x}", "source": source}
     for bit, name in THROTTLED_BITS.items():
         doc[name] = bool(word & (1 << bit))
     doc["any_now"] = any(doc[n] for n in THROTTLED_BITS.values() if n.endswith("_now"))
     doc["any_seen"] = any(doc[n] for n in THROTTLED_BITS.values() if n.endswith("_seen"))
+    return doc
+
+
+def _read_word(path: Path) -> int | None:
+    try:
+        return int(Path(path).read_text().strip(), 16)
+    except (OSError, ValueError):
+        return None
+
+
+def rpi_volt_alarm(hwmon: Path = HWMON) -> bool | None:
+    """The hwmon ``rpi_volt`` sensor's undervoltage alarm now; None without that sensor."""
+    try:
+        dirs = sorted(Path(hwmon).iterdir())
+    except OSError:
+        return None
+    for d in dirs:
+        try:
+            if (d / "name").read_text().strip() != "rpi_volt":
+                continue
+            return (d / "in0_lcrit_alarm").read_text().strip() not in ("", "0")
+        except OSError:
+            continue
+    return None
+
+
+def _vcgencmd(run: Callable[..., Any]) -> int | None:
+    try:
+        out = run(list(VCGENCMD), capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"throttled=(0x[0-9a-fA-F]+)", str(getattr(out, "stdout", "") or ""))
+    return int(m.group(1), 16) if m and getattr(out, "returncode", 1) == 0 else None
+
+
+def throttled(path: Path | None = None, run: Callable[..., Any] = subprocess.run,
+              hwmon: Path = HWMON, found: dict | None = None) -> dict | None:
+    """The Pi's throttle bits, decoded: ``{"raw": "0x50000", "source": "sysfs" |
+    "vcgencmd" | "hwmon", "under_voltage_now": bool, ..., "any_now": bool,
+    "any_seen": bool}``, or None off a Pi. ``*_now`` is this moment; ``*_seen``
+    since boot (a power supply that sagged once at 3 a.m.). From hwmon only
+    ``under_voltage_now`` is known (``raw`` None, the rest False).
+    A ``path`` other than THROTTLED_FILE: that file only. Never raises."""
+    if path is not None and Path(path) != THROTTLED_FILE:
+        word = _read_word(Path(path))
+        return None if word is None else _decode(word, "sysfs")
+    found = _found if found is None else found
+    word = _read_word(THROTTLED_FILE)
+    if word is not None:
+        return _decode(word, "sysfs")
+    if "file" not in found:
+        hits = [Path(p) for g in THROTTLED_GLOBS for p in sorted(glob.glob(g))]
+        found["file"] = hits[0] if hits else None
+    if found["file"] is not None:
+        word = _read_word(found["file"])
+        if word is not None:
+            return _decode(word, "sysfs")
+    if found.get("vcgencmd", True):
+        word = _vcgencmd(run)
+        if word is not None:
+            found["vcgencmd"] = True
+            return _decode(word, "vcgencmd")
+        found["vcgencmd"] = shutil.which(VCGENCMD[0]) is not None    # not installed: never ask again
+    alarm = rpi_volt_alarm(hwmon)
+    if alarm is None:
+        return None
+    doc = _decode(1 if alarm else 0, "hwmon")
+    doc["raw"] = None
     return doc
 
 

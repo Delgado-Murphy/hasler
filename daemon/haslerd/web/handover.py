@@ -220,7 +220,10 @@ def run(app: Any, vacuum: Callable[..., Any] = subprocess.run) -> dict:
         for k in dropped:
             del doc[k]
         boxconfig.write_box_file(paths, doc)
-        return "dropped " + ", ".join(dropped)
+        support = getattr(app, "support", None)
+        asked = ("checkin" in dropped and support is not None and hasattr(support, "forget_checkin")
+                 and support.forget_checkin())   # the makers' server forgets the old owner's radio too
+        return "dropped " + ", ".join(dropped) + ("; the makers' server asked to forget it" if asked else "")
 
     def wifi() -> str:
         gone = app.wifi.forget_all().get("forgotten") or []

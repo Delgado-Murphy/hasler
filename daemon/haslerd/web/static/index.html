@@ -7516,7 +7516,7 @@ function checkinRow(s){
   return h('div', {class:'li col', style:'gap:8px'},
     h('label', {class:'switch', for:'checkin', style:'flex:1'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Tell the makers how the radio is'),
-        h('span', {class:'li-sub'}, 'Once a day, a few lines: the version, whether everything answers, and what went wrong inside. No names, no addresses, nothing about what you listen to.')),
+        h('span', {class:'li-sub'}, 'Once a day, a few lines: the version, any fault, player trouble, temperature, power, card space, and which Pi and software it runs. No names, no addresses, nothing about what you listen to or when.')),
       h('input', {type:'checkbox', role:'switch', id:'checkin', checked: !!c.enabled, disabled: swBusy || !c.url_set, onchange: e => swCheckin(e.target.checked, true)})),
     h('div', {class:'acts', style:'align-items:center'},
       h('button', {type:'button', class:'link', id:'checkinSee', onclick: seeCheckin}, 'See what it sends'),
@@ -7537,14 +7537,14 @@ async function seeCheckin(){
   dlg.textContent = '';
   const body = h('pre', {class:'say', id:'checkinBody'}, 'Checking…');
   dlg.append(h('h2', {id:'dlgTitle'}, 'What the check-in sends'),
-    h('p', {class:'sub', id:'checkinSub'}, 'Exactly this, once a day, after the radio has looked for updates. Nothing else.'),
+    h('p', {class:'sub', id:'checkinSub'}, 'Exactly this, once a day, after the radio has looked for updates: the version and how the last update went, faults, player stalls and restarts in the last day, temperature, power, card space, and which Pi and software it runs. Nothing else.'),
     body, h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', id:'checkinClose', onclick: () => dlg.close()}, 'Close')));
   dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; if (from && from.isConnected && from.focus) from.focus({preventScroll:true}); };
   dlg.onclick = null;
   dlg.showModal();
   try {
     const r = await api('GET', '/api/checkin/preview', undefined, {timeout:25000});
-    if (r.ok && r.json && r.json.text){ body.textContent = r.json.text; $('checkinSub').textContent = 'Exactly this (' + r.json.bytes + ' bytes), once a day, after the radio has looked for updates. Nothing else.'; }
+    if (r.ok && r.json && r.json.text){ body.textContent = r.json.text; $('checkinSub').textContent = 'Exactly this (' + r.json.bytes + ' bytes), once a day, after the radio has looked for updates: the version and how the last update went, faults, player stalls and restarts in the last day, temperature, power, card space, and which Pi and software it runs. Nothing else.'; }
     else body.textContent = r.status === 404 ? 'This radio’s software can’t show it yet.' : capFirst((r.json && r.json.error) || 'The radio couldn’t put it together') + '.';
   } catch (_) { body.textContent = NET_ERR; }
 }

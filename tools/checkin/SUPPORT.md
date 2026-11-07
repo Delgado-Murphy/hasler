@@ -179,3 +179,26 @@ mocked GitHub.
   owner reads "Your request #12 is done." (close with an `/owner` comment to
   add a line). Reopening tells them too.
 - If the owner has remote help on, the report's last line says so.
+
+## Alerts
+
+The same Worker opens issues labelled **`alert`** in the same repo when the
+daily check-ins say something needs a look (`alerts.js`). Nothing to set up
+beyond the token above; `ALERTS = "off"` in wrangler.toml's `[vars]` mutes
+them, and `DASHBOARD_URL` is where their links point.
+
+| Label | Fires when | Closes |
+|---|---|---|
+| `alert:fault` | a lamp fault now or in the last 24 h, or a failed health check | by itself, after 2 check-ins in a row without one |
+| `alert:rollback` | a radio went back from a new version (a new failed version opens a new one) | by hand, when the fix ships |
+| `alert:quiet` | a radio seen on 5 of its last 7 days hasn't checked in for 3 days (daily cron) | by itself, at its next check-in |
+| `alert:youtube` | the YouTube Music helper is broken on 2 or more radios and 20 % or more of today's (daily cron) | by itself, when the cron sees fewer |
+| `alert:trend` | a version with 10+ radio-days has twice the stalls, restarts or haslerd restarts per radio-day of the one before, or 2+ radios of one platform saw low voltage (daily cron) | by hand |
+
+Also on each: `version:<v>`, `model:<variant>`, and **`bench`** for a Bench
+radio's fault or rollback, so the makers' own desk radio can be filtered out.
+One open issue per radio and kind; a repeat is a comment only when it
+changes (a new fault word, a new version); nothing at all when nothing
+changed. Alert issues are never the owner's: no `/owner` reply goes to a
+radio from one, and closing one by hand lets a new one open later (the
+issue's `<!-- hasler-alert -->` line is how the Worker knows it).

@@ -759,7 +759,19 @@ class WebApp:
         channel = body.get("channel")
         if channel is not None and channel != self.software.box_settings()["channel"]:
             self.confirm.consume(body.get("confirm"), "channel", {"channel": str(channel)})
-        return self.software.put_settings(body)
+        was_on = body.get("checkin") is False and self._checkin_on()
+        out = self.software.put_settings(body)
+        if was_on:          # switched off: the makers' server forgets this radio (POST /v1/forget)
+            support = getattr(self, "support", None)
+            if support is not None and hasattr(support, "forget_checkin"):
+                support.forget_checkin()
+        return out
+
+    def _checkin_on(self) -> bool:
+        try:
+            return bool(self.software.checkin_doc().get("enabled"))
+        except Exception:
+            return False
 
     def load_saved(self) -> None:
         with self.lock:

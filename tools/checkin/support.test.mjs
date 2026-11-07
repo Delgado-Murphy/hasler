@@ -165,7 +165,8 @@ test("the dashboard links a radio's requests", async () => {
   await worker.fetch(new Request("https://x/v1/checkin", { method: "POST", body, headers: { "x-hasler-token": "word" } }), e);
   await send(e, report());
   const html = await (await worker.fetch(new Request("https://x/dashboard"), e)).text();
-  assert.ok(html.includes('href="https://github.com/Delgado-Murphy/hasler-support/issues/12">#12</a>'));
+  assert.ok(html.includes('href="https://github.com/Delgado-Murphy/hasler-support/issues/12">#12 open</a>'));
+  assert.ok(html.includes("1 open request"));
 });
 
 test("the issue's state reaches the radio: seen once, done (folding a reply not yet fetched), reopened", async () => {
@@ -180,6 +181,8 @@ test("the issue's state reaches the radio: seen once, done (folding a reply not 
   await hook(e, issues("labeled", { label: { name: "Seen" } }), { event: "issues" });   // relabelled: said once
   let q = await get();
   assert.deepEqual(q.map(r => [r.state, r.text]), [["seen", "The makers have seen your request #12."]]);
+  const state = async () => JSON.parse(e.SUPPORT.m.get(`issues:${BOX}`))[0].state;
+  assert.equal(await state(), "seen");                // the dashboard says "#12 seen"
   // "close with comment": the comment first, then the close folds it in
   await hook(e, comment(12, "/owner The new card is in the post."));
   await hook(e, issues("closed"), { event: "issues" });
@@ -187,7 +190,9 @@ test("the issue's state reaches the radio: seen once, done (folding a reply not 
   q = await get();
   assert.deepEqual(q.map(r => [r.state, r.text]), [["seen", "The makers have seen your request #12."],
     ["done", "Your request #12 is done. The new card is in the post."]]);
+  assert.equal(await state(), "done");
   await hook(e, issues("reopened"), { event: "issues" });
+  assert.equal(await state(), "open");
   q = await get();
   assert.deepEqual(q.at(-1), { id: "reopened:12:2026-11-08T10:00:00Z", at: q.at(-1).at, text: "The makers reopened your request #12.", issue: 12, state: "seen" });
   // not a radio's issue, another repo, a bot, a bad signature: nothing queued

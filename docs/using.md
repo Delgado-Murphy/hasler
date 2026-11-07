@@ -542,8 +542,10 @@ radio → Updates**.
 - **This Wi-Fi is a phone hotspot or capped**: the radio downloads nothing in
   the background, only when you press **Check now**.
 - **Tell the makers how the radio is** (off to start): once a day the radio
-  sends a few lines about whether everything works. No names, no places,
-  nothing about what you listen to; **See what it sends** shows exactly what.
+  sends a few lines: its version, any fault, player trouble, temperature,
+  power, card space, and which Pi and software it runs. *Never* what you
+  play, when you listen, or where the radio is; **See what it sends** shows
+  exactly what. Switching it off asks the makers' server to forget the radio.
 
 What changed in each version: the
 [releases page](https://delgado-murphy.github.io/hasler-releases/).

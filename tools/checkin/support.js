@@ -20,12 +20,13 @@
 // GITHUB_WEBHOOK_SECRET. Var: SUPPORT_REPO (default Delgado-Murphy/hasler-support).
 //
 // KV keys (SUPPORT): rate:<box>:<day> (a count, 2 days), last:<box> (the last note's hash and
-// issue, DEDUP_S), issue:<n> (which radio, kept), issues:<box> (its last few issue numbers, for the
+// issue, DEDUP_S), issue:<n> (which radio, kept), issues:<box> (its last few issue numbers and their state, open / seen / done, for the
 // dashboard), replies:<box> (the queue, at most MAX_REPLIES), said:seen:<n> ("seen" said once).
 // Who may report for, or read the replies of, a radio: enrol.js authFor (the shared CHECKIN_TOKEN, or
 // that radio's own token from POST /v1/enrol).
 
 import { authFor, fleetCap } from "./enrol.js";
+import { closedByHand } from "./alerts.js";
 
 export const MAX_REPORT = 16384;
 export const PER_DAY = 5;
@@ -238,6 +239,9 @@ export async function handleGithub(request, env, now = Date.now()) {
   if (!p || !p.issue || !Number.isInteger(p.issue.number)) return new Response(null, { status: 204 });
   if (String(p.repository && p.repository.full_name || "").toLowerCase() !== repoOf(env).toLowerCase()) return new Response(null, { status: 204 });
   if (p.sender && p.sender.type === "Bot") return new Response(null, { status: 204 });
+  if (event === "issues" && p.action === "closed" && await closedByHand(env, p.issue)) {
+    return json({ stored: false, why: "an alert, closed" }, 200);     // alerts.js: its key goes, a new one may open
+  }
   let item = null;
   const number = p.issue.number;
   if (event === "issue_comment") {
@@ -258,6 +262,7 @@ export async function handleGithub(request, env, now = Date.now()) {
     }
     if (s.fold) queue = queue.filter(r => !s.fold.includes(r.id));
     item = { id: s.id, at: new Date(now).toISOString(), text: s.text, issue: number, state: s.state };
+    await setIssueState(env, box, number, p.action === "reopened" ? "open" : s.state);   // the dashboard's "#12 seen"
   }
   if (!queue.some(r => r.id === item.id)) queue.push(item);
   await env.SUPPORT.put(`replies:${box}`, JSON.stringify(queue.slice(-MAX_REPLIES)));
@@ -286,7 +291,16 @@ export async function handleReplies(request, env, url) {
   return new Response(null, { status: 204 });
 }
 
-// The dashboard's "requests" cell: a radio's last few issues.
+// The issue's state (open / seen / done) beside its number in issues:<box>, for the dashboard.
+export async function setIssueState(env, box, number, state) {
+  const kept = (await env.SUPPORT.get(`issues:${box}`, "json")) || [];
+  const i = kept.findIndex(x => x && x.number === number);
+  if (i < 0 || kept[i].state === state) return;
+  kept[i] = { ...kept[i], state };
+  await env.SUPPORT.put(`issues:${box}`, JSON.stringify(kept));
+}
+
+// The dashboard's "requests" cell: a radio's last few issues ({number, at, state}; no state = open).
 export async function issuesFor(env, box) {
   if (!env || !env.SUPPORT) return [];
   return (await env.SUPPORT.get(`issues:${box}`, "json")) || [];

@@ -28,10 +28,11 @@ def pokes(monkeypatch):
 DIAG = {
     "wifi": {"ssid": "Casa", "signal": 82, "hotspot": False, "words": "On Casa, good signal"},
     "online": True,
-    "temperature": {"c": 61.2, "hot": False, "throttled": {"raw": "0x80000", "any_now": False, "any_seen": True}, "words": "warm"},
+    "temperature": {"c": 61.2, "hot": False, "throttled": {"raw": "0x80000", "under_voltage_now": False, "any_now": False,
+                                                           "any_seen": True}, "words": "warm"},
     "storage": {"free_bytes": 12 * 1024 ** 2, "total_bytes": 29 * 1024 ** 3, "read_only": False, "bad": True, "words": "nearly full"},
     "last_shutdown": {"kind": "power-cut", "words": "the power was cut"},
-    "power_cuts": {"total": 4, "month": 3, "last_at": "2026-11-07T06:12:03+01:00", "hint": True},
+    "power_cuts": {"total": 4, "month": 3, "last_at": "2026-11-07T06:12:03+01:00", "hint": True, "last_30d": 4},
     "running": {"uptime_s": 270000, "daemon_uptime_s": 1000, "since": "2026-11-04T06:00:00+01:00", "words": "3 d 3 h"},
     "player": {"mpd": True, "audio_card": True, "recovering": False, "restarts_last_hour": 1, "dsp": {}, "words": "player answering"},
     "lamp": {"present": True, "words": "..."},
@@ -46,15 +47,18 @@ HEALTH = {
     "stream_events_recent": [
         {"t": "2026-11-07T08:00:00", "action": "stalled", "preset": {"n": 2, "name": "Radio Clásica", "source": "radio"}},
         {"t": "2026-11-07T08:01:00", "action": "recovered", "preset": {"n": 2, "name": "Radio Clásica", "source": "radio"}},
-        {"t": "2026-11-07T09:00:00", "action": "stalled", "preset": None},
-        {"t": "2026-10-01T09:00:00", "action": "stalled", "preset": None},
     ],
     "last_play_s": 12,
-    "components": {"yt-dlp": {"version": "2026.10.22", "channel": "nightly", "working": True}},
-    "os_updates": {"enabled": True, "last_result": "ok", "paused": False, "last_upgrade": {"count": 3, "at": "2026-10-21T03:00:00Z"}},
+    "components": {"yt-dlp": {"version": "2026.10.22", "channel": "nightly", "working": True, "resolve_failures_recent": 0}},
+    "os_updates": {"enabled": True, "last_run": "2026-11-05T03:00:00Z", "last_result": "ok", "paused": False, "deferred": None,
+                   "last_upgrade": {"count": 3, "at": "2026-10-21T03:00:00Z"}},
+    "day": {"stalls": 7, "mpd_restarts": 2, "daemon_starts": 1, "ytdlp_failures": 3, "faults": ["heat"], "temp_max": 81,
+            "undervolt": True, "throttled": False, "hours": 24},
 }
-NOW = 1_794_050_000.0    # 2026-11-07, late morning UTC (the events above are "today" in any European zone)
-PRIVATE = ("Casa", "Kitchen", "Radio Clásica", "192.168", "hasler-kitchen", "Pixel")
+FACTS = {"hw": {"model": "Raspberry Pi 4 Model B Rev 1.5", "code": "d03115", "ram_gb": 8},
+         "os": {"debian": "13.7", "kernel": "6.18.50+rpt-rpi-v8", "moode": "10.3.7"}}
+NOW = 1_794_050_000.0    # 2026-11-07, late morning UTC
+PRIVATE = ("Casa", "Kitchen", "Radio Clásica", "192.168", "hasler-kitchen", "Pixel", "Europe/")
 
 
 def _box(**over):
@@ -62,40 +66,126 @@ def _box(**over):
             "update_url": "file:///x", "checkin": True, "checkin_url": "https://ci.example/v1/checkin", "checkin_token": "", **over}
 
 
+def _size(p):
+    return len(json.dumps(p, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
+
+
 def test_payload_holds_what_a_maker_asks_first_and_nothing_private():
     check = {"checked": "2026-11-07T04:00:00Z", "result": "ok", "message": "up to date", "installed": {"version": "1.4.0", "seq": 3}}
     state = {"phase": "rolled_back", "failed": "1.4.1", "to": "1.4.1", "from": "1.4.0", "reason": "check panel failed (absent)"}
-    p = checkin.build_payload(_box(), check, state, DIAG, HEALTH, "ab12", NOW)
-    assert p["box_id"] == "box-1" and p["short_id"] == "ab12" and p["variant"] == "hasler-hm-hat"
-    assert p["version"] == "1.4.0" and p["channel"] == "stable" and p["update_mode"] == "auto"
-    assert p["check"] == "ok"
-    assert p["last_result"] == {"ok": False, "version": "1.4.1", "back_to": "1.4.0", "reason": "check panel failed (absent)"}
-    assert p["health"] == {"ok": True, "failed": []} and p["faults"] == ["storage"]
-    assert p["player"] == {"restarts_last_hour": 1, "stalls_today": 2}
-    assert p["ytdlp"] is True and p["os_updates"] == "ok"
-    assert p["uptime_days"] == 3.1 and p["last_shutdown"] == "power-cut" and p["power_cuts_month"] == 3
-    assert p["free_bytes"] == 12 * 1024 ** 2 and p["storage_bad"] is True and p["temp_c"] == 61 and p["throttled"] == "0x80000"
+    p = checkin.build_payload(_box(), check, state, DIAG, HEALTH, "ab12", NOW, facts=FACTS)
+    assert p["schema"] == 2 and p["box_id"] == "box-1" and p["short_id"] == "ab12" and p["variant"] == "hasler-hm-hat"
+    assert p["version"] == "1.4.0" and p["channel"] == "stable" and p["update_mode"] == "auto" and p["check"] == "ok"
+    assert p["release"] == {"state": "rolled_back", "version": "1.4.1", "from": "1.4.0", "reason": "check panel failed (absent)"}
+    assert p["health"] == {"ok": True, "failed": []}
+    assert p["faults"] == {"now": ["storage"], "day": ["heat", "storage"]}
+    assert p["player"] == {"stalls_24h": 7, "restarts_24h": 2, "daemon_restarts_24h": 1}
+    assert p["ytdlp"] == {"working": True, "version": "2026.10.22", "failures_24h": 3}
+    assert p["os_updates"] == {"state": "ok", "last_ok_d": 2}
+    assert p["power"] == {"last_off": "power-cut", "cuts_30d": 4, "undervolt_now": False, "undervolt_24h": True, "throttled_24h": False}
+    assert p["temp_c"] == {"now": 61, "max_24h": 81}
+    assert p["storage"] == {"free_mb": 12, "total_gb": 29, "state": "full"} and p["uptime_d"] == 3
+    assert p["hw"] == FACTS["hw"] and p["os"] == FACTS["os"]
+    assert "at" not in p and "last_result" not in p and "throttled" not in p
     assert checkin.forbidden_in(p) == []
-    body = json.dumps(p, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    assert len(body) < 640, len(body)                       # about half a kilobyte with every field filled
+    body = json.dumps(p, separators=(",", ":"), ensure_ascii=False)
+    assert _size(p) < 1000, _size(p)
     for word in PRIVATE:
-        assert word not in body.decode(), word
+        assert word not in body, word
+
+
+def test_the_worst_case_payload_stays_near_a_kilobyte():
+    state = {"phase": "rolled_back", "failed": "10.10.10", "from": "10.10.9", "reason": "x" * 400}
+    health = {**HEALTH, "ok": False, "checks": {"mpd": False, "audio_card": False, "panel": "absent", "lamp": False, "web": True},
+              "day": {**HEALTH["day"], "faults": ["update", "storage", "sound", "panel", "heat"], "stalls": 99999}}
+    diag = {**DIAG, "faults": ["update", "storage", "sound", "panel", "heat"]}
+    facts = {"hw": {"model": "R" * 48, "code": "a02082ff", "ram_gb": 16}, "os": {"debian": "13.10", "kernel": "k" * 40, "moode": "10.10.10"}}
+    p = checkin.build_payload(_box(box_id="0f3a7b1e-1111-4222-8333-444455556666", variant="hasler-hm-hat"),
+                              {"result": "error"}, state, diag, health, "ab12", NOW, facts=facts)
+    assert len(p["release"]["reason"]) == 120
+    assert _size(p) <= 1200 < checkin.MAX_BYTES, _size(p)     # every field at its longest; typical is ~850
 
 
 def test_forbidden_keys_are_caught_at_any_depth():
     assert checkin.forbidden_in({"a": {"ssid": 1}, "b": [{"hostname": "x"}], "ok": 1}) == ["/a/ssid", "/b/hostname"]
-    for key in ("ip", "ssid", "hostname", "room", "name", "playing", "volume", "standby", "token", "update_url", "id"):
+    for key in ("ip", "ssid", "hostname", "room", "name", "playing", "volume", "standby", "token", "update_url", "id",
+                "serial", "cid", "board_serial", "boot_id", "at", "timezone"):
         assert key in checkin.FORBIDDEN_KEYS
 
 
-def test_failed_checks_and_an_absent_panel_are_named():
+def test_failed_checks_release_states_and_the_os_lane_in_one_word():
     health = {**HEALTH, "ok": False, "checks": {"mpd": False, "audio_card": True, "panel": "absent", "lamp": True, "web": True}}
-    p = checkin.build_payload(_box(), {}, {"phase": "committed", "to": "1.4.0"}, DIAG, health, "ab12", NOW)
-    assert p["health"] == {"ok": False, "failed": ["mpd", "panel"]} and p["last_result"] == {"ok": True, "version": "1.4.0", "probation": False}
-    health = {**HEALTH, "os_updates": {**HEALTH["os_updates"], "paused": True}}
-    assert checkin.build_payload(_box(), {}, {}, DIAG, health, "ab12", NOW)["os_updates"] == "paused"
+    p = checkin.build_payload(_box(), {}, {"phase": "probation", "to": "1.4.0", "from": "1.3.9"}, DIAG, health, "ab12", NOW)
+    assert p["health"] == {"ok": False, "failed": ["mpd", "panel"]}
+    assert p["release"] == {"state": "probation", "version": "1.4.0", "from": "1.3.9", "reason": None}
+    os_up = HEALTH["os_updates"]
+    for over, word in (({"paused": True}, "paused"), ({"enabled": False}, "off"),
+                       ({"deferred": "a Hasler release is in probation", "last_result": None, "last_run": None}, "deferred"),
+                       ({"last_result": None, "last_run": None}, "never"), ({"last_result": "failed"}, "failed")):
+        got = checkin.build_payload(_box(), {}, {}, DIAG, {**HEALTH, "os_updates": {**os_up, **over}}, "ab12", NOW)["os_updates"]
+        assert got["state"] == word, (over, got)
     p = checkin.build_payload(_box(), {}, {}, {}, {}, "ab12", NOW)
-    assert p["last_result"] is None and p["ytdlp"] is None and p["uptime_days"] is None and checkin.forbidden_in(p) == []
+    assert p["release"] is None and p["ytdlp"] is None and p["os_updates"] is None and p["uptime_d"] is None
+    assert p["player"] == {"stalls_24h": 0, "restarts_24h": 0, "daemon_restarts_24h": 0} and checkin.forbidden_in(p) == []
+    assert p["hw"] == {"model": None, "code": None, "ram_gb": None}
+    # a stale index, and a broken yt-dlp lane that says so (B1)
+    check = {"result": "ok", "index_expires": "2026-11-01T00:00:00Z"}
+    lane = {**HEALTH, "components": {"yt-dlp": {"version": "2026.10.22", "working": False}}}
+    p = checkin.build_payload(_box(), check, {}, DIAG, lane, "ab12", NOW)
+    assert p["check"] == "stale" and p["ytdlp"]["working"] is False
+
+
+def test_storage_words():
+    gb = 1024 ** 3
+    s = lambda **kw: checkin._storage({"free_bytes": 20 * gb, "total_bytes": 59 * gb, **kw})["state"]   # noqa: E731
+    assert s() == "ok" and s(free_bytes=int(0.9 * gb)) == "low" and s(free_bytes=10 * 1024 ** 2) == "full"
+    assert s(read_only=True) == "read-only" and s(bad=True) == "full"
+
+
+def test_the_version_is_the_one_running_not_the_checks_snapshot(world: World):
+    """B2: status.json says 1.6.1 (checked before apply switched); /api/health and the link say 1.6.2."""
+    check = {"result": "ok", "installed": {"version": "1.6.1"}}
+    assert checkin.running_version(world.layout, {"version": "1.6.2"}, check) == "1.6.2"
+    rel = world.layout.releases / "1.6.2"
+    rel.mkdir(parents=True, exist_ok=True)
+    if world.layout.current.is_symlink() or world.layout.current.exists():
+        world.layout.current.unlink()
+    world.layout.current.symlink_to(rel)
+    assert checkin.running_version(world.layout, {}, check) == "1.6.2"
+    assert checkin.running_version(world.layout, {"version": "unknown"}, check) == "1.6.2"
+    world.layout.current.unlink()
+    assert checkin.running_version(world.layout, {}, check) == "1.6.1"
+
+
+def test_machine_facts_are_generic_and_never_the_serial(world: World):
+    (world.root / "proc/device-tree").mkdir(parents=True, exist_ok=True)
+    (world.root / "proc/device-tree/model").write_bytes(b"Raspberry Pi 4 Model B Rev 1.5\x00")
+    (world.root / "proc/cpuinfo").write_text("processor\t: 0\nHardware\t: BCM2835\nRevision\t: d03115\n"
+                                             "Serial\t\t: 10000000deadbeef\nModel\t\t: Raspberry Pi 4 Model B Rev 1.5\n")
+    (world.root / "proc/meminfo").write_text("MemTotal:        7999616 kB\nMemFree: 1 kB\n")
+    (world.root / "etc").mkdir(parents=True, exist_ok=True)
+    (world.root / "etc/debian_version").write_text("13.7\n")
+    os.environ["HASLER_MOODE_VERSION"], os.environ["HASLER_KERNEL"] = "10.3.7", "6.18.50+rpt-rpi-v8"
+    try:
+        f = checkin.machine_facts(world.layout)
+    finally:
+        del os.environ["HASLER_MOODE_VERSION"], os.environ["HASLER_KERNEL"]
+    assert f == FACTS
+    assert "deadbeef" not in json.dumps(f)
+
+
+def test_a_radio_just_switched_on_holds_its_check_in_back(world: World):
+    (world.root / "etc/machine-id").write_text("0123456789abcdef0123456789abcdef\n")
+    world.layout.upd.mkdir(parents=True, exist_ok=True)
+    slept, posted = [], []
+    fetch = lambda url: DIAG if url.endswith("/diagnostics") else HEALTH   # noqa: E731
+    rec = checkin.after_check(world.layout, _box(), NOW, fetch, lambda *a, **k: posted.append(a) or 204,
+                              uptime=lambda: 120.0, sleep=slept.append)
+    assert rec["ok"] is True and len(slept) == 1 and 1800 <= slept[0] <= 7200 and len(posted) == 1
+    assert checkin.parse_iso(rec["at"]) >= NOW + 1800
+    slept.clear()
+    checkin.after_check(world.layout, _box(), NOW + 30 * 3600, fetch, lambda *a, **k: 204, uptime=lambda: 4000.0, sleep=slept.append)
+    assert slept == []
 
 
 def test_preview_over_the_cli_with_haslerds_documents_on_stdin(world: World):
@@ -105,7 +195,7 @@ def test_preview_over_the_cli_with_haslerds_documents_on_stdin(world: World):
     out = subprocess.run(exe, env=env, input=json.dumps({"diagnostics": DIAG, "health": HEALTH}), capture_output=True, text=True)
     assert out.returncode == 0, out.stderr
     p = json.loads(out.stdout.strip().splitlines()[-1])
-    assert p["box_id"] == "box-1" and p["variant"] == "hasler-hm" and p["faults"] == ["storage"] and len(p["short_id"]) == 4
+    assert p["box_id"] == "box-1" and p["variant"] == "hasler-hm" and p["faults"]["now"] == ["storage"] and len(p["short_id"]) == 4
     assert p["short_id"] == checkin.short_id(world.root / "etc/machine-id")
     assert checkin.forbidden_in(p) == []
     assert not (world.layout.upd / "checkin.json").exists()          # a preview sends and records nothing

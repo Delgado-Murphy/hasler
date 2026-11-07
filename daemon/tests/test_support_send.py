@@ -363,3 +363,17 @@ def test_the_daily_checkin_default_is_the_same_server():
     from pathlib import Path
     layout = (Path(__file__).resolve().parents[2] / "update" / "hasler_update" / "layout.py").read_text()
     assert re.search(r'DEFAULT_CHECKIN_URL = "([^"]+)"', layout).group(1) == support_api.DEFAULT_URL
+
+
+def test_switching_the_checkin_off_asks_the_server_to_forget_this_radio_once(sendable):
+    app, api, srv, state = sendable
+    assert api.forget_checkin(background=False) is False      # the fake server has no /v1/forget: 404
+    method, url, body, token = srv.calls[-1]
+    assert (method, url, token) == ("POST", "https://ci.example/v1/forget", "the-word")
+    assert body == {"schema": 1, "box_id": "0f3a7b1e-1111-4222-8333-444455556666"}
+    assert not any(c[1].endswith("/v1/enrol") for c in srv.calls)    # never enrols just to be forgotten
+    srv.down = True
+    assert api.forget_checkin(background=False) is False      # offline: said in the log, never raised
+    app.box_paths.box_file.write_text(BOX_YAML.replace("checkin_url: https://ci.example/v1/checkin\n", 'checkin_url: ""\n'))
+    n = len(srv.calls)
+    assert api.forget_checkin(background=False) is False and len(srv.calls) == n   # nowhere to send: nothing

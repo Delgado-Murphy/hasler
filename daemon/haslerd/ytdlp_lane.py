@@ -137,6 +137,8 @@ class YtdlpLane:
         self._last_net_start = -1e18
         self._last_trigger = -1e18
         self.last_error: str | None = None
+        # Told once per failed resolve (haslerd/daycounters.py: the check-in's failures_24h).
+        self.on_failure: Callable[[], None] | None = None
 
     # -- reading the lane ------------------------------------------------------
 
@@ -245,6 +247,8 @@ class YtdlpLane:
                 return
             with self._lock:
                 self._failures.append((self.wall(), vid))
+            if self.on_failure is not None:
+                self.on_failure()
             self._maybe_trigger()
         except Exception:
             log.debug("yt-dlp lane: resolve_result failed", exc_info=True)

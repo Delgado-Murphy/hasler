@@ -467,6 +467,30 @@ class SupportApi:
             self._write(OUTBOX_FILE, "items", items)
         return {"pending": self.pending()}
 
+    def forget_checkin(self, background: bool = True) -> bool:
+        """The owner switched the daily check-in off (or handed the radio over): ask
+        the makers' server, once, to delete what it keeps for this radio
+        (``POST /v1/forget``). Never enrols for it, never raises, never retries:
+        what isn't forgotten now goes in the server's 90-day sweep. True when
+        a request was started (or, with ``background=False``, answered 2xx)."""
+        base, shared, box_id = self._server()
+        if not base or not box_id:
+            return False
+        token = shared or self._stored_token(base, box_id)
+
+        def go() -> bool:
+            try:
+                status, _ = self.transport("POST", endpoint(base, "forget"), {"schema": 1, "box_id": box_id}, token)
+                log.info("check-in: asked the makers' server to forget this radio (%s)", status)
+                return 200 <= int(status) < 300
+            except Exception as exc:        # offline, refused: the sweep does it later
+                log.info("check-in: couldn't ask the makers' server to forget this radio: %s", exc)
+                return False
+        if not background:
+            return go()
+        threading.Thread(target=go, name="checkin-forget", daemon=True).start()
+        return True
+
     def flush(self, force: bool = False) -> dict:
         """Send what waits, oldest first; stop at the first that can't reach the server.
         A refusal (the server said no) stays with its words and isn't tried again by itself."""

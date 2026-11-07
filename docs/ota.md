@@ -354,25 +354,59 @@ leaves is marked bad, so auto mode won't reinstall it.
 - **Fleet check-in** (opt-in, off by default - the promise kept): with
   `checkin: true` in box.yaml (the owner's switch, Settings → This radio →
   Updates → **Tell the makers how the radio is**) and a `checkin_url`, the
-  daily `hasler-update check --stage` ends with one HTTPS POST of about half
-  a kilobyte (`update/hasler_update/checkin.py`): `box_id`, the short id, variant,
-  version, channel, update mode, the last check's result, `last_result` (ok,
-  or rolled back and the raw reason), health ok and the failed checks, the
-  lamp's fault reasons, player restarts and stalls today, whether the yt-dlp
-  lane works, the OS updates' last result, uptime in days, how it was last
-  switched off, power cuts this month, free space, CPU °C and the throttle
-  bits. Never: an IP (the endpoint drops it), the SSID, the hostname, the
-  room, a place, what plays, the volume, standby, a phone, a station, an
-  account, a token - `checkin.FORBIDDEN_KEYS`, and a test walks every
-  payload. **See what it sends** on the page runs the same builder
-  (`hasler-update checkin --preview`) and shows today's payload verbatim.
-  Skipped on a metered connection; once a day however often the check runs;
-  a failed send is recorded (`/var/lib/hasler-update/checkin.json`, "Couldn't
-  send today" on the page) and never retried in a hurry. The endpoint is a
-  Cloudflare Worker + KV in the public repo, [`tools/checkin/`](../tools/checkin/README.md),
-  with a one-table dashboard sorted "needs a look first". The endpoint going
+  daily `hasler-update check --stage` ends with one HTTPS POST of about 850
+  bytes (schema 2, `update/hasler_update/checkin.py`; never over 2 KB):
+  - who: `box_id` (the random install UUID, the only pseudonym), the short id, the variant;
+  - software: the version **running** (haslerd's `/api/health`, else the
+    `current` link - not the check's snapshot from before a switch), channel,
+    update mode, the check's word (`ok`/`error`/`stale`), `release` (trial /
+    probation / committed / rolled back, the version it came from or went
+    back to, the raw reason when rolled back, 120 characters at most), the
+    YouTube Music helper (working, its version, failed look-ups in 24 h), the
+    OS updates in one word (`ok`/`failed`/`deferred`/`paused`/`off`/`never`)
+    and days since the last good run;
+  - health: ok and the failed checks, the lamp's fault words now and in the
+    last 24 h, player stalls / MPD restarts / haslerd restarts in the last
+    24 h (haslerd's `daycounters.py`: hourly buckets for 25 h in
+    `/var/lib/haslerd/counters.json`, written at most every 5 minutes);
+  - power and heat: how it was last switched off, power cuts in 30 days,
+    undervoltage now and in 24 h, throttled in 24 h, °C now and the hottest in 24 h;
+  - card: free MB, size in GB, `ok`/`low`/`full`/`read-only`; uptime in whole days;
+  - which hardware: the Pi model string and revision code
+    (`/proc/device-tree/model`, `/proc/cpuinfo` Revision), RAM rounded to a
+    power of two, the Debian version, kernel, moOde version.
+
+  Never: an IP (the endpoint drops it), the SSID, the hostname, the room, a
+  place, the timezone, what plays, the volume, standby, when it last played,
+  a phone, a station, an account, a token, the Pi's serial, the card's CID,
+  the boot id, and no send time (the server stamps it) -
+  `checkin.FORBIDDEN_KEYS`, and a test walks every payload. **See what it
+  sends** on the page runs the same builder (`hasler-update checkin
+  --preview`) and shows today's payload verbatim. Skipped on a metered
+  connection; once a day however often the check runs; held back a random
+  30-120 minutes when the radio was switched on less than 30 minutes before
+  (the timer's `Persistent=true` would otherwise send it the minute someone
+  comes home); a failed send is recorded (`/var/lib/hasler-update/checkin.json`,
+  "Couldn't send today" on the page) and never retried in a hurry. Switching
+  the check-in off, and the hand-over, also ask the server to forget the
+  radio (`POST /v1/forget`). The endpoint is a Cloudflare Worker + KV in the
+  public repo, [`tools/checkin/`](../tools/checkin/README.md), with a
+  dashboard (a verdict line, versions per channel, release health, the
+  YouTube Music helper, platforms, and the radios "needs a look first") and
+  alerts as issues in the makers' private support repo. The endpoint going
   away costs nothing: the POST fails quietly. The hand-over switches the
-  check-in off; the new owner says yes themselves.
+  check-in off; the new owner says yes themselves. Radios older than 1.7
+  send schema 1, which the Worker still reads.
+- **What the server keeps, and for how long:** the latest payload with its
+  arrival time to the minute (overwritten daily), deleted 90 days after the
+  radio was last seen; one compact row per day for the last 60 days, with
+  the date only (version, channel, release state, health, fault words,
+  stalls, restarts, haslerd restarts, YouTube helper, hottest °C,
+  undervoltage, a power cut, card state) - enough for a Bench soak, the
+  Stable promotion and the 14-day Stable expiry; anonymous fleet counts per
+  day (radios seen, versions per channel, faults and rollbacks per version,
+  the helper, platforms; no box ids) for 400 days. `POST /v1/forget` and
+  the dashboard's **Forget this radio** delete a radio's record at once.
 - **Owner requests** ("Send to the makers", the owner's press, not the
   check-in's switch; on by default: the makers' Worker is the release's
   `checkin_url` unless box.yaml names another, `""` switches it off): the

@@ -331,14 +331,20 @@ def test_checkin_preview_runs_the_updaters_builder_on_haslerds_documents(rig, tm
     (root / "etc/hasler").mkdir(parents=True)
     (root / "etc/hasler/box.yaml").write_text("schema: 1\nvariant: hasler-hm\nchannel: stable\nbox_id: box-77\ncheckin: true\n")
     (root / "etc/machine-id").write_text("abcdef0123456789abcdef0123456789\n")
+    from haslerd.daycounters import DayCounters
+    app.day_counters = DayCounters(None)
+    app.day_counters.event("stalled")
+    app.day_counters.sample(["heat"], 83.0)
     api = checkin_api.CheckinApi(app, launcher=ROOT / "update/bin/hasler-update")
     status, doc = api.route("GET", "/api/checkin/preview", None)
     assert status == 200 and doc["ok"]
     p = doc["payload"]
-    assert p["box_id"] == "box-77" and p["variant"] == "hasler-hm" and p["faults"] == ["storage"]
-    assert p["last_shutdown"] == "power-cut" and p["power_cuts_month"] == 1 and p["temp_c"] == 61
-    assert p["player"]["stalls_today"] == 1 and len(p["short_id"]) == 4
-    assert doc["bytes"] < 2048 and '"box_id"' in doc["text"]
+    assert p["schema"] == 2 and p["box_id"] == "box-77" and p["variant"] == "hasler-hm"
+    assert p["faults"] == {"now": ["storage"], "day": ["heat", "storage"]}
+    assert p["power"]["last_off"] == "power-cut" and p["power"]["cuts_30d"] == 1
+    assert p["temp_c"] == {"now": 61, "max_24h": 83}
+    assert p["player"]["stalls_24h"] == 1 and len(p["short_id"]) == 4
+    assert doc["bytes"] < 1100 and '"box_id"' in doc["text"]
     blob = json.dumps(p)
     for word in ("Casa", "Kitchen", "Radio Clásica", "ssid", "hostname", "room"):
         assert word not in blob, word

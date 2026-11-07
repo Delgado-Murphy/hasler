@@ -67,10 +67,11 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 Restart=always
 RestartSec=3
 User=pi
-# GPIO and I2C access without running as root; systemd-journal so the
+# GPIO and I2C access without running as root; video for vcgencmd (/dev/vcio: the throttle
+# word on kernels without the sysfs file, lamp/faults.py); systemd-journal so the
 # support bundle (/api/diagnostics/bundle, web/diagnostics.py) can read the
 # haslerd / mpd journal tail without sudo.
-SupplementaryGroups=gpio i2c audio systemd-journal
+SupplementaryGroups=gpio i2c audio video systemd-journal
 # /var/lib/haslerd, owned by User=. state.json, keys.yaml, settings.json, secrets/.
 StateDirectory=haslerd
 

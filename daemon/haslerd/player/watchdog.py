@@ -111,6 +111,8 @@ class StreamEvents:
         self._lock = threading.Lock()
         self._recent: deque = deque(maxlen=EVENTS_RECENT)
         self._lines = 0
+        # Told each action as it is added (haslerd/daycounters.py counts stalls and MPD restarts).
+        self.on_add: Callable[[str], None] | None = None
         if self.path is not None:
             try:
                 lines = self.path.read_text().splitlines()
@@ -130,6 +132,11 @@ class StreamEvents:
                                                      "source": preset.source},
                "mpd_state": state or None, "error": error or None}
         doc.update(extra)
+        if self.on_add is not None:
+            try:
+                self.on_add(action)
+            except Exception:
+                log.debug("stream events: on_add failed", exc_info=True)
         with self._lock:
             self._recent.append(doc)
             if self.path is None:

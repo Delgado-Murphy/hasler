@@ -28,3 +28,12 @@ SUPPORT_REPO = "Delgado-Murphy/hasler-support"
 # radios' own words across all radios a day. Defaults when left out: 30 and 200.
 # ENROL_PER_HOUR = "30"
 # REPORTS_ALL_PER_DAY = "200"
+# The links in alert issues (alerts.js). ALERTS = "off" mutes the alert issues altogether.
+DASHBOARD_URL = "https://hasler-checkin.delgado-murphy.workers.dev"
+# ALERTS = "off"
+
+# The daily job (worker.js scheduled -> daily): yesterday's anonymous fleet roll-up (fleet:<date>,
+# 400 days), records not seen for 90 days deleted, the quiet / YouTube / trend alerts.
+# Free plan: cron triggers are included; this one does 1 KV write + one per forgotten radio + alerts.
+[triggers]
+crons = ["0 6 * * *"]

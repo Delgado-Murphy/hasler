@@ -237,4 +237,15 @@ def health_report(app: Any, now: float | None = None) -> dict:
         "components": _components(app),
         # Debian security updates (web/software.py Software.os_updates; None = not on this radio).
         "os_updates": _os_updates(app),
+        # The last 24 hours, counted (haslerd/daycounters.py; None without them): the check-in's
+        # stalls, MPD and haslerd restarts, fault words, hottest reading, undervoltage, yt-dlp failures.
+        "day": _day(app),
     }
+
+
+def _day(app: Any) -> dict | None:
+    fn = getattr(getattr(app, "day_counters", None), "sums", None)
+    try:
+        return fn() if callable(fn) else None
+    except Exception:
+        return None

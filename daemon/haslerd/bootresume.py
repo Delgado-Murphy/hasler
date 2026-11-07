@@ -39,6 +39,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -475,13 +476,22 @@ def _read_power_cuts(state_dir: Path) -> dict:
 def power_cuts(state_dir: Path | None, now: float | None = None) -> dict:
     """For /api/diagnostics: ``{"total": n, "month": n (this calendar month,
     local time), "last_at": iso | None, "hint": bool (month >=
-    PLUG_TIMER_HINT_FROM: a plug timer or wall switch is the likely cause)}``."""
+    PLUG_TIMER_HINT_FROM: a plug timer or wall switch is the likely cause),
+    "last_30d": n (rolling: the check-in's ``power.cuts_30d``)}``."""
+    now = time.time() if now is None else now
     doc = _read_power_cuts(Path(state_dir)) if state_dir is not None else {"total": 0, "events": []}
     events = [e for e in (doc.get("events") or []) if isinstance(e, str)]
-    this_month = time.strftime("%Y-%m", time.localtime(time.time() if now is None else now))
+    this_month = time.strftime("%Y-%m", time.localtime(now))
     month = sum(1 for e in events if e.startswith(this_month))
+    last_30d = 0
+    for e in events:
+        try:
+            if now - datetime.strptime(e, "%Y-%m-%dT%H:%M:%S%z").timestamp() < 30 * 86400:
+                last_30d += 1
+        except ValueError:
+            continue
     return {"total": int(doc.get("total") or 0), "month": month, "last_at": events[-1] if events else None,
-            "hint": month >= PLUG_TIMER_HINT_FROM}
+            "hint": month >= PLUG_TIMER_HINT_FROM, "last_30d": last_30d}
 
 
 def clock_synced(timesync_dir: Path = TIMESYNC_DIR) -> bool:

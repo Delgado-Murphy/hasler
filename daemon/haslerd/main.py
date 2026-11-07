@@ -42,6 +42,7 @@ from .bootresume import (AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, nigh
 from .ha.rest import HomeAssistant
 from .player.bluetooth import Bluetooth
 from .player.btvolume import PhoneVolume
+from .daycounters import FILE as DAY_FILE, DayCounters
 from .lamp import faults as lamp_faults
 from .lamp import handover, policy
 from .lamp.contract import BoxState, LampDriver, Look
@@ -1564,6 +1565,9 @@ def build_stream_watchdog(actions: Actions, app: Any, keeper: LampKeeper | None)
     # On the card (/var/lib/haslerd), not /var/log: that is log2ram, lost at a power cut.
     settings_file = getattr(app, "settings_file", None)
     events = StreamEvents(Path(settings_file).parent / EVENTS_FILE if settings_file else None)
+    counters = getattr(app, "day_counters", None) if app is not None else None
+    if counters is not None:
+        events.on_add = counters.event          # stalls and MPD restarts, for the check-in's 24 h counts
     watchdog = StreamWatchdog(actions, night=night, events=events, lock=getattr(app, "lock", None))
     actions.stalled = watchdog.stalled_on      # its key plays it again, not "again"
     if keeper is not None:
@@ -1609,6 +1613,13 @@ def main(argv=None) -> int:
         # power was cut 4 times this month - a plug timer?" hint.
         cuts = note_power_cut(box_paths(args).state)
         log.info("power cuts counted: %d", cuts.get("total", 0))
+    # The last 24 hours, counted for the daily check-in (daycounters.py, /api/health "day").
+    counters = None if args.fake else DayCounters(box_paths(args).state / DAY_FILE)
+    app.day_counters = counters
+    if counters is not None and kind == "restart":
+        counters.add("daemon_starts", flush=True)     # a crash loop must not hide behind a cache
+    if counters is not None and getattr(app, "ytdlp_lane", None) is not None:
+        app.ytdlp_lane.on_failure = lambda: counters.add("ytdlp_failures")
     first_sound = FirstSound(amp_card(actions.player)) if kind in ("clean", "power-cut") else None
     publisher = HaPublisher(app)
     confirm = getattr(app, "confirm", None)
@@ -1637,7 +1648,14 @@ def main(argv=None) -> int:
         if not args.fake:
             state_dir = box_paths(args).state
             update_state = getattr(software, "state_file", None) if software is not None else None
-            keeper.faults = lambda: lamp_faults.check(state_dir=state_dir, update_state=update_state, panel=panel)
+            def faults_counted() -> list:
+                found = lamp_faults.check(state_dir=state_dir, update_state=update_state, panel=panel)
+                if counters is not None:     # the same 30 s poll feeds the check-in's 24 h counts
+                    power = lamp_faults.throttled() if counters.power_due() else None
+                    counters.sample(found, lamp_faults.cpu_temp_c(), power)
+                return found
+
+            keeper.faults = faults_counted
             try:
                 from . import health
                 release = str(health._version())        # the running release, as "About this radio" says
@@ -1789,6 +1807,8 @@ def main(argv=None) -> int:
             web.close()
         if keeper is not None:
             keeper.close()
+        if counters is not None:
+            counters.close()
         if getattr(actions, "dsp", None) is not None:
             actions.dsp.close()
         close = getattr(actions.player, "close", None)

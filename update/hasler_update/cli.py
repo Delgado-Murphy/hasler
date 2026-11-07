@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
                                  ensure_ascii=False))
                 return 0
             box = {**Checker(layout).box, "checkin": True}      # asked for by hand: the switch is implied
-            rec = checkin_mod.after_check(layout, box) or {}
+            rec = checkin_mod.after_check(layout, box, uptime=lambda: None) or {}   # by hand: no boot hold
             print(json.dumps(rec, indent=2))
             return 0 if rec.get("ok") else 1
         if args.cmd == "status":

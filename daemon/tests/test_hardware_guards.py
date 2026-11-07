@@ -212,18 +212,18 @@ class TestReadings:
         assert faults.throttled(f) is None
 
     def test_power_cuts_are_counted_atomically_and_per_month(self, tmp_path):
-        assert power_cuts(tmp_path) == {"total": 0, "month": 0, "last_at": None, "hint": False}
+        assert power_cuts(tmp_path) == {"total": 0, "month": 0, "last_at": None, "hint": False, "last_30d": 0}
         now = time.time()
         for i in range(3):
             note_power_cut(tmp_path, now + i)
         doc = power_cuts(tmp_path, now)
-        assert doc["total"] == 3 and doc["month"] == 3 and doc["hint"] is True and doc["last_at"]
+        assert doc["total"] == 3 and doc["month"] == 3 and doc["hint"] is True and doc["last_at"] and doc["last_30d"] == 3
         kept = json.loads((tmp_path / "power-cuts.json").read_text())
         assert kept["total"] == 3 and len(kept["events"]) == 3
         assert not list(tmp_path.glob(".power-cuts.json-*"))     # the tmp file is gone
         # Last month's cuts don't count this month.
         last_month = power_cuts(tmp_path, now + 40 * 86400)
-        assert last_month["total"] == 3 and last_month["month"] == 0 and last_month["hint"] is False
+        assert last_month["total"] == 3 and last_month["month"] == 0 and last_month["hint"] is False and last_month["last_30d"] == 0
         assert note_power_cut(None) == {"total": 0, "events": []}
 
     def test_describe_backends_names_what_was_opened(self):
@@ -405,7 +405,7 @@ class TestRestart:
         text = (Path(__file__).resolve().parents[2] / "config" / "sudoers" / "haslerd").read_text()
         assert "/usr/bin/systemctl reboot" in text and "/bin/systemctl reboot" in text
         unit = (Path(__file__).resolve().parents[2] / "config" / "haslerd.service").read_text()
-        assert "SupplementaryGroups=gpio i2c audio systemd-journal" in unit
+        assert "SupplementaryGroups=gpio i2c audio video systemd-journal" in unit
 
 
 # -- the knob drift detector ------------------------------------------------------------

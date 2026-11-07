@@ -106,7 +106,7 @@ if [[ ! -e /dev/i2c-1 ]]; then
     warn "/dev/i2c-1 missing and no raspi-config - enable I2C by hand"
   fi
 fi
-for group in gpio i2c audio; do
+for group in gpio i2c audio video; do
   if getent group "$group" >/dev/null && ! id -nG "$DUSER" | grep -qw "$group"; then
     say "adding $DUSER to $group"
     run usermod -aG "$group" "$DUSER"
