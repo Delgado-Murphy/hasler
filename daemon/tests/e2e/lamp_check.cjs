@@ -28,7 +28,7 @@ let failed = 0, passed = 0;
 const EXPECT = {
   min_duty: {red: 0.015, green: 0.005625, blue: 0.03},
   balance: {red: 1, green: 1.25, blue: 0.6667},
-  palette: {amber: {day: [1, 0.165, 0], night: [1, 0.135, 0]}, ember: [1, 0.1, 0], blue: [0.05, 0, 1]},
+  palette: {amber: {day: [1, 0.185, 0], night: [1, 0.155, 0]}, ember: [1, 0.06, 0], blue: [0.05, 0, 1]},
   level_gain: {amber: 1, ember: 1, blue: 1.6818},
   levels: {ember_day: 0.275, ember_night: 0.12},
 };
@@ -153,7 +153,7 @@ function near(a, b, path = ''){
       await page.waitForSelector('#lchkResume', {timeout: 8000});
       await page.click('#lchkResume');
       assert((await q(page)).includes('your amber'), 'after resume: ' + await q(page));
-      await pick(page, 'b'); await pick(page, 'b'); await pick(page, 'a');   // 0.17, 0.16, 0.165
+      await pick(page, 'b'); await pick(page, 'b'); await pick(page, 'a');   // from the standard 0.17: 0.19, 0.18, 0.185
       assert((await q(page)).includes('At night'), await q(page));
       await pick(page, 'b'); await pick(page, 'same');                        // night 0.135
     });

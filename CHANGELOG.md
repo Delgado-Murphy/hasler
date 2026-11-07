@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.3.0 - 2026-11-07
+
+The pilot lamp, rebuilt to feel calm, warm and immediate.
+
+- A new light language: three colours (amber = the radio, ember = asleep, a
+  soft blue = a phone is in charge) and six behaviours (steady; an uneven,
+  living breath and a slow one for "busy, don't unplug"; a quick brighten
+  when you press a key; a sag for "no" or "failed"; a repeating double
+  brighten when the radio asks you to press a key; a slow swell). Colour
+  changes close and reopen the lamp instead of passing through muddy shades.
+  Red, magenta, pale amber and warm white are gone - failures and setup are
+  told by movement, which colour-blind owners can read too.
+- Instant: the lamp answers a key the moment it goes down (about 0-20 ms,
+  was about 220 ms), before the radio does anything slow; a phone that
+  starts playing shows within a quarter of a second (was up to 2 s).
+- Never dark by mistake: no dark moment when the radio's software starts or
+  restarts during an update; a steady ember at shutdown; a slow "busy" breath
+  if the software ever hangs.
+- Settings -> Pilot lamp: "What the lamp means", each with Show me on the
+  real lamp; Brightness (Low / Normal / Bright); key replies on or off;
+  Identify this radio (also for the other Haslers in Rooms). The front page
+  says what the lamp shows in words ("Lamp: asleep").
+- Maker tools -> Lamp colours: a guided Lamp check (about six steps, each a
+  choice between two samples on the real lamp) that calibrates floors,
+  amber by day and night, the standby glow and blue's brightness; saved in
+  the radio's own settings, so updates keep it.
+- Realistic low-brightness limits and a planned amber-to-ember blend: no
+  more red drift or colour flicks when the lamp is dim.
+- The Excelsior gets the pilot lamp, and holding key 0 shows the same
+  five-second fade to shutdown as the HM's tone knob.
+
 ## 1.2.2 - 2026-11-07
 
 - Fixed: when a phone took over (Bluetooth, AirPlay, Spotify Connect), the
