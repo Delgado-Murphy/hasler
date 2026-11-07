@@ -538,6 +538,7 @@ dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);overflow:auto;overscroll
 .reset-row{display:flex;flex-wrap:wrap;align-items:center;gap:0 18px}
 .reset-row .link{min-height:44px}
 .ss-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ss-group{margin:8px 2px -2px;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.14em;text-transform:uppercase}
 .ss-set{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--well)}
 .ss-set.on{border-color:var(--amber)}
 .ss-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
@@ -9057,8 +9058,11 @@ function startFromSet(opener){
     busy = false;
   };
   const list = h('ul', {class:'ss-list', 'aria-label':'Starter sets'});
+  let group = '';   // sets come grouped by listener (config/presets group:), youngest first; a heading where the group changes
   for (const set of sets){
     const on = set.id === cfg.starter;
+    if (set.group && set.group !== group) list.append(h('li', {class:'ss-group', role:'presentation'}, h('span', {role:'heading', 'aria-level':'3'}, set.group)));
+    group = set.group || group;
     list.append(h('li', {class:'ss-set' + (on ? ' on' : ''), 'data-set': set.id},
       h('div', {class:'ss-head'}, h('h3', null, set.title), on ? h('span', {class:'ss-now'}, cfg.factory ? 'On the keys now' : 'Your set') : null),
       set.blurb ? h('p', {class:'ss-blurb'}, set.blurb) : null,

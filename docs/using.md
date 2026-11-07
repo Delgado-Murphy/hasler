@@ -67,8 +67,10 @@ The radio has six numbered keys and one key marked **PU**. (The Excelsior has
 a few more; see [The Excelsior's keys](#the-excelsiors-keys) below.) Out of
 the box the numbered keys hold **the built-in stations**: a starter set of
 stations and YouTube Music lists chosen to show what the radio can do. There
-are six sets to start from (classical, jazz, pop, flamenco and folk, the family
-kitchen, and the eclectic one the radio comes with); pick another in
+are ten sets to start from, grouped by who's listening: little ones (songs and
+lullabies), kids and family, teens, indie and discovery, and for grown-ups the
+eclectic one the radio comes with, classical, jazz and soul, golden oldies,
+España, and world and travel. Pick another in
 [Edit keys](#edit-keys) → **Start from a set…**, then change any key you like.
 
 | You do this | What happens |

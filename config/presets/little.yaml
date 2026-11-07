@@ -1,0 +1,21 @@
+# Starter set: Little ones, 0 to 6 (the format: eclectic.yaml). Songs by day,
+# lullabies by night; nothing on it a parent has to skip.
+pack: little
+title: "Little ones"
+group: "Little ones"
+blurb: "Songs to sing and clap along to, a children's radio from Uruguay, and lullabies for bedtime."
+presets:
+  - {n: 1, name: "Canciones infantiles", short: "Canciones", ytm: RDCLAK5uy_lFmE-qSLpSYkAf1iI2dikJmNRNimenYH4,
+     why: "The songs every child knows, one after another. Tap again for the next one."}
+  - {n: 2, name: "Nursery rhymes", short: "Nursery", ytm: RDCLAK5uy_kIdiH02YL21o6iOEuDqTNq6bFpzBBTjL8,
+     why: "The classic nursery rhymes in English: a second language, sung."}
+  - {n: 3, name: "Radio Pipí Cucú", short: "Pipí Cucú", station: uy-radio-pipi-cucu,
+     why: "A real radio station for children, live from Montevideo: songs and stories."}
+  - {n: 4, name: "Super Simple Español", short: "Super Simple", ytm: OLAK5uy_mR_9KqHr-bVvWZFhNir3Vj95kY5ivZUvQ,
+     why: "A whole album of short, happy songs in Spanish, made for the very small."}
+  - {n: 5, name: "Classical music for kids", short: "Classical", ytm: OLAK5uy_nYc-8SR5E0GYKwaZ0ErE-VbpxBj3jUnyY,
+     why: "Mozart, Vivaldi and friends, the bits children love first."}
+  - {n: 6, name: "Calm Radio Lullaby", short: "Lullaby", station: ca-calm-radio-lullaby,
+     why: "Soft instrumental lullabies all night, no voices. The bedtime key."}
+  - {n: 7, name: "Nanas para dormir", short: "Nanas", ytm: OLAK5uy_lSRBrK-ra29Am6Nb9V96pA5T85Sm80W7Y,
+     why: "Spanish lullabies, sung gently, for the last song of the day."}

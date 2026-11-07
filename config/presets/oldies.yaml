@@ -1,0 +1,21 @@
+# Starter set: Golden oldies (the format: eclectic.yaml). The '50s to the
+# '80s, copla, boleros and the cantautores: a set to give a grandparent.
+pack: oldies
+title: "Golden oldies"
+group: "Grown-ups"
+blurb: "The songs of the '60s, '70s and '80s, copla without end, boleros from Mexico City and 45s from New Jersey."
+presets:
+  - {n: 1, name: "Éxitos de los '80", short: "Los 80", ytm: RDCLAK5uy_k_2bOWe-ThBcMDFFdd5oYe00RVhVH5TYs,
+     why: "Pop en español from the '80s, every one a song you can sing. Tap again to skip."}
+  - {n: 2, name: "Melodía FM", short: "Melodía", station: es-melodia-fm,
+     why: "The station of the great Spanish and international songs, all day."}
+  - {n: 3, name: "Lola Flores radio", short: "Lola Flores", ytm: RDEMo_LYHAjSQXW8TeGqyPFsCA,
+     why: "Start with La Faraona and let it run: copla without end."}
+  - {n: 4, name: "The Hits: '70s", short: "'70s Hits", ytm: RDCLAK5uy_myl2Kxu04jRiia7vYY6jnavWDeUP8xLhY,
+     why: "The international hits of the '70s, disco included."}
+  - {n: 5, name: "El Fonógrafo", short: "Fonógrafo", station: mx-el-fonografo,
+     why: "From Mexico City: boleros, tríos and danzón, the golden age of Latin song."}
+  - {n: 6, name: "WFMU Rock'n'Soul", short: "Rock'n'Soul", station: us-wfmu-rock-n-soul-radio,
+     why: "Old 45s of '50s and '60s rock'n'roll and soul, from a cult New Jersey station."}
+  - {n: 7, name: "Joan Manuel Serrat radio", short: "Serrat", ytm: RDEMytzrATzSXHnuprTMf_F5vw,
+     why: "Serrat and the cantautores who sang beside him, without end."}
