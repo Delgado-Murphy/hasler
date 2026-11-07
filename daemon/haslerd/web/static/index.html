@@ -7024,11 +7024,8 @@ async function helpShare(){
 }
 
 /* ---- Support: Something's wrong? · Tell the makers · From the makers · the daily check-in ---- */
-// radioInfo: GET /api/info (short_id: the radio's four-letter name for the makers; makers_contact: box.yaml makers.contact).
-let radioInfo = null;
-async function loadInfo(){
-  try { const r = await api('GET', '/api/info'); if (r.ok && r.json) radioInfo = r.json; } catch (_) {}
-}
+// radioInfo / loadInfo() (GET /api/info) are shared with Make it yours above: short_id is the radio's
+// four-letter name for the makers, makers_contact box.yaml makers.contact.
 // "Delgado & Murphy (hola@…)" when the makers left a contact, else the people who built the radio.
 function makersWho(){ const c = radioInfo && radioInfo.makers_contact; return c ? 'Delgado & Murphy (' + c + ')' : 'the people who built your radio'; }
 function contactIsEmail(){ const c = radioInfo && radioInfo.makers_contact; return !!(c && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c)); }

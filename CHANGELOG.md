@@ -1,7 +1,98 @@
 # Changelog
 
-## 1.4.1 - unreleased
+## 1.5.0 - 2026-11-07
 
+The owner's round: Settings, the first setup, moving the radio, what a radio
+ships with, and support. Seven expert reviews (UX, UI, onboarding, moving,
+hardware, defaults, support) turned into one release.
+
+- **The front page tells the truth.** The dial's needle has two end stops:
+  "Phone" (the phone's name) and "From the page" (the station or playlist
+  started from Browse), so it never parks on the last key when the music isn't
+  from a key. A key is drawn *down* (pressed, or latched on the Excelsior)
+  separately from *lit* (its preset plays); PU is lit only when PU chose the
+  source. AirPlay and Spotify Connect show their song title like Bluetooth
+  does; "waiting for a phone" only while PU parked the radio and none came;
+  after a phone stops, the needle holds for the 20 s grace, then slides to the
+  resumed key or parks un-bolded. After two minutes of a dead stream: "The
+  station may be off the air - try another key".
+- **Settings, reorganised.** Sound · Keys · Phones · Music accounts · Rooms ·
+  Pilot lamp · This radio (and the hidden Maker tools). The Spotify and
+  YouTube Music accounts live together under Music accounts; the room name and
+  Identify under Rooms; knob calibration at the bottom of Sound ("If a knob
+  feels off"); one "What phones call the radio" row; the pilot lamp's settings
+  before its glossary (now folded); the other addresses folded at the bottom of
+  This radio. Old links still work. Each page says once how its changes are
+  kept; the seven browser pop-ups are the page's own sheet; an instant change
+  the radio refused shows the reason next to the control; Undo toasts say the
+  old value; "Needs attention" also lists a Spotify key with no account, a
+  sign-in code waiting, an update that rolled back, Home Assistant out of
+  reach, the YouTube Music helper down, a fault - and a dot on the front page's
+  gear while it has rows. Declining "Allow this address" leaves an Allow in the
+  toast. Many small things: disclosure chevrons, real checkboxes, skeleton
+  rows, an opaque save bar, the wizard's Cancel in reach, Show/Hide on the Home
+  Assistant token, friendly names, an empty state for the other Haslers,
+  em dashes everywhere.
+- **Make it yours.** A new radio shows, on the Settings home, the choices
+  that are still untouched - how loud it may go (first: the 1964 speaker),
+  what's on the keys, the room's name, where it stands, a phone, Spotify,
+  YouTube Music, Home Assistant, a printed card - computed from what the radio
+  knows (`volume_limit_set`, `factory`, `installed_at`), with Skip and Hide
+  kept on the radio; done rows fold into one line; when it's all done, "That's
+  it. It's yours." and a green OK from the lamp. The front page carries one
+  quiet line for the first week, and says so when the radio is on its setup
+  hotspot. The Sound page explains the key-6 recipe while the ceiling is
+  unset. The Wi-Fi page finally describes the lamp it has (amber CQ, green OK,
+  red then CQ), in both languages, with errors next to the field, a real
+  "waiting for the key press" state and "Look again". Maker tools gets a
+  **Handover** readiness list and a printable **welcome card** (address,
+  setup network and - if ticked - its password, the lamp legend, off/asleep,
+  "dark after plugging in", the makers' contact, the radio's short id).
+- **Starter sets.** The keys ship from a set chosen by taste, not by region:
+  Eclectic (the default), Classical & calm, Jazz & soul, Pop & hits · España,
+  Raíces, Family kitchen - each six stations and YouTube Music playlists that
+  play on a signed-out radio, named by catalogue id so a stream fix reaches
+  every radio (`config/presets/`), with a seventh for the Excelsior's Tape.
+  "Start from a set" at the bottom of Edit keys and from Make it yours; Reset
+  keys goes back to the chosen set; `starter` in hasler.txt/box.yaml
+  preselects. Keys you never touched follow the release (`defaults_rev`; a
+  migration moves old URL presets to ids). A `sleep` verb for holds and
+  combinations. New Hasler HMs default to `hasler-hm-hat`, which now inherits
+  its behaviour from `hasler-hm.yaml` (`extends`). The lamp's place comes from
+  the clock's time zone until you choose one. The Excelsior owner has a
+  section of their own in the guide.
+- **Moving this radio** (This radio): another room, another home, a new
+  owner. Networks the radio knows, each with **Forget** (a key press from the
+  home network); the setup network's name and password to write down, or
+  print; **Hand over to a new owner** (a key press): forgets your Wi-Fi
+  networks and makes a new setup password shown once, your Spotify, YouTube
+  Music and Home Assistant sign-ins, phones, keys, stations, the room's name
+  and the allowed addresses; keeps the calibration, the lamp, the volume
+  ceiling and the updates; restarts into setup mode. After joining a new
+  Wi-Fi the lamp blooms green and taps OK (as the guide always said), the
+  other rooms and Home Assistant are told at once, and "New Wi-Fi" shows for a
+  day. The setup network is named after the room ("Hasler Kitchen") and its
+  page says which radio it is and can blink its lamp; a new radio gets a
+  stable name (`hasler-ab12`) and its IP shows beside it. **Clock and place**
+  (offered once from Home Assistant). A key can open the setup network
+  (`wifi_setup`, unbound by default). Reset keys keeps a day's backup with
+  Undo. "If it moves" on the key card.
+- **Hardware guards.** The volume ceiling has a top the maker sets per model
+  (`audio.volume_limit_max`, 90 on the HM; box.yaml lowers it per radio) that
+  the page can't exceed; mono, the defaults and the amp card come from the
+  model's `audio:` block. The lamp's SOS now says why (card full, keys dead,
+  no sound card, too hot, update stuck) on the Lamp page and This radio, and
+  says when it cleared. **How the radio is** on This radio: Wi-Fi and signal,
+  internet, temperature and throttling, the memory card, how it was last
+  switched off and how often the power was cut, running since, player and
+  tone DSP, the last update - with **Restart the radio** (a key press). Maker
+  tools: which descriptor file is loaded, what the panel found on the bus, a
+  copyable support bundle with the secrets out, "Lamp never checked on this
+  radio", the LED's part id stamped into the check, an `os_updates` switch; a
+  "This Wi-Fi is a phone hotspot or capped" switch under Updates; "Back to as
+  shipped" on an owner's calibrated knob; a knob that reads past its
+  calibration or wanders while still says so (and a volume excursion to full
+  scale is held back for that poll).
 - The pilot lamp's standard calibration is the bench LED's Lamp check (floors,
   balance, palette, green gain, ember levels), shipped in every model's file,
   so a radio with the same LED starts calibrated and "Back to standard" in the
