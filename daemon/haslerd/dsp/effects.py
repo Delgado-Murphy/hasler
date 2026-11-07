@@ -183,23 +183,22 @@ def _hz(id: str, label: str, lo: float, hi: float, step: float, default: float) 
 
 
 EFFECTS: dict[str, Effect] = {e.id: e for e in (
-    Effect("tilt", "Tone (tilt)",
-           "Bass and treble move in opposite ways around a pivot, like the tone "
-           "control of an old radio: left is warmer, right is brighter. The "
-           "strongest of the tone effects, because it works where a small "
+    Effect("tilt", "Tone",
+           "Like the tone control of an old radio: left is warmer, right is "
+           "brighter. The strongest of these, because it works where a small "
            "speaker really plays.",
            (_db("range_db", "Range", 2, 12, 6, plusminus=True),
             _hz("pivot", "Pivot", 300, 2000, 50, 800)),
            ("Warmer", "Brighter"), _tilt, bipolar=True, rest=0.5),
     Effect("treble", "Treble",
-           "A treble shelf: left cuts the highs, right lifts them.",
+           "Left takes the top off, right makes it sparkle.",
            (_db("cut_db", "Cut at the left end", 0, 18, 12),
             _db("boost_db", "Boost at the right end", 0, 9, 6),
             _hz("freq", "Corner", 1000, 8000, 100, 2500)),
            ("Darker", "Brighter"), _treble, bipolar=True, rest=0.5),
     Effect("bass", "Bass",
-           "A bass shelf: left thins the low end, right fills it out (never "
-           "past what the speaker gets with the knob in the middle).",
+           "Left makes the sound lighter, right fills it out (never past what "
+           "the speaker gets with the knob in the middle).",
            (_db("cut_db", "Cut at the left end", 0, 18, 12),
             _db("boost_db", "Boost at the right end", 0, 9, 6),
             _hz("freq", "Corner", 60, 500, 10, 200)),
@@ -213,8 +212,7 @@ EFFECTS: dict[str, Effect] = {e.id: e for e in (
             Param("quiet_below", "Starts below volume", "%", 20, 100, 5, 70)),
            ("Off", "Full loudness"), _loudness, rest=0.0),
     Effect("presence", "Presence",
-           "A wide peak where voices live (2-4 kHz): right brings speech and "
-           "singers forward, left sets them back.",
+           "Right brings speech and singers forward, left sets them back.",
            (_db("range_db", "Range", 2, 9, 6, plusminus=True),
             _hz("freq", "Centre", 1500, 5000, 100, 3000)),
            ("Recessed", "Forward"), _presence, bipolar=True, rest=0.5),
@@ -227,8 +225,7 @@ EFFECTS: dict[str, Effect] = {e.id: e for e in (
            ("Today", "1960s radio"), _vintage, rest=0.0),
     Effect("width", "Stereo width",
            "From mono (left) to full stereo (right). Does nothing while Mono "
-           "is on (Settings): the radio already sums left and right before "
-           "any effect.",
+           "is on: the radio already mixes left and right together.",
            (), ("Mono", "Stereo"), _width, rest=1.0),
     Effect("none", "No effect", "The knob does nothing to the sound.", (), ("", ""), _none),
 )}

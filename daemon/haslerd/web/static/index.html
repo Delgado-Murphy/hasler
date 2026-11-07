@@ -153,13 +153,15 @@ button{cursor:pointer}
 .knob:active{cursor:grabbing}
 .knob:focus-visible{outline:2px solid var(--amber);outline-offset:-6px}
 .vol-lbl{color:var(--brass);font:9.5px/12px var(--mono);letter-spacing:.14em;font-variant-numeric:tabular-nums}
-.tone{display:flex;align-items:center;gap:10px;margin:14px 14px 0;color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.tone{position:relative;display:flex;align-items:center;gap:10px;margin:14px 14px 0;color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:default}
 .tone[hidden]{display:none}
-.tone-bar{position:relative;flex:1;height:4px;border-radius:2px;background:linear-gradient(90deg,#6B4A2A,#3A2A1C 50%,#E8CA8A)}
+.tone-bar{position:relative;flex:1;height:2px;border-radius:1px;background:linear-gradient(90deg,#6B4A2A,#3A2A1C 50%,#E8CA8A);outline-offset:6px}
 .tone-mid{position:absolute;left:50%;top:-3px;width:1px;height:10px;background:#5A4128}
-.tone-dot{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;background:radial-gradient(circle at 40% 35%,#F0D59A,#9A7638);box-shadow:0 0 6px rgba(255,178,56,.35);transition:left .25s}
+.tone-dot{position:absolute;top:50%;width:2px;height:12px;margin:-6px 0 0 -1px;border-radius:1px;background:#E8CA8A;transition:left .25s}
+.tone-tip{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%);padding:4px 8px;border-radius:6px;background:#2A1D13;color:var(--cream);font:12px/16px var(--sans);letter-spacing:0;text-transform:none;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s}
+.tone:hover .tone-tip,.tone:focus-within .tone-tip{opacity:1}
 .tone-db{min-width:5.5em;text-align:right;color:var(--brass);font-variant-numeric:tabular-nums}
-.tone-off{color:var(--red-text)}
+.tone-off{color:var(--muted)}
 .remote.offline .controls,.remote.offline .tone,.remote.offline .bank{opacity:.55;filter:saturate(.5);transition:opacity .3s}
 .remote.offline .bank{opacity:.35;filter:saturate(.3)}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
@@ -675,8 +677,6 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .fx-ph label{color:var(--cream);font:600 14px/18px var(--sans)}
 .fx-pos{display:flex;flex-direction:column;gap:6px}
 .fx-ends{display:flex;justify-content:space-between;gap:12px;color:var(--muted);font:11px/14px var(--sans)}
-.fx-try{margin:0;padding:10px 12px;border-left:2px solid var(--amber);background:rgba(255,178,56,.06);color:var(--cream);font:13.5px/18px var(--sans)}
-.fx-try b{color:var(--amber);font-variant-numeric:tabular-nums}
 .fx-pars details.how > div{display:flex;flex-direction:column;gap:4px}
 .wz{display:flex;flex-direction:column;gap:14px}
 .wz-say{margin:0;color:var(--title);font:600 26px/31px var(--serif)}
@@ -1024,7 +1024,8 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
     <div class="tone" id="tone" hidden aria-live="off">
       <span>Tone</span>
       <span aria-hidden="true" id="toneLo">Dark</span>
-      <div class="tone-bar" role="meter" id="toneBar" aria-label="Tone" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="tone-mid"></span><span class="tone-dot" id="toneDot" style="left:50%"></span></div>
+      <div class="tone-bar" role="meter" id="toneBar" tabindex="0" aria-label="Tone" aria-describedby="toneTip" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="tone-mid"></span><span class="tone-dot" id="toneDot" style="left:50%"></span></div>
+      <span class="tone-tip" id="toneTip" role="tooltip">Turn the knob on the radio</span>
       <span aria-hidden="true" id="toneHi">Bright</span>
       <span class="tone-db" id="toneDb">—</span>
     </div>
@@ -1201,7 +1202,7 @@ const SHORT = {none:'Nothing', preset:'Play music', cycle_source:'Cycle sources'
   ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler', bluetooth:'Bluetooth'};
 // What each choice in the "A tap… / Holding…" list says under its name.
 const VERB_DESC = {
-  cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Keys & knobs',
+  cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Source key & knobs',
   join_group:'Join the music playing on another Hasler',
   bluetooth:'Plays a phone through the radio. Press again for the next track, hold to pause',
   ha_light:'Turn lights on or off, dim them, change their colour',
@@ -1808,8 +1809,8 @@ function paintTone(){
   $('toneBar').setAttribute('aria-valuenow', String(t.value));
   const db = t.treble_db, off = status.knob_on === false;
   // Newer radios say what the knob does ("Warmer · 40%"); older ones only a treble dB.
-  const txt = off ? 'Knob off' : (t.text ? t.text
-    : (db === 0 ? 'Flat' : (db > 0 ? '+' : '−') + Math.abs(db).toFixed(1) + ' dB'));
+  const txt = off ? 'Off' : (t.text ? t.text
+    : (!db ? 'Middle' : db > 0 ? 'Brighter' : 'Darker'));
   $('toneDb').textContent = txt;
   const ends = Array.isArray(t.ends) && t.ends.length === 2 ? t.ends : ['Dark', 'Bright'];
   $('toneLo').textContent = ends[0]; $('toneHi').textContent = ends[1];
@@ -3904,16 +3905,16 @@ function ytExplicitRow(){
     h('label', {class:'switch', for:'ytExplicit', style:'flex:1'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Hide explicit songs'),
         h('span', {class:'li-sub'}, 'Leaves songs and albums marked E out of searches and lists. Keys keep playing what they play.')),
-      h('input', {type:'checkbox', role:'switch', id:'ytExplicit', checked:on, onchange: e => ytSaveExplicit(e.target.checked)}))));
+      h('input', {type:'checkbox', role:'switch', id:'ytExplicit', checked:on, onchange: e => ytSaveExplicit(e.target.checked, true)}))));
 }
-async function ytSaveExplicit(on){
+async function ytSaveExplicit(on, undoable){
   const box = $('ytExplicit'); if (box) box.disabled = true;
   try {
     const r = await api('PUT', '/api/settings', {ytm:{hide_explicit:on}});
     if (r.ok && r.json && r.json.ok !== false){
       settings = Object.assign(settings || {}, {ytm:{hide_explicit:on}});
       ytForget(); for (const m in ytSt){ ytSt[m].res = null; ytSt[m].resFor = ''; ytSt[m].more = {}; }
-      toast(on ? 'Explicit songs are hidden' : 'Explicit songs show, marked E');
+      toast(on ? 'Explicit songs are hidden' : 'Explicit songs show, marked E', undoable ? {undo: () => ytSaveExplicit(!on, false)} : null);
     } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t change that') + '. Try again.', true);
   } catch (_) { toast(NET_ERR, true); }
   const b = $('ytExplicit'); if (b){ b.disabled = false; b.checked = !!(settings && settings.ytm && settings.ytm.hide_explicit); }
@@ -4465,7 +4466,7 @@ function paintHome(body, st, opts, refresh){
   body.append(shelf('brh-lang-' + mode, 'Languages', null, ll));
 }
 // Around the world: six regions as buttons on a light map, then that region's countries with counts.
-const WORLD_SPOTS = {'North America':[70, 52], 'Latin America':[112, 122], 'Latin America & Caribbean':[112, 122], 'Europe':[196, 42], 'Africa & Middle East':[214, 104], 'Africa':[200, 112], 'Middle East':[236, 78], 'Asia & Oceania':[300, 76], 'Internet':[316, 140]};
+const WORLD_SPOTS = {'North America':[70, 52], 'Latin America':[100, 128], 'Latin America & Caribbean':[100, 128], 'Europe':[196, 42], 'Africa & Middle East':[214, 104], 'Africa':[208, 130], 'Middle East':[256, 96], 'Asia & Oceania':[302, 58], 'Internet':[316, 140]};
 function worldSection(st, mode, apply, refresh){
   const regs = stn.col.regions || {}, names = Object.keys(regs);
   const count = r => stn.col.stations.filter(s => (regs[r] || []).includes(s.country)).length;
@@ -4949,10 +4950,10 @@ const swVer = () => (software && software.version) || (settings && settings.vers
 function soundSummary(){
   if (!settings) return 'Checking…';
   const lim = settings.volume_limit, fl = settings.volume_floor, bits = [];
-  if (lim != null) bits.push('Ceiling ' + lim);
-  if (fl != null) bits.push('quietest step ' + fl);
+  if (lim != null) bits.push('Loudest ' + lim);
+  if (fl != null) bits.push('quietest ' + fl);
   const tk = fx && fx.knobs && fx.knobs.find(k => k.assignable);
-  if (tk){ const e = fxEffect(tk.effect); if (e){ const m = /\(([^)]+)\)/.exec(e.label); bits.push(fxName(tk).toLowerCase() + ' knob: ' + (m ? m[1] : e.label).toLowerCase()); } }
+  if (tk && fxEffect(tk.effect)) bits.push(fxName(tk).toLowerCase() + ' knob: ' + fxSayWhat(tk));
   if (settings.mono && settings.mono.available && settings.mono.on) bits.push('mono');
   return bits.join(' · ') || 'Volume and tone';
 }
@@ -4960,7 +4961,7 @@ function phonesSummary(){
   if (!castDoc) return srcDoc && (srcDoc.err || srcDoc.missing) ? 'AirPlay, Bluetooth, Spotify' : 'Checking…';
   const ts = castDoc.targets || [];
   if (!ts.some(t => t.available)) return 'Not available right now';
-  const on = ts.filter(t => t.available && (t.on || t.read_only)).map(t => t.id === 'upnp' ? 'UPnP' : t.label);
+  const on = ts.filter(t => t.available && (t.on || t.read_only)).map(t => t.id === 'upnp' || t.id === 'dlna' ? 'other music apps' : t.label);
   const dev = btDoc && (btDoc.devices || []).find(d => d.connected);
   return (on.length ? nameAnd(on) + ' on' : 'All off') + (dev ? ' · ' + (dev.name || 'a phone') + ' connected' : '');
 }
@@ -4981,9 +4982,17 @@ function lampSummary(){
   if (!loc && (settings.night || 'sun') === 'sun') return 'Choose where the radio stands';
   return (tonightText(settings.tonight) || 'Dims at night') + (loc && loc.name ? ' · ' + loc.name : '');
 }
+// A radio with no source key (the Excelsior has no PU) gets no source-key section at all.
+function hasSourceKey(){
+  if (srcDoc && srcDoc.missing) return false;
+  const b = srcDoc && srcDoc.bound_to;
+  if (b && b.length) return true;
+  return cfg && Array.isArray(cfg.keys) ? cfg.keys.some(k => k.id === 'pu') : true;
+}
 function keysSummary(){
+  if (!hasSourceKey()) return 'Knob calibration · reset keys';
   if (!srcDoc) return 'Checking…';
-  if (srcDoc.missing || srcDoc.err || !srcDoc.cycle) return 'Knobs and the source key';
+  if (srcDoc.err || !srcDoc.cycle) return 'The source key and the knobs';
   return 'Source key: ' + srcDoc.cycle.map(id => stopOf(id).label).join(', ');
 }
 function radioSummary(){
@@ -5079,7 +5088,6 @@ document.addEventListener('focusin', e => {
 /* shared: "Trying on the radio · 0:24 · Stop" while a preview plays (knob Try it, lamp colours) */
 function previewNow(){
   const k = curPage(), now = Date.now();
-  if (k === 'sound'){ const ends = Object.values(fxUi.trying).filter(t => t > now); if (ends.length) return {end: Math.max(...ends), stop: fxStopAll}; }
   if (k === 'maker' && lcal.showing){
     const end = lcal.sent + ((lcal.data && lcal.data.preview_s) || 30) * 1000;
     if (end > now || lcal.run) return {end: lcal.run ? 0 : end, stop: () => { lcalStop(false); lcalEnd(); rerender(); }};
@@ -5140,15 +5148,14 @@ function renderSound(panel){
   if (fxs){
     const tune = (fx.knobs || []).filter(k => k.assignable);
     panel.append(setGroup('tone', tune.length === 1 ? 'What the ' + fxName(tune[0]).toLowerCase() + ' knob does' : 'What the knobs do', fxs,
-      h('p', {class:'hint', style:'padding:0 4px'}, 'Try it plays your choice for 30 seconds without saving. Save keeps it.')));
+      h('p', {class:'hint', style:'padding:0 4px'}, 'Changes apply at once, with Undo — turn the knob on the radio to hear them.')));
   } else if (!fx) panel.append(h('p', {class:'loading'}, 'Checking…'));
 }
 function loadSound(){
   loadSettings().then(() => { if (onPage('sound')) rerender(); });
   loadFx(); if (!knobs) loadKnobs();
 }
-function leaveSound(){ fxEndTries(); }
-const fxDirtyKnobs = () => ((fx && fx.knobs) || []).filter(k => fxUi.draft[k.id] && !fxSame(fxUi.draft[k.id], fxSaved(k)));
+function leaveSound(){ fxFlushAll(); }
 
 /* ---- 2 · Phones & casting ---- */
 function renderPhones(panel){
@@ -5160,7 +5167,8 @@ function renderPhones(panel){
   }
   const castList = h('div', {class:'list', id:'castBox'});
   fillCast(castList);
-  panel.append(setGroup('play', 'Play from a phone', castList));
+  panel.append(setGroup('play', 'Play from a phone', castList,
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Switches apply at once. A new name waits for Save at the bottom.')));
   if (srcDoc && !srcDoc.missing && !srcDoc.err)
     panel.append(setGroup('back', 'When a phone stops', h('div', {class:'list'}, h('div', {class:'li'},
       h('label', {class:'switch', for:'resume', style:'flex:1'},
@@ -5186,10 +5194,11 @@ function renderRooms(panel){
   if (!grp){ panel.append(h('p', {class:'loading'}, 'Checking…')); return; }
   if (grp.missing){ panel.append(h('div', {class:'empty'}, h('h2', null, 'Not on this radio yet'), h('p', null, 'This radio’s software can’t play in several rooms yet. Updating it adds that.'))); return; }
   const r = settings && settings.room;
-  if (r && !r.custom){
-    if (!roomUi.edit) Object.assign(roomUi, {edit:true, val:'', err:''});
-    panel.append(setGroup('name', 'First, name this room', h('div', {class:'list', id:'roomBox'}, roomNameRows(true))));
-  }
+  // The name is edited in one place (This radio → Name and address); a room without one is nudged there.
+  if (r && !r.custom)
+    panel.append(setGroup('name', 'First, name this room', h('div', {class:'set-list'},
+      setRow('roomname', 'Name this room', 'The other rooms see this radio by its name. Set it in This radio.', '#settings/radio/name', null,
+        {onclick: () => Object.assign(roomUi, {edit:true, val:'', err:''})}))));
   const box = h('div', {class:'list', id:'mrBox'});
   mrSig = '';
   fillMr(box);
@@ -5207,12 +5216,14 @@ function renderLamp(panel){
 }
 function loadLamp(){ loadSettings().then(() => { if (onPage('lamp')) rerender(); }); }
 
-/* ---- 5 · Keys & knobs ---- */
+/* ---- 5 · Source key & knobs (Keys & knobs before) ---- */
+// What each key plays is in Edit keys; this page holds the source key's list, knob calibration and the way back to defaults.
 function renderKeysPage(panel){
-  const src = sourcesGroup(); if (src) panel.append(src);
+  const src = hasSourceKey() ? sourcesGroup() : null; if (src) panel.append(src);
   const kn = knobLiveGroup(); if (kn) panel.append(kn);
-  panel.append(setGroup('reset', 'Start again', h('div', {class:'set-list'},
-    setRow('reset', 'Reset keys to defaults', 'In Edit keys — every key back to the built-in stations', '#edit/reset'))));
+  panel.append(setGroup('reset', 'The keys', h('div', {class:'set-list'},
+    setRow('editkeys', 'What each key plays', 'Change stations and playlists in Edit keys', '#edit'),
+    setRow('reset', 'Reset keys to defaults', 'Every key back to the built-in stations', '#edit/reset'))));
 }
 function loadKeysPage(){
   loadSources().then(() => { if (onPage('keys')) rerender(); });
@@ -5275,7 +5286,7 @@ function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
   loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp(); loadHosts();
 }
-function loadUpdates(){ loadSoftware(); loadMusic(); }
+function loadUpdates(){ loadSoftware(); loadMusic(); if (!help) loadHelp(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
 
 /* ---- This radio → Help from the makers: remote help for 24 h (web/help_api.py, docs/remote-help.md) ---- */
@@ -5371,7 +5382,7 @@ function helpBody(){
   if (!d) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'));
   if (d.err) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Couldn’t check remote help'), h('span', {class:'li-sub'}, d.err)),
     h('button', {type:'button', class:'li-act', id:'helpRetry', onclick: () => { help = null; paintHelp(); loadHelp(); }}, 'Try again'));
-  if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t installed on this radio yet.'));
+  if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t on this radio yet. The makers can add it — mention it next time you’re in touch.'));
   const stopBtn = (label) => h('button', {type:'button', class:'btn small', id:'helpStop', disabled: !!busy, onclick: helpStop}, label || 'Stop');
   if (st === 'starting' || st === 'ending')
     return h('div', {class:'li col'}, h('span', {class:'li-title'}, h('span', {class:'spin', 'aria-hidden':'true', style:'margin-right:10px'}), st === 'ending' ? 'Ending help…' : 'Starting help…'),
@@ -5516,15 +5527,14 @@ function diagBox(){
 /* the registry: the order is the order of the list */
 const SET_PAGES = [
   {id:'home', render: renderSetHome, load: loadSetHome},
-  {id:'sound', title:'Sound', summary: soundSummary, render: renderSound, load: loadSound, leave: leaveSound,
-    dirty: () => fxDirtyKnobs().length > 0, discard: fxDiscard, save: fxSaveAll, busy: () => !!fxUi.saving,
-    what: () => nameAnd(fxDirtyKnobs().map(k => fxName(k).toLowerCase() + ' knob'))},
-  {id:'phones', title:'Phones & casting', summary: phonesSummary, render: renderPhones, load: loadPhones, leave: leavePhones},
-  {id:'rooms', title:'Rooms', summary: roomsSummary, render: renderRooms, load: loadRooms, shown: () => !(grp && grp.missing),
-    dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
+  {id:'sound', title:'Sound', summary: soundSummary, render: renderSound, load: loadSound, leave: leaveSound},
+  {id:'phones', title:'Phones & casting', summary: phonesSummary, render: renderPhones, load: loadPhones, leave: leavePhones,
+    dirty: () => castNamesDirty().length > 0, discard: () => { castUi.names = {}; }, save: castSaveNames, busy: () => !!castUi.saving,
+    what: () => nameAnd(castNamesDirty().map(castLabel)) + (castNamesDirty().length === 1 ? ' name' : ' names')},
+  {id:'rooms', title:'Rooms', summary: roomsSummary, render: renderRooms, load: loadRooms, shown: () => !(grp && grp.missing)},
   {id:'lamp', title:'Pilot lamp', summary: lampSummary, render: renderLamp, load: loadLamp,
     dirty: () => lampUi.dirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
-  {id:'keys', title:'Keys & knobs', summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
+  {id:'keys', get title(){ return hasSourceKey() ? 'Source key & knobs' : 'Knobs & keys'; }, summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
   {id:'radio', title:'This radio', summary: radioSummary, render: renderRadio, load: loadRadio, leave: leaveHelp,
     dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
   {id:'maker', title:'Maker tools', summary: () => 'Lamp colours, knob curves, the player, diagnostics', shown: makerOn,
@@ -5594,6 +5604,7 @@ function lampSettings(panel){
       h('div', {class:'field'}, h('label', {for:'lampLat'}, 'Latitude'), h('input', {type:'number', id:'lampLat', inputmode:'decimal', step:'any', min:'-90', max:'90', value: lampUi.lat, oninput: edit('lat')})),
       h('div', {class:'field'}, h('label', {for:'lampLon'}, 'Longitude'), h('input', {type:'number', id:'lampLon', inputmode:'decimal', step:'any', min:'-180', max:'180', value: lampUi.lon, oninput: edit('lon')})))),
     lampUi.err ? h('p', {class:'err', role:'alert'}, lampUi.err) : null,
+    h('p', {class:'hint', style:'margin:0'}, 'A new place waits for Save at the bottom. The night choices above apply at once.'),
     navigator.geolocation ? h('div', {class:'acts'},
       h('button', {type:'button', class:'btn small', disabled: lampUi.busy, onclick: useHere}, 'Use this phone’s location')) : null);
   panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box)));
@@ -5797,7 +5808,7 @@ function lampColours(){
   pairs.forEach((p, i) => pseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(lcal.pair === i), tabindex: lcal.pair === i ? '0' : '-1',
     disabled: running === 'compare', onclick: () => { lcal.pair = i; rerender(); }}, lcalName(p[0]), h('small', null, 'and ' + lcalName(p[1]).toLowerCase()))));
   return h('div', {class:'li col lc-wrap', style:'gap:12px'},
-    h('p', {class:'hint'}, 'Best at night with the room light off, looking through the window. Blue should look blue, not green; ember deep orange-red, steady. Moving a slider shows it on the lamp.'),
+    h('p', {class:'hint'}, 'Best at night with the room light off, looking through the window. Blue should look blue, not green; ember deep orange-red, steady. Moving a slider shows it on the lamp; Save at the bottom keeps the colours.'),
     !lcal.data.lamp ? h('p', {class:'note-warn'}, 'No lamp on this radio — the swatches are only a guide.') : null,
     h('div', {class:'lc-list'}, lcalNames().map(lcalColour)),
     h('p', {class:'hint', id:'lcalLive', 'aria-live':'polite'}, lcal.live),
@@ -5922,7 +5933,7 @@ function boundKeys(){
     return {kid, ev, text: (k ? keyLabel(k) : kid.toUpperCase()) + ' ' + (ev || '')};
   });
 }
-// Keys & knobs → what the source key (PU) steps through. Every tick and move applies at once;
+// Source key & knobs → what the source key (PU) steps through. Every tick and move applies at once;
 // the toast offers Undo back to the order before this burst of changes.
 let srcSaveT = null, srcUndoFrom = null;
 function sourcesGroup(){
@@ -6044,19 +6055,28 @@ function castRow(t){
   row.append(h('label', {class:'switch', for:'cast-' + t.id},
     title, h('input', {type:'checkbox', role:'switch', id:'cast-' + t.id, checked: !!t.on, disabled: dis, 'aria-label':castLabel(t),
       onchange: e => putCast(t.id, {on: e.target.checked}, {on: !e.target.checked})})));
+  // The name is typed text: a draft that the bar at the bottom saves (the switch above applies at once).
   const nameVal = castUi.names[t.id] ?? t.name ?? '';
-  const save = inp => {
-    const v = inp.value.trim() || 'Hasler';
-    delete castUi.names[t.id];
-    if (v !== (t.name || '')) putCast(t.id, {name: v}, t.name ? {name: t.name} : null);
-  };
   row.append(h('div', {class:'field'}, h('label', {for:'cn-' + t.id}, 'Name on phones'),
     h('div', {class:'cast-name'},
       h('input', {type:'text', id:'cn-' + t.id, value: nameVal, placeholder:'Hasler', maxlength:'40', autocomplete:'off', disabled: dis,
-        oninput: e => { castUi.names[t.id] = e.target.value; },
-        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); e.target.blur(); } else if (e.key === 'Escape'){ delete castUi.names[t.id]; e.target.value = t.name || ''; } },
-        onchange: e => save(e.target)}))));
+        oninput: e => { castUi.names[t.id] = e.target.value; paintSaveBar(); },
+        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); if (castNamesDirty().length) castSaveNames(); }
+          else if (e.key === 'Escape'){ delete castUi.names[t.id]; e.target.value = t.name || ''; paintSaveBar(); } }}))));
   return row;
+}
+// Phones → the save bar: the names typed but not saved yet.
+const castNameOf = id => (castUi.names[id] ?? '').trim() || 'Hasler';
+const castNamesDirty = () => ((castDoc && castDoc.targets) || []).filter(t => !t.read_only && t.available && castUi.names[t.id] != null && castNameOf(t.id) !== (t.name || ''));
+async function castSaveNames(){
+  const ts = castNamesDirty(); if (!ts.length || castUi.saving) return;
+  castUi.saving = true; paintSaveBar();
+  for (const t of ts){
+    const v = castNameOf(t.id);
+    if (await putCast(t.id, {name: v}, null)) delete castUi.names[t.id];
+  }
+  castUi.saving = false;
+  if (onPage('phones')) rerender();
 }
 function fillCast(box){
   box.textContent = '';
@@ -6106,10 +6126,11 @@ function paintCast(){
 // `back`: the change that undoes this one (offered in the toast), or null.
 async function putCast(id, change, back){
   castUi.busy[id] = true; paintCast();
+  let ok = false;
   try {
     const r = await api('PUT', '/api/casting', {[id]: change});
     if (r.ok && r.json && Array.isArray(r.json.targets)){
-      adoptCasting(r.json);
+      adoptCasting(r.json); ok = true;
       const t = r.json.targets.find(x => x.id === id);
       toast(t ? (change.name ? castLabel(t) + ': phones now see “' + t.name + '”' : castLabel(t) + (t.on ? ' on' : ' off')) : 'Saved',
         back ? {undo: () => putCast(id, back, null)} : null);
@@ -6119,6 +6140,7 @@ async function putCast(id, change, back){
   } catch (_) { castErr = {msg:NET_ERR, retry: () => putCast(id, change)}; }
   delete castUi.busy[id];
   paintCast();
+  return ok;
 }
 // Spotify account: signed in as…, or a pairing code to enter at spotify.com/pair.
 function spAccount(a){
@@ -6839,9 +6861,9 @@ function hostsGroup(){
       h('span', {class:'li-sub'}, (it.host === d.this ? 'This page · ' : '') + 'allowed ' + (day(new Date(it.added * 1000).toISOString()) || 'with a key press'))),
     h('button', {type:'button', class:'li-act', 'aria-label':'Remove ' + it.host, onclick: () => removeHost(it.host)}, 'Remove')));
   for (const b of d.box || []) rows.push(h('div', {class:'li'},
-    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Set in the radio’s box.yaml'))));
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Allowed by the makers'))));
   if (!rows.length && !d.this_allowable) rows.push(h('div', {class:'li'}, h('span', {class:'li-sub'},
-    'Only the radio’s own addresses can change things. Open it through your own dashboard or address and the page offers to allow it.')));
+    'Changes only come in through the radio’s own address, so another website can’t touch your keys. If you open the radio another way, such as from a home dashboard, this page asks you to allow that address first.')));
   if (d.this_allowable) rows.push(h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, d.this), h('span', {class:'li-sub'}, 'This page’s address · can’t make changes yet')),
     h('button', {type:'button', class:'li-act', onclick: () => allowHost(d.this, true)}, 'Allow')));
@@ -7043,7 +7065,7 @@ function roomNameRows(first){
         oninput: e => { roomUi.val = e.target.value; roomUi.err = ''; paintSaveBar(); },
         onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); if (roomDirty()) roomSaveDraft(); } else if (e.key === 'Escape' && !first){ roomDiscard(); paintRoom(); paintSaveBar(); } }}),
       h('p', {class:'hint', id:'roomHint'}, first ? 'The other rooms see this radio by this name, and so do you on the front page. You can change it later in This radio.'
-        : 'Shown in the rooms list, in Home Assistant and on this page. Leave it empty to go back to “' + r.default + '”. The address doesn’t change.')) : null,
+        : 'Shown in the rooms list, in Home Assistant and on this page. Leave it empty to go back to “' + r.default + '”. The address doesn’t change. Save at the bottom keeps it.')) : null,
     roomUi.edit && roomUi.err ? h('p', {class:'err', role:'alert'}, roomUi.err) : null);
 }
 function roomCastRow(){
@@ -7053,8 +7075,8 @@ function roomCastRow(){
   return h('div', {class:'li col', style:'gap:10px'},
     h('label', {class:'switch', for:'roomCast'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Use the room name on phones'),
-        h('span', {class:'li-sub'}, r.casting_names ? 'Phones see “' + cast + '” for AirPlay, Bluetooth, UPnP and Spotify'
-          : 'Phones see “Hasler”' + (r.custom ? '. On, they see “' + r.casting_name + '”' : '. Name the room first, in This radio') + ' — handy with more than one Hasler')),
+        h('span', {class:'li-sub'}, r.casting_names ? 'Phones see “' + cast + '” in AirPlay, Bluetooth, Spotify and other music apps'
+          : 'Phones see “Hasler”' + (r.custom ? '. On, they see “' + r.casting_name + '”' : '. Name the room first, in This radio → Name and address') + ' — handy with more than one Hasler')),
       h('input', {type:'checkbox', role:'switch', id:'roomCast', checked: !!r.casting_names, disabled: roomUi.busy || (!r.custom && !r.casting_names),
         onchange: e => saveRoom({casting_names: e.target.checked}, {casting_names: !e.target.checked})})),
     applying || (r.apply && r.apply.state !== 'idle') ? roomApplyLine(r.apply) : null);
@@ -7066,7 +7088,7 @@ function roomSaveDraft(){ return saveRoom({name: roomUi.val.trim()}); }
 function paintRoom(){
   paintBrand();
   const a = document.activeElement;
-  for (const [bid, fill] of [['roomBox', () => roomNameRows(onPage('rooms'))], ['roomCastBox', roomCastRow]]){
+  for (const [bid, fill] of [['roomBox', () => roomNameRows(false)], ['roomCastBox', roomCastRow]]){
     const box = $(bid); if (!box) continue;
     const id = a && box.contains(a) ? a.id : null;
     if (id === 'roomInp') continue;     // don't repaint under someone typing
@@ -7165,10 +7187,16 @@ function renderSoftwareUpdates(panel){
   const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
   if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Software'), h('span', {class:'li-sub'}, 'Checking…')))));
-  if (software.missing || software.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+  if (software.missing) return wrap(h('div', {class:'list'}, h('div', {class:'li col', style:'gap:10px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
+      h('span', {class:'li-sub'}, 'Updates aren’t set up on this radio yet, so it stays on this version. It keeps working as it is.')),
+    help && help.available
+      ? h('div', {class:'acts', style:'align-items:center'}, h('a', {class:'btn small inline', href:'#settings/radio/help', id:'swAskHelp'}, 'Ask the makers to set them up'))
+      : h('p', {class:'hint', style:'margin:0'}, 'The makers can set them up — mention it next time you’re in touch.'))));
+  if (software.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
-    h('span', {class:'li-sub'}, software.missing ? 'Updates not installed on this radio yet' : software.err)),
-    software.err ? h('button', {type:'button', class:'li-act', onclick: () => { software = null; rerender(); loadSoftware(); }}, 'Try again') : null)));
+    h('span', {class:'li-sub'}, software.err)),
+    h('button', {type:'button', class:'li-act', onclick: () => { software = null; rerender(); loadSoftware(); }}, 'Try again'))));
   const s = software, a = s.available, res = s.last_result, ap = s.approved;
   const rows = [];
   rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'},
@@ -7368,7 +7396,7 @@ function dialSvg(k, steps, i){
   return svg;
 }
 
-/* Keys & knobs: each knob live, with Calibrate. Maker tools: the curve, raw numbers, factory reset. */
+/* Source key & knobs: each knob live, with Calibrate. Maker tools: the curve, raw numbers, factory reset. */
 function knobState(){
   if (!knobs) return h('div', {class:'list'}, h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…')));
   if (knobs.missing) return h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
@@ -7382,8 +7410,9 @@ function knobLiveGroup(){
   const st = knobState();
   if (st) return setGroup('knobs', 'Knobs', st);
   if (!knobs.knobs.length) return null;
-  return setGroup('knobs', 'Knobs', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If the radio and the knob disagree, calibrate it: a short guide where you turn it to a few positions.'));
+  return setGroup('knobs', 'Knob calibration', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If the radio and the knob disagree, calibrate it: a short guide where you turn it to a few positions. What the tone knob does is in ',
+      h('a', {class:'link', href:'#settings/sound/tone'}, 'Sound'), '.'));
 }
 function knobCurveGroup(){
   const st = knobState();
@@ -7392,7 +7421,7 @@ function knobCurveGroup(){
   return setGroup('curves', 'Knob curves', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, true))),
     h('p', {class:'hint', style:'padding:0 4px'}, 'Each knob’s raw reading is mapped to 0–100 by a curve.'));
 }
-const knobTag = k => k.source === 'box' ? 'Yours' : 'As shipped';
+const knobTag = k => k.source === 'box' ? 'Calibrated' : 'Standard';
 function knobCard(k, maker){
   const id = kid(k.id), s = liveOf(k), sel = isSel(k), box = k.source === 'box';
   const gauge = () => sel
@@ -7462,8 +7491,7 @@ async function resetKnob(k){
 /* ---------- knobs: what each knob does (/api/knobs/functions) ---------- */
 // fx: null = loading, {missing} = an older radio (no such API: the cards stay hidden), {err}, or the GET body.
 let fx = null;
-const fxUi = {open: new Set(), draft: {}, err: {}, busy: {}, trying: {}, tick: null, resend: {}};
-const FX_TRY_S = 30;
+const fxUi = {open: new Set(), draft: {}, err: {}, busy: {}, wait: {}, drag: false, pending: false};
 // What the two ends of the knob mean, per effect (the radio may send its own as `ends`).
 const FX_ENDS = {treble:['Less treble', 'More treble'], bass:['Less bass', 'More bass'], tilt:['Warmer', 'Brighter'],
   loudness:['Off', 'Full'], presence:['Softer voices', 'Clearer voices'], vintage:['Today', '1960s radio'], width:['Mono', 'Wide stereo']};
@@ -7492,8 +7520,8 @@ function fxFmt(e, p, v){
 function fxSummary(k){
   const e = fxEffect(k.effect);
   if (!e) return k.effect || '—';
-  const ps = (e.params || []).slice(0, 1).map(p => fxFmt(e, p, fxParamsFor(e, k.params)[p.id]));
-  return e.label + (ps.length ? ' · ' + ps[0] : '');
+  const what = fxSayWhat(k);
+  return e.id === 'none' || what === (e.label || '').toLowerCase() ? e.label : e.label + ' · ' + what;
 }
 
 async function loadFx(){
@@ -7519,52 +7547,47 @@ function fxSection(){
   if (!ks.length) return null;
   return h('div', {class:'list'}, ks.map(fxCard));
 }
-const fxTag = k => { const d = fxDraft(k); return !fxSame(d, fxSaved(k)) ? 'Not saved' : fxSame(fxSaved(k), fxDefault(k)) ? 'As shipped' : 'Yours'; };
+// The tag on a knob card: the standard setting, or the owner's own.
+const fxTag = k => fxSame(fxDraft(k), fxDefault(k)) ? 'Standard' : 'Yours';
 function fxCard(k){
   const id = kid(k.id);
   if (!k.assignable) return h('div', {class:'li', style:'min-height:64px'}, h('div', {class:'kn-txt'},
     h('span', {class:'kn-name'}, fxName(k)),
     h('span', {class:'fx-now'}, k.note || (/vol/i.test(k.id + ' ' + (k.label || '')) ? 'Always the volume — this one can’t be changed.' : 'This one can’t be changed.'))));
-  const open = fxUi.open.has(k.id), d = fxDraft(k), dirty = !fxSame(d, fxSaved(k));
+  const open = fxUi.open.has(k.id), d = fxDraft(k);
   const head = h('button', {type:'button', class:'kn-head', 'aria-expanded': String(open), 'aria-controls':'fxb-' + id,
       onclick: () => { if (open) fxUi.open.delete(k.id); else fxUi.open.add(k.id); rerender(); knobPoll(true); }},
     h('span', {class:'kn-txt'}, h('span', {class:'kn-name'}, fxName(k)),
       h('span', {class:'fx-now'}, fxSummary(k)),
-      h('span', {class:'kn-tag' + (fxTag(k) === 'As shipped' ? '' : ' box'), id:'fxtag-' + id}, fxTag(k))),
+      h('span', {class:'kn-tag' + (fxTag(k) === 'Standard' ? '' : ' box'), id:'fxtag-' + id}, fxTag(k))),
     h('span', {class:'chev', style:'margin-left:auto'}, IC.chev()));
   const li = h('div', {class:'li kn'}, head);
   if (!open) return li;
-  const e = fxEffect(d.effect), busy = fxUi.busy[k.id], tr = fxUi.trying[k.id];
+  const e = fxEffect(d.effect), busy = fxUi.busy[k.id];
   li.append(h('div', {class:'kn-body', id:'fxb-' + id},
     h('fieldset', {class:'fx-opts'},
       h('legend', {class:'fx-q', style:'padding:0;margin-bottom:6px'}, 'What this knob does'),
       fx.effects.map(ef => h('label', {class:'fx-opt'},
         h('input', {type:'radio', name:'fx-' + id, id:'fxo-' + id + '-' + kid(ef.id), value: ef.id, checked: ef.id === d.effect,
           onchange: () => fxPick(k, ef.id)}),
-        h('span', {class:'fx-ot'}, h('span', {class:'fx-ol'}, ef.label || ef.id, ef.id === k.default_effect ? h('small', null, 'as shipped') : null),
+        h('span', {class:'fx-ot'}, h('span', {class:'fx-ol'}, ef.label || ef.id, ef.id === k.default_effect ? h('small', null, 'standard') : null),
           ef.description ? h('span', {class:'fx-od'}, ef.description) : null)))),
     e && e.description ? h('p', {class:'fx-desc', 'aria-hidden':'true'}, e.description) : null,
-    fxParams(k, e, d),
     fxPosBox(k, e),
-    tr ? h('p', {class:'fx-try', id:'fxt-' + id, 'aria-live':'polite'}, fxTryText(k)) : null,
+    fxParams(k, e, d),
     fxUi.err[k.id] ? h('p', {class:'err', role:'alert'}, fxUi.err[k.id]) : null,
-    h('div', {class:'acts', style:'align-items:center'},
-      h('button', {type:'button', class:'btn small', id:'fxtry-' + id, disabled: !!busy, onclick: () => fxTry(k)}, tr ? 'Play it again' : 'Try it'),
-      tr ? h('button', {type:'button', class:'btn small', onclick: fxStopAll}, 'Stop') : null,
-      !fxSame(d, fxDefault(k)) ? h('button', {type:'button', class:'link quiet', disabled: !!busy, onclick: () => fxReset(k)}, 'Back to as shipped') : null),
-    dirty ? h('p', {class:'hint', style:'margin:0'}, 'Not saved yet — Save at the bottom keeps it.') : null));
+    !fxSame(d, fxDefault(k)) ? h('div', {class:'acts', style:'align-items:center'},
+      h('button', {type:'button', class:'link quiet', id:'fxrs-' + id, disabled: !!busy, onclick: () => fxReset(k)}, 'Back to standard')) : null));
   return li;
 }
+// The fine settings (dB, Hz) are tucked away: the choice above is what most people need.
 function fxParams(k, e, d){
   const ps = (e && e.params) || [];
   if (!e || e.id === 'none') return h('p', {class:'hint'}, 'The knob does nothing while this is chosen.');
   if (!ps.length) return null;
-  const rows = ps.map(p => fxSlider(k, e, p, d.params[p.id]));
-  if (rows.length <= 2) return h('div', {class:'fx-pars'}, rows);
-  return h('div', {class:'fx-pars'}, rows.slice(0, 2),
-    h('details', {class:'how', open: fxUi.more && fxUi.more[k.id] ? true : null,
-        ontoggle: ev => { fxUi.more = fxUi.more || {}; fxUi.more[k.id] = ev.target.open; }},
-      h('summary', null, 'More'), h('div', null, rows.slice(2))));
+  return h('details', {class:'how', open: fxUi.more && fxUi.more[k.id] ? true : null,
+      ontoggle: ev => { fxUi.more = fxUi.more || {}; fxUi.more[k.id] = ev.target.open; }},
+    h('summary', null, 'Fine-tune'), h('div', {class:'fx-pars', style:'margin-top:8px'}, ps.map(p => fxSlider(k, e, p, d.params[p.id]))));
 }
 function fxSlider(k, e, p, v){
   const sid = 'fxp-' + kid(k.id) + '-' + kid(p.id), lo = +p.min, hi = +p.max;
@@ -7574,21 +7597,23 @@ function fxSlider(k, e, p, v){
       h('span', {class:'li-val', id: sid + '-v', 'aria-hidden':'true'}, fxFmt(e, p, v))),
     h('input', {type:'range', id: sid, min: String(lo), max: String(hi), step: String(p.step || 1), value: String(v),
       'aria-valuetext': fxFmt(e, p, v), style:'--pct:' + pct(v),
+      onpointerdown: () => { fxUi.drag = true; },
       oninput: ev => {
-        const n = +ev.target.value, d = fxUi.draft[k.id] || (fxUi.draft[k.id] = clone(fxDraft(k)));
-        d.params[p.id] = n;
+        const n = +ev.target.value;
+        if (!fxUi.draft[k.id]) fxUi.draft[k.id] = clone(fxDraft(k));
+        fxUi.draft[k.id].params[p.id] = n;
         ev.target.style.setProperty('--pct', pct(n));
         ev.target.setAttribute('aria-valuetext', fxFmt(e, p, n));
         $(sid + '-v').textContent = fxFmt(e, p, n);
-        fxPaintDirty(k);
-        // While trying, slider moves go straight to the speaker.
-        if (fxUi.trying[k.id]){ clearTimeout(fxUi.resend[k.id]); fxUi.resend[k.id] = setTimeout(() => fxTry(k, true), 300); }
-      }}));
+        fxPaintTag(k);
+        // It applies once the slider rests a moment: one toast, one Undo per burst.
+        clearTimeout(fxUi.wait[k.id]); fxUi.wait[k.id] = setTimeout(() => fxFlush(k), 600);
+      },
+      onchange: () => { clearTimeout(fxUi.wait[k.id]); fxFlush(k); }}));
 }
-// Save / tag follow the draft in place: a re-render would drop the slider mid-drag.
-function fxPaintDirty(k){
-  const t = $('fxtag-' + kid(k.id)); if (t){ const tg = fxTag(k); t.textContent = tg; t.classList.toggle('box', tg !== 'As shipped'); }
-  paintSaveBar();
+// The tag follows the slider in place: a re-render would drop the slider mid-drag.
+function fxPaintTag(k){
+  const t = $('fxtag-' + kid(k.id)); if (t){ const tg = fxTag(k); t.textContent = tg; t.classList.toggle('box', tg !== 'Standard'); }
 }
 function fxPosBox(k, e){
   const id = kid(k.id), live = knobs && knobs.knobs && knobs.knobs.some(x => x.id === k.id);
@@ -7613,79 +7638,54 @@ function paintFxLive(knobId){
   const f = $('fxf-' + id); if (f) f.style.width = (v == null ? 0 : v) + '%';
   const m = $('fxm-' + id); if (m && v != null) m.setAttribute('aria-valuenow', String(Math.round(v)));
 }
+// Every choice and slider applies at once (PUT /api/knobs/functions); the toast offers Undo.
 function fxPick(k, effectId){
   const saved = fxSaved(k), def = fxDefault(k);
   const params = effectId === saved.effect ? saved.params : effectId === def.effect ? def.params : fxParamsFor(fxEffect(effectId), null);
-  fxUi.draft[k.id] = {effect: effectId, params: clone(params)};
-  if (fxSame(fxUi.draft[k.id], saved)) delete fxUi.draft[k.id];
-  fxUi.err[k.id] = '';
-  rerender();
-  if (fxUi.trying[k.id]) fxTry(k, true);
+  clearTimeout(fxUi.wait[k.id]);
+  const want = {effect: effectId, params: clone(params)};
+  if (fxSame(want, saved)){ delete fxUi.draft[k.id]; return; }
+  fxUi.draft[k.id] = want;
+  fxApply(k, want, saved);
 }
-
-/* try: the radio plays the draft for 30 s without saving */
-function fxTryText(k){
-  const left = Math.max(0, Math.ceil(((fxUi.trying[k.id] || 0) - Date.now()) / 1000));
-  return h('span', null, 'Trying it for ', h('b', null, left + ' s'), ' — turn the ' + fxName(k) + ' knob to hear it. Nothing is saved yet.');
+function fxReset(k){ fxPick(k, k.default_effect); }
+// A slider burst at rest: send what it shows.
+function fxFlush(k){
+  const d = fxUi.draft[k.id];
+  if (!d) return;
+  if (fxSame(d, fxSaved(k))){ delete fxUi.draft[k.id]; return; }
+  fxApply(k, clone(d), fxSaved(k));
 }
-function fxTickAll(){
-  let any = false;
-  for (const [knobId, end] of Object.entries(fxUi.trying)){
-    const k = fxKnob(knobId);
-    if (!k || Date.now() >= end){ delete fxUi.trying[knobId]; if (k && onPage('sound')) toast(fxName(k) + ' knob is back to how it was'); if (view === 'settings') rerender(); continue; }
-    any = true;
-    const el = $('fxt-' + kid(k.id)); if (el){ el.textContent = ''; el.append(fxTryText(k)); }
-  }
-  if (!any){ clearInterval(fxUi.tick); fxUi.tick = null; }
+function fxSayWhat(k){
+  const e = fxEffect(k.effect); if (!e) return 'changed';
+  const ends = e.ends || FX_ENDS[e.id];
+  return e.id === 'none' ? 'does nothing' : ends && ends[0] ? ends[0].toLowerCase() + ' to ' + ends[1].toLowerCase() : (e.label || e.id).toLowerCase();
 }
-async function fxTry(k, quiet){
-  const d = fxDraft(k);
-  fxUi.err[k.id] = '';
+// `undoTo`: what the toast's Undo puts back (none when this *is* the undo). The standard setting is sent as null.
+async function fxApply(k, want, undoTo){
+  fxUi.busy[k.id] = true; fxUi.err[k.id] = '';
+  const sameEffect = undoTo && undoTo.effect === want.effect;
   try {
-    const r = await api('POST', '/api/knobs/try', {knob: k.id, effect: d.effect, params: d.params});
-    if (r.ok){
-      const s = r.json && isFinite(r.json.seconds) ? +r.json.seconds : r.json && isFinite(r.json.expires_in) ? +r.json.expires_in : FX_TRY_S;
-      const was = fxUi.trying[k.id];
-      fxUi.trying[k.id] = Date.now() + s * 1000;
-      if (!fxUi.tick) fxUi.tick = setInterval(fxTickAll, 1000);
-      if (!quiet || !was) rerender(); else fxTickAll();
-      return;
-    }
-    fxUi.err[k.id] = r.status === 404 ? 'Trying it needs a newer version of the radio’s software. Update it in This radio → Updates.' : capFirst((r.json && r.json.error) || 'The radio couldn’t play it (error ' + r.status + ')') + '. Try again.';
-  } catch (_) { fxUi.err[k.id] = NET_ERR; }
-  rerender();
-}
-// Sound → the save bar: every knob with a draft in one go (as shipped is saved as "no override").
-async function fxSaveAll(){
-  const ks = fxDirtyKnobs(); if (!ks.length || fxUi.saving) return;
-  const body = {};
-  for (const k of ks){ const d = fxDraft(k); body[k.id] = fxSame(d, fxDefault(k)) ? null : {effect: d.effect, params: d.params}; }
-  fxUi.saving = true; ks.forEach(k => { fxUi.err[k.id] = ''; }); paintSaveBar();
-  try {
-    const r = await api('PUT', '/api/knobs/functions', body);
+    const r = await api('PUT', '/api/knobs/functions', {[k.id]: fxSame(want, fxDefault(k)) ? null : {effect: want.effect, params: want.params}});
     if (r.ok){
       adoptFx(r.json);
-      for (const k of ks){ delete fxUi.draft[k.id]; delete fxUi.trying[k.id]; }
-      toast(nameAnd(ks.map(k => { const nk = fxKnob(k.id) || k; return fxName(nk) + ' knob: ' + ((fxEffect(nk.effect) || {}).label || nk.effect).toLowerCase(); })) + ' — saved');
-    } else { const m = capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. Check it and save again.'; ks.forEach(k => { fxUi.err[k.id] = m; }); toast(m, true); }
-  } catch (_) { toast(NET_ERR, true); }
-  fxUi.saving = false;
-  if (view === 'settings') rerender();
+      const d = fxUi.draft[k.id];
+      if (d && fxSame(d, want)) delete fxUi.draft[k.id];
+      const nk = fxKnob(k.id) || k;
+      toast(fxName(nk) + ' knob: ' + (sameEffect ? 'adjusted' : fxSayWhat(nk)), undoTo ? {undo: () => { delete fxUi.draft[k.id]; fxApply(k, undoTo, null); }} : null);
+    } else {
+      fxUi.err[k.id] = capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. It’s back to how it was.';
+      delete fxUi.draft[k.id];
+    }
+  } catch (_) { fxUi.err[k.id] = NET_ERR; delete fxUi.draft[k.id]; }
+  fxUi.busy[k.id] = false;
+  if (fxUi.drag) fxUi.pending = true; else if (onPage('sound')) rerender();
 }
-function fxDiscard(){ fxUi.draft = {}; fxUi.err = {}; fxEndTries(); }
-// Stop every "Try it": the radio goes back to the saved effect at once.
-function fxEndTries(){
-  if (!Object.keys(fxUi.trying).length) return;
-  fxUi.trying = {}; clearInterval(fxUi.tick); fxUi.tick = null;
-  try { fetch('/api/knobs/try', {method:'DELETE', keepalive:true, cache:'no-store', headers:{'Content-Type':'application/json'}, body:'{}'}).catch(() => {}); } catch (_) {}
+// Leaving Sound with a slider still settling: send it now.
+function fxFlushAll(){
+  for (const id of Object.keys(fxUi.draft)){ clearTimeout(fxUi.wait[id]); const k = fxKnob(id); if (k) fxFlush(k); }
 }
-function fxStopAll(){ fxEndTries(); toast('Back to how it was'); if (view === 'settings') rerender(); }
-function fxReset(k){
-  fxUi.draft[k.id] = clone(fxDefault(k));
-  if (fxSame(fxUi.draft[k.id], fxSaved(k))) delete fxUi.draft[k.id];
-  fxUi.err[k.id] = ''; rerender();
-  if (fxUi.trying[k.id]) fxTry(k, true);
-}
+window.addEventListener('pointerup', () => { if (!fxUi.drag) return; fxUi.drag = false; if (fxUi.pending){ fxUi.pending = false; if (onPage('sound')) rerender(); } });
 
 /* the wizard: one capture per step, then fit, try, save */
 const POT_STEPS = [

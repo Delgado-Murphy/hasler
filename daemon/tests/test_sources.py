@@ -484,7 +484,7 @@ class TestSourcesApi:
         from haslerd.web.server import Unavailable
         sources, _, _, player, _ = api
         player.renderers.on = {}                      # db unreadable
-        with pytest.raises(Unavailable, match="moOde isn't reachable"):
+        with pytest.raises(Unavailable, match="Bluetooth isn't ready"):
             sources.route("POST", "/api/casting/pair", {})
         player.renderers.enabled = lambda: 1 / 0      # or blowing up
         with pytest.raises(Unavailable):

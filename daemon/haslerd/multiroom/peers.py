@@ -34,6 +34,15 @@ from typing import Any, Callable
 from ..ha.discover import _unescape, parse_txt
 
 log = logging.getLogger(__name__)
+_warned: set[str] = set()
+
+
+def _warn_once(msg: str) -> None:
+    """The technical cause goes to the log once; the owner gets plain words."""
+    if msg not in _warned:
+        _warned.add(msg)
+        log.warning(msg)
+
 
 AVAHI_CMD = ["avahi-browse", "-rtp", "_hasler._tcp"]
 BROWSE_TIMEOUT_S = 4.0
@@ -288,7 +297,8 @@ class Peers:
             done = self.runner(AVAHI_CMD, capture_output=True, text=True, timeout=BROWSE_TIMEOUT_S)
             output = done.stdout or ""
         except FileNotFoundError:
-            return [], "avahi-browse isn't installed on the radio (apt install avahi-utils)"
+            _warn_once("avahi-browse isn't installed (apt install avahi-utils): can't look for other Haslers")
+            return [], "Couldn't look for other Haslers on the network"
         except subprocess.TimeoutExpired as exc:
             raw = exc.stdout or b""
             output = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw

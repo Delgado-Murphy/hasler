@@ -548,7 +548,7 @@ class TestApi:
         for t in range(20):
             panel.poll(t * 0.01)
         st = app.status()["tone"]
-        assert st["effect"] == "tilt" and st["label"] == "Tone (tilt)"
+        assert st["effect"] == "tilt" and st["label"] == "Tone"
         assert st["text"] == "Warmer · 100%" and st["treble_db"] == -6.0
 
     def test_over_http_with_csrf(self, api):
