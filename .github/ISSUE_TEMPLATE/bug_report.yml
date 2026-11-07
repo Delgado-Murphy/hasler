@@ -1,0 +1,55 @@
+name: Bug report (makers and developers)
+description: Something in the code, the docs or the HAT doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For people building a Hasler or working on the code. **Own a Hasler?**
+        Use the radio's own **Settings → Something's wrong? → Tell the makers**
+        instead: it is private and needs no GitHub account.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      placeholder: Pressed key 3 on the Excelsior; nothing played. Expected the preset to start.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. ...
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Settings → This radio → Updates, or `daemon/pyproject.toml`, or a commit.
+      placeholder: 1.6.0
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      options:
+        - A radio (signed release)
+        - A radio built from a checkout (scripts/install.sh)
+        - A laptop (haslerd --fake, or the tests)
+        - The HAT or other hardware
+        - The docs
+    validations:
+      required: true
+  - type: input
+    id: cabinet
+    attributes:
+      label: Cabinet and moOde version
+      placeholder: hasler-hm-hat, moOde 10.3.7
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or report
+      description: "`journalctl -u haslerd -n 200`, a test's output, or the text from Tell the makers. Remove anything private."
+      render: text

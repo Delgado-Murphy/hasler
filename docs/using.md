@@ -81,9 +81,9 @@ A tap on any key wakes the radio. It remembers the last key you pressed, even
 after you unplug it.
 
 Out of the box the keys hold a starter set of stations and playlists. There
-are six sets to choose from (classical, jazz, pop, flamenco and folk, the
-family kitchen, and the eclectic one the radio comes with): **Edit keys →
-Start from a set…**. What PU steps through is in **Settings → Keys**.
+are ten sets, by who's listening: little ones, kids, teens, indie, the
+eclectic one the radio comes with, classical, jazz, golden oldies, España and
+world. Choose one in **Edit keys → Start from a set…**. What PU steps through is in **Settings → Keys**.
 
 **Sleep timer.** On the key page, tap the small clock beside **Standby** and
 choose 15, 30 or 60 minutes. A "Sleep · 23 min" chip shows what is left; tap

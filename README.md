@@ -4,6 +4,8 @@
 
 A Swiss radio from the 1960s that plays music again.
 
+**Have a Hasler at home? → [Using your Hasler](docs/using.md)**
+
 The **Hasler HM** was built in Bern around 1964 for Telefónica's *Hilo Musical*,
 a service that sent music to homes over the telephone line. Its piano keys chose
 one of six music channels. Today the same keys play internet radio, Spotify and
@@ -52,7 +54,7 @@ HAT), wired to the cabinet's original keys, knobs, lamp and speaker.
 | You are... | Read this |
 |---|---|
 | **Building one** | [Build guide](docs/build-guide.md), then [Hardware](docs/hardware.md) |
-| **Helping with the code** | [Contributing](docs/contributing.md) |
+| **Helping with the code** | [How it works](docs/architecture.md), then [Contributing](docs/contributing.md) |
 | **Curious what changed** | [Releases](https://delgado-murphy.github.io/hasler-releases/) and the [changelog](CHANGELOG.md) |
 
 **For makers**
@@ -69,7 +71,9 @@ HAT), wired to the cabinet's original keys, knobs, lamp and speaker.
 
 **For contributors and maintainers**
 
-- [Contributing](docs/contributing.md): code layout, tests, how a cabinet's panel is described.
+- [How the radio works](docs/architecture.md): the moving parts on one page, with diagrams.
+- [Contributing](docs/contributing.md): where things are, running it on a laptop, the tests, how a cabinet's panel is described.
+- [Security](SECURITY.md): how to report a security problem (privately, not in an issue).
 - [Over-the-air updates](docs/ota.md): how updates stay safe.
 - [Releasing](docs/release.md): how a new version is built, signed and published.
 - [OTA formats](docs/ota-format.md): the exact file formats (a contract between the builder and the radio).
@@ -92,6 +96,8 @@ MPD │ go-librespot │ Bluetooth │ AirPlay │ UPnP ──▶ Amp4 Pro (hard
                          └─ in a group: Snapcast ──▶ the other Haslers (each through its own amp and knob)
 ```
 
+More detail, with diagrams: [How the radio works](docs/architecture.md).
+
 `haslerd` is our small service on the Pi. It reads the keys and knobs, starts
 the music, drives the lamp and serves the key page. The music system underneath
 is [moOde audio](https://moodeaudio.org/). Bluetooth, AirPlay (shairport-sync)
@@ -109,8 +115,9 @@ cabinet in `config/variants/`.
 
 Hasler's code is [MIT](LICENSE). Two exceptions: the moOde patch in
 `config/moode/` is GPL-3.0-or-later, because it changes moOde
-([config/moode/LICENSE](config/moode/LICENSE)), and the HAT hardware design in
-`docs/hat/` is [CERN-OHL-P-2.0](docs/hat/LICENSE). Releases also bundle
+([config/moode/LICENSE](config/moode/LICENSE)), and the HAT hardware design
+(`hardware/hat/` and its notes in `docs/hat/`) is
+[CERN-OHL-P-2.0](hardware/hat/LICENSE). Releases also bundle
 go-librespot (GPL-3.0), Deno (MIT), two fonts (SIL OFL 1.1) and Python
 packages under their own licences; [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 lists them, and every release carries it with the full texts in `licenses/`.

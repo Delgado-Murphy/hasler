@@ -286,6 +286,7 @@ const get = async (base, url) => (await fetch(base + url)).json();
       assert(!(await old.isVisible('#newLine')), 'a new-radio line on a month-old radio');
       await old.goto(radio.base + '/#settings');
       await until(() => old.isVisible('#yoursList'), 8000, 'the section still on Settings for an older radio');
+      await old.unrouteAll({behavior: 'ignoreErrors'});   // a poll still in flight must not fail the close
       await old.close();
     });
 

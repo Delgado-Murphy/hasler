@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: I have a Hasler at home and something is wrong
+    url: https://github.com/Delgado-Murphy/hasler/blob/master/docs/using.md#help-from-the-makers
+    about: >-
+      Please don't open an issue here. On the radio's page, open
+      Settings → Something's wrong? → Tell the makers. It sends the makers what
+      they need, privately, and their answer comes back on the radio.
+  - name: A security problem
+    url: https://github.com/Delgado-Murphy/hasler/blob/master/SECURITY.md
+    about: Please report it privately, not in a public issue.

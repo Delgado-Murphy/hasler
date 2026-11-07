@@ -1,0 +1,29 @@
+name: An idea
+description: Something the radio, the page, the docs or the HAT could do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What would someone living with the radio, or building one, notice?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: The problem it solves, or the moment it would help.
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work (optional)
+      description: |
+        Keep in mind: the radio must keep working without the internet, Home
+        Assistant or a phone, and a key press never waits for the network.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Helping
+      options:
+        - label: I'd like to work on this myself.

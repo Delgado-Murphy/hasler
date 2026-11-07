@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- The update channels have one name each, everywhere: **Bench** (new
+  versions reach the makers' radios first, and may break) and **Stable**
+  (everyone). The page's picker said "Test versions".
+
+For makers
+- New: [How the radio works](docs/architecture.md), a one-page map with
+  diagrams; a fuller [Contributing](docs/contributing.md) (running a fake
+  radio on a laptop, every test suite); issue and pull-request templates;
+  [SECURITY.md](SECURITY.md).
+- The HAT's CERN-OHL-P licence now sits next to its design files too
+  (`hardware/hat/LICENSE`).
+- Docs: moOde 10.3.7 throughout, ten starter sets, the HAT brought up.
+
 ## 1.6.0 - 2026-11-07
 
 The page

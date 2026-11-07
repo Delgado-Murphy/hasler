@@ -18,7 +18,7 @@ it all together are in the [build guide](build-guide.md).
 
 This page describes the prototype build: breakout boards and a hand-wired
 prototype board ([prototype/README.md](prototype/README.md)). The **Hasler
-HAT** (rev A, ordered October 2026; [brief](hat/BRIEF.md), [design](hat/DESIGN.md),
+HAT** (rev A, brought up on the bench radio in November 2026, and what every new radio uses; [brief](hat/BRIEF.md), [design](hat/DESIGN.md),
 [ordering and bring-up](../hardware/hat/ORDERING.md)) puts the 20 V power, its
 protection, the key and knob chips and the lamp resistors on one board, with
 the same chips. Only the panel's wiring to them differs: a cabinet on the HAT

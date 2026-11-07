@@ -3,9 +3,9 @@ Copyright (c) 2026 Delgado & Murphy (Bill Murphy)
 
 The hardware design files in this directory and its subdirectories
 (schematics, PCB layouts, KiCad projects, fabrication outputs, BOMs, renders
-and the design notes that describe them) are licensed under the CERN Open
-Hardware Licence Version 2 - Permissive (SPDX: CERN-OHL-P-2.0). The full text
-follows.
+and the design notes that describe them), and those in hardware/hat/, are
+licensed under the CERN Open Hardware Licence Version 2 - Permissive (SPDX:
+CERN-OHL-P-2.0). The full text follows.
 
 The software in the rest of this repository is MIT licensed (see ../../LICENSE).
 
