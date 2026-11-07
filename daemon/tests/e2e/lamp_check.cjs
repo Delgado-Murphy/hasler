@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // The guided Lamp check (Settings -> Maker tools -> Lamp colours): walks the
 // whole flow with scripted picks - floors, balance, amber, standby glow,
-// blue, the verification sweep - with Back, Stop and resume (across a reload),
-// a keyboard answer, then Save, and checks the calibration the radio saved
-// into the overlay's io.lamp (and that other io.lamp keys survived), the raw
-// duty previews the page sent, and Back to standard. Runs a fake radio
+// blue, green, the verification sweep - with Back, Stop and resume (across a
+// reload), a keyboard answer, then Save, and checks the calibration the radio
+// saved into the overlay's io.lamp (and that other io.lamp keys survived), the
+// raw duty previews the page sent, and Back to standard. Runs a fake radio
 // (haslerd --fake) in Chrome.
 //
 //   cd daemon && node tests/e2e/lamp_check.cjs
@@ -24,14 +24,25 @@ const SHOTS = process.env.SHOTS || '';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let failed = 0, passed = 0;
 
-// What the scripted picks below must save (see the comments at each pick).
-const EXPECT = {
-  min_duty: {red: 0.015, green: 0.005625, blue: 0.054},
-  balance: {red: 1, green: 1.25, blue: 0.6667},
-  palette: {amber: {day: [1, 0.185, 0], night: [1, 0.155, 0]}, ember: [1, 0.06, 0], blue: [0.05, 0, 1]},
-  level_gain: {amber: 1, ember: 1, blue: 1.6818},
-  levels: {ember_day: 0.25, ember_night: 0.144},
-};
+// The check starts from the radio's standard (GET /api/lamp/calibration .standard: the
+// variant descriptor's own io.lamp calibration - the bench LED's check, shipped with every
+// Hasler HM - over the engine's constants). What the scripted picks below must save is
+// that standard with the picks applied (see the comments at each pick).
+const r4 = x => Math.round(x * 1e4) / 1e4;
+function expected(std){
+  const day0 = std.palette.amber.day;
+  const day = r4(day0[1] + 0.015);                                   // amber by day: a, (stop/resume), b, b, a from the standard's yellow
+  const night = r4(day - 0.03);                                      // at night: b, then Can't tell
+  const gain = Object.assign({}, std.level_gain, {blue: 1.6818});    // blue: capped at 80 %, 2^0.75 at 35 %
+  if (std.palette.green) gain.green = r4(0.57 * 1.2);                // green: "the amber" once from the page's 0.57, then About the same
+  return {
+    min_duty: {red: 0.015, green: 0.005625, blue: 0.054},            // floors: 1 % x 1.5, 0.25 % x 1.5 (raised x 1.5 in the sweep), 4.5 % x 1.2
+    balance: {red: 1, green: 1.25, blue: 0.6667},                    // the warm-bulb staircase: 0.4375 / 0.35, 0.04 / 0.06
+    palette: Object.assign({}, std.palette, {amber: {day: [day0[0], day, day0[2]], night: [day0[0], night, day0[2]]}, blue: [0.05, 0, 1]}),
+    level_gain: gain,
+    levels: {ember_day: r4(Math.min(0.6, std.levels.ember_day * 1.25)), ember_night: r4(Math.max(0.03, std.levels.ember_night / 1.25))},
+  };
+}
 const OVERLAY = 'schema: 1\nio:\n  lamp:\n    frequency_hz: 600\n    palette:\n      white: [1.0, 0.3, 0.05]\n';
 
 function freePort(){
@@ -96,14 +107,29 @@ function near(a, b, path = ''){
   const q = page => page.textContent('#lchkQ');
   const step = page => page.textContent('#lchkStep');
   const pick = async (page, k, times = 1) => { for (let i = 0; i < times; i++) await page.click('#lchkAns-' + k); };
-  let page;
+  // The document the check starts from, and what it must end with.
+  let page, doc, std, EXPECT, N;
   try {
+    await check('the radio ships the bench LED’s check as its standard: nothing saved, a green in the palette', async () => {
+      doc = await getJson(radio.base, '/api/lamp/calibration');
+      std = doc.standard;
+      assert(JSON.stringify(doc.saved) === '{}', 'saved at the start: ' + JSON.stringify(doc.saved));
+      assert(std && std.min_duty && std.balance && std.palette && std.level_gain && std.levels, 'standard: ' + JSON.stringify(std));
+      assert(std.min_duty.red > 0 && std.balance.green !== 1 && std.palette.amber.day[1] !== std.palette.amber.night[1], 'a calibrated standard: ' + JSON.stringify(std));
+      assert(doc.colours.includes('green') && Array.isArray(std.palette.green) && typeof std.level_gain.green === 'number', 'no green in the standard: ' + JSON.stringify(std.palette));
+      assert(doc.led, 'the descriptor names no LED part');
+      EXPECT = expected(std); N = 7;
+    });
+
     await check('maker tools: the lamp check sits above the sliders, folded into Advanced', async () => {
       page = await open();
       await page.waitForSelector('#lchkStart', {timeout: 8000});
       const txt = await page.textContent('#lchk');
       assert(txt.includes('dim room') && txt.includes('listening position') && txt.includes('20 minutes'), 'intro: ' + txt);
       assert(txt.includes('No lamp on this radio'), 'the fake radio has no lamp: ' + txt);
+      const state = await page.textContent('#lchkState');
+      assert(state.includes('Standard settings') && state.includes('LED ' + doc.led), 'state: ' + state);
+      assert(!(await page.$('#lchkStd')), 'Back to standard shows with nothing saved');
       assert(await page.$('#lcAdv:not([open])'), 'Advanced is not folded');
       assert(await page.isHidden('#lcAdv .lc-list'), 'sliders show while folded');
       await page.click('#lcAdv summary');
@@ -114,7 +140,7 @@ function near(a, b, path = ''){
 
     await check('step 1, floors: blinking duty steps on the lamp, Back undoes a pick', async () => {
       await page.click('#lchkStart');
-      assert((await step(page)).includes('Step 1 of 6'), await step(page));
+      assert((await step(page)).includes('Step 1 of ' + N), await step(page));
       assert((await q(page)).includes('Red alone') && (await q(page)).includes('2 %'), await q(page));
       await until(async () => previews.some(b => b.duty && b.duty[0] === 0.02 && !b.duty[1] && !b.duty[2]), 3000, 'red 2 % preview');
       await until(async () => previews.some(b => b.duty && b.duty.every(v => v === 0)), 4000, 'the blink off');
@@ -136,7 +162,7 @@ function near(a, b, path = ''){
     });
 
     await check('step 2, balance: A/B staircase, named in plain words', async () => {
-      assert((await step(page)).includes('Step 2 of 6'), await step(page));
+      assert((await step(page)).includes('Step 2 of ' + N), await step(page));
       assert((await q(page)).includes('warm bulb') && (await step(page)).includes('Balance'), await q(page));
       await sleep(1700);                             // let the lamp swap to B once
       const lit = await page.$eval('#lchkCard1', el => el.classList.contains('on'));
@@ -147,33 +173,38 @@ function near(a, b, path = ''){
       await pick(page, 'same');                      // blue 0.04 -> x0.6667
     });
 
-    await check('step 3, amber: Stop, reload, carry on where it stopped', async () => {
-      assert((await step(page)).includes('Step 3 of 6') && (await q(page)).includes('your amber'), await q(page));
-      await pick(page, 'a');                         // 0.19 (yellower)
+    await check('step 3, amber: starts from the standard’s amber; Stop, reload, carry on where it stopped', async () => {
+      assert((await step(page)).includes('Step 3 of ' + N) && (await q(page)).includes('your amber'), await q(page));
+      const y0 = std.palette.amber.day[1];
+      // The first sample pair sits 0.04 either side of the standard's yellow.
+      await until(async () => previews.some(b => b.draft && b.colour === 'amber' && b.level === 1 && Math.abs(b.draft.palette.amber.day[1] - r4(y0 + 0.04)) < 1e-9), 4000, 'A at the standard + 0.04');
+      await pick(page, 'a');                         // yellower: + 0.04
       await page.click('#lchkStop');
       const resume = await page.textContent('#lchkResume');
-      assert(resume.includes('step 3 of 6'), 'resume: ' + resume);
+      assert(resume.includes('step 3 of ' + N), 'resume: ' + resume);
       await page.reload();
       await page.waitForSelector('#lchkResume', {timeout: 8000});
       await page.click('#lchkResume');
       assert((await q(page)).includes('your amber'), 'after resume: ' + await q(page));
-      await pick(page, 'b'); await pick(page, 'b'); await pick(page, 'a');   // from the standard 0.17: 0.19, 0.18, 0.185
+      await pick(page, 'b'); await pick(page, 'b'); await pick(page, 'a');   // - 0.02, - 0.01, + 0.005: the standard + 0.015
       assert((await q(page)).includes('At night'), await q(page));
-      await pick(page, 'b'); await pick(page, 'same');                        // night 0.135
+      await pick(page, 'b'); await pick(page, 'same');                        // night: day - 0.03
     });
 
-    await check('step 4, standby glow: brighter/dimmer, one answer from the keyboard', async () => {
-      assert((await step(page)).includes('Step 4 of 6') && (await q(page)).includes('by day'), await q(page));
+    await check('step 4, standby glow: starts from the standard’s levels; brighter/dimmer, one answer from the keyboard', async () => {
+      assert((await step(page)).includes('Step 4 of ' + N) && (await q(page)).includes('by day'), await q(page));
+      assert((await page.textContent('#lchk')).includes(Math.round(std.levels.ember_day * 100) + ' % brightness'), 'the standard’s level first: ' + await page.textContent('#lchk'));
       await page.focus('#lchkAns-up');
-      await page.keyboard.press('1');                // Too dim: 0.20 x 1.25 = 0.25
-      assert((await page.textContent('#lchk')).includes('25 % brightness'), 'level after the key');
+      await page.keyboard.press('1');                // Too dim: x 1.25
+      const want = Math.round(Math.min(0.6, std.levels.ember_day * 1.25) * 100) + ' % brightness';
+      assert((await page.textContent('#lchk')).includes(want), 'level after the key: ' + want);
       await pick(page, 'ok');
       assert((await q(page)).includes('at night'), await q(page));
-      await pick(page, 'down'); await pick(page, 'ok');                       // 0.18 / 1.25 = 0.144
+      await pick(page, 'down'); await pick(page, 'ok');                       // / 1.25
     });
 
     await check('step 5, blue: brightness match against amber, then the tint', async () => {
-      assert((await step(page)).includes('Step 5 of 6') && (await q(page)).includes('brighter'), await q(page));
+      assert((await step(page)).includes('Step 5 of ' + N) && (await q(page)).includes('brighter'), await q(page));
       await shot(page, 'lampcheck-phone-blue');
       await pick(page, 'amber', 2);                  // 80 %: blue loses even at full power -> capped
       await pick(page, 'amber'); await pick(page, 'blue'); await pick(page, 'amber'); await pick(page, 'same');  // 35 %: 2^0.75
@@ -181,8 +212,17 @@ function near(a, b, path = ''){
       await pick(page, 'b'); await pick(page, 'b');  // a touch of red, then more: r 0.05
     });
 
-    await check('step 6, every look by day and night: a jump raises a floor and re-runs it', async () => {
-      assert((await step(page)).includes('Step 6 of 6'), await step(page));
+    await check('step 6, green: the magic-eye flash matched against the amber', async () => {
+      assert((await step(page)).includes('Step 6 of ' + N) && (await step(page)).includes('Green'), await step(page));
+      assert((await q(page)).includes('the green'), await q(page));
+      await until(async () => previews.some(b => b.draft && b.colour === 'green' && b.level === 0.55 && Math.abs(b.draft.level_gain.green - 0.57) < 1e-9), 4000, 'a green sample at 0.55, gain 0.57');
+      await shot(page, 'lampcheck-phone-green');
+      await pick(page, 'amber');                     // the green is dimmer: 0.57 x 1.2 = 0.684
+      await pick(page, 'same');
+    });
+
+    await check('step 7, every look by day and night: a jump raises a floor and re-runs it', async () => {
+      assert((await step(page)).includes('Step 7 of ' + N) && (await step(page)).includes('Every look'), await step(page));
       assert((await q(page)).includes('Playing') && (await q(page)).includes('by day'), await q(page));
       await shot(page, 'lampcheck-phone-sweep');
       await pick(page, 'jump');                      // the radio blames amber's faintest lit channel: green 0.375 % x 1.5
@@ -199,6 +239,8 @@ function near(a, b, path = ''){
       assert(txt.includes('only a guide') && txt.includes('Save'), txt);
       assert(txt.includes('B 5.4 %') && !txt.includes('No steady faint'), 'blue found by searching up: ' + txt);
       assert(txt.includes('couldn’t quite match'), 'no word about the blue cap');
+      assert(txt.includes('Green') && txt.includes('×' + EXPECT.level_gain.green), 'no green row: ' + txt);
+      assert(txt.includes('Raised during the check: green ×1'), 'no word about the raised floor: ' + txt);
       assert(txt.includes('Back to standard'), 'no Back to standard');
       const saved = await getJson(radio.base, '/api/lamp/calibration');
       assert(JSON.stringify(saved.saved) === '{}', 'saved before Save: ' + JSON.stringify(saved.saved));
@@ -208,12 +250,14 @@ function near(a, b, path = ''){
     await check('Save writes exactly the contract into io.lamp and keeps the rest', async () => {
       await page.click('#lchkSave');
       await until(async () => (await page.$('#lchkStart')) && !(await page.$('#lchkSum')), 5000, 'back to the intro');
-      const doc = await getJson(radio.base, '/api/lamp/calibration');
-      const s = doc.saved;
+      const after = await getJson(radio.base, '/api/lamp/calibration');
+      const s = after.saved;
       assert(JSON.stringify(Object.keys(s).sort()) === JSON.stringify(['balance', 'calibrated', 'level_gain', 'levels', 'min_duty', 'palette']), 'keys ' + Object.keys(s));
       const {calibrated, ...cal} = s;
       near(cal, EXPECT);
       assert(calibrated.version === 1 && /^\d{4}-\d\d-\d\dT/.test(calibrated.at) && 'cpu_temp_c' in calibrated, JSON.stringify(calibrated));
+      assert(calibrated.led === doc.led && after.led_changed === false, 'the LED part stamped: ' + JSON.stringify(calibrated));
+      near(after.standard, std);                     // the standard is the descriptor's, untouched by a save
       const text = fs.readFileSync(path.join(radio.tmp, 'etc', 'variant.d', 'hasler-hm.yaml'), 'utf8');
       assert(text.includes('frequency_hz: 600') && /white: \[1\.0, 0\.3, 0\.05\]/.test(text), 'other keys lost:\n' + text);
       assert((await page.textContent('#lchkState')).includes('Checked by eye'), await page.textContent('#lchkState'));
@@ -229,10 +273,12 @@ function near(a, b, path = ''){
       assert(drafts.length > 20, 'only ' + drafts.length + ' draft previews');
       assert(drafts.every(b => JSON.stringify(Object.keys(b.draft).sort()) === JSON.stringify(keys)), 'a draft with odd keys');
       assert(drafts.every(b => (b.colour && typeof b.level === 'number' && b.look === undefined) || (b.look && typeof b.night === 'boolean')), 'a bad draft preview');
+      // Every draft carries the standard's other colours (a draft is the whole calibration, so the engine draws it as it would be).
+      assert(drafts.every(b => Array.isArray(b.draft.palette.green) && typeof b.draft.level_gain.green === 'number'), 'a draft without the standard’s green');
       const looks = new Set(drafts.filter(b => b.look).map(b => b.look));
       for (const id of ['standby', 'playing', 'busy', 'hotspot', 'asking', 'kick', 'refuse', 'swell', 'hue_blue', 'no_internet', 'fault', 'ok'])
         assert(looks.has(id), 'the sweep never showed ' + id + ': ' + [...looks]);
-      assert(drafts.some(b => b.colour === 'amber' && b.level === 1) && drafts.some(b => b.colour === 'blue'), 'no colour samples');
+      assert(drafts.some(b => b.colour === 'amber' && b.level === 1) && drafts.some(b => b.colour === 'blue') && drafts.some(b => b.colour === 'green'), 'no colour samples');
       assert(previews.some(b => b.rgb === null), 'the preview was never ended');
     });
 
@@ -246,26 +292,44 @@ function near(a, b, path = ''){
       await post({rgb: null});
     });
 
-    await check('Back to standard takes a second tap and keeps the rest of the overlay', async () => {
+    await check('Back to standard takes a second tap, returns to the shipped standard and keeps the rest of the overlay', async () => {
       await page.click('#lchkStd');
       assert((await page.textContent('#lchkStd')).includes('Tap again'), await page.textContent('#lchkStd'));
       await page.click('#lchkStd');
       await until(async () => JSON.stringify((await getJson(radio.base, '/api/lamp/calibration')).saved) === '{}', 5000, 'calibration gone');
+      const after = await getJson(radio.base, '/api/lamp/calibration');
+      near(after.standard, std);                     // back to the descriptor's values, not the engine's bare constants
+      assert(after.led === doc.led && after.led_changed === false, JSON.stringify(after));
       const text = fs.readFileSync(path.join(radio.tmp, 'etc', 'variant.d', 'hasler-hm.yaml'), 'utf8');
-      assert(text.includes('frequency_hz: 600') && text.includes('white') && !text.includes('min_duty'), text);
+      assert(text.includes('frequency_hz: 600') && text.includes('white'), 'the rest of the overlay lost:\n' + text);
+      for (const k of ['min_duty', 'balance', 'level_gain', 'levels', 'calibrated', 'amber', 'ember', 'blue', 'green'])
+        assert(!text.includes(k), 'the overlay still has ' + k + ':\n' + text);
       await until(async () => (await page.textContent('#lchkState')).includes('Standard'), 5000, 'standard state');
+      assert(!(await page.$('#lchkStd')), 'Back to standard still offered with nothing saved');
     });
 
     await check('a lamp with a magic-eye green gets a green brightness step (only then)', async () => {
+      // Without a green in the palette (an older lamp), the step is left out.
+      const plain = await browser.newContext({viewport: {width: 390, height: 844}});
+      await plain.addInitScript(() => { try { localStorage.setItem('hasler.maker', '1'); } catch (_) {} });
+      await plain.route('**/api/lamp/calibration', async route => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const res = await route.fetch(), d = await res.json();
+        d.colours = d.colours.filter(c => c !== 'green');
+        delete d.standard.palette.green; delete d.standard.level_gain.green;
+        await route.fulfill({response: res, json: d});
+      });
+      const p = await plain.newPage();
+      p.on('pageerror', e => errors.push(e.message));
+      await p.goto(radio.base + '/#settings/maker');
+      await p.waitForSelector('#lchkStart', {timeout: 8000});
+      await p.click('#lchkStart');
+      assert((await p.textContent('#lchkStep')).includes('of 6'), 'a Green step without a green: ' + await p.textContent('#lchkStep'));
+      await p.click('#lchkStop');
+      await plain.close();
+      // With one: the step, reached directly, starts from the page's 0.57 and halves its step each answer.
       const ctx = await browser.newContext({viewport: {width: 390, height: 844}});
       await ctx.addInitScript(() => { try { localStorage.setItem('hasler.maker', '1'); } catch (_) {} });
-      await ctx.route('**/api/lamp/calibration', async route => {
-        if (route.request().method() !== 'GET') return route.continue();
-        const res = await route.fetch(), doc = await res.json();
-        doc.colours = ['amber', 'ember', 'blue', 'green'];
-        doc.standard.palette.green = [0.1, 1, 0.05]; doc.standard.level_gain.green = 1;
-        await route.fulfill({response: res, json: doc});
-      });
       const sent = [];
       const g = await ctx.newPage();
       g.on('pageerror', e => errors.push(e.message));
