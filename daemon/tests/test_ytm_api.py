@@ -17,7 +17,7 @@ from haslerd.player.base import FakePlayer, Preset
 from haslerd.player.sources.ytmusic import YtmCatalog
 from haslerd.variant import Panel, load_variant
 from haslerd.web import keymap
-from haslerd.web.server import WebApp, WebServer
+from haslerd.web.server import LYRICS_OFFSET_MS, WebApp, WebServer
 
 PL = "https://music.youtube.com/playlist?list={}"
 WL = "https://music.youtube.com/watch?list={}"
@@ -171,11 +171,11 @@ def test_without_a_catalogue_everything_says_unavailable(tmp_path):
 
 def test_explicit_is_a_badge_until_the_owner_hides_it(rig):
     app, *_ = rig
-    assert app.settings()["ytm"] == {"hide_explicit": False, "lyrics_offset_ms": 250}
+    assert app.settings()["ytm"] == {"hide_explicit": False, "lyrics_offset_ms": LYRICS_OFFSET_MS}
     items = get(app, "/api/ytm/search", q="rosalia", type="songs")[1]["items"]
     assert [i["explicit"] for i in items] == [True, False]
     app.put_settings({"ytm": {"hide_explicit": True}})
-    assert app.settings()["ytm"] == {"hide_explicit": True, "lyrics_offset_ms": 250}
+    assert app.settings()["ytm"] == {"hide_explicit": True, "lyrics_offset_ms": LYRICS_OFFSET_MS}
     assert json.loads(app.settings_file.read_text())["ytm"] == {"hide_explicit": True}
     doc = get(app, "/api/ytm/search", q="rosalia", type="songs")[1]
     assert [i["id"] for i in doc["items"]] == [CUTE] and doc["results"] == doc["items"]

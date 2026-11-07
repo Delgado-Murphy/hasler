@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
-from .lyrics import Lrclib, timed_from_ytm, track_facts
+from .lyrics import Lrclib, timed_from_ytm, timing_misfit, track_facts
 from .ytm_refs import (
     CHANNEL_ID, LIKED, LIST_ID, MPRE_ID, OLAK_ID, PLAYLIST, SONG_RADIO, VIDEO_ID, WATCH_LIST,
     chart_list, link_for, norm, strip_vl,
@@ -92,8 +92,10 @@ DEFAULT_COUNTRY = "ES"
 
 def _lyrics_doc(doc: dict) -> dict:
     """The page's lyrics answer, without the cache's bookkeeping."""
+    synced = bool(doc.get("synced") and doc.get("lines"))
     return {"lyrics": doc.get("lyrics"), "source": str(doc.get("source") or ""),
-            "synced": bool(doc.get("synced") and doc.get("lines")), "lines": doc.get("lines") or None}
+            "synced": synced, "lines": doc.get("lines") or None,
+            "timing": str(doc.get("timing") or "") if synced else "", "note": str(doc.get("note") or "")}
 
 
 class YtmBrowse:
@@ -508,7 +510,9 @@ class YtmBrowse:
                 hit = None
         if hit is not None:
             ttl = LYRICS_TTL if hit[1].get("_whole", True) else LYRICS_RETRY_S
-            if now - hit[0] < ttl:
+            # A timed answer kept before its fit to the recording was checked: asked again.
+            unchecked = bool(hit[1].get("synced")) and "timing" not in hit[1]
+            if now - hit[0] < ttl and not unchecked:
                 return _lyrics_doc(hit[1])
         got = self._fetch_lyrics(vid)
         if got is None:
@@ -543,12 +547,20 @@ class YtmBrowse:
         raw = got["raw"] if isinstance(got["raw"], dict) else {}
         source = str(raw.get("source") or "")
         lines, plain = timed_from_ytm(raw)
-        if lines:
-            return {"lyrics": plain, "source": source, "synced": True, "lines": lines}, True
-        # No times from YouTube: LRCLIB, outside the catalogue's lock.
+        facts = track_facts(got["watch"])
+        misfit = timing_misfit(lines, facts.get("duration"))
+        if lines and not misfit:
+            log.info("lyrics %s: %s, timing from YouTube Music (song %s s, lines to %.0f s)", vid,
+                     source or "no source named", facts.get("duration") or "?",
+                     max(float(d.get("end") or d["t"]) for d in lines))
+            return {"lyrics": plain, "source": source, "synced": True, "lines": lines,
+                    "timing": "YouTube Music"}, True
+        if misfit:
+            log.info("lyrics %s: YouTube Music's timing is for another version (%s): asking LRCLIB", vid, misfit)
+        # No times from YouTube (or not for this recording): LRCLIB, outside the catalogue's lock.
         whole, found = True, None
         try:
-            found = self.lrclib.get(**track_facts(got["watch"]))
+            found = self.lrclib.get(**facts)
         except OSError as exc:
             log.info("LRCLIB not reachable: %s", exc)
             whole = False
@@ -556,9 +568,12 @@ class YtmBrowse:
             log.warning("LRCLIB lookup failed", exc_info=True)
             whole = False
         if found and found.get("synced"):
-            return found, whole
+            log.info("lyrics %s: timing from LRCLIB (song %s s)", vid, facts.get("duration") or "?")
+            return {**found, "timing": "LRCLIB"}, whole
+        note = "The timing was for another version of this song" if misfit else None
         if plain:
-            return {"lyrics": plain, "source": source, "synced": False, "lines": None}, whole
+            log.info("lyrics %s: %s, plain%s", vid, source or "no source named", " (" + misfit + ")" if misfit else "")
+            return {"lyrics": plain, "source": source, "synced": False, "lines": None, "note": note}, whole
         if found:
             return found, whole
         return {"lyrics": None, "source": "", "synced": False, "lines": None}, whole

@@ -135,10 +135,11 @@ def test_clean_title_and_facts():
 
 
 def test_lrclib_get_sends_only_the_song_and_names_us():
-    http = FakeHttp(get={"syncedLyrics": "[00:01.00]Hola\n[00:02.50]ladrón", "plainLyrics": "Hola\nladrón"})
+    http = FakeHttp(get={"syncedLyrics": "[00:01.00]Hola\n[00:02.50]ladrón\n[03:10.00]paz", "plainLyrics": "Hola\nladrón\npaz"})
     doc = ly.Lrclib(fetch=http).get("ROSALÍA", "La Perla (Official Video)", "LUX", 196)
-    assert doc == {"lyrics": "Hola\nladrón", "source": "LRCLIB", "synced": True,
-                   "lines": [{"t": 1.0, "end": None, "text": "Hola"}, {"t": 2.5, "end": None, "text": "ladrón"}]}
+    assert doc == {"lyrics": "Hola\nladrón\npaz", "source": "LRCLIB", "synced": True,
+                   "lines": [{"t": 1.0, "end": None, "text": "Hola"}, {"t": 2.5, "end": None, "text": "ladrón"},
+                             {"t": 190.0, "end": None, "text": "paz"}]}
     assert http.params() == [{"artist_name": "ROSALÍA", "track_name": "La Perla", "album_name": "LUX", "duration": "196"}]
     assert http.urls[0].startswith("https://lrclib.net/api/get?")
     assert ly.USER_AGENT.startswith("Hasler-radio/")
@@ -147,7 +148,7 @@ def test_lrclib_get_sends_only_the_song_and_names_us():
 def test_lrclib_search_when_get_misses_picks_the_closest_synced():
     found = [{"duration": 250, "syncedLyrics": "[00:01.00]too long"},
              {"duration": 197, "plainLyrics": "plain only"},
-             {"duration": 195, "syncedLyrics": "[00:01.00]this one"},
+             {"duration": 195, "syncedLyrics": "[00:01.00]this one\n[03:10.00]end"},
              {"duration": 196, "instrumental": True}]
     http = FakeHttp(get=None, search=found)
     doc = ly.Lrclib(fetch=http).get("ROSALÍA", "La Perla", "LUX", 196)
@@ -179,20 +180,22 @@ def browse_with(catalog, http, clock=None):
 
 
 def test_youtube_timed_lines_first_lrclib_not_asked(catalog):
-    FakeYTMusic.timed = {"lyrics": [LyricLine("Hola", 1000, 2000, 1)], "source": "Source: LyricFind",
+    FakeYTMusic.timed = {"lyrics": [LyricLine("Hola", 1000, 2000, 1), LyricLine("Adiós", 190000, 194000, 2)],
+                         "source": "Source: LyricFind",
                          "hasTimestamps": True}
     http = FakeHttp()
     doc = browse_with(catalog, http).lyrics(PERLA)
-    assert doc == {"lyrics": "Hola", "source": "Source: LyricFind", "synced": True,
-                   "lines": [{"t": 1.0, "end": 2.0, "text": "Hola"}]}
+    assert doc == {"lyrics": "Hola\nAdiós", "source": "Source: LyricFind", "synced": True,
+                   "lines": [{"t": 1.0, "end": 2.0, "text": "Hola"}, {"t": 190.0, "end": 194.0, "text": "Adiós"}],
+                   "timing": "YouTube Music", "note": ""}
     assert http.urls == []
     assert calls("get_lyrics") == [("get_lyrics", "MPLYt_G6BH2uQgVxU-7")]
 
 
 def test_lrclib_when_youtube_has_no_times(catalog):
-    http = FakeHttp(get={"syncedLyrics": "[00:03.00]Hola, ladrón de paz", "plainLyrics": "Hola, ladrón de paz"})
+    http = FakeHttp(get={"syncedLyrics": "[00:03.00]Hola, ladrón de paz\n[03:05.00]fin", "plainLyrics": "Hola, ladrón de paz"})
     doc = browse_with(catalog, http).lyrics(PERLA)
-    assert doc["synced"] and doc["source"] == "LRCLIB" and doc["lines"][0]["t"] == 3.0
+    assert doc["synced"] and doc["source"] == "LRCLIB" and doc["lines"][0]["t"] == 3.0 and doc["timing"] == "LRCLIB"
     # Only the song's facts (from YouTube's watch list) left the radio.
     assert http.params()[0] == {"artist_name": "ROSALÍA", "track_name": "La Perla", "album_name": "LUX",
                                 "duration": "196"}
@@ -200,7 +203,8 @@ def test_lrclib_when_youtube_has_no_times(catalog):
 
 def test_plain_youtube_lyrics_when_nobody_has_times(catalog):
     doc = browse_with(catalog, FakeHttp(get={"plainLyrics": "otra letra"})).lyrics(PERLA)
-    assert doc == {"lyrics": "Hola, ladrón de paz\r\n...", "source": "Source: Musixmatch", "synced": False, "lines": None}
+    assert doc == {"lyrics": "Hola, ladrón de paz\r\n...", "source": "Source: Musixmatch", "synced": False, "lines": None,
+                   "timing": "", "note": ""}
 
 
 def test_an_older_ytmusicapi_without_timestamps(catalog, monkeypatch):
@@ -213,7 +217,7 @@ def test_an_older_ytmusicapi_without_timestamps(catalog, monkeypatch):
 
 
 def test_whole_answers_are_kept_on_the_card_and_read_back_offline(catalog):
-    http = FakeHttp(get={"syncedLyrics": "[00:03.00]Hola"})
+    http = FakeHttp(get={"syncedLyrics": "[00:03.00]Hola\n[03:05.00]fin"})
     clock = Clock()
     browse_with(catalog, http, clock).lyrics(PERLA)
     path = catalog.state_dir / "ytm-cache" / "browse" / f"lyrics-{PERLA}.json"
@@ -237,7 +241,7 @@ def test_lrclib_down_is_kept_briefly_and_not_on_the_card(catalog):
     b.lyrics(PERLA)
     assert len(http.urls) == 1                                                   # kept for a while
     http.down = False
-    http.answers["get"] = {"syncedLyrics": "[00:01.00]Ya"}
+    http.answers["get"] = {"syncedLyrics": "[00:01.00]Ya\n[03:05.00]fin"}
     clock.t += yb.LYRICS_RETRY_S + 1
     assert b.lyrics(PERLA)["synced"]
 
@@ -309,7 +313,7 @@ def test_status_has_the_position_and_the_offset(app):
     assert a.settings()["ytm"] == {"hide_explicit": True, "lyrics_offset_ms": -150}
 
 
-@pytest.mark.parametrize("bad", [5000, -3001, 1.5, "100", True, None])
+@pytest.mark.parametrize("bad", [5001, -5001, 1.5, "100", True, None])
 def test_the_offset_is_checked(app, bad):
     a, _ = app
     with pytest.raises(ValueError):
@@ -320,3 +324,104 @@ def test_a_hand_edited_offset_out_of_range_falls_back(app):
     a, _ = app
     a.settings_file.write_text(json.dumps({"schema": 1, "ytm": {"lyrics_offset_ms": 99999}}))
     assert a.ytm_settings()["lyrics_offset_ms"] == LYRICS_OFFSET_MS
+
+
+# -- the timing must fit the recording that plays ---------------------------------------
+
+
+def test_timing_misfit_compares_the_last_line_with_the_song():
+    lines = [{"t": 1.0, "end": 2.0}, {"t": 150.0, "end": 156.7}]
+    assert ly.timing_misfit(lines, 160) is None                                  # an outro of a few s
+    assert ly.timing_misfit(lines, None) is None                                 # length unknown
+    assert ly.timing_misfit(None, 160) is None
+    assert "end at 157 s" in ly.timing_misfit(lines, 230)                       # the video: a long intro/outro
+    assert "run to 157 s" in ly.timing_misfit(lines, 140)                       # a radio edit: lines past the end
+    assert ly.timing_misfit(lines, 158.6) is None                                # within 2 s
+    assert ly.timing_misfit([{"t": 1.0, "end": None}, {"t": 170.0, "end": None}], 196) is None
+
+
+def video_watch(monkeypatch, length):
+    """The vid playing is the song's music video, ``length`` long."""
+    from ytm_fake import WATCH
+    watch = json.loads(json.dumps(WATCH))
+    watch["tracks"][0]["length"] = length
+
+    def answer(self, **kw):
+        self._rec("get_watch_playlist", kw.get("videoId"))
+        return watch
+    monkeypatch.setattr(FakeYTMusic, "get_watch_playlist", answer)
+
+
+TIMED_ALBUM_CUT = {"lyrics": [LyricLine("Hola", 1000, 2000, 1), LyricLine("Adiós", 150000, 156700, 2)],
+                   "source": "Source: LyricFind", "hasTimestamps": True}
+
+
+def test_youtube_timing_for_another_version_prefers_lrclib(catalog, monkeypatch):
+    video_watch(monkeypatch, "3:50")                                             # 230 s; the album cut is 157 s
+    FakeYTMusic.timed = TIMED_ALBUM_CUT
+    http = FakeHttp(get={"duration": 230, "syncedLyrics": "[00:40.00]Hola\n[03:40.00]Adiós", "plainLyrics": "x"})
+    doc = browse_with(catalog, http).lyrics(PERLA)
+    assert doc["synced"] and doc["timing"] == "LRCLIB" and doc["lines"][0]["t"] == 40.0
+    assert http.params()[0]["duration"] == "230"
+
+
+def test_no_fitting_timing_anywhere_falls_back_to_plain_and_says_why(catalog, monkeypatch):
+    video_watch(monkeypatch, "3:50")
+    FakeYTMusic.timed = TIMED_ALBUM_CUT
+    # LRCLIB only knows the 157 s album cut: off by more than 2 s, by /get and by search.
+    album = {"duration": 157, "syncedLyrics": "[00:01.00]Hola\n[02:30.00]Adiós", "plainLyrics": "Hola\nAdiós"}
+    http = FakeHttp(get=album, search=[album])
+    doc = browse_with(catalog, http).lyrics(PERLA)
+    assert not doc["synced"] and doc["lines"] is None and doc["timing"] == ""
+    assert doc["lyrics"] == "Hola\nAdiós" and doc["source"] == "Source: LyricFind"
+    assert "another version" in doc["note"]
+
+
+def test_lrclib_hits_of_another_length_are_not_taken():
+    off = {"duration": 180, "syncedLyrics": "[00:01.00]wrong cut\n[02:55.00]x"}
+    right = {"duration": 197, "syncedLyrics": "[00:02.00]right cut\n[03:10.00]y"}
+    doc = ly.Lrclib(fetch=FakeHttp(get=off, search=[off, right])).get("ROSALÍA", "La Perla", "LUX", 196)
+    assert doc["lines"][0]["text"] == "right cut"
+    # LRCLIB says the length fits but its lines stop a minute in: words only.
+    short = {"duration": 196, "syncedLyrics": "[00:01.00]a\n[01:00.00]b", "plainLyrics": "a\nb"}
+    doc = ly.Lrclib(fetch=FakeHttp(get=short)).get("ROSALÍA", "La Perla", "LUX", 196)
+    assert doc == {"lyrics": "a\nb", "source": "LRCLIB", "synced": False, "lines": None}
+
+
+def test_a_timed_answer_cached_before_the_fit_check_is_asked_again(catalog):
+    folder = catalog.state_dir / "ytm-cache" / "browse"
+    folder.mkdir(parents=True)
+    clock = Clock()
+    old = {"lyrics": "x", "source": "Source: LyricFind", "synced": True, "lines": [{"t": 1.0, "end": 2.0, "text": "x"}]}
+    (folder / f"lyrics-{PERLA}.json").write_text(json.dumps({"key": PERLA, "at": clock.t, "value": old}))
+    FakeYTMusic.timed = {"lyrics": [LyricLine("Hola", 1000, 2000, 1), LyricLine("Adiós", 190000, 194000, 2)],
+                         "source": "Source: LyricFind", "hasTimestamps": True}
+    doc = browse_with(catalog, FakeHttp(), clock).lyrics(PERLA)
+    assert doc["timing"] == "YouTube Music" and len(doc["lines"]) == 2
+
+
+# -- the offset's default: measured on the bench, and the old one migrated ---------------
+
+
+def test_the_default_is_the_measured_chain_and_the_old_default_migrates(app):
+    a, _ = app
+    assert 1000 < LYRICS_OFFSET_MS < 2500          # MPD + the cdsp plugin + CamillaDSP + the Amp4's buffer
+    assert a.ytm_settings()["lyrics_offset_ms"] == LYRICS_OFFSET_MS
+    # 1.7.0 saved its own default (250) whenever Earlier/Later came back to it: the new default now.
+    a.settings_file.write_text(json.dumps({"schema": 1, "ytm": {"lyrics_offset_ms": 250, "hide_explicit": True}}))
+    assert a.ytm_settings() == {"hide_explicit": True, "lyrics_offset_ms": LYRICS_OFFSET_MS}
+    # An owner's own value is kept.
+    a.settings_file.write_text(json.dumps({"schema": 1, "ytm": {"lyrics_offset_ms": 950}}))
+    assert a.ytm_settings()["lyrics_offset_ms"] == 950
+    # 250 chosen on this release's scale (Sync, Earlier / Later) stays 250.
+    a.put_settings({"ytm": {"lyrics_offset_ms": 250}})
+    assert a.ytm_settings()["lyrics_offset_ms"] == 250
+    assert json.loads(a.settings_file.read_text())["ytm"]["lyrics_offset_v"] == 2
+    assert a.settings()["ytm"] == {"hide_explicit": False, "lyrics_offset_ms": 250}   # the marker stays inside
+
+
+@pytest.mark.parametrize("good", [5000, -5000, 1250])
+def test_the_offset_reaches_five_seconds(app, good):
+    a, _ = app
+    a.put_settings({"ytm": {"lyrics_offset_ms": good}})
+    assert a.ytm_settings()["lyrics_offset_ms"] == good

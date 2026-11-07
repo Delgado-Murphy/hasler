@@ -174,13 +174,23 @@ VOLUME_LIMIT_RANGE = (30, 100)   # below 30 the knob is barely audible; 100 = no
 VOLUME_FLOOR_GAP = 10            # the floor stays this far under the ceiling: the knob keeps a sweep
 VOLUME_GUESS = 40.0              # a relative nudge with no reading starts here, as volume_step does
 # Synced lyrics: how far behind MPD's ``elapsed`` the page shows a line (ms;
-# settings ytm.lyrics_offset_ms, nudged from the lyrics panel). Bench note
-# 2026-11-07, hasler.local: MPD's elapsed is what has gone *into* ALSA, and
-# the output's hardware buffer is 16384 frames at 44.1 kHz = 372 ms (period
-# 2048 = 46 ms, which is also elapsed's step jitter). A line lit ~120 ms before
-# it is heard reads as "on time", so 372 - 120 ≈ 250. Calibrate by ear per amp.
-LYRICS_OFFSET_MS = 250
-LYRICS_OFFSET_MAX_MS = 3000
+# settings ytm.lyrics_offset_ms, Earlier / Later / Sync on the lyrics panel).
+# Bench measurement 2026-11-07, hasler.local, 1.7.0 (MPD 0.24.17 -> ALSA
+# route+plug -> moOde's alsa_cdsp ioplug -> CamillaDSP 4.1.3 on stdin ->
+# plughw HiFiBerry Amp4 Pro). MPD's elapsed is the chunk handed to its ALSA
+# output, and every buffer after it stays full (backpressure):
+#   MPD's output ring + the cdsp plugin's buffer (buffer_time 500 ms)   ~0.90 s
+#   CamillaDSP capture -> playback (chunksize 4096, queuelimit 1)       ~0.44 s
+#   Amp4 hardware buffer (16384 frames, period 2048 @ 44.1 kHz)         ~0.33 s
+# = ~1.7 s from elapsed to the speaker (frames CamillaDSP read minus the
+# DAC's hw_ptr; a track change traced through CamillaDSP's capture and
+# playback peaks against the file's onset). A line lit ~120 ms before it is
+# heard reads as on time: 1700 - 120 ≈ 1600. 1.7.0's default (250) counted
+# only the hardware buffer; a saved value still at 250 is read as the new one.
+LYRICS_OFFSET_MS = 1600
+LYRICS_OFFSET_OLD_DEFAULTS = (250,)
+LYRICS_OFFSET_VERSION = 2       # settings ytm.lyrics_offset_v: chosen on this release's scale
+LYRICS_OFFSET_MAX_MS = 5000
 KNOB_ID = re.compile(r"^/api/knobs/([A-Za-z0-9_.-]{1,64})/(sample|fit|calibration)$")
 HYSTERESIS_MAX = 5000
 # GET /api/keys/state ("Check this pair" on the key page polls it every 200 ms
@@ -1630,6 +1640,8 @@ class WebApp:
                     doc["spotify_guests"] = guests
                 if ytm is not None:
                     doc["ytm"] = {**(doc.get("ytm") if isinstance(doc.get("ytm"), dict) else {}), **ytm}
+                    if "lyrics_offset_ms" in ytm:
+                        doc["ytm"]["lyrics_offset_v"] = LYRICS_OFFSET_VERSION
                 if dismissed is not None:
                     doc["dismissed"] = _merge_dismissed(doc.get("dismissed"), dismissed)
                 if made_mine is not None:
@@ -1639,6 +1651,8 @@ class WebApp:
             else:
                 if ytm is not None:
                     self._ytm_prefs.update(ytm)
+                    if "lyrics_offset_ms" in ytm:
+                        self._ytm_prefs["lyrics_offset_v"] = LYRICS_OFFSET_VERSION
                 doc = self._lamp_settings
                 if place is not None:
                     doc["location"] = place
@@ -2664,6 +2678,8 @@ class WebApp:
         doc = doc if isinstance(doc, dict) else {}
         off = doc.get("lyrics_offset_ms")
         ok = isinstance(off, int) and not isinstance(off, bool) and abs(off) <= LYRICS_OFFSET_MAX_MS
+        if ok and off in LYRICS_OFFSET_OLD_DEFAULTS and doc.get("lyrics_offset_v") != LYRICS_OFFSET_VERSION:
+            ok = False      # the old release default, not chosen on this scale: the measured one
         return {"hide_explicit": doc.get("hide_explicit") is True,
                 "lyrics_offset_ms": off if ok else LYRICS_OFFSET_MS}
 

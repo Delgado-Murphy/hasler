@@ -3,7 +3,8 @@
 // the box, follows the song between polls, re-syncs after a jump (seek, skip, a key pressed
 // again) and holds on pause; scrolling by hand stops the following for a few seconds with a
 // "Back to the song" chip; plain lyrics say Plain; enhanced LRC lights word by word; Earlier /
-// Later saves the timing on the radio. The fake radio can't play YouTube Music, so the page's
+// Later step 0.25 s (held: repeating) with the value shown, Sync takes the line the owner taps
+// as the one sung now, and the timing is saved on the radio. The fake radio can't play YouTube Music, so the page's
 // /api/status is answered with a song and a position from a clock this test runs, and
 // /api/ytm/lyrics with timed lines.
 //
@@ -62,7 +63,7 @@ const play = (base, name) => post(base, '/api/play', {preset: {name, source: 'ra
 
 // Twelve lines 1.5 s apart from 1 s in; a long line wraps on a phone.
 const LINES = Array.from({length: 12}, (_, i) => ({t: 1 + 1.5 * i, end: null, text: i === 6 ? 'Line 7, the long one that wraps across the box on a phone' : 'Line ' + (i + 1)}));
-const SYNCED = {available: true, lyrics: LINES.map(l => l.text).join('\n'), source: 'Source: LyricFind', synced: true, lines: LINES};
+const SYNCED = {available: true, lyrics: LINES.map(l => l.text).join('\n'), source: 'Source: LyricFind', synced: true, lines: LINES, timing: 'YouTube Music'};
 const PLAIN = {available: true, lyrics: 'Hola, ladrón de paz\nque me robas la calma\ny no devuelves nada', source: 'Source: Musixmatch', synced: false, lines: null};
 const WORDS = {available: true, lyrics: 'Hola mundo azul', source: 'LRCLIB', synced: true,
   lines: [{t: 1, end: null, text: 'Hola mundo azul', words: [{t: 1, w: 'Hola '}, {t: 2, w: 'mundo '}, {t: 3, w: 'azul'}]},
@@ -85,7 +86,10 @@ const WORDS = {available: true, lyrics: 'Hola mundo azul', source: 'LRCLIB', syn
       j.standby = false; j.source = 'ytm';
       j.playing = Object.assign({}, j.playing || {}, {source: 'ytm', name: 'Rosalía radio'});
       j.track = {title: song.title, artist: 'ROSALÍA', album: 'LUX', vid: song.vid, thumb: '', art: ''};
-      j.position = {elapsed_s: +at().toFixed(3), duration_s: 200, state: song.state, at: Date.now() / 1000, offset_ms: song.offset};
+      // song.offset null: the radio's own saved offset (what /api/status carries on a real radio).
+      let off = song.offset;
+      if (off === null){ const s = await getJson(radio.base, '/api/settings'); off = s.ytm.lyrics_offset_ms; }
+      j.position = {elapsed_s: +at().toFixed(3), duration_s: 200, state: song.state, at: Date.now() / 1000, offset_ms: off};
       route.fulfill({response: resp, json: j});
     });
     await page.route('**/api/ytm/account', route => route.fulfill({json: {available: true, signed_in: false}}));
@@ -117,6 +121,8 @@ const WORDS = {available: true, lyrics: 'Hola mundo azul', source: 'LRCLIB', syn
       assert(/^Line [34]$/.test(await now(page)), 'now: ' + await now(page));
       const tag = await page.$eval('.lyr-tag', e => [e.textContent, e.classList.contains('on')]);
       assert(tag[0] === 'Synced' && tag[1], 'tag: ' + tag);
+      const src = await page.$eval('.lyr-foot .ytn-src', e => e.textContent);
+      assert(src === 'Source: LyricFind · timing from YouTube Music', 'footer: ' + src);
       const past = await page.$$eval('#ytnSync .lyl.past', es => es.map(e => e.textContent));
       assert(past.slice(0, 2).join('|') === 'Line 1|Line 2', 'past: ' + past.join('|'));
       assert(await page.$eval('#ytnSync .lyl.now', e => e.getAttribute('aria-current')) === 'true', 'aria-current');
@@ -209,11 +215,67 @@ const WORDS = {available: true, lyrics: 'Hola mundo azul', source: 'LRCLIB', syn
       seek(0.2, 'play');
       await until(async () => (await now(page)) === 'Line 1', 3000, 'its first line');
       await page.click('.lyr-nudge button:last-child');
-      await until(async () => { const s = await getJson(radio.base, '/api/settings'); return s.ytm && s.ytm.lyrics_offset_ms === 100; }, 3000, 'the offset saved');
+      await until(async () => { const s = await getJson(radio.base, '/api/settings'); return s.ytm && s.ytm.lyrics_offset_ms === 250; }, 3000, 'the offset saved');
       await page.close();
     });
 
+    await check('timing: steps of 0.25 s with the value shown, a held press repeats, Sync sets the tapped line, kept after a reload', async () => {
+      lyrics = SYNCED;
+      song.vid = 'w7pjt9ZH3NM'; song.title = 'La Perla'; song.offset = null;   // the radio's own offset from here on
+      await fetch(radio.base + '/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ytm: {lyrics_offset_ms: 0}})});
+      seek(4.6, 'play');
+      let page = await openLyrics(phone);
+      await page.waitForSelector('#ytnSync .lyl.now');
+      const off = () => page.$eval('#lyrOff', e => e.textContent);
+      const ms = async () => { const t = await off(); return Math.round(parseFloat(t.replace('−', '-').replace('+', '')) * 1000); };
+      await until(async () => (await off()) === '0.00 s', 2000, 'the value 0.00 s');
+      await page.click('.lyr-nudge button[aria-label="Lyrics later"]');
+      assert((await off()) === '+0.25 s', 'after Later: ' + await off());
+      await page.click('.lyr-nudge button[aria-label="Lyrics earlier"]');
+      await page.click('.lyr-nudge button[aria-label="Lyrics earlier"]');
+      assert((await off()) === '−0.25 s', 'after Earlier twice: ' + await off());
+      await until(async () => (await getJson(radio.base, '/api/settings')).ytm.lyrics_offset_ms === -250, 3000, '-250 saved');
+      // Held: keeps stepping until let go.
+      const later = await page.$eval('.lyr-nudge button[aria-label="Lyrics later"]', e => { const r = e.getBoundingClientRect(); return {x: r.x + r.width / 2, y: r.y + r.height / 2}; });
+      await page.mouse.move(later.x, later.y); await page.mouse.down(); await sleep(1150); await page.mouse.up();
+      const held = await ms();
+      assert(held >= 750 && held % 250 === 0, 'held Later: ' + held);
+      await sleep(400);
+      assert((await ms()) === held, 'kept stepping after let go');
+      // Sync, paused for a steady clock: the song is at 9.1 s (Line 6) on MPD's clock; the owner hears Line 4 (5.5 s).
+      seek(9.1, 'pause');
+      await page.waitForSelector('#ytnSync .lyl.now');
+      await sleep(1300);                                         // the pause reaches the page
+      await page.click('#lyrSync');
+      assert(await page.$eval('#lyrSync', e => e.getAttribute('aria-pressed')) === 'true', 'Sync not pressed');
+      assert(await page.$eval('#lyrHint', e => !e.hidden), 'no hint');
+      await page.click('#ytnSync .lyl:nth-child(4)');
+      assert((await now(page)) === 'Line 4', 'after the tap: ' + await now(page) + ' at ' + await off());
+      assert(await page.$eval('#lyrSync', e => e.getAttribute('aria-pressed')) === 'false', 'Sync still waiting');
+      assert(await page.$eval('#lyrHint', e => e.hidden), 'hint still showing');
+      const synced = await ms();
+      assert(Math.abs(synced - (9.1 - 5.5 - 0.15) * 1000) <= 60, 'synced offset: ' + synced);
+      await until(async () => (await getJson(radio.base, '/api/settings')).ytm.lyrics_offset_ms === synced, 3000, 'the synced offset saved');
+      await sleep(1300);
+      assert((await now(page)) === 'Line 4', 'a poll took the line back: ' + await now(page));
+      await page.close();
+      // Another load (or another phone): the radio's offset, the same line.
+      page = await openLyrics(phone);
+      await page.waitForSelector('#ytnSync .lyl.now');
+      await until(async () => (await ms()) === synced, 3000, 'the offset after a reload');
+      await until(async () => (await now(page)) === 'Line 4', 2000, 'Line 4 after a reload');
+      // Playing: a tap makes the tapped line the one lit at once.
+      seek(8.0, 'play');                          // Line 3 lights; the owner hears Line 5 (7.0 s);
+      await until(async () => (await now(page)) !== 'Line 4', 3000, 'the song to move on');
+      await page.click('#lyrSync');
+      await page.click('#ytnSync .lyl:nth-child(5)');
+      assert((await now(page)) === 'Line 5', 'playing, after the tap: ' + await now(page));
+      await page.close();
+      song.offset = 0;
+    });
+
     await check('reduced motion: no smooth scroll, no colour fades', async () => {
+      song.offset = 0;
       const calm = await browser.newContext({viewport: {width: 390, height: 844}, reducedMotion: 'reduce'});
       seek(4.6, 'play');
       const page = await openLyrics(calm);
