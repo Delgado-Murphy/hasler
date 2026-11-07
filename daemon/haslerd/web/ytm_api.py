@@ -22,7 +22,9 @@ items of the one shape documented in player/sources/ytm_browse.py, each with a
          -> {available, signed_in, section, items, preset (liked: the whole list)}
          (no section: the playlists, Liked first - what older pages ask for)
     GET  /api/ytm/related/<vid>       -> {available, vid, sections: [{title, items}]}
-    GET  /api/ytm/lyrics/<vid>        -> {available, vid, lyrics: str|null, source}
+    GET  /api/ytm/lyrics/<vid>        -> {available, vid, lyrics: str|null, source, synced: bool,
+                                          lines: [{t, end, text, words?}]|null}  (player/sources/lyrics.py:
+                                          YouTube Music's timed lines, else LRCLIB's, else plain)
     POST /api/ytm/radio {seed: "song:<vid>"|"album:<OLAK…>"|"artist:<UC…>", name?}
          -> plays it here; {ok, preset}
     POST /api/ytm/like {vid, rating: LIKE|INDIFFERENT}
@@ -230,7 +232,7 @@ class YtmApi:
         if kind == "lyrics" and ident:
             if not ytm_refs.VIDEO_ID.match(ident):
                 raise ValueError("not a video id")
-            doc = browse.lyrics(ident) if browse else {"lyrics": None, "source": ""}
+            doc = browse.lyrics(ident) if browse else {"lyrics": None, "source": "", "synced": False, "lines": None}
             return 200, {"available": browse is not None, "vid": ident, **doc}
         return 404, {"ok": False, "errors": [], "error": "not found"}
 

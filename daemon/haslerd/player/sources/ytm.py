@@ -279,6 +279,34 @@ def _question_wait() -> float:
     return -1 if budget is None else budget
 
 
+def position_from(status: Any, at: float) -> dict | None:
+    """MPD ``status`` -> ``{"elapsed_s", "duration_s", "state", "at"}`` (None if
+    MPD names no position). ``duration`` falls back to ``time``'s "123:456"."""
+    if not isinstance(status, dict):
+        return None
+    state = str(status.get("state") or "")
+    if state not in ("play", "pause"):
+        return None
+
+    def num(v: Any) -> float | None:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if f >= 0 else None
+
+    elapsed, duration = num(status.get("elapsed")), num(status.get("duration"))
+    old = str(status.get("time") or "")
+    if ":" in old:
+        e, _, d = old.partition(":")
+        elapsed = elapsed if elapsed is not None else num(e)
+        duration = duration if duration is not None else num(d)
+    if elapsed is None:
+        return None
+    return {"elapsed_s": round(elapsed, 3), "duration_s": round(duration, 3) if duration else None,
+            "state": state, "at": round(at, 3)}
+
+
 class YtmError(RuntimeError):
     """A ytm preset could not be started. Raised by ``play`` only."""
 
@@ -487,13 +515,25 @@ class YtmSource:
     def now_playing(self) -> dict | None:
         """The current MPD song, named, if it is ours and the catalogue named it.
 
-        ``{"title", "artist", "album", "thumb", "videoId"}`` or None. For the
-        key page; never raises.
+        ``{"title", "artist", "album", "thumb", "videoId", "position"}`` or
+        None. ``position`` is where MPD is in the song, for the page's synced
+        lyrics: ``{"elapsed_s", "duration_s", "state", "at"}`` (``at`` = this
+        radio's clock when MPD was asked) or None. For the key page; never raises.
         """
         if not self._mpd_lock.acquire(timeout=_question_wait()):
             return None
+        position = None
         try:
-            file = str(self._mpd().currentsong().get("file", ""))
+            client = self._mpd()
+            file = str(client.currentsong().get("file", ""))
+            if file.startswith(self.prefix):
+                # One more question on the connection already open (~1 ms on
+                # the radio): fresher than the watchdog's 2 s sample, so a
+                # pause or a seek shows at the next poll.
+                try:
+                    position = position_from(client.status(), time.time())
+                except Exception:
+                    log.debug("ytm position unreadable", exc_info=True)
         except Exception:
             log.debug("ytm now_playing failed", exc_info=True)
             return None
@@ -506,7 +546,7 @@ class YtmSource:
             meta = self._meta.get(vid)
         if meta is None:
             return None
-        return {**meta, "explicit": bool(meta.get("explicit")), "videoId": vid}
+        return {**meta, "explicit": bool(meta.get("explicit")), "videoId": vid, "position": position}
 
     # -- queues haslerd didn't build ---------------------------------------
 

@@ -326,6 +326,10 @@ dial: **Lyrics** (opens them under the dial) and **⋯** (start a radio from
 the song, put it on a key, or **Like** it when signed in). **Hide explicit
 songs** is in the YouTube Music settings.
 
+**Synced** lyrics light the line being sung (**Earlier** / **Later** fix the
+timing); without YouTube's timing the radio asks lrclib.net, sending only the
+song's artist, title, album and length.
+
 ### Edit keys
 
 Tap the pencil (**Edit keys**), then choose a key.

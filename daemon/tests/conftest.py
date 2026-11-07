@@ -19,3 +19,15 @@ def _no_bounce_guard(monkeypatch):
 
     monkeypatch.setattr(actions_mod, "AGAIN_GUARD_S", 0.0)
     monkeypatch.setattr(actions_mod, "TAP_BOUNCE_S", 0.0)
+
+
+@pytest.fixture(autouse=True)
+def _no_lrclib(monkeypatch):
+    """No test reaches lrclib.net: the lyrics fallback finds it unreachable
+    unless a test hands YtmBrowse / Lrclib its own fetch."""
+    import haslerd.player.sources.lyrics as lyrics_mod
+
+    def offline(url, timeout):
+        raise OSError("no network in tests")
+
+    monkeypatch.setattr(lyrics_mod, "_get_json", offline)
