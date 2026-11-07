@@ -48,7 +48,8 @@ log = logging.getLogger(__name__)
 ACTIONS = ("update", "rollback", "wifi", "reset", "channel", "help",   # help: web/help_api.py
            "spotify",                                                   # web/spotify_account_api.py
            "hostname",                                                  # web/hosts.py
-           "restart")                                                   # "Restart the radio" (server.py restart)
+           "restart",                                                   # "Restart the radio" (server.py restart)
+           "starter")                                                   # a starter set on every key (server.set_starter)
 # Always a real press, even on a bench with web.allow_unconfirmed: the request
 # comes from an address the radio doesn't trust yet.
 ALWAYS_PRESS = ("hostname",)

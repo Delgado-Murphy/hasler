@@ -79,7 +79,8 @@ them for moOde, so this should not happen.
 |---|---|---|
 | `channel` | `stable` | `bench` only for the makers' test radio. Stable has been live since 1.0.5 (2026-10-23). |
 | `update_mode` | `auto` (small updates at night, big ones ask) | `ask`, `off` |
-| `variant` | `hasler-hm` | `excelsior` (keys that spring back on a modified unit: see [hardware.md](hardware.md#excelsior-latching-or-not)) |
+| `variant` | `hasler-hm-hat` (a Hasler HM on the Hasler HAT: every new one) | `hasler-hm` (the prototype's stripboard) \| `excelsior` (keys that spring back on a modified unit: see [hardware.md](hardware.md#excelsior-latching-or-not)) |
+| `starter` | `eclectic` (the built-in stations: the starter set on the keys) | `classical`, `jazz`, `pop`, `raices`, `family` (`config/presets/`); the owner can pick another on the key page |
 | `user` | `pi` | the username you gave Imager |
 | `moode` | `yes` (Hasler's audio and casting settings in moOde) | `no` |
 | `panel_optional` | `no` | `yes` on a bare Pi without the key board |
@@ -122,7 +123,7 @@ and an account, so the radio can't do them alone:
 | What | Where | Why it needs you |
 |---|---|---|
 | **Volume ceiling** - do this first | key page → Settings → **Sound** → Volume ceiling | protects the 1964 speaker; set by ear ([build guide, Phase 3a](build-guide.md#phase-3a--keys-drive-the-music)) |
-| **Your stations and playlists** | key page → **Edit keys** | the shipped keys are a test set |
+| **Your stations and playlists** | key page → **Edit keys** (**Start from a set…** for a whole set at once) | the built-in stations are a starter set, not the owner's taste |
 | **Spotify** (Premium) | key page → Settings → Music accounts → Spotify → **Sign in**, then enter the code at spotify.com/pair ([Using your Hasler](using.md#playing-from-your-phone)) | your Spotify account |
 | **YouTube Music** private playlists, Liked songs | key page → Settings → Music accounts → YouTube Music → **Sign in** | your Google sign-in; public playlists need nothing |
 | **Home Assistant** (optional) | key page → Settings → This radio → Home Assistant → paste a token | a token from your HA ([build guide, Phase 5](build-guide.md#phase-5--home-assistant)) |
@@ -222,9 +223,9 @@ never puts a release in place itself.
   4. the release's `ota-bootstrap.sh --trust` (the updater and its units, the
      polkit rule, the hardware watchdog, `/etc/hasler/trust`);
   5. writes `/etc/hasler/box.yaml` (schema 1, variant, channel, update mode,
-     a new `box_id`; migration 001 marked done, since there is no old
-     checkout) and, with `panel_optional = yes`, a calibration overlay with
-     `io: {panel_optional: true}`;
+     the starter set, a new `box_id`; migration 001 marked done, since there
+     is no old checkout) and, with `panel_optional = yes`, a calibration
+     overlay with `io: {panel_optional: true}`;
   6. copies the release's `config/firstboot/moodecfg.ini` to
      `/boot/moodecfg.ini` (moOde 10 reads it there, **not** from the FAT
      partition) and restarts. moOde's worker applies it at its next start

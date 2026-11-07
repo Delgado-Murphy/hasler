@@ -531,6 +531,23 @@ dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);overflow:auto;overscroll
 .btn[aria-pressed="true"]{color:var(--amber);border-color:#7A5A36}
 .sts-msg{margin:8px 0 0;color:var(--text2);font-size:13px;line-height:18px}
 .sts-msg:empty{display:none}
+/* Edit keys → "Start from a set": the starter sets (config/presets), one card each */
+.reset-row{display:flex;flex-wrap:wrap;align-items:center;gap:0 18px}
+.reset-row .link{min-height:44px}
+.ss-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.ss-set{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--well)}
+.ss-set.on{border-color:var(--amber)}
+.ss-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ss-head h3{margin:0;color:var(--title);font:600 18px/24px var(--serif)}
+.ss-now{color:var(--amber);font:10px/14px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.ss-blurb{margin:4px 0 8px;color:var(--text2);font-size:13px;line-height:18px}
+.ss-keys{list-style:none;margin:0 0 10px;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 12px}
+.ss-keys li{display:flex;align-items:center;gap:7px;min-width:0;color:var(--cream);font:600 13px/20px var(--sans)}
+.ss-keys .ss-n{flex:none;min-width:20px;color:var(--muted);font:700 11px/20px var(--mono);text-align:right}
+.ss-keys .ss-g{flex:none;display:inline-flex;width:16px;justify-content:center}
+.ss-keys .ss-g svg{width:15px;height:15px}
+.ss-keys .ss-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ss-set .btn{width:100%;flex:none}
 .sts-msg.bad{color:#F07A62}
 .sts-msg.ok{color:#8FCF9F}
 .sts-report{display:flex;flex-direction:column;gap:8px;margin-top:10px;padding-top:6px;border-top:1px solid var(--line)}
@@ -1344,13 +1361,14 @@ let view = 'remote';
 const SRC = [{id:'radio', label:'Radio'}, {id:'spotify', label:'Spotify'}, {id:'ytm', label:'YouTube Music'}];
 const SRC_HEAD = {radio:'Radio', spotify:'Spotify', ytm:'YouTube Music', bluetooth:'Bluetooth', airplay:'AirPlay'};
 const SHORT = {none:'Nothing', preset:'Play music', cycle_source:'Cycle sources', bt_pair:'Bluetooth pairing', volume_up:'Volume up', volume_down:'Volume down',
-  standby_toggle:'Standby / wake', standby:'Standby', ha_scene:'Scene', ha_script:'Script', ha_toggle:'Toggle', ha_automation:'Automation',
+  standby_toggle:'Standby / wake', standby:'Standby', sleep:'Sleep timer', ha_scene:'Scene', ha_script:'Script', ha_toggle:'Toggle', ha_automation:'Automation',
   ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler', bluetooth:'Bluetooth'};
 // What each choice in the "A tap… / Holding…" list says under its name.
 const VERB_DESC = {
   cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Source key & knobs',
   join_group:'Join the music playing on another Hasler',
   bluetooth:'Plays a phone through the radio. Press again for the next track, hold to pause',
+  sleep:'Plays on for a while, fades out over the last minute, then standby',
   ha_light:'Turn lights on or off, dim them, change their colour',
   ha_scene:'Set a scene from Home Assistant',
   ha_script:'Run a Home Assistant script',
@@ -2457,11 +2475,15 @@ function keyList(){
         line('tap', tapWord(k), slotSummary(k, 'tap')),
         k.latching ? null : line('hold', 'Hold', slotSummary(k, 'hold'), hMiss ? 'Missing in Home Assistant' : ''))));   // a latching key has no hold
   }
+  // The built-in stations are the starter set in force (cfg.starter); "Start from a set…" opens the others.
+  const sets = (cfg && cfg.starters) || [], cur = sets.find(s => s.id === cfg.starter);
   return h('div', {class:'field'}, h('p', {class:'hint'}, latchingBank() ? latchHint() : 'Pick a key to change what it plays, and what it does when you hold it.'), ul,
     combosOn() ? comboSection() : null,
     h('div', {class:'danger-row', id:'sec-reset'},
-      h('span', {class:'li-sub'}, 'Every key back to the built-in stations. The radio asks for a key press to be sure.'),
-      h('div', null, h('button', {type:'button', class:'li-danger', id:'resetKeys', style:'width:auto', onclick: resetDefaults}, 'Reset keys to defaults'))));
+      h('span', {class:'li-sub'}, 'Every key back to the built-in stations' + (cur ? ' (' + cur.title + ')' : '') + '. The radio asks for a key press to be sure.'),
+      h('div', {class:'reset-row'},
+        h('button', {type:'button', class:'li-danger', id:'resetKeys', style:'width:auto', onclick: resetDefaults}, 'Reset keys to defaults'),
+        sets.length ? h('button', {type:'button', class:'link', id:'startSet', onclick: e => startFromSet(e.currentTarget)}, 'Start from a set…') : null)));
 }
 // A preset shared by several keys is copied before this key changes it.
 function ownPreset(k){
@@ -2658,6 +2680,7 @@ function setVerb(k, slot, v){
     k[slot] = {do:'preset', n};
   }
   else if (v === 'bt_pair') k[slot] = {do:'bt_pair', seconds: (old && old.seconds) || 120};
+  else if (v === 'sleep') k[slot] = {do:'sleep', minutes: (old && old.minutes) || 30};
   else if (v === 'ha_light'){
     // Keep the lights already chosen (from a light toggle, too).
     const was = old && isHa(old.do) ? actEntities(old).filter(e => e.startsWith('light.')) : [];
@@ -2717,6 +2740,7 @@ function holdCard(k){
   else if (v === 'preset'){ const p = presetIn(draft, a.n); name = p ? p.name || 'Untitled' : 'Play music'; type = 'Plays' + (p ? ' · ' + (SRC_HEAD[p.source] || p.source) : ''); }
   else if (isHa(v)){ name = haTarget(a) || 'Nothing chosen yet'; type = verbShort(v) + ' · Home Assistant'; }
   else if (v === 'bt_pair') type = 'Open for a new phone · ' + durWords(a.seconds || 120);
+  else if (v === 'sleep') type = 'Standby in ' + (a.minutes || 30) + ' min';
   else if (v === 'volume_up' || v === 'volume_down') type = 'Volume';
   else if (v === 'custom'){ name = a.label || 'Custom'; type = 'Set by hand on the radio'; }
   return {name, type};
@@ -2779,6 +2803,11 @@ function paramsFor(k, slot){
       h('input', {type:'number', id:'sec-' + slot, inputmode:'numeric', min:'10', max:'900', step:'10', value:String(a.seconds ?? 120),
         oninput: e => { const n = parseInt(e.target.value, 10); a.seconds = isNaN(n) ? e.target.value : n; clearErr(k.id + '.' + slot); paintSave(); }}),
       h('p', {class:'hint'}, 'How long the radio stays discoverable for a new phone.'));
+  } else if (v === 'sleep'){
+    wrap.append(h('label', {for:'min-' + slot}, 'Minutes'),
+      h('input', {type:'number', id:'min-' + slot, inputmode:'numeric', min:'1', max:'240', step:'5', value:String(a.minutes ?? 30),
+        oninput: e => { const n = parseInt(e.target.value, 10); a.minutes = isNaN(n) ? e.target.value : n; clearErr(k.id + '.' + slot); paintSave(); }}),
+      h('p', {class:'hint'}, 'The music plays on this long, fades out over the last minute, then the radio goes to standby. Any key or knob cancels it; the same key again starts the minutes over.'));
   } else if (v === 'volume_up' || v === 'volume_down'){
     if (slot === 'hold') wrap.append(h('p', {class:'hint'}, 'Ramps while you hold the key.'));
     else if (slot === 'combo') wrap.append(h('p', {class:'hint'}, 'Moves the volume one step.'));
@@ -8202,6 +8231,56 @@ async function resetDefaults(){
     if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); toast('Built-in keys restored'); refreshHa(); if (view === 'edit') rerender(); }
     else toast(capFirst((r.json && r.json.error) || 'The reset didn’t go through (error ' + r.status + ')') + '. Try again.', true);
   } catch (_) { toast(NET_ERR, true); }
+}
+// Edit keys → Start from a set… (and Settings, which calls startFromSet() too): the starter
+// sets this release ships (cfg.starters, config/presets), each with the keys it would put on
+// this cabinet. Choosing one replaces every key, so it takes a press on the radio, like a
+// reset; the radio remembers the choice, and Reset keys to defaults goes back to it.
+function startFromSet(opener){
+  const sets = (cfg && cfg.starters) || [];
+  if (!cfg || !sets.length){ toast(cfg ? 'This radio has no starter sets.' : 'Still loading the keys — try again in a moment.', true); return; }
+  const labelOf = n => { const k = (cfg.keys || []).find(x => x.tap && x.tap.do === 'preset' && x.tap.n === n); return k ? String(k.label) : String(n); };
+  const glyph = src => h('span', {class:'ss-g', role:'img', 'aria-label': SRC_HEAD[src] || src, title: SRC_HEAD[src] || src},
+    src === 'radio' ? IC.radio('#8C7656', 15) : IC.note());
+  const dlg = h('dialog', {class:'stsheet', id:'setsDlg', 'aria-labelledby':'ssTitle'});
+  let busy = false;
+  const choose = async set => {
+    if (busy) return;
+    if (isDirty()){
+      const a = await askLeave(keysWhat());
+      if (a === 'keep') return;
+      if (a === 'save'){ await save(); if (isDirty()) return; } else dropKeyChanges();
+    }
+    const token = await radioConfirm({action:'starter', args:{pack:set.id}, title:'Start from ' + set.title, sub:'This set goes on every key. It replaces all your keys.'});
+    if (!token) return;
+    busy = true;
+    try {
+      const r = await api('POST', '/api/keys/starter', {pack:set.id, confirm:token});
+      if (r.json && r.json.ok && r.json.config){ errs = {}; hints = {}; general = []; adopt(r.json.config); buildBank(); renderRemote(); dlg.close(); toast(set.title + ' is on the keys'); refreshHa(); if (view === 'edit') rerender(); }
+      else toast(capFirst((r.json && r.json.error) || 'That didn’t go through (error ' + r.status + ')') + '. Try again.', true);
+    } catch (_) { toast(NET_ERR, true); }
+    busy = false;
+  };
+  const list = h('ul', {class:'ss-list', 'aria-label':'Starter sets'});
+  for (const set of sets){
+    const on = set.id === cfg.starter;
+    list.append(h('li', {class:'ss-set' + (on ? ' on' : ''), 'data-set': set.id},
+      h('div', {class:'ss-head'}, h('h3', null, set.title), on ? h('span', {class:'ss-now'}, cfg.factory ? 'On the keys now' : 'Your set') : null),
+      set.blurb ? h('p', {class:'ss-blurb'}, set.blurb) : null,
+      h('ul', {class:'ss-keys', 'aria-label': set.title + ': the keys'}, set.keys.map(k =>
+        h('li', null, h('span', {class:'ss-n', 'aria-hidden':'true'}, labelOf(k.n)), glyph(k.source), h('span', {class:'ss-name'}, k.name)))),
+      h('button', {type:'button', class:'btn' + (on ? '' : ' primary'), 'data-choose': set.id, onclick: () => choose(set)},
+        on ? (cfg.factory ? 'Put it on every key again' : 'Back to this set') : 'Use this set')));
+  }
+  dlg.append(
+    h('div', {class:'sts-head'}, h('div', {class:'sts-txt'}, h('h2', {id:'ssTitle'}, 'Start from a set'),
+      h('p', {class:'sts-meta'}, 'A set goes on every key. Change any key afterwards in Edit keys.')),
+      h('button', {type:'button', class:'round sts-x', 'aria-label':'Close', onclick: () => dlg.close()}, icon('<path d="M3 3l8 8M11 3l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>', 14, 14))),
+    list);
+  dlg.addEventListener('close', () => { dlg.remove(); const o = opener && opener.isConnected ? opener : $('startSet'); if (o) o.focus(); });
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+  document.body.append(dlg); dlg.showModal();
+  const f = dlg.querySelector('.ss-set.on .btn') || dlg.querySelector('.ss-set .btn'); if (f) f.focus();
 }
 
 /* ---- multiroom: Haslers playing the same music in step (/api/group) ---- */

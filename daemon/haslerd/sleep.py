@@ -55,6 +55,7 @@ log = logging.getLogger(__name__)
 FADE_S = 60.0           # the last minute fades out
 FADE_STEP_S = 0.5       # a mixer write at most this often while fading
 MAX_MINUTES = 240       # four hours: past that it's not a sleep timer
+DEFAULT_MINUTES = 30    # a key's ``sleep`` verb with no minutes (actions.py, web/keymap.py)
 WRITER_IDLE_S = 10.0    # the writer thread ends after this long with nothing to do
 
 

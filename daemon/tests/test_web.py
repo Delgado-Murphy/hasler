@@ -58,7 +58,10 @@ class TestConfigDoc:
     def test_presets_listed_with_their_source(self, rig):
         app, *_ = rig
         by_n = {p["n"]: p for p in app.config()["presets"]}
-        assert by_n[3]["name"] == "RNE Radio 3" and by_n[3]["source"] == "radio"
+        # The eclectic starter set (config/presets/eclectic.yaml): stations by id, lists by link.
+        assert by_n[2]["name"] == "Radio Swiss Jazz" and by_n[2]["source"] == "radio"
+        assert by_n[2]["station"] == "ch-radio-swiss-jazz" and by_n[2]["uri"].startswith("https://")
+        assert by_n[3]["source"] == "ytm" and "station" not in by_n[3]
         assert by_n[5]["source"] == "ytm"
 
     def test_an_action_the_page_cannot_edit_is_shown_and_kept(self, rig):
@@ -175,7 +178,7 @@ class TestPersistence:
         key(doc, "k2")["tap"] = {"do": "cycle_source"}
         doc["presets"][2]["name"] = "Radio Tres"
         app.save(doc)
-        assert yaml.safe_load(app.keys_file.read_text())["schema"] == 1   # kept for migrations
+        assert yaml.safe_load(app.keys_file.read_text())["schema"] == keymap.KEYS_SCHEMA   # kept for migrations
 
         # A fresh daemon: descriptor first, then the overlay on top.
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
@@ -194,7 +197,7 @@ class TestPersistence:
         cfg = app.reset()
         assert not app.keys_file.exists()
         assert key(cfg, "k1")["tap"] == {"do": "preset", "n": 1}
-        assert actions.presets[1].name == "Radio Swiss Classic"
+        assert actions.presets[1].name == "FIP"
 
     def test_an_unreadable_overlay_falls_back_to_the_descriptor(self, rig):
         app, actions, *_ = rig
@@ -223,7 +226,7 @@ class TestPlayAndStatus:
         actions.dispatch(Event("k3", "tap"))
         st = app.status()
         assert st["pressed"] == ["k3"]
-        assert st["playing"]["name"] == "RNE Radio 3"
+        assert st["playing"]["name"] == "Coffee Shop Blend"
 
     def test_status_shows_the_tone_knob_and_its_switch(self, rig):
         app, actions, _, panel = rig
@@ -606,6 +609,9 @@ class TestSourceStatus:
 
     def test_presets_report_their_own_source(self, rig):
         app, actions, *_ = rig
+        doc = doc_from(app)
+        doc["presets"][3].update(source="spotify", uri=f"spotify:playlist:{SPOTIFY_ID}")   # no shipped key is Spotify
+        app.save(doc)
         actions.dispatch(Event("k4", "tap"))
         st = app.status()
         assert st["source"] == "spotify" and st["waiting"] is False
@@ -761,10 +767,16 @@ class TestLampSettings:
         monkeypatch.setattr(app.wifi, "current_ssid", lambda: "")
         return app
 
-    def test_defaults_to_madrid_and_the_sun(self, lamp_app):
+    def test_defaults_to_the_time_zones_capital_and_the_sun(self, lamp_app, monkeypatch):
+        from zoneinfo import ZoneInfo
+        from haslerd.lamp import night
+        monkeypatch.setattr(night, "local_tz", lambda: ZoneInfo("Europe/Madrid"))
         doc = lamp_app.settings()
         assert doc["location"] == {"name": "Madrid", "lat": 40.4168, "lon": -3.7038}
+        assert doc["location_source"] == "timezone"
         assert doc["night"] == "sun"
+        monkeypatch.setattr(night, "local_tz", lambda: ZoneInfo("Europe/Zurich"))
+        assert lamp_app.settings()["location"]["name"] == "Bern"
         t = doc["tonight"]
         assert t["mode"] == "sun" and len(t["sunrise"]) == 5 and len(t["sunset"]) == 5
         assert t["from"] and t["to"] and isinstance(t["night_now"], bool)
@@ -783,6 +795,7 @@ class TestLampSettings:
         assert heard == [saved]
         lamp_app.put_settings({"night": "off"})
         assert lamp_app.settings()["location"]["name"] == "Bern"   # untouched
+        assert lamp_app.settings()["location_source"] == "owner"
         assert heard[-1]["night"] == "off"
 
     def test_without_a_settings_file_it_still_holds(self, rig, monkeypatch):

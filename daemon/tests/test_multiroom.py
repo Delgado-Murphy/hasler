@@ -97,6 +97,18 @@ class Radio:
         self.replies: list[str] = []
         variant = load_variant(VARIANTS / "hasler-hm.yaml")
         variant.actions["k1.hold"] = {"do": "join_group"}
+        # One of each source on the keys (a handover needs a Spotify key the
+        # leader can't play, a YouTube Music one, stations on 2 and 3) - not
+        # whatever the starter set of the day holds.
+        variant.presets = [
+            {"n": 1, "name": "Radio Swiss Classic", "station": "ch-radio-swiss-classic"},
+            {"n": 2, "name": "Radio Swiss Jazz", "station": "ch-radio-swiss-jazz"},
+            {"n": 3, "name": "RNE Radio 3", "station": "es-rne-radio-3"},
+            {"n": 4, "name": "Today's Top Hits", "spotify": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", "shuffle": True},
+            {"n": 5, "name": "Famous classical", "ytm": "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB"},
+            {"n": 6, "name": "Classical shuffle", "ytm": "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB",
+             "shuffle": True},
+        ]
         self.player = LoggingPlayer(self.log)
         d = tmp_path / rid
         d.mkdir()

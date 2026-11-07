@@ -261,7 +261,9 @@ class TestLatchingStatus:
         assert st["selectors"][0] == {"id": "speaker_sel", "label": "Speakers", "position": 0,
                                       "positions": ["Both", "Left", "Right"], "text": "Both", "wired": True}
         assert [k["id"] for k in st["keys"]] == BANK_IDS
-        assert st["keys"][7] == {"id": "tape", "label": "Tape", "n": 7, "name": "Radio Swiss Pop", "source": "radio"}
+        # Tape takes the starter set's seventh entry (config/presets/eclectic.yaml).
+        assert st["keys"][7] == {"id": "tape", "label": "Tape", "n": 7, "name": "KEXP", "short": "KEXP",
+                                 "source": "radio"}
 
     def test_nothing_latched_after_key_0(self, radio):
         radio.latch("k5")
@@ -302,11 +304,11 @@ class TestNotLatching:
         assert modified.app.config()["combo_keys"] == ["k0", *BANK_IDS]
 
     def test_taps_and_holds_from_the_contacts(self, modified):
-        modified.press("k3")
-        assert modified.player.playing.n == 3
+        modified.press("k2")                    # key 2: a station (key 3 holds a list)
+        assert modified.player.playing.n == 2
         modified.press("pu", 1.0)
         assert modified.actions.pairing
-        modified.press("k3")                    # the same key again: the station stops
+        modified.press("k2")                    # the same key again: the station stops
         assert modified.actions.standby
 
     def test_key_0_is_assignable(self, modified):

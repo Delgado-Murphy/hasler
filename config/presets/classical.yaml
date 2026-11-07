@@ -1,0 +1,19 @@
+# Starter set: Classical & calm (the format: eclectic.yaml).
+pack: classical
+title: "Classical & calm"
+blurb: "Quiet company: classical radio from three countries, and YouTube Music lists for when you want no talk at all."
+presets:
+  - {n: 1, name: "Radio Swiss Classic", short: "Classic", station: ch-radio-swiss-classic,
+     why: "Classical music around the clock, no presenters - the gentlest first key there is."}
+  - {n: 2, name: "RNE Radio Clásica", short: "Clásica", station: es-rne-radio-clasica,
+     why: "RTVE's classical channel: concerts, opera and Spanish voices between them."}
+  - {n: 3, name: "Essential Classical", short: "Essential", ytm: RDCLAK5uy_mv1P2oVguxLCIDXavV-jcDG1lQyukfSpo,
+     why: "The great works, one after another, from YouTube Music. Tap again to skip."}
+  - {n: 4, name: "FIP", short: "FIP", station: fr-fip,
+     why: "Radio France's eclectic channel, for when the classical mood lifts."}
+  - {n: 5, name: "Classical Solo Piano", short: "Solo Piano", ytm: RDCLAK5uy_kmK1aMjb7sJ6eWV95Co02JwJJmdi0z05M,
+     why: "Just a piano."}
+  - {n: 6, name: "BBC Radio 3", short: "BBC Radio 3", station: gb-bbc-radio-3,
+     why: "The BBC's classical and arts station, live concerts included."}
+  - {n: 7, name: "Gentle Chamber Music", short: "Chamber", ytm: RDCLAK5uy_m2p5A1NXN8SInEzfsxzFEvQ6zws-V-wBo,
+     why: "Small ensembles, played softly."}

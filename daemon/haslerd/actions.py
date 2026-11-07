@@ -49,6 +49,8 @@ from typing import Any, Callable
 from .ha import behaviour
 from .panel.controls import Event, bank_keys
 from .player.base import PRESET_SOURCES, Player, Preset
+from .presets import resolve_station
+from .sleep import DEFAULT_MINUTES as SLEEP_DEFAULT_MINUTES, SleepError
 from .state import StateStore
 from .variant import Variant
 
@@ -177,12 +179,15 @@ def cycle_from(raw: Any) -> tuple[str, ...]:
 def build_presets(specs: list[dict], variant_name: str = "") -> dict[int, Preset]:
     """Parse the ``presets:`` list, skipping (loudly) any entry that is broken.
 
-    One typo in one preset must cost that key, not the whole box.
+    One typo in one preset must cost that key, not the whole box. A preset
+    naming a ``station`` of the collection plays the collection's URL
+    (presets.resolve_station): the stream has one spelling, and a fixed link
+    in a later release reaches the key.
     """
     presets: dict[int, Preset] = {}
     for spec in specs:
         try:
-            preset = Preset.from_spec(spec)
+            preset = Preset.from_spec(resolve_station(spec))
         except ValueError as exc:
             log.error("%s: ignoring preset: %s", variant_name, exc)
             continue
@@ -226,6 +231,9 @@ class Actions:
         # Every event, before it is acted on - a hand on the radio, from the
         # cabinet or the page's remote (sleep.SleepTimer.hand: the timer is off).
         self.on_hand: Callable[[Event], None] | None = None
+        # sleep.SleepTimer when wired (main.build_web): the ``sleep`` verb
+        # starts it from a key. None = the verb logs and does nothing.
+        self.sleep: Any = None
         # player/watchdog.StreamWatchdog.stalled_on when wired (main.py): a
         # preset MPD stopped playing by itself. Its key then means "play it",
         # not "again" (which would put a silent radio into standby).
@@ -303,6 +311,7 @@ class Actions:
             "bluetooth": self._bluetooth,
             "standby": self._standby,
             "standby_toggle": self._standby_toggle,
+            "sleep": self._sleep,
             "resume": self._resume,
             "shutdown": self._shutdown,
             "set_volume": self._set_volume,
@@ -1132,6 +1141,21 @@ class Actions:
             self._resume_after_wake()
         else:
             self._standby(event, spec)
+
+    def _sleep(self, event, spec):
+        """``{do: sleep, minutes: 30}``: the sleep timer (sleep.py) from a hold
+        or a combination - the page's clock, on a key. The hand that pressed
+        it has just cancelled any timer running (on_hand), so a second hold
+        starts the minutes over. In standby there is nothing to put to sleep:
+        the timer says so, and the key does nothing."""
+        timer = self.sleep
+        if timer is None:
+            log.info("sleep: no sleep timer on this radio")
+            return
+        try:
+            timer.set(spec.get("minutes", SLEEP_DEFAULT_MINUTES))
+        except SleepError as exc:
+            log.info("sleep timer not set from %s: %s", event.control, exc)
 
     def _resume(self, event, spec):
         if not self.standby and self.phone_has_it():

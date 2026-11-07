@@ -35,6 +35,7 @@ from typing import Any, Callable
 import yaml
 
 from . import boxconfig
+from . import presets as starter_sets
 from .actions import RENDERERS, SHUTDOWN_PREPARE_S, Actions
 from .bootresume import (AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, note_power_cut,
                          shutdown_kind)
@@ -1079,11 +1080,26 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     # Assistant client - from its saved pairing, else this same yaml block.
     ha = None if HaApi is not None else yaml_ha(config)
 
+    # The built-in stations: the starter set in force (haslerd/presets.py) on
+    # the cabinet's slots - box.yaml's ``starter``, the page's choice over it.
+    # The descriptor came with the default set; a descriptor that lists its
+    # own presets (no slots) keeps them.
+    starters = starter_sets.Starters(paths.release, variant.slots) if variant.slots else None
+    starter_box = starter_sets.box_starter(paths)
+    if starters:
+        chosen = starters.chosen(starter_box, settings)
+        variant.presets = starters.specs(chosen)
+        log.info("built-in stations: starter set %s (%s)", chosen,
+                 starters.source(starter_box, settings))
+    else:
+        starters = None
+
     actions = Actions(variant, player, ha=ha, state=state)
     apply_sources(actions, settings)           # the PU cycle, resume after a cast
     apply_bluetooth(actions, settings)         # the Bluetooth keys, reconnecting the phone
     actions.dsp = build_knob_functions(actions, player, settings)
-    web, app = build_web(config, actions, panel, state, ha is not None, paths=paths)
+    web, app = build_web(config, actions, panel, state, ha is not None, paths=paths,
+                         starters=starters, starter_box=starter_box)
     if args.fake:
         # POST /api/fake/phone: a page test's phone taking the speaker (web/fake_api.py).
         from .web.fake_api import FakeApi
@@ -1177,14 +1193,16 @@ def build_mono(state_dir: Path | None, audio: dict | None = None) -> MonoSwitch 
 
 def build_web(
     config: dict, actions: Actions, panel: Panel, state: StateStore, ha: bool,
-    paths: boxconfig.Paths | None = None,
+    paths: boxconfig.Paths | None = None, starters: Any = None, starter_box: str = "",
 ) -> tuple[WebServer | None, WebApp]:
     """The key page, with the owner's saved layout laid over the descriptor.
 
     ``keys.yaml`` lives next to state.json; ``web: {enabled: false}`` turns the
     page off but still honours a saved layout (and Home Assistant still gets
-    its status). Returns (server or None, the app) - the main loop publishes
-    ``app.status()`` to Home Assistant through ``app.ha_api``.
+    its status). ``starters``/``starter_box``: the release's starter sets and
+    box.yaml's choice (build), for Reset and "Start from a set". Returns
+    (server or None, the app) - the main loop publishes ``app.status()`` to
+    Home Assistant through ``app.ha_api``.
     """
     spec = config.get("web") or {}
     if config.get("keys_file"):
@@ -1207,6 +1225,7 @@ def build_web(
         settings_file=state_dir / SETTINGS_FILE if state_dir is not None else None,
         browse=build_browse(actions, state_dir),
         mono=build_mono(state_dir, getattr(actions.variant, "audio", None)),
+        starters=starters, starter_box=starter_box,
     )
     app.ha_api = ha_api
     # Physical confirmation and the "About this radio" card (web/confirm.py,
@@ -1237,6 +1256,7 @@ def build_web(
     # any key or knob, from the cabinet or the page's remote, cancels it.
     app.sleep = SleepTimer(actions)
     actions.on_hand = app.sleep.hand
+    actions.sleep = app.sleep                  # the ``sleep`` verb: the timer from a key
     app.extra_routes.append(SleepApi(app, app.sleep))
     app.extra_routes.append(BluetoothApi(app))  # /api/bluetooth
     # /api/help: "Let the makers help (24 h)" - off until the owner asks

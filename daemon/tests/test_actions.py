@@ -33,8 +33,8 @@ class TestPresets:
 
     def test_tapping_the_playing_station_again_stops_it(self, hasler):
         _, player, actions = hasler
-        actions.dispatch(Event("k3", "tap"))
-        actions.dispatch(Event("k3", "tap"))
+        actions.dispatch(Event("k2", "tap"))        # key 2: a station (key 3 is a list: again = next)
+        actions.dispatch(Event("k2", "tap"))
         assert player.playing is None
         assert actions.standby is True
 
@@ -628,12 +628,12 @@ def test_a_bounced_second_tap_does_not_stop_the_station(monkeypatch):
     t = [100.0]
     player = FakePlayer()
     actions = Actions(load_variant(VARIANTS / "hasler-hm.yaml"), player, clock=lambda: t[0])
-    actions.dispatch(Event("k3", "tap"))
+    actions.dispatch(Event("k2", "tap"))          # key 2 is a station
     t[0] += 0.2
-    actions.dispatch(Event("k3", "tap"))          # bounce: ignored
-    assert player.playing.n == 3 and not actions.standby
+    actions.dispatch(Event("k2", "tap"))          # bounce: ignored
+    assert player.playing.n == 2 and not actions.standby
     t[0] += 1.0
-    actions.dispatch(Event("k3", "tap"))          # a real second press still stops it
+    actions.dispatch(Event("k2", "tap"))          # a real second press still stops it
     assert actions.standby
 
 

@@ -123,6 +123,7 @@ from ..lamp import night
 from ..lamp import engine as lamp_engine
 from ..lamp import scratch as lamp_scratch
 from .. import boxconfig
+from .. import presets as presets_mod
 from . import lamp_check
 from ..panel import calibrate
 from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot, bank_keys, bank_latching
@@ -354,11 +355,20 @@ class WebApp:
         settings_file: Path | None = None,
         browse: Any = None,
         mono: Any = None,
+        starters: Any = None,
+        starter_box: str = "",
     ) -> None:
         self.actions = actions
         self.panel = panel
         self.keys_file = keys_file
         self.sources = sources
+        # The starter sets this release ships for the cabinet
+        # (presets.Starters; None = a radio run without a release's config/),
+        # and box.yaml's ``starter``. The set in force: settings.json's
+        # ``starter`` (the page's choice) over box.yaml's over the default.
+        self.starters = starters
+        self.starter_box = starter_box or ""
+        self._starter_session: dict = {}    # without a settings file the page's choice lasts the session
         # A bool, or a callable answering "is Home Assistant connected?" live.
         self.ha = ha
         self.settings_file = settings_file
@@ -408,9 +418,12 @@ class WebApp:
         self._ytm_prefs: dict = {}          # ytm settings when there is no settings file
         if self.ytm is not None and hasattr(self.ytm, "on_preset_resolved"):
             self.ytm.on_preset_resolved = self._ytm_resolved
-        # The descriptor's own layout, for "reset to defaults". Taken before any
-        # saved overlay is laid on top.
-        self.defaults = (copy.deepcopy(actions.variant.presets), copy.deepcopy(actions.variant.actions))
+        # The shipped layout, for "reset to defaults" and the keys.yaml
+        # snapshot: the starter set in force (the descriptor's own presets
+        # without sets) and the descriptor's key table. Taken before any saved
+        # overlay is laid on top; set_starter renews it.
+        self.default_actions = copy.deepcopy(actions.variant.actions)
+        self.defaults = (self._shipped_specs(), copy.deepcopy(self.default_actions))
         self.default_combos = copy.deepcopy(list(actions.variant.combos or []))
         # Knob calibration. ``box_paths`` (boxconfig.Paths) says where the
         # overlay lives - None and calibrations can be previewed but not saved.
@@ -653,12 +666,84 @@ class WebApp:
 
     def load_saved(self) -> None:
         with self.lock:
-            keymap.apply_saved(self.keys_file, self.actions, self.panel)
+            keymap.apply_saved(self.keys_file, self.actions, self.panel, shipped=self._shipped())
+
+    # -- starter sets (haslerd/presets.py) --------------------------------
+
+    def starter_pack(self) -> str | None:
+        """The starter set in force (None: this radio has no sets)."""
+        if not self.starters:
+            return None
+        return self.starters.chosen(self.starter_box, self._settings_doc())
+
+    def _settings_doc(self) -> dict:
+        return load_settings(self.settings_file) if self.settings_file is not None else dict(self._starter_session)
+
+    def _shipped_specs(self) -> list[dict]:
+        """What the keys hold out of the box: the set in force, resolved for
+        this cabinet; the descriptor's own presets on a radio without sets."""
+        if self.starters:
+            return self.starters.specs(self.starter_pack())
+        return copy.deepcopy(self.actions.variant.presets)
+
+    def _shipped(self) -> tuple[list[dict], dict]:
+        """(presets, key table) the release ships, for keys.yaml's snapshot."""
+        specs, table = self.defaults
+        known = {f"{cid}.{e}" for cid in keymap.key_ids(self.actions) for e in keymap.EVENTS}
+        return copy.deepcopy(specs), {k: copy.deepcopy(table.get(k)) for k in known}
+
+    def factory(self) -> bool:
+        """The keys are as shipped (the set in force, the descriptor's key
+        table and combinations), by content - not whether keys.yaml exists."""
+        specs, table = self._shipped()
+        actions = self.actions
+        current = {k: actions.variant.actions.get(k) for k in table}
+        if not presets_mod.same_layout(list(actions.variant.presets), current, specs, table, set(table)):
+            return False
+        return list(actions.variant.combos or []) == list(self.default_combos)
+
+    def starter_doc(self) -> dict:
+        """``GET /api/config``'s starter-set part (keymap.config_doc)."""
+        if not self.starters:
+            return {"starter": None, "starter_from": "default", "starters": [], "factory": self.factory()}
+        return {"starter": self.starter_pack(),
+                "starter_from": self.starters.source(self.starter_box, self._settings_doc()),
+                "starters": self.starters.doc(), "factory": self.factory()}
+
+    def set_starter(self, body: Any) -> dict:
+        """``POST /api/keys/starter {"pack", "confirm"}``: put a starter set on
+        the keys. Like a reset it replaces every key, so it takes a press on
+        the radio; the choice is remembered in settings.json (``starter``), and
+        Reset keys to defaults goes back to it from then on."""
+        body = body if isinstance(body, dict) else {}
+        pack = body.get("pack")
+        if not self.starters:
+            raise ValueError("this radio has no starter sets")
+        if not isinstance(pack, str) or self.starters.pack(pack) is None:
+            raise ValueError(f"pick one of: {', '.join(self.starters.names())}")
+        self.confirm.consume(body.get("confirm"), "starter", {"pack": pack})
+        with self.lock:
+            if self.settings_file is not None:
+                doc = self._settings_doc()
+                doc["starter"] = pack
+                doc.setdefault("schema", boxconfig.SCHEMA)
+                save_settings(self.settings_file, doc)
+            else:
+                self._starter_session["starter"] = pack
+            self.defaults = (self.starters.specs(pack), copy.deepcopy(self.default_actions))
+            specs, table = self._shipped()
+            combos = copy.deepcopy(self.default_combos)
+            if self.keys_file is not None:
+                keymap.save(self.keys_file, specs, table, combos, (specs, table))
+            keymap.apply(self.actions, self.panel, copy.deepcopy(specs), copy.deepcopy(table), combos)
+            self._rewarm()
+        log.info("keys: starter set %r on every key", pack)
+        return self.config()
 
     # -- operations -------------------------------------------------------
 
     def config(self) -> dict:
-        return keymap.config_doc(self.actions, self.sources, self._ha_connected())
+        return keymap.config_doc(self.actions, self.sources, self._ha_connected(), self.starter_doc())
 
     def _ha_connected(self) -> bool:
         if not callable(self.ha):
@@ -681,24 +766,25 @@ class WebApp:
             specs, table, combos = keymap.parse_layout(doc, self.actions)   # raises keymap.Invalid
             if self.keys_file is not None:
                 if combos is None:
-                    keymap.save(self.keys_file, specs, table)           # keeps the file's combos
+                    keymap.save(self.keys_file, specs, table, shipped=self._shipped())   # keeps the file's combos
                 else:
-                    keymap.save(self.keys_file, specs, table, combos)
+                    keymap.save(self.keys_file, specs, table, combos, self._shipped())
             keymap.apply(self.actions, self.panel, specs, table, combos)
             self._rewarm()
         log.info("key layout saved from the web page")
         return self.config()
 
     def reset(self) -> dict:
+        """Every key back to the shipped layout: the starter set in force and
+        the descriptor's key table and combinations. keys.yaml goes, so the
+        keys follow the release from here."""
         with self.lock:
             if self.keys_file is not None:
                 self.keys_file.unlink(missing_ok=True)
-            specs, actions_table = copy.deepcopy(self.defaults)
-            known = {f"{cid}.{e}" for cid in keymap.key_ids(self.actions) for e in keymap.EVENTS}
-            table = {k: actions_table.get(k) for k in known}
+            specs, table = self._shipped()
             keymap.apply(self.actions, self.panel, specs, table, copy.deepcopy(self.default_combos))
             self._rewarm()
-        log.info("key layout reset to the descriptor's defaults")
+        log.info("key layout reset to the built-in stations (%s)", self.starter_pack() or "the descriptor's")
         return self.config()
 
     def play(self, raw: Any) -> None:
@@ -1705,6 +1791,9 @@ class WebApp:
             log.debug("could not work out tonight's sun", exc_info=True)
             sun = None
         return {"location": night.location_doc(saved), "night": night.mode_from_settings(saved),
+                # "owner": set on the page; "timezone": worked out from the clock's
+                # time zone (lamp/night.py), so the page can say so.
+                "location_source": night.location_source(saved),
                 "tonight": sun,
                 # Settings -> Pilot lamp: brightness and key replies (lamp/meanings.py);
                 # present = this radio has a lamp to show things on.
@@ -2891,6 +2980,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.confirmed_reset(self._body())}))
             elif path == "/api/restart":
                 self._guard(lambda: self._json(200, {"ok": True, **app.restart(self._body())}))
+            elif path == "/api/keys/starter":
+                self._guard(lambda: self._json(200, {"ok": True, "config": app.set_starter(self._body())}))
             elif path == "/api/confirm/request":
                 def ask() -> None:
                     body = self._body()

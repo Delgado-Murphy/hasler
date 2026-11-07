@@ -513,8 +513,8 @@ def fetch_release(base: str, channel: str, out: Path, root_pubs: list[str], now:
 
 # --- settings ----------------------------------------------------------------------------
 
-DEFAULTS = {"channel": "stable", "update_mode": "auto", "variant": "hasler-hm", "user": "",
-            "moode": "yes", "panel_optional": "no", "update_url": ""}
+DEFAULTS = {"channel": "stable", "update_mode": "auto", "variant": "hasler-hm-hat", "user": "",
+            "moode": "yes", "panel_optional": "no", "update_url": "", "starter": "eclectic"}
 
 
 def read_settings(path: Path) -> dict:
@@ -544,6 +544,8 @@ def validate(s: dict) -> dict:
         raise InstallError(f"update_mode must be auto, ask or off, not {s['update_mode']!r}")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", s["variant"]):
         raise InstallError(f"bad variant {s['variant']!r}")
+    if not re.fullmatch(r"[a-z][a-z0-9_-]*", s["starter"]):
+        raise InstallError(f"bad starter {s['starter']!r} (a starter set's name, like eclectic)")
     if s["user"] and not re.fullmatch(r"[a-z_][a-z0-9_-]*", s["user"]):
         raise InstallError(f"bad user {s['user']!r}")
     for k in ("moode", "panel_optional"):
@@ -565,6 +567,7 @@ def box_yaml(s: dict, box_id: str | None = None) -> str:
         f"variant: {s['variant']}",
         f"channel: {s['channel']}",
         f"update_mode: {s['update_mode']}",
+        f"starter: {s['starter']}",
         f"box_id: {box_id or uuid.uuid4()}",
         "checkin: false",
         "metered: false",

@@ -4,10 +4,22 @@ One YAML file per cabinet. The daemon knows nothing about which radio it is
 inside - it loads a descriptor, builds the backends the descriptor names, and
 binds actions to control ids. Adding the Excelsior is a new file, not a new
 code path.
+
+A descriptor may ``extends: <name>`` another in the same directory: its own
+``io`` and ``controls`` (the wiring is its own), the base's ``actions``,
+``combos`` and ``presets`` unless it gives them (a key named in both is the
+child's). hasler-hm-hat.yaml is the HM's panel on the HAT's pins, so its key
+behaviour comes from hasler-hm.yaml and cannot drift.
+
+Which stations the keys hold is not the cabinet's to say: ``presets: {slots:
+6}`` gives the number of keys that play music, and a starter set
+(haslerd/presets.py) fills them - the default set here, the chosen one in
+main.build.
 """
 
 from __future__ import annotations
 
+import copy
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +27,7 @@ from typing import Any, Mapping
 
 import yaml
 
+from . import presets as starter_sets
 from .panel.combos import ComboWatch, with_egg
 from .panel.controls import Control, Event, build_controls
 from .panel.io_base import (
@@ -28,6 +41,8 @@ from .panel.io_base import (
 
 log = logging.getLogger(__name__)
 
+INHERITED = ("actions", "combos", "presets", "title")
+
 
 @dataclass
 class Variant:
@@ -39,6 +54,9 @@ class Variant:
     # Key combinations: [{"keys": [k1, k2], "hold_s": 1.0, "do": verb, ...}]
     # (panel/combos.py; the key page's keys.yaml may replace them).
     combos: list[dict] = field(default_factory=list)
+    # How many keys hold music (``presets: {slots: N}``): a starter set fills
+    # that many. 0 = the descriptor listed its presets itself.
+    slots: int = 0
     path: Path | None = None
     # The box's calibration overlay (/etc/hasler/variant.d/<name>.yaml) when
     # one was laid over this descriptor - see boxconfig.load_effective_variant.
@@ -79,19 +97,61 @@ class Variant:
         )
 
 
-def load_variant(path: str | Path) -> Variant:
-    path = Path(path)
+def _read_descriptor(path: Path, depth: int = 0) -> dict:
+    """The descriptor's mapping with its ``extends`` chain folded in."""
     data = yaml.safe_load(path.read_text()) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}: descriptor is not a mapping")
+    base_name = data.pop("extends", None)
+    if not base_name:
+        return data
+    if depth > 3:
+        raise ValueError(f"{path}: extends chain too deep")
+    if not isinstance(base_name, str) or "/" in base_name or base_name.startswith("."):
+        raise ValueError(f"{path}: extends must name a descriptor in the same directory")
+    base_path = path.parent / f"{base_name}.yaml"
+    if not base_path.exists():
+        raise ValueError(f"{path}: extends {base_name!r}, but {base_path} is not there")
+    base = _read_descriptor(base_path, depth + 1)
+    for key in INHERITED:
+        if key not in data and key in base:
+            data[key] = copy.deepcopy(base[key])
+        elif key == "actions" and isinstance(data.get(key), dict) and isinstance(base.get(key), dict):
+            data[key] = {**copy.deepcopy(base[key]), **data[key]}    # the child's entries win
+    return data
+
+
+def load_variant(path: str | Path, pack: str | None = None) -> Variant:
+    """Read a descriptor. ``presets: {slots: N}`` is filled from the starter
+    set ``pack`` (the default set when None) of the release the file belongs
+    to; a descriptor listing its presets itself keeps them."""
+    path = Path(path)
+    data = _read_descriptor(path)
     missing = [k for k in ("variant", "controls") if k not in data]
     if missing:
         raise ValueError(f"{path}: descriptor is missing {', '.join(missing)}")
+    raw = data.get("presets") or []
+    slots = 0
+    if isinstance(raw, dict):
+        try:
+            slots = int(raw.get("slots", 0))
+        except (TypeError, ValueError):
+            raise ValueError(f"{path}: presets.slots must be a number") from None
+        specs = starter_sets.default_specs(path, slots, pack) if slots > 0 else []
+        if slots > 0 and not specs:
+            log.warning("%s: no starter set found for its %d keys; they start empty", path, slots)
+    elif isinstance(raw, list):
+        specs = list(raw)
+    else:
+        raise ValueError(f"{path}: presets must be a list or {{slots: N}}")
     return Variant(
         name=data["variant"],
         io=data.get("io", {}),
         controls=data["controls"],
         actions=data.get("actions", {}),
-        presets=data.get("presets", []),
+        presets=specs,
         combos=list(data.get("combos") or []),
+        slots=slots,
         path=path,
         title=str(data.get("title") or ""),
         audio=dict(data.get("audio") or {}) if isinstance(data.get("audio"), dict) else {},

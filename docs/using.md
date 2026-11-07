@@ -52,7 +52,13 @@ That's all you need. The rest of this guide is for when you want more.
 
 ### The keys
 
-The radio has six numbered keys and one key marked **PU**.
+The radio has six numbered keys and one key marked **PU**. (The Excelsior has
+a few more; see [The Excelsior's keys](#the-excelsiors-keys) below.) Out of
+the box the numbered keys hold **the built-in stations**: a starter set of
+stations and YouTube Music lists chosen to show what the radio can do. There
+are six sets to start from (classical, jazz, pop, flamenco and folk, the family
+kitchen, and the eclectic one the radio comes with); pick another in
+[Edit keys](#edit-keys) → **Start from a set…**, then change any key you like.
 
 | You do this | What happens |
 |---|---|
@@ -75,7 +81,10 @@ the lamp dims, then the radio goes to standby as if you had pressed Standby;
 the next time you wake it, it plays at your usual volume. Touching the radio
 (any key or knob) cancels the timer, and so does unplugging it. A Bluetooth
 phone is asked to pause; an AirPlay phone keeps sending to a silent radio until
-you stop it, but it doesn't wake the radio again.
+you stop it, but it doesn't wake the radio again. If you would rather set it
+from the cabinet, give **holding** a key (or a key combination) the job
+**Sleep timer** in [Edit keys](#edit-keys), with the minutes you want; no key
+does this out of the box.
 
 You choose what each key plays, and what holding it does, in
 [Edit keys](#edit-keys). What **PU** steps through, and in what order, is in
@@ -101,6 +110,31 @@ before.
 
 On some cabinets neighbouring keys can't be held together; the editor's
 check (**Check this pair**) shows which pairs work.
+
+#### The Excelsior's keys
+
+The Excelsior has ten keys in a row and four wheels, and its keys **stay
+down** when you press them: pressing one pops the one that was down before.
+That changes a few things from the table above.
+
+| You do this | What happens |
+|---|---|
+| Press key 1 to 6 | That key's music starts, as on any Hasler. |
+| Press **Tape** | A seventh station or list: the starter set's seventh entry (the key page calls it key 7). |
+| Press **PU** | Your phone over Bluetooth: the radio calls the last phone it knew. AirPlay and Spotify need no key, a phone just picks *Hasler*. |
+| Press **0** | Standby. Key 0 springs back and pops whatever key was down. Hold it for **5 seconds** and the radio shuts down, the lamp glowing down to ember meanwhile; when the lamp is dark, it is safe to unplug. |
+| Press **SP** | Silence while it is down (mute); press it again for the sound. |
+| Turn the **speaker** selector | Both speakers, the left or the right. |
+| The **volume**, **treble** and **bass** wheels | What they say; treble and bass each shape their end of the sound. |
+
+Because a key that is down can't tell the radio it was pressed *again*, there
+is no "same key again": to stop a station press **0**, and a playlist skips
+to the next song only from the key page. For the same reason the Excelsior's
+keys have no **hold** jobs and no key combinations: Bluetooth pairing is on
+the key page (**Settings → Phones & casting → Pair a phone**), and so is the
+sleep timer. The lamp, the key page, Browse and everything else are the same.
+A unit whose keys were converted to spring back behaves like the Hasler HM,
+holds and all.
 
 ### The two knobs
 
@@ -433,16 +467,22 @@ Tap the pencil (**Edit keys**), then choose a key.
 
 You can also choose what **holding** a key does: for example a Home Assistant
 scene, lights (which ones, on or off, how bright, what colour, how slowly to
-fade), or **Join another Hasler**. A key can also be a
-[Bluetooth key](#bluetooth).
+fade), the **Sleep timer** (with its minutes), or **Join another Hasler**. A
+key can also be a [Bluetooth key](#bluetooth).
 
 **Key combinations** (two keys held together, see
 [Key combinations](#key-combinations)) are in Edit keys too: pick the two
 keys (**Check this pair** to see that the cabinet lets you hold them both),
 how long to hold them and what they do, and **Try it** to hear it.
 
-**Reset keys to defaults** (the factory stations back on every key, and keys
-1 + 6 for pairing) is at the bottom of Edit keys.
+**Start from a set…** and **Reset keys to defaults** are at the bottom of
+Edit keys. A starter set puts six (on the Excelsior, seven) stations and
+playlists on the keys at once: the sheet shows each set with its keys, and the
+one the radio is on now is marked. Reset puts the built-in stations back on
+every key (the set you last chose, or the one the radio came with), with keys
+1 + 6 for pairing. Both replace every key, so the radio asks for a key press
+first. Keys you never changed quietly follow the makers' updates to the set
+(a fixed stream, a better station); keys you chose yourself are never touched.
 
 ### Settings
 

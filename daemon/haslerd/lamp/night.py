@@ -14,6 +14,11 @@ Where the radio stands comes from the web page's ``settings.json``::
              "off"            # never dim for the night
              "22:00-07:00"    # fixed local hours, may wrap past midnight
 
+Until the owner sets a place, the clock's time zone stands in: Imager wrote
+it, and Europe/Zurich's sunset in Bern is an hour nearer the truth than
+Madrid's (``default_location``, ``ZONE_PLACES``). ``location_source`` tells
+the page which of the two it is showing.
+
 Standard library only. Everything here is pure and cheap (a few dozen trig
 calls), so the policy can ask every tick.
 """
@@ -33,9 +38,27 @@ except ImportError:  # pragma: no cover - Python < 3.9
     ZoneInfo = None  # type: ignore[assignment,misc]
     ZoneInfoNotFoundError = Exception  # type: ignore[assignment,misc]
 
-# The owner's home; used whenever settings.json says nothing usable.
+# Where the radio stands when settings.json says nothing usable and the time
+# zone is none of ZONE_PLACES: the makers' home.
 DEFAULT_LOCATION = {"name": "Madrid", "lat": 40.4168, "lon": -3.7038}
 DEFAULT_MODE = "sun"
+# A capital per time zone a radio is likely to live in (the zone's name as
+# Imager / timedatectl write it). Good to a few minutes of sunset anywhere in
+# the country - far better than Madrid's for a Swiss radio.
+ZONE_PLACES = {
+    "Europe/Madrid": {"name": "Madrid", "lat": 40.4168, "lon": -3.7038},
+    "Europe/Zurich": {"name": "Bern", "lat": 46.948, "lon": 7.4474},
+    "Europe/Lisbon": {"name": "Lisbon", "lat": 38.7223, "lon": -9.1393},
+    "Europe/Paris": {"name": "Paris", "lat": 48.8566, "lon": 2.3522},
+    "Europe/London": {"name": "London", "lat": 51.5074, "lon": -0.1278},
+    "Europe/Berlin": {"name": "Berlin", "lat": 52.52, "lon": 13.405},
+    "Europe/Rome": {"name": "Rome", "lat": 41.9028, "lon": 12.4964},
+    "Europe/Amsterdam": {"name": "Amsterdam", "lat": 52.3676, "lon": 4.9041},
+    "Europe/Vienna": {"name": "Vienna", "lat": 48.2082, "lon": 16.3738},
+    "Europe/Brussels": {"name": "Brussels", "lat": 50.8503, "lon": 4.3517},
+    "Europe/Dublin": {"name": "Dublin", "lat": 53.3498, "lon": -6.2603},
+    "Europe/Copenhagen": {"name": "Copenhagen", "lat": 55.6761, "lon": 12.5683},
+}
 
 ZENITH = 90.833          # degrees: sunrise/sunset, refraction + solar radius
 _FIXED = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)-([01]?\d|2[0-3]):([0-5]\d)$")
@@ -225,16 +248,38 @@ def night_from(raw: Any) -> str:
     raise ValueError("night must be \"sun\", \"off\" or hours like \"22:00-07:00\"")
 
 
+def place_for_zone(zone: str | None) -> dict | None:
+    """The capital standing in for time zone ``zone`` (ZONE_PLACES), or None."""
+    return dict(ZONE_PLACES[zone]) if zone in ZONE_PLACES else None
+
+
+def default_location() -> dict:
+    """Where the radio stands when the owner hasn't said: the capital of the
+    clock's time zone, else Madrid."""
+    zone = getattr(local_tz(), "key", None)
+    return place_for_zone(zone) or dict(DEFAULT_LOCATION)
+
+
 def location_doc(settings: dict) -> dict:
-    """settings.json's location, or Madrid's when it has none usable."""
+    """settings.json's location, or the time zone's (default_location) when it
+    has none usable."""
     try:
         return location_from(settings.get("location"))
     except (ValueError, AttributeError):
-        return dict(DEFAULT_LOCATION)
+        return default_location()
+
+
+def location_source(settings: dict) -> str:
+    """"owner" when settings.json holds a usable location, else "timezone"."""
+    try:
+        location_from(settings.get("location"))
+    except (ValueError, AttributeError):
+        return "timezone"
+    return "owner"
 
 
 def location_from_settings(settings: dict) -> tuple[float, float]:
-    """(lat, lon) from settings.json's ``location``; Madrid when missing or bad."""
+    """(lat, lon) from settings.json's ``location``; the time zone's when missing or bad."""
     loc = location_doc(settings if isinstance(settings, dict) else {})
     return loc["lat"], loc["lon"]
 

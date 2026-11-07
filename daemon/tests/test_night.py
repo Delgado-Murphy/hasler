@@ -76,13 +76,35 @@ def test_is_night_flips_at_sunset_and_sunrise():
     assert is_night((sunset + minute).astimezone(timezone.utc), *MAD)
 
 
-def test_location_from_settings_defaults_to_madrid():
+def test_location_from_settings_defaults_to_madrid(monkeypatch):
+    monkeypatch.setattr(night, "local_tz", lambda: MADRID)
     assert location_from_settings({}) == MAD
     assert location_from_settings({"location": {"lat": 47.37, "lon": 8.54}}) == (47.37, 8.54)
     for bad in ({"location": "Bern"}, {"location": {"lat": 91, "lon": 0}},
                 {"location": {"lat": "47", "lon": 8}}, {"location": None}):
         assert location_from_settings(bad) == MAD
     assert location_from_settings(None) == MAD
+
+
+def test_the_time_zone_stands_in_for_a_place(monkeypatch):
+    """Until the owner sets a place, the clock's zone picks a capital (a dozen European ones)."""
+    monkeypatch.setattr(night, "local_tz", lambda: ZoneInfo("Europe/Zurich"))
+    assert night.default_location() == {"name": "Bern", "lat": 46.948, "lon": 7.4474}
+    assert night.location_doc({}) == night.default_location()
+    assert location_from_settings({}) == (46.948, 7.4474)
+    assert night.location_source({}) == "timezone"
+    assert night.location_source({"location": {"name": "Bern", "lat": 46.948, "lon": 7.4474}}) == "owner"
+    assert night.location_source({"location": {"lat": 91, "lon": 0}}) == "timezone"
+    for zone, name in (("Europe/Lisbon", "Lisbon"), ("Europe/Paris", "Paris"), ("Europe/London", "London"),
+                       ("Europe/Berlin", "Berlin"), ("Europe/Rome", "Rome"), ("Europe/Amsterdam", "Amsterdam"),
+                       ("Europe/Vienna", "Vienna"), ("Europe/Brussels", "Brussels"), ("Europe/Madrid", "Madrid")):
+        monkeypatch.setattr(night, "local_tz", lambda z=zone: ZoneInfo(z))
+        assert night.default_location()["name"] == name
+    monkeypatch.setattr(night, "local_tz", lambda: ZoneInfo("America/New_York"))
+    assert night.default_location() == night.DEFAULT_LOCATION      # not a zone we know: Madrid
+    monkeypatch.setattr(night, "local_tz", lambda: timezone.utc)  # no zone name at all
+    assert night.default_location() == night.DEFAULT_LOCATION
+    assert len(night.ZONE_PLACES) == 12
 
 
 def test_validators():

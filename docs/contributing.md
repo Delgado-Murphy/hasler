@@ -80,8 +80,10 @@ logical pins, and only the `io` block knows the hardware. A new cabinet should
 need a new YAML file, not new code.
 
 Owners normally change presets on the key page, not in this file. The file
-holds the factory defaults that ship with each release. A radio's own knob
-calibration lives outside the release, in `/etc/hasler/variant.d/`
+says only how many keys hold music (`presets: {slots: 6}`); the built-in
+stations are the starter sets in `config/presets/` (by collection and
+catalogue id, `haslerd/presets.py`). A radio's own knob calibration lives
+outside the release, in `/etc/hasler/variant.d/`
 (see [ota.md, section 1](ota.md#1-what-lives-where-config-separate-from-updates)).
 
 ## Making a release

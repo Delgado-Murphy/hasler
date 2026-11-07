@@ -1,0 +1,19 @@
+# Starter set: Jazz & soul (the format: eclectic.yaml).
+pack: jazz
+title: "Jazz & soul"
+blurb: "From the classic quartets to funk and the groove: two jazz stations, FIP's groove channel, and lists for a dinner or a dance."
+presets:
+  - {n: 1, name: "Radio Swiss Jazz", short: "Swiss Jazz", station: ch-radio-swiss-jazz,
+     why: "Jazz around the clock, no presenters."}
+  - {n: 2, name: "TSF Jazz", short: "TSF Jazz", station: fr-tsf-jazz,
+     why: "Paris's jazz station: the standards, the new names, the odd live set."}
+  - {n: 3, name: "Essential Jazz", short: "Essential", ytm: RDCLAK5uy_m7EF_vYZXBhXNuduyXmhT00DYapc8cobs,
+     why: "The records everyone should hear once, from YouTube Music. Tap again to skip."}
+  - {n: 4, name: "FIP Groove", short: "FIP Groove", station: fr-fip-groove,
+     why: "Funk, soul and groove from Radio France."}
+  - {n: 5, name: "Funk & Soul Power", short: "Funk & Soul", ytm: RDCLAK5uy_kOJNgwq4_Es1d2f9Z95etYKgzaQ6l5xd8,
+     why: "For the kitchen on a Saturday."}
+  - {n: 6, name: "Dinner Party Jazz", short: "Dinner Jazz", ytm: RDCLAK5uy_l_2hw6aZpjgIxEsMFWku27S5_WJDv9m1E,
+     why: "Quiet enough to talk over."}
+  - {n: 7, name: "Worldwide FM", short: "Worldwide FM", station: gb-worldwide-fm,
+     why: "Gilles Peterson's station: jazz, soul and the world's music."}
