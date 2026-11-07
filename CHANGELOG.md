@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.2 - 2026-11-07
+
+- The 1.6.1 repair now actually runs: it hands the radio's files to the
+  radio's own user (it was asking systemd for the wrong name).
+
 ## 1.6.1 - 2026-11-07
 
 - A radio coming from an older version (Stable 1.1.4) keeps its keys and can

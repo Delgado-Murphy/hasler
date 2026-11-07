@@ -51,7 +51,7 @@ WatchdogSec=30
 ExecStartPost=-+/usr/bin/systemctl stop hasler-lamp-boot.service
 # The radio's own files back to its user if an older updater left them root's
 # (scripts/hasler-own-state; a no-op normally).
-ExecStartPre=-+/usr/local/sbin/hasler-own-state %u
+ExecStartPre=-+/usr/local/sbin/hasler-own-state
 # Between two haslerds (a restart, a crash, an update) the boot script
 # breathes on from the LED's last frame - never dark, which means unplug.
 # Not at a shutdown: haslerd left a steady ember for the halt hook.

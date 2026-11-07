@@ -13,7 +13,10 @@
 # (its files), and /var/lib/haslerd/ (files and folders, links not followed).
 # /etc/hasler/trust stays root's.
 set -u
-user="${1:-pi}"
+# The user haslerd runs as (User= of its unit; systemd's %u means root in an
+# ExecStartPre=+ line, so the unit doesn't pass it). Never root.
+user="${1:-$(systemctl show -p User --value haslerd.service 2>/dev/null)}"
+[[ -n "$user" && "$user" != root ]] || exit 0
 id -u "$user" >/dev/null 2>&1 || exit 0
 group="$(id -gn "$user")"
 fix() { find "$@" -xdev \( -user root -o -group root \) ! -type l -print0 2>/dev/null \
