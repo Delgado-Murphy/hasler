@@ -123,6 +123,35 @@ def test_replies_become_notes_from_the_makers_once(sendable):
     assert api.pull_replies()["added"] == 0
 
 
+def test_the_issues_state_reaches_the_request_and_the_notes(sendable):
+    app, api, srv, state = sendable
+    api.send({"note": "x"})                       # #12
+    api.send({"note": "y"})                       # #13
+    assert [r["state"] for r in api.doc()["requests"]] == ["sent", "sent"]
+    srv.replies = [{"id": "seen:12", "at": "2026-11-08T09:00:00Z", "text": "The makers have seen your request #12.", "issue": 12, "state": "seen"}]
+    assert api.pull_replies()["added"] == 1
+    assert {r["number"]: r["state"] for r in api.doc()["requests"]} == {12: "seen", 13: "sent"}
+    srv.replies = [{"id": "closed:12:t", "at": "t", "text": "Your request #12 is done. The new card is in the post.", "issue": 12, "state": "done"},
+                   {"id": "seen:13", "at": "t", "text": "The makers have seen your request #13.", "issue": 13, "state": "seen"}]
+    api.pull_replies()
+    assert {r["number"]: r["state"] for r in api.doc()["requests"]} == {12: "done", 13: "seen"}
+    # a late "seen" never undoes done; reopening does
+    srv.replies = [{"id": "seen:12b", "text": "The makers have seen your request #12.", "issue": 12, "state": "seen"}]
+    api.pull_replies()
+    assert api.doc()["requests"][1]["state"] == "done"
+    srv.replies = [{"id": "reopened:12:t2", "text": "The makers reopened your request #12.", "issue": 12, "state": "seen"}]
+    api.pull_replies()
+    assert api.doc()["requests"][1]["state"] == "seen"
+    texts = [n["text"] for n in notes_api.read_notes(state)]
+    assert "Your request #12 is done. The new card is in the post." in texts and texts[0] == "The makers reopened your request #12."
+    assert all(n["by"] == "makers" for n in notes_api.read_notes(state))
+    # sent again (the same issue): the state stays
+    srv.number = 13
+    api.send({"note": "y"})
+    assert api.doc()["requests"][0] == {**api.doc()["requests"][0], "number": 13, "state": "seen"}
+    assert [r["number"] for r in api.doc()["requests"]] == [13, 12]
+
+
 def test_support_over_http(sendable):
     app, api, srv, state = sendable
     app.extra_routes.append(api)

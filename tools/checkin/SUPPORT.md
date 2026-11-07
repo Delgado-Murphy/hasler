@@ -12,7 +12,8 @@ under **From the makers**.
 radio ──POST /v1/report (X-Hasler-Token)──▶ Worker ──REST──▶ private repo: issue #12
 radio ◀─"Sent · request #12"───────────────┘
 maker comments "/owner A new card is in the post." on #12
-GitHub ──webhook issue_comment (HMAC)──▶ Worker /v1/github ──▶ KV replies:<box_id>
+maker labels #12 "seen" … closes #12
+GitHub ──webhook issue_comment, issues (HMAC)──▶ Worker /v1/github ──▶ KV replies:<box_id>
 radio (page opens This radio, or after the daily check-in) ──GET /v1/replies──▶ note "by: makers" ──ack──▶ Worker
 ```
 
@@ -33,6 +34,22 @@ What the Worker does (`support.js`, read it - it is short):
   issue's radio. Everything else on the issue - triage, notes between the
   two of you - stays private; the owner sees only `/owner` text. Closing
   with such a comment works too (GitHub sends the comment first).
+- **The issue's state** (the `issues` event) reaches the owner too, as a
+  note and on the sheet's line under the button:
+
+  | On GitHub | The owner reads | The sheet says |
+  |---|---|---|
+  | (just sent) | - | Sent · request #12 · 7 Nov |
+  | label **`seen`** (once per issue, however often it's re-added) | The makers have seen your request #12. | Seen by the makers · request #12 · sent 7 Nov |
+  | **closed** | Your request #12 is done. *(+ the last `/owner` text, if the radio hadn't fetched it yet - so "close with comment" arrives as one note)* | Done · request #12 · sent 7 Nov |
+  | **reopened** | The makers reopened your request #12. | Seen by the makers · … |
+
+  Other labels, assignments and edits say nothing to the owner. A `seen`
+  label added after closing doesn't undo "done"; reopening does.
+- **Reactions say nothing.** GitHub sends no webhook for a 👀 or 👍 on an
+  issue, so the Worker can't hear them (polling every issue for reactions
+  isn't worth it). The **`seen` label is the 👀**: add it when you've read
+  the request and haven't answered yet.
 - Never reads or stores the radio's IP. The issue body is what the owner's
   sheet showed: no passwords, tokens, phone names or accounts; the Wi-Fi
   name only if the owner left **Include my Wi-Fi name** ticked.
@@ -45,13 +62,14 @@ What the Worker does (`support.js`, read it - it is short):
    `wrangler.toml`.) Never point this at `hasler` or any public repo: the
    reports carry the owner's words and the radio's state.
 
-2. **Labels** (optional but tidy; GitHub creates missing ones itself when
-   the token may): `owner-report`, and as they come `fault:storage`,
-   `fault:panel`, `fault:sound`, `fault:heat`, `fault:update`. `version:*`
-   and `model:*` appear on their own.
+2. **Labels** (GitHub creates missing ones itself when the token may):
+   `owner-report`, **`seen`** (yours to add: it tells the owner), and as
+   they come `fault:storage`, `fault:panel`, `fault:sound`, `fault:heat`,
+   `fault:update`. `version:*` and `model:*` appear on their own.
 
    ```sh
    gh label create owner-report -R Delgado-Murphy/hasler-support -c F3CF8C -d "From a radio's Send to the makers"
+   gh label create seen -R Delgado-Murphy/hasler-support -c 0E8A16 -d "Tells the owner: the makers have seen your request"
    for f in storage panel sound heat update; do gh label create "fault:$f" -R Delgado-Murphy/hasler-support -c B60205; done
    ```
 
@@ -76,8 +94,10 @@ What the Worker does (`support.js`, read it - it is short):
 5. **The webhook** (hasler-support → Settings → Webhooks → Add webhook):
    payload URL `https://hasler-checkin.<account>.workers.dev/v1/github`,
    content type `application/json`, secret = the one from step 4, **Let me
-   select individual events → Issue comments** only. GitHub's ping should
-   show a green tick (the Worker answers 204).
+   select individual events → Issue comments** and **Issues** (closed,
+   reopened and labeled are the ones it reads; the rest are ignored).
+   GitHub's ping should show a green tick (the Worker answers 204). By API:
+   `gh api -X PATCH repos/Delgado-Murphy/hasler-support/hooks/<id> -f 'events[]=issue_comment' -f 'events[]=issues'`.
 
 6. **Radios**: nothing new. Any radio with `checkin_url` (and
    `checkin_token`) in `/etc/hasler/box.yaml` and a `box_id` shows **Send to
@@ -102,5 +122,9 @@ mocked GitHub.
 - Reply to the owner with `/owner …` in plain words (the rule for notes:
   name parts and settings, never people). It reaches the radio the next
   time the owner opens This radio, or after its daily check-in.
-- Everything else in the thread is yours. Close the issue when done.
+- Read it but can't answer yet? Add the **`seen`** label: the owner reads
+  "The makers have seen your request #12".
+- Everything else in the thread is yours. **Close** the issue when done: the
+  owner reads "Your request #12 is done." (close with an `/owner` comment to
+  add a line). Reopening tells them too.
 - If the owner has remote help on, the report's last line says so.

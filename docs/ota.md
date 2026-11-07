@@ -385,7 +385,9 @@ leaves is marked bad, so auto mode won't reinstall it.
   `<state>/support-requests.json` ("Sent · request #12"). A maker's comment
   with a line starting `/owner ` comes back (GitHub webhook, HMAC-verified)
   and the radio fetches it - when the owner opens This radio, and after the
-  daily check-in - into `maker-notes.jsonl` as a note `by: "makers"`. Owners
+  daily check-in - into `maker-notes.jsonl` as a note `by: "makers"`, and so
+  does the issue's state (the `seen` label, closed, reopened: "Seen by the
+  makers", "Done" on the sheet; GitHub sends no webhook for reactions). Owners
   never need a GitHub account. Setup: [`tools/checkin/SUPPORT.md`](../tools/checkin/SUPPORT.md).
 - **A release from a USB stick** (the post-makers path): the updater takes
   `file://` URLs, so a signed release on a stick - the `releases/`,

@@ -193,6 +193,11 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await until(() => page.isVisible('#tellSendErr'), 4000, 'the refusal');
       assert(/Share or Copy/.test(await text(page, '#tellSendErr')), 'says what to do instead');
       await page.click('#tellClose');
+      // the makers closed it: the sheet says so next time
+      sup.requests = [{number: 12, at: '2026-11-07T18:00:00+01:00', deduped: false, state: 'done'}];
+      await page.click('#tellMakers');
+      await until(async () => /^Done · request #12 · sent (7 Nov|Nov 7)/.test(await text(page, '#tellSent')), 4000, 'the done state: ' + await text(page, '#tellSent'));
+      await page.click('#tellClose');
       // with a request sent, opening This radio asks the radio for the makers' replies
       await page.goto(radio.base + '/#settings/radio');
       await until(async () => replies >= 1, 8000, 'the replies fetch');

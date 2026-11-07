@@ -7,9 +7,11 @@
 //                            16 KB. At most PER_DAY a day per box_id (429 after). The same box_id with
 //                            the same note within DEDUP_S is a comment on the issue it made, not a new
 //                            one. Answers {ok, number, deduped}. The IP is never read or stored.
-//   POST /v1/github          GitHub's webhook (issue_comment), HMAC-SHA256 verified with
+//   POST /v1/github          GitHub's webhook (issue_comment, issues), HMAC-SHA256 verified with
 //                            GITHUB_WEBHOOK_SECRET (refused when unset). A comment with a line that
-//                            starts "/owner " is queued for that issue's radio.
+//                            starts "/owner " is queued for that issue's radio; so are the issue's
+//                            states: closed ("done", folding in a /owner reply not yet fetched),
+//                            reopened, and the label "seen" (once). Those replies carry state: seen|done.
 //   GET  /v1/replies?box_id= the radio's queued replies (token-gated): {replies: [{id, at, text, issue}]}
 //   POST /v1/replies/ack     {box_id, ids: [...]}: the radio kept them; they leave the queue.
 //
@@ -19,7 +21,7 @@
 //
 // KV keys (SUPPORT): rate:<box>:<day> (a count, 2 days), last:<box> (the last note's hash and
 // issue, DEDUP_S), issue:<n> (which radio, kept), issues:<box> (its last few issue numbers, for the
-// dashboard), replies:<box> (the queue, at most MAX_REPLIES).
+// dashboard), replies:<box> (the queue, at most MAX_REPLIES), said:seen:<n> ("seen" said once).
 
 export const MAX_REPORT = 16384;
 export const PER_DAY = 5;
@@ -179,36 +181,79 @@ export function ownerReply(commentBody) {
   return text ? text.slice(0, MAX_REPLY) : null;
 }
 
-export async function handleGithub(request, env) {
+export const SEEN_LABEL = "seen";
+
+// What the owner reads when the issue's state changes (the radio shows it like a reply).
+export const STATE_WORDS = {
+  done: n => `Your request #${n} is done.`,
+  reopened: n => `The makers reopened your request #${n}.`,
+  seen: n => `The makers have seen your request #${n}.`,
+};
+
+async function boxOf(env, issue) {
+  const rec = await env.SUPPORT.get(`issue:${issue.number}`, "json");
+  let box = rec && rec.box_id;
+  if (!box) {                                   // the issue's own marker, if KV lost the map
+    const m = /<!-- hasler-box: ([A-Za-z0-9._-]{1,64}) -->/.exec(String(issue.body || ""));
+    box = m ? m[1] : null;
+  }
+  return box && BOX_RE.test(box) ? box : null;
+}
+
+// What an event says to the owner: {id, text, state} or null. ``queue`` is the radio's pending
+// replies: closing folds a /owner reply the radio hasn't fetched yet into "done".
+export function stateReply(p, queue, now) {
+  const n = p.issue.number, at = new Date(now).toISOString();
+  if (p.action === "closed") {
+    const pending = queue.filter(r => r.issue === n && !r.state);
+    const last = pending.at(-1);
+    const text = STATE_WORDS.done(n) + (last ? " " + last.text : "");
+    return { id: `closed:${n}:${p.issue.closed_at || at}`, text: text.slice(0, MAX_REPLY), state: "done", fold: pending.map(r => r.id) };
+  }
+  if (p.action === "reopened") return { id: `reopened:${n}:${p.issue.updated_at || at}`, text: STATE_WORDS.reopened(n), state: "seen" };   // open again, and looked at
+  if (p.action === "labeled" && p.label && String(p.label.name).toLowerCase() === SEEN_LABEL) {
+    return { id: `seen:${n}`, text: STATE_WORDS.seen(n), state: "seen", once: true };
+  }
+  return null;
+}
+
+export async function handleGithub(request, env, now = Date.now()) {
   if (!env.SUPPORT || !env.GITHUB_WEBHOOK_SECRET) return new Response("not set up", { status: 503 });
   const body = await request.text();
   if (!(await signatureOk(env.GITHUB_WEBHOOK_SECRET, body, request.headers.get("x-hub-signature-256")))) {
     return new Response("bad signature", { status: 401 });
   }
   const event = request.headers.get("x-github-event");
-  if (event === "ping") return new Response(null, { status: 204 });
-  if (event !== "issue_comment") return new Response(null, { status: 204 });
+  if (event !== "issue_comment" && event !== "issues") return new Response(null, { status: 204 });   // ping, the rest
   let p;
   try { p = JSON.parse(body); } catch (_) { return new Response("not JSON", { status: 400 }); }
-  if (!p || p.action !== "created" || !p.issue || !p.comment) return new Response(null, { status: 204 });
+  if (!p || !p.issue || !Number.isInteger(p.issue.number)) return new Response(null, { status: 204 });
   if (String(p.repository && p.repository.full_name || "").toLowerCase() !== repoOf(env).toLowerCase()) return new Response(null, { status: 204 });
-  if (p.comment.user && p.comment.user.type === "Bot") return new Response(null, { status: 204 });
-  const text = ownerReply(p.comment.body);
-  if (!text) return new Response(null, { status: 204 });
+  if (p.sender && p.sender.type === "Bot") return new Response(null, { status: 204 });
+  let item = null;
   const number = p.issue.number;
-  const rec = await env.SUPPORT.get(`issue:${number}`, "json");
-  let box = rec && rec.box_id;
-  if (!box) {                                   // the issue's own marker, if KV lost the map
-    const m = /<!-- hasler-box: ([A-Za-z0-9._-]{1,64}) -->/.exec(String(p.issue.body || ""));
-    box = m ? m[1] : null;
+  if (event === "issue_comment") {
+    if (p.action !== "created" || !p.comment || (p.comment.user && p.comment.user.type === "Bot")) return new Response(null, { status: 204 });
+    const text = ownerReply(p.comment.body);
+    if (!text) return new Response(null, { status: 204 });
+    item = { id: p.comment.id, at: p.comment.created_at || new Date(now).toISOString(), text, issue: number };
   }
-  if (!box || !BOX_RE.test(box)) return json({ stored: false, why: "not a radio's issue" }, 200);
-  const queue = (await env.SUPPORT.get(`replies:${box}`, "json")) || [];
-  if (!queue.some(r => r.id === p.comment.id)) {
-    queue.push({ id: p.comment.id, at: p.comment.created_at || new Date().toISOString(), text, issue: number });
+  const box = await boxOf(env, p.issue);
+  if (!box) return json({ stored: false, why: "not a radio's issue" }, 200);
+  let queue = (await env.SUPPORT.get(`replies:${box}`, "json")) || [];
+  if (event === "issues") {
+    const s = stateReply(p, queue, now);
+    if (!s) return new Response(null, { status: 204 });
+    if (s.once) {                               // "seen" says so once per issue, however often it's relabelled
+      if (await env.SUPPORT.get(`said:${s.id}`)) return new Response(null, { status: 204 });
+      await env.SUPPORT.put(`said:${s.id}`, "1");
+    }
+    if (s.fold) queue = queue.filter(r => !s.fold.includes(r.id));
+    item = { id: s.id, at: new Date(now).toISOString(), text: s.text, issue: number, state: s.state };
   }
+  if (!queue.some(r => r.id === item.id)) queue.push(item);
   await env.SUPPORT.put(`replies:${box}`, JSON.stringify(queue.slice(-MAX_REPLIES)));
-  return json({ stored: true, box: box.slice(0, 8) }, 200);
+  return json({ stored: true, box: box.slice(0, 8), state: item.state || null }, 200);
 }
 
 // --- the radio fetches its replies ----------------------------------------------------------------

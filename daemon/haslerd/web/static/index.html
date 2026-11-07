@@ -7220,7 +7220,12 @@ async function loadSupport(){
   return support;
 }
 const canSend = () => !!(support && support.available);
-function sentWords(req){ return req ? 'Sent · request #' + req.number + ' · ' + day(req.at) : ''; }
+// "Sent · request #12 · 7 Nov", then "Seen by the makers · …" (their seen label, or reopened) and "Done · …" (closed).
+function sentWords(req){
+  if (!req) return '';
+  const lead = req.state === 'done' ? 'Done' : req.state === 'seen' ? 'Seen by the makers' : 'Sent';
+  return lead + ' · request #' + req.number + ' · ' + (req.state === 'done' || req.state === 'seen' ? 'sent ' : '') + day(req.at);
+}
 // The makers' replies to a request, fetched into the notes (POST /api/support/replies) - at most every 10 minutes,
 // and only once a request has gone.
 let repliesAt = 0;
@@ -7229,7 +7234,7 @@ async function pullReplies(){
   if (!support) await loadSupport();
   if (!canSend() || !(support.requests || []).length) return;
   repliesAt = Date.now();
-  try { await api('POST', '/api/support/replies', {}, {timeout:20000}); } catch (_) {}
+  try { await api('POST', '/api/support/replies', {}, {timeout:20000}); await loadSupport(); } catch (_) {}
 }
 async function reportText(){
   const r = await api('GET', '/api/report?note=' + encodeURIComponent(tellUi.note) + '&wifi=' + (tellUi.wifi ? '1' : '0'), undefined, {timeout:15000});
@@ -7285,7 +7290,7 @@ function tellMakers(){
     }
   };
   paintSend();
-  if (!support || support.err) loadSupport().then(() => { if (dlg.open) paintSend(); });
+  loadSupport().then(() => { if (dlg.open) paintSend(); });   // fresh: the request's state may have moved
   dlg.append(h('h2', {id:'dlgTitle'}, 'Tell the makers'),
     h('p', {class:'sub'}, 'This puts together what the makers usually ask first: the version, what the lamp says, what’s playing, and the last few things that went wrong inside. Nothing private: no passwords, no accounts, no phone names. Add a line about what you noticed.'),
     ta,
