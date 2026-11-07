@@ -19,6 +19,7 @@ from haslerd.web.server import WebApp, WebServer, load_settings
 
 NO_FLOOR = (0.0, 0.0, 0.0)
 AMBER = Look("amber", 1.0)
+AMBER_DUTY = eng.DEFAULT_PALETTE["amber"]
 
 
 class Clock:
@@ -65,12 +66,18 @@ class TestSetPalette:
         assert lamp.palette["blue"] == (0.0, 0.2, 1.0)
         assert lamp.base_palette["amber"] == eng.DEFAULT_PALETTE["amber"]
 
-    def test_unknown_names_and_off_are_ignored_values_clamped(self):
+    def test_unknown_names_old_colours_and_off_are_ignored_values_clamped(self):
         lamp, _ = make()
-        lamp.set_palette({"chartreuse": [0, 1, 0], "off": [1, 1, 1], "red": [2.0, -1.0, float("nan")]})
-        assert "chartreuse" not in lamp.palette
-        assert lamp.palette["off"] == (0.0, 0.0, 0.0)
-        assert lamp.palette["red"] == (1.0, 0.0, 0.0)
+        lamp.set_palette({"chartreuse": [0, 1, 0], "off": [1, 1, 1], "red": [1, 0, 0],
+                          "amber_pale": [1, 1, 1], "amber": [2.0, -1.0, float("nan")]})
+        assert set(lamp.palette) == {"amber", "ember", "blue"}
+        assert lamp.palette["amber"] == (1.0, 0.0, 0.0)
+
+    def test_day_and_night_overrides(self):
+        lamp, _ = make()
+        lamp.set_palette({"amber": {"day": [1.0, 0.2, 0.0], "night": [1.0, 0.1, 0.0]}})
+        assert lamp.palette["amber"] == (1.0, 0.2, 0.0)
+        assert lamp.palette_night["amber"] == (1.0, 0.1, 0.0)
 
 
 # -- engine: preview --------------------------------------------------------
@@ -110,11 +117,11 @@ class TestPreview:
         lamp.preview([0.0, 0.1, 1.0], 1.0)          # a change restarts the 30 s
         clock.t += eng.PREVIEW_S - 1
         assert duty(lamp, clock.t)[2] == pytest.approx(1.0)
-        clock.t += 1.0 + eng.PREVIEW_RESTORE_S / 2
+        clock.t += 1.0 + eng.RESTORE_S / 2
         r, _, b = duty(lamp, clock.t)
         assert 0.0 < r < 1.0 and 0.0 < b < 1.0      # mid-blend
-        clock.t += eng.PREVIEW_RESTORE_S
-        assert duty(lamp, clock.t) == pytest.approx((1.0, 0.15, 0.0))
+        clock.t += eng.RESTORE_S
+        assert duty(lamp, clock.t) == pytest.approx(AMBER_DUTY)
         assert not lamp.previewing
 
     def test_none_ends_it_now(self):
@@ -122,8 +129,8 @@ class TestPreview:
         lamp.show(AMBER)
         lamp.preview([0.0, 0.0, 1.0], 1.0)
         lamp.preview(None)
-        clock.t += eng.PREVIEW_RESTORE_S + 0.01
-        assert duty(lamp, clock.t) == pytest.approx((1.0, 0.15, 0.0))
+        clock.t += eng.RESTORE_S + 0.01
+        assert duty(lamp, clock.t) == pytest.approx(AMBER_DUTY)
 
     def test_the_countdown_ends_it_and_refuses_new_ones(self):
         lamp, clock = make()
@@ -134,7 +141,7 @@ class TestPreview:
         lamp.preview([0.0, 0.0, 1.0], 1.0)
         assert not lamp.previewing
         r, _, b = duty(lamp, clock.t)
-        assert b == 0.0 and r == pytest.approx(eng.COUNTDOWN_FLOOR ** eng.GAMMA)
+        assert b == 0.0 and r == pytest.approx(eng.EMBER_NIGHT ** eng.GAMMA)
 
     def test_threaded_engine_returns_to_the_look_on_its_own(self):
         out = FakeOutput()
@@ -144,9 +151,9 @@ class TestPreview:
             lamp.preview([0.0, 0.0, 1.0], 1.0, hold_s=0.05)
             import time
             deadline = time.monotonic() + 2.0
-            while time.monotonic() < deadline and out.last != pytest.approx((1.0, 0.15, 0.0)):
+            while time.monotonic() < deadline and out.last != pytest.approx(AMBER_DUTY):
                 time.sleep(0.02)
-            assert out.last == pytest.approx((1.0, 0.15, 0.0))
+            assert out.last == pytest.approx(AMBER_DUTY)
         finally:
             lamp.close()
 
@@ -211,9 +218,9 @@ class TestPaletteApi:
 
     def test_keeps_the_rest_of_settings(self, app):
         app.put_settings({"night": "off"})
-        app.put_lamp_palette({"palette": {"red": [1.0, 0.05, 0.0]}})
+        app.put_lamp_palette({"palette": {"ember": [1.0, 0.05, 0.0]}})
         saved = load_settings(app.settings_file)
-        assert saved["night"] == "off" and saved["lamp_palette"]["red"] == [1.0, 0.05, 0.0]
+        assert saved["night"] == "off" and saved["lamp_palette"]["ember"] == [1.0, 0.05, 0.0]
 
     @pytest.mark.parametrize("bad", [
         {},
