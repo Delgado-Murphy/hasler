@@ -42,20 +42,28 @@ class FakeLamp:
 
 
 class RawLamp(FakeLamp):
-    """The engine the Lamp check wants: raw previews, look previews, live calibration."""
+    """The engine the Lamp check wants: preview_duty and live calibration."""
 
     def __init__(self):
         super().__init__()
-        self.raw, self.looks, self.cals = [], [], []
+        self.raw, self.cals = [], []
 
-    def preview(self, rgb, level=1.0, hold_s=30.0, raw=False):
-        (self.raw if raw else self.previews).append((rgb, level))
-
-    def preview_look(self, look, night, calibration):
-        self.looks.append((look, night, calibration))
+    def preview_duty(self, duty, hold_s=30.0):
+        self.raw.append((duty, hold_s))
 
     def set_calibration(self, cal):
         self.cals.append(cal)
+
+
+class RawFlagLamp(FakeLamp):
+    """An engine whose preview takes raw=True instead of preview_duty."""
+
+    def __init__(self):
+        super().__init__()
+        self.raw = []
+
+    def preview(self, rgb, level=1.0, hold_s=30.0, raw=False):
+        (self.raw if raw else self.previews).append((rgb, level))
 
 
 @pytest.fixture
@@ -226,7 +234,7 @@ class TestGet:
     def test_standard_follows_the_engine(self, app):
         doc = app.lamp_calibration()
         assert doc["variant"] == "hasler-hm" and doc["lamp"] and doc["can_save"]
-        assert doc["saved"] == {} and doc["raw_preview"] is False and doc["look_preview"] is False
+        assert doc["saved"] == {} and doc["raw_preview"] is False
         std = doc["standard"]
         assert set(std) == CONTRACT - {"calibrated"}
         assert std["palette"]["amber"]["day"] == list(eng.DEFAULT_PALETTE["amber"])
@@ -243,7 +251,9 @@ class TestGet:
     def test_an_engine_with_the_new_calls_says_so(self, app):
         app.lamp = RawLamp()
         doc = app.lamp_calibration()
-        assert doc["raw_preview"] and doc["look_preview"]
+        assert doc["raw_preview"] is True
+        app.lamp = RawFlagLamp()
+        assert app.lamp_calibration()["raw_preview"] is True
 
     def test_without_a_lamp_or_paths(self, app):
         app.lamp, app.box_paths = None, None
@@ -255,11 +265,22 @@ class TestGet:
 
 
 class TestRawPreview:
-    def test_goes_to_the_engines_raw_preview(self, app):
+    def test_goes_to_the_engines_preview_duty(self, app):
         app.lamp = RawLamp()
         doc = app.lamp_preview({"duty": [0.0025, 0, 0]})
-        assert app.lamp.raw == [([0.0025, 0.0, 0.0], 1.0)] and app.lamp.previews == []
+        assert app.lamp.raw == [([0.0025, 0.0, 0.0], eng.PREVIEW_S)] and app.lamp.previews == []
         assert doc["raw"] is True and doc["showing"]
+
+    def test_or_its_raw_flag(self, app):
+        app.lamp = RawFlagLamp()
+        doc = app.lamp_preview({"duty": [0.0025, 0, 0]})
+        assert app.lamp.raw == [([0.0025, 0.0, 0.0], 1.0)] and app.lamp.previews == []
+        assert doc["raw"] is True
+
+    def test_duty_wins_over_other_keys(self, app):
+        app.lamp = RawLamp()
+        app.lamp_preview({"duty": [0.01, 0, 0], "rgb": [1, 1, 1], "look": "standby"})
+        assert app.lamp.raw and app.lamp.previews == []
 
     def test_falls_back_to_the_nearest_colour(self, app):
         doc = app.lamp_preview({"duty": [0.5, 0.25, 0]})
@@ -288,27 +309,6 @@ class TestRawPreview:
     def test_the_rgb_path_is_unchanged(self, app):
         app.lamp_preview({"rgb": [1, 0.15, 0], "level": "night"})
         assert app.lamp.previews == [([1, 0.15, 0], 0.35)]
-
-    def test_look_preview(self, app):
-        app.lamp = RawLamp()
-        doc = app.lamp_preview({"look": {"colour": "blue", "level": 0.6, "motion": "breath", "period_s": 2,
-                                         "floor": 0.15}, "night": True, "calibration": copy.deepcopy(CAL)})
-        look, night, cal = app.lamp.looks[-1]
-        assert (look.colour, look.level, look.motion, look.period_s, look.floor) == ("blue", 0.6, "breath", 2, 0.15)
-        assert night is True and cal["levels"] == CAL["levels"] and doc["look"] is True
-
-    def test_look_preview_without_the_engine_call(self, app):
-        doc = app.lamp_preview({"look": {"colour": "amber", "level": 1}, "night": False})
-        assert doc["look"] is False and app.lamp.previews == []
-
-    @pytest.mark.parametrize("bad", [
-        {"look": "amber"}, {"look": {"colour": "chartreuse", "level": 1}},
-        {"look": {"colour": "amber", "level": 2}}, {"look": {"colour": "amber", "level": 1, "motion": "spin"}},
-        {"look": {"colour": "amber", "level": 1}, "night": "yes"},
-    ])
-    def test_look_rejects(self, app, bad):
-        with pytest.raises(ValueError):
-            app.lamp_preview(bad)
 
 
 # -- over HTTP -------------------------------------------------------------------

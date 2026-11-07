@@ -39,9 +39,8 @@ hear the doc, so the engine's ``set_palette`` follows at once.
 ``POST /api/lamp/preview {"rgb": [r, g, b], "level": "full"|"night"|"ember"|0..1}``
 shows a colour on the lamp for 30 s after the last call (only the shutdown
 countdown outranks it); ``{"rgb": null}`` ends it. ``{"duty": [r, g, b]}``
-shows raw channel duties (no gamma, balance or floors) and ``{"look": {...},
-"night": bool, "calibration": {...}}`` a policy Look through a draft
-calibration, for the guided Lamp check (Maker tools; web/lamp_check.py), whose
+shows raw channel duties (no gamma, balance or floors; checked before any
+other kind of preview) for the guided Lamp check (Maker tools; web/lamp_check.py), whose
 ``GET/PUT(POST)/DELETE /api/lamp/calibration`` reads, saves and clears the
 calibration in the box overlay's ``io.lamp``.
 
@@ -1190,14 +1189,11 @@ class WebApp:
     def lamp_preview(self, body: Any) -> dict:
         """``{"rgb": [r, g, b], "level": name|0..1}`` on the lamp for a while; ``{"rgb": null}`` ends it.
 
-        ``{"duty": [r, g, b]}`` shows raw channel duties (the Lamp check), and
-        ``{"look": {...}, "night": bool, "calibration": {...}}`` a policy Look
-        through a draft calibration - see ``_preview_duty`` / ``_preview_look``.
+        ``{"duty": [r, g, b]}`` shows raw channel duties (the Lamp check,
+        ``_preview_duty``); it is handled before any other kind of preview.
         """
         if isinstance(body, dict) and "duty" in body:
             return self._preview_duty(body["duty"])
-        if isinstance(body, dict) and "look" in body:
-            return self._preview_look(body)
         if not isinstance(body, dict) or "rgb" not in body:
             raise ValueError('expected {"rgb": [r, g, b], "level": "full"|"night"|"ember"} or {"rgb": null}')
         rgb = None if body["rgb"] is None else _rgb_from(body["rgb"], "rgb")
@@ -1220,16 +1216,21 @@ class WebApp:
     def _preview_duty(self, raw: Any) -> dict:
         """Raw channel duties 0..1 on the lamp, bypassing gamma, balance and floors.
 
-        Needs the engine's ``preview(rgb, level, raw=True)`` (``rgb`` = the
-        duties written as they are). An engine without it gets the nearest
-        colour preview - right for a lamp with no balance, but its floors still
-        apply, so ``raw`` in the answer says which one the lamp drew.
+        Needs the engine's ``preview_duty(duty_rgb, hold_s=PREVIEW_S)`` (the
+        duties written as they are; ``preview(rgb, level, raw=True)`` is taken
+        too). An engine without either gets the nearest colour preview - right
+        for a lamp with no balance, but its floors still apply, so ``raw`` in
+        the answer says which one the lamp drew.
         """
         duty = lamp_check.duty_from(raw)
         lamp = self.lamp
         preview = getattr(lamp, "preview", None)
+        preview_duty = getattr(lamp, "preview_duty", None)
         exact = False
-        if callable(preview):
+        if callable(preview_duty):
+            preview_duty(duty, hold_s=getattr(lamp_engine, "PREVIEW_S", 30.0))
+            exact = True
+        elif callable(preview):
             if lamp_check.accepts(preview, "raw"):
                 preview(duty, 1.0, raw=True)
                 exact = True
@@ -1239,37 +1240,6 @@ class WebApp:
                 rgb = [d / peak for d in duty] if peak > 0 else [0.0, 0.0, 0.0]
                 preview(rgb, peak ** (1.0 / gamma) if peak > 0 else 0.0)
         return {"lamp": lamp is not None, "showing": lamp is not None, "raw": exact,
-                "expires_s": getattr(lamp_engine, "PREVIEW_S", 30.0)}
-
-    def _preview_look(self, body: dict) -> dict:
-        """A Look (colour, level, motion, period_s, floor) at day or night, drawn
-        through a draft calibration - the engine's ``preview_look(look, night,
-        calibration)``. Without it nothing is shown and ``look`` is false: the
-        page then draws the look itself with raw duties."""
-        raw = body["look"]
-        if not isinstance(raw, dict):
-            raise ValueError('look must be {"colour", "level", "motion", "period_s", "floor"}')
-        names = getattr(lamp_engine, "DEFAULT_PALETTE", {}) or {}
-        colour = raw.get("colour")
-        if not isinstance(colour, str) or (names and colour not in names):
-            raise ValueError("look.colour must be one of the lamp's colours")
-        motion = raw.get("motion", "solid")
-        if motion not in ("solid", "breath"):
-            raise ValueError("look.motion must be solid or breath")
-        level = lamp_check.number(raw.get("level"), "look.level", 0.0, 1.0)
-        period = lamp_check.number(raw.get("period_s", 0.0), "look.period_s", 0.0, 60.0)
-        floor = lamp_check.number(raw.get("floor", 0.0), "look.floor", 0.0, 1.0)
-        night = body.get("night", False)
-        if not isinstance(night, bool):
-            raise ValueError("night must be true or false")
-        cal = lamp_check.check(body["calibration"]) if body.get("calibration") is not None else None
-        lamp = self.lamp
-        fn = getattr(lamp, "preview_look", None)
-        if not callable(fn):
-            return {"lamp": lamp is not None, "showing": False, "look": False, "expires_s": 0}
-        from ..lamp.contract import Look
-        fn(Look(colour, level, motion, period, floor), night, cal)
-        return {"lamp": True, "showing": True, "look": True,
                 "expires_s": getattr(lamp_engine, "PREVIEW_S", 30.0)}
 
     # -- the Lamp check's calibration (web/lamp_check.py) -------------------
@@ -1284,8 +1254,7 @@ class WebApp:
             "variant": self.variant_name,
             "lamp": lamp is not None,
             "can_save": self.box_paths is not None,
-            "raw_preview": callable(preview) and lamp_check.accepts(preview, "raw"),
-            "look_preview": callable(getattr(lamp, "preview_look", None)),
+            "raw_preview": callable(getattr(lamp, "preview_duty", None)) or (callable(preview) and lamp_check.accepts(preview, "raw")),
             "saved": lamp_check.saved_from((self._overlay().get("io") or {}).get("lamp")),
             "standard": lamp_check.standard(lamp_engine, lamp),
             "looks": lamp_check.sweep(policy),
