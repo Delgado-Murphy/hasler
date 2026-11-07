@@ -8,13 +8,15 @@ owner's note, POSTed to that server's ``/v1/report`` with the check-in's
 ``X-Hasler-Token``. The server (tools/checkin/support.js) files it as an
 issue in Delgado & Murphy's PRIVATE GitHub repo and answers the request's
 number; owners never need a GitHub account, and nothing lands anywhere
-public. A maker's ``/owner ...`` comment on that issue comes back as a note
+public. A maker's ``/owner ...`` comment on that issue - and the issue's
+state: seen, done, reopened - comes back as a note
 from the makers (``<state>/maker-notes.jsonl``, ``by: "makers"``; the page's
 **From the makers**, web/notes_api.py), fetched when the page opens (and
 after the daily check-in, update/hasler_update/checkin.py), only while a
 request has been sent.
 
-    GET  /api/support          -> {"available", "requests": [{"number", "at", "deduped"}, ...newest first]}
+    GET  /api/support          -> {"available", "requests": [{"number", "at", "deduped", "state"}, ...newest first]}
+                               state: sent | seen (the makers' "seen" label, or reopened) | done (closed)
     POST /api/support/send     {"note", "wifi"} -> {"ok", "number", "at", "deduped", "requests"}
                                409 without a checkin_url, 429 after the server's daily limit,
                                503 when the server can't be reached.
@@ -48,6 +50,7 @@ REQUESTS_FILE = "support-requests.json"
 NOTES_FILE = "maker-notes.jsonl"          # web/notes_api.py reads it
 NOTES_KEEP = 200                          # as scripts/hasler-note trims it
 REQUESTS_KEPT = 20
+STATES = ("sent", "seen", "done")         # a request: sent, the makers have seen it, done (the issue closed)
 MAX_BYTES = 16384                         # the server refuses more
 TIMEOUT_S = 15.0
 TOKEN_HEADER = "X-Hasler-Token"
@@ -155,16 +158,41 @@ class SupportApi:
         out = []
         for r in (doc.get("requests") if isinstance(doc, dict) else None) or []:
             if isinstance(r, dict) and isinstance(r.get("number"), int):
-                out.append({"number": r["number"], "at": str(r.get("at") or "")[:40], "deduped": bool(r.get("deduped"))})
+                state = r.get("state") if r.get("state") in STATES else "sent"
+                out.append({"number": r["number"], "at": str(r.get("at") or "")[:40], "deduped": bool(r.get("deduped")),
+                            "state": state})
         return out
 
-    def _remember(self, number: int, at: str, deduped: bool) -> list[dict]:
-        kept = [r for r in self.requests() if not (deduped and r["number"] == number)]
-        kept = ([{"number": number, "at": at, "deduped": deduped}] + kept)[:REQUESTS_KEPT]
+    def _write_requests(self, kept: list[dict]) -> None:
         if self.state_dir is not None:
             from ..boxconfig import atomic_write_text
             atomic_write_text(self.state_dir / REQUESTS_FILE, json.dumps({"schema": 1, "requests": kept}, indent=1) + "\n")
+
+    def _remember(self, number: int, at: str, deduped: bool) -> list[dict]:
+        old = next((r for r in self.requests() if r["number"] == number), None)
+        kept = [r for r in self.requests() if r["number"] != number]
+        # sent again (the same issue): keep what the makers already said about it
+        kept = ([{"number": number, "at": at, "deduped": deduped, "state": old["state"] if old else "sent"}] + kept)[:REQUESTS_KEPT]
+        self._write_requests(kept)
         return kept
+
+    def _set_states(self, replies: list) -> None:
+        """A request's state from the makers' replies, in order: "seen" (the label, or reopened)
+        and "done" (closed). A late "seen" label never undoes "done"; reopening does."""
+        kept, changed = self.requests(), False
+        for r in replies:
+            if not isinstance(r, dict) or r.get("state") not in STATES or not isinstance(r.get("issue"), int):
+                continue
+            req = next((x for x in kept if x["number"] == r["issue"]), None)
+            if req is None:
+                continue
+            new = r["state"]
+            if new == "seen" and req["state"] == "done" and not str(r.get("id")).startswith("reopened:"):
+                continue
+            if req["state"] != new:
+                req["state"], changed = new, True
+        if changed:
+            self._write_requests(kept)
 
     def doc(self) -> dict:
         base, _, box_id = self._server()
@@ -270,6 +298,7 @@ class SupportApi:
             from ..boxconfig import atomic_write_text
             atomic_write_text(path, "\n".join((old + lines)[-NOTES_KEEP:]) + "\n")
             log.info("%d note(s) from the makers' replies", len(lines))
+        self._set_states(replies)
         if ids:
             try:
                 self.transport("POST", base + "/v1/replies/ack", {"box_id": box_id, "ids": ids}, token)
