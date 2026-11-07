@@ -1062,7 +1062,10 @@ class WebApp:
                 floor = volume_floor_range(limit)[1]
         place = night.location_from(body["location"]) if "location" in body else None
         mode = night.night_from(body["night"]) if "night" in body else None
-        prefs = lamp_meanings.prefs_from(body["lamp"]) if "lamp" in body else None
+        prefs, geek = None, None
+        if "lamp" in body:
+            rest, geek = lamp_api.split_prefs(body["lamp"])
+            prefs = lamp_meanings.prefs_from(rest) if rest else None
         room = self.room.change(body["room"]) if "room" in body else None
         mono = body.get("mono")
         if "mono" in body and not isinstance(mono, bool):
@@ -1096,8 +1099,8 @@ class WebApp:
                     doc["location"] = place
                 if mode is not None:
                     doc["night"] = mode
-                if prefs is not None:
-                    doc["lamp"] = {**lamp_meanings.prefs_doc(doc), **prefs}
+                if prefs is not None or geek is not None:
+                    doc["lamp"] = lamp_api.lamp_block(doc, prefs, geek)
                 if room is not None:
                     doc["room"] = room
                 if guests is not None:
@@ -1114,15 +1117,15 @@ class WebApp:
                     doc["location"] = place
                 if mode is not None:
                     doc["night"] = mode
-                if prefs is not None:
-                    doc["lamp"] = {**lamp_meanings.prefs_doc(doc), **prefs}
+                if prefs is not None or geek is not None:
+                    doc["lamp"] = lamp_api.lamp_block(doc, prefs, geek)
             if room is not None:
                 self.room.commit(room, body["room"])
             if guests is not None:
                 if self.settings_file is None:
                     self._guests = guests
                 self.spotify_guests.apply_async(guests)
-            if place is not None or mode is not None or prefs is not None:
+            if place is not None or mode is not None or prefs is not None or geek is not None:
                 self._lamp_settings = {k: doc[k] for k in LAMP_KEYS if k in doc}
                 for listener in self.lamp_listeners:
                     try:
@@ -1136,6 +1139,8 @@ class WebApp:
             log.info("lamp night mode set to %s from the web page", mode)
         if prefs is not None:
             log.info("lamp %s from the web page", ", ".join(f"{k} {v}" for k, v in sorted(prefs.items())))
+        if geek is not None:
+            log.info("lamp %s from the web page", ", ".join(f"{k} {v!r}" for k, v in sorted(geek.items())))
         if limit is not None:
             log.info("volume limit set to %s%% from the web page", limit)
         if floor is not None:
@@ -1263,6 +1268,13 @@ class WebApp:
             preview(rgb, level)
         return {"lamp": lamp is not None, "showing": rgb is not None and lamp is not None,
                 "expires_s": lamp_engine.PREVIEW_S if rgb is not None else 0}
+
+    def lamp_egg(self, body: Any = None) -> dict:
+        """``POST /api/lamp/egg {}``: the hidden surprise, in geek mode only (the
+        page's quiet way to the key combination's egg)."""
+        if not lamp_api.geek_doc(self.lamp_settings())["geek"]:
+            return {"played": False, "geek": False}
+        return {"played": lamp_api.play_egg(self.lamp), "geek": True}
 
     def lamp_identify(self, body: Any) -> dict:
         """``{"seconds": 1..60}``: the lamp says "this radio"; ``"peer": id`` asks another Hasler."""
@@ -1506,7 +1518,11 @@ class WebApp:
                 # Settings -> Pilot lamp: brightness and key replies (lamp/meanings.py);
                 # present = this radio has a lamp to show things on.
                 "lamp": {**lamp_meanings.prefs_doc(saved), "present": self.lamp is not None,
-                         "show_s": lamp_meanings.SHOW_S, "identify_s": lamp_meanings.IDENTIFY_S}}
+                         "show_s": lamp_meanings.SHOW_S, "identify_s": lamp_meanings.IDENTIFY_S,
+                         # geek mode, and the callsign in force (default: the room's initial)
+                         **lamp_api.geek_doc({**saved, "room": {"name": self.room.name()}}),
+                         # the names Show me takes (lamp/meanings.py): the page lists what this radio draws
+                         "looks": list(lamp_meanings.LOOKS), "replies": list(lamp_meanings.REPLIES)}}
 
     def _spotify_guests(self) -> bool:
         """settings.json ``spotify_guests`` (default on): go-librespot's zeroconf."""
@@ -2572,6 +2588,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, **app.lamp_preview(self._body())}))
             elif path == "/api/lamp/identify":
                 self._guard(lambda: self._json(200, {"ok": True, **app.lamp_identify(self._body())}))
+            elif path == "/api/lamp/egg":
+                self._guard(lambda: self._json(200, {"ok": True, **app.lamp_egg(self._body())}))
             elif path == "/api/lamp/palette":       # as PUT, for clients that only POST
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
             elif path == "/api/lamp/calibration":   # as PUT, for clients that only POST

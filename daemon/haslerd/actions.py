@@ -98,7 +98,7 @@ ACK_KINDS = ("tap", "select", "combo")
 # the key went down and stays down - "play this", never "again" (stop / next).
 LATCHED = "latched"
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
-SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source", "bluetooth")
+SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source", "bluetooth", "lamp_egg")
 # A key's down was answered with the dip (Actions.key_down): its tap, select
 # or combination this soon after doesn't dip again. Longer than any tap.
 KICK_FRESH_S = 2.0
@@ -216,6 +216,8 @@ class Actions:
         # "nudge", "swell", "source:<stop>[:<preset source>]" (and "group",
         # from multiroom/group.py).
         self.on_reply = on_reply
+        # The hidden key combination (panel/combos.py EGG_KEYS): a lamp surprise (main.LampKeeper.egg).
+        self.on_egg: Callable[[], Any] | None = None
         # A preset is about to start; called before the (possibly slow) start.
         self.on_start: Callable[[Preset], None] | None = None
         # Standby, pairing or shutdown changed: the lamp should look again now,
@@ -297,6 +299,7 @@ class Actions:
             "preset_by_index": self._preset_by_index,
             "cycle_source": self._cycle_source,
             "bt_pair": self._bt_pair,
+            "lamp_egg": self._lamp_egg,
             "bluetooth": self._bluetooth,
             "standby": self._standby,
             "standby_toggle": self._standby_toggle,
@@ -339,7 +342,7 @@ class Actions:
             self.pairing_until = 0.0
             self._changed()
             if paired and was_open:
-                self._reply("swell")
+                self._reply("bloom")  # a phone paired: the green bloom (v2; older engines swell)
 
     @property
     def cycle_position(self) -> str | None:
@@ -473,6 +476,9 @@ class Actions:
         for combo in self.variant.combos or ():
             if isinstance(combo, dict) and set(combo.get("keys") or ()) == keys and len(keys) == 2:
                 return {k: v for k, v in combo.items() if k not in ("keys", "hold_s")}
+        from .panel.combos import EGG_KEYS
+        if keys == set(EGG_KEYS):
+            return {"do": "lamp_egg"}       # the hidden one (Panel.set_combos adds it)
         return None
 
     def touch(self) -> None:
@@ -954,6 +960,11 @@ class Actions:
             log.exception("could not start the bluetooth reconnect")
             return False
 
+    def _lamp_egg(self, event, spec):
+        """A surprise on the lamp (geek mode only; the LampKeeper decides)."""
+        if self.on_egg is not None:
+            self.on_egg()
+
     def _bt_pair(self, event, spec):
         seconds = int(spec.get("seconds", DEFAULT_PAIR_S))
         # Breathing blue before bluetoothctl's round trips, not after.
@@ -1298,7 +1309,7 @@ class Actions:
         if entities and all(e in missing for e in entities):
             self._reply("fail")
         else:
-            self._reply("ha")
+            self._reply("bloom")      # sent to Home Assistant: the green bloom (v2; older engines swell)
         ha(kind, payload)
 
     def _ha_scene(self, event, spec):

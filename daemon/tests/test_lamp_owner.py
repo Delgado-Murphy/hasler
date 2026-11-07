@@ -227,9 +227,55 @@ class TestPrefsApi:
     def test_settings_show_the_defaults_and_the_lamp(self, tmp_path):
         app = make_app(tmp_path, NewLamp())
         doc = app.settings()["lamp"]
+        callsign = doc.pop("callsign")
         assert doc == {"brightness": "normal", "key_replies": True, "present": True,
-                       "show_s": meanings.SHOW_S, "identify_s": meanings.IDENTIFY_S}
+                       "show_s": meanings.SHOW_S, "identify_s": meanings.IDENTIFY_S,
+                       "geek": False, "callsign_saved": "",
+                       "looks": list(meanings.LOOKS), "replies": list(meanings.REPLIES)}
+        assert len(callsign) == 1 and callsign.isalnum() and callsign.isupper()   # the room's initial
         assert make_app(tmp_path, None).settings()["lamp"]["present"] is False
+
+    def test_geek_mode_and_callsign_persist_and_reach_the_engine(self, tmp_path):
+        from haslerd.web import lamp_api
+        app = make_app(tmp_path, NewLamp())
+        heard = []
+        app.lamp_listeners.append(heard.append)
+        app.put_settings({"lamp": {"brightness": "low"}})
+        doc = app.put_settings({"lamp": {"geek": True, "callsign": " pa3 "}})
+        assert doc["lamp"]["geek"] is True and doc["lamp"]["callsign"] == "PA3"
+        assert doc["lamp"]["brightness"] == "low"                    # the rest kept
+        assert heard[-1]["lamp"] == {"brightness": "low", "key_replies": True, "geek": True, "callsign": "PA3"}
+        app.put_settings({"lamp": {"brightness": "bright"}})
+        assert app.settings()["lamp"]["geek"] is True                # brightness alone keeps geek
+        app.put_settings({"lamp": {"callsign": ""}})
+        assert app.settings()["lamp"]["callsign_saved"] == ""        # back to the room's initial
+        for bad in ({"geek": "yes"}, {"callsign": "ABCD"}, {"callsign": "a-b"}, {"callsign": 3}, {}):
+            with pytest.raises(ValueError):
+                app.put_settings({"lamp": bad})
+
+        class Geeky:
+            def __init__(self):
+                self.calls = []
+
+            def set_geek(self, on):
+                self.calls.append(("geek", on))
+
+            def set_callsign(self, sign):
+                self.calls.append(("callsign", sign))
+
+            def play_egg(self, name):
+                self.calls.append(("egg", name))
+
+        g = Geeky()
+        assert lamp_api.apply_geek(g, lamp_api.geek_doc({"lamp": {"geek": True}, "room": {"name": "kitchen"}})) == \
+            {"geek": True, "callsign": True}
+        assert g.calls == [("geek", True), ("callsign", "K")]
+        assert lamp_api.apply_geek(object(), {"geek": True}) == {"geek": False, "callsign": False}
+        app.lamp = g
+        app.put_settings({"lamp": {"geek": False}})
+        assert app.lamp_egg({}) == {"played": False, "geek": False}  # no surprises outside geek mode
+        app.put_settings({"lamp": {"geek": True}})
+        assert app.lamp_egg({})["played"] is True and g.calls[-1][0] == "egg"
 
     def test_put_persists_merges_and_tells_the_listeners(self, tmp_path):
         app = make_app(tmp_path, NewLamp())

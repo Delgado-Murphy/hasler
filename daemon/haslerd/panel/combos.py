@@ -42,6 +42,22 @@ RELEASE_S = 0.08        # up this long = let go; shorter is a bouncing contact
 MAX_COMBOS = 8
 
 
+# A hidden combination, never on the key page: PU and 6 held together for 3 s
+# play a lamp surprise in geek mode (docs/using.md hints at it). Only where the
+# panel has both keys as momentaries and no combination of the owner's uses
+# the pair (``with_egg``).
+EGG_KEYS = ("pu", "k6")
+EGG_HOLD_S = 3.0
+
+
+def with_egg(combos: Iterable[Mapping] | None) -> list:
+    """``combos`` plus the hidden egg combination, unless that pair is taken."""
+    out = [c for c in (combos or ()) if isinstance(c, Mapping)]
+    if any(set(c.get("keys") or ()) == set(EGG_KEYS) for c in out):
+        return out
+    return out + [{"keys": list(EGG_KEYS), "hold_s": EGG_HOLD_S, "do": "lamp_egg"}]
+
+
 def combo_id(keys: Iterable[str]) -> str:
     """``k1+k2``. Callers pass the keys in descriptor order."""
     return "+".join(keys)

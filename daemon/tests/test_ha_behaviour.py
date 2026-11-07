@@ -234,7 +234,7 @@ class TestKeys:
         actions.variant.actions["k2.hold"] = {"do": "ha_light", "entities": ["light.a"]}
         actions.dispatch(Event("k1", "hold"))
         actions.dispatch(Event("k2", "hold"))
-        assert replies == ["ha", "fail"]
+        assert replies == ["bloom", "fail"]
 
     def test_transport_fits_each_light(self):
         client = HomeAssistant(URL, TOKEN, fetch=fake_fetch({}))

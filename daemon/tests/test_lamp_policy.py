@@ -491,7 +491,7 @@ class TestKeeper:
         actions.dispatch(Event("power", "off"))
         assert driver.replies == []
 
-    def test_ha_hold_replies_ha_and_fails_without_ha(self, box):
+    def test_ha_hold_blooms_and_fails_without_ha(self, box):
         _, _, actions, driver, _, _, _ = box
         actions.variant.actions["k1.hold"] = {"do": "ha_scene", "entity": "scene.relax"}
         actions.dispatch(Event("k1", "hold"))
@@ -499,7 +499,7 @@ class TestKeeper:
         calls = []
         actions.ha = lambda kind, payload: calls.append(kind)
         actions.dispatch(Event("k1", "hold"))
-        assert driver.replies[-1] == "ha" and calls == ["scene"]
+        assert driver.replies[-1] in ("bloom", "ok", "swell") and calls == ["scene"]   # the green bloom (older engines swell)
 
     def test_pairing_window_breathes_blue_until_it_closes(self, box):
         clock, player, actions, driver, _, keeper, _ = box
@@ -588,3 +588,108 @@ class TestNight:
         keeper.settings_changed({"night": "off"})
         keeper.tick(clock())
         assert asked[-1] == {"night": "off"}
+
+
+# -- light language v2 plumbing (flags set only where the BoxState has them) -------
+
+
+from dataclasses import dataclass as _dataclass  # noqa: E402
+
+from haslerd.lamp import faults as lamp_faults  # noqa: E402
+from haslerd.lamp.contract import BoxState as _BoxState  # noqa: E402
+
+
+@_dataclass
+class V2State(_BoxState):
+    fault: bool = False
+    setup: bool = False
+    offline: bool = False
+    update_ok: bool = False
+
+
+class TestV2Plumbing:
+    def test_flags_follow_the_radio(self, box):
+        clock, _, _, _, net, keeper, _ = box
+        keeper.state = V2State()
+        state = keeper.gather(clock())
+        assert (state.fault, state.setup, state.offline, state.update_ok) == (False, False, False, False)
+        keeper.faults = lambda: ["storage"]
+        net.hotspot = True
+        net.online = False
+        keeper.tick(clock())
+        clock.t += 61
+        keeper.tick(clock())
+        assert keeper.state.fault and keeper.state.setup and keeper.state.offline
+        assert keeper.fault_reasons == ["storage"]
+        net.hotspot, net.online = False, True        # setup done: the radio joined the Wi-Fi
+        keeper.tick(clock())
+        assert keeper.state.update_ok and not keeper.state.setup and not keeper.state.offline
+        clock.t += 13
+        keeper.tick(clock())
+        assert not keeper.state.update_ok             # one go, then gone
+
+    def test_an_old_boxstate_is_left_alone(self, box):
+        clock, _, _, _, _, keeper, _ = box
+        keeper.faults = lambda: ["heat"]
+        keeper.tick(clock())
+        assert not hasattr(keeper.state, "fault") and keeper.fault_reasons == ["heat"]
+
+    def test_the_surprise_only_in_geek_mode_and_its_hidden_combination(self, box):
+        clock, _, actions, _, _, keeper, _ = box
+        played = []
+
+        class Pan:
+            egg = None
+
+            def set_egg(self, on):
+                self.egg = on
+
+        keeper.driver.play_egg = played.append
+        keeper.panel = Pan()
+        actions.dispatch(Event("pu+k6", "combo"))
+        assert played == [] and keeper.panel.egg is None
+        keeper.settings_changed({"lamp": {"geek": True}})
+        assert keeper.panel.egg is True
+        actions.dispatch(Event("pu+k6", "combo"))
+        assert len(played) == 1
+        keeper.settings_changed({"lamp": {"geek": False}})
+        assert keeper.panel.egg is False
+
+    def test_the_panel_watches_the_egg_pair_only_in_geek_mode(self):
+        from haslerd.variant import Panel
+        panel = Panel.from_variant(load_variant(VARIANTS / "hasler-hm.yaml"), fake=True)
+        ids = lambda: [c.id for c in panel.combos.combos]  # noqa: E731
+        egg = lambda: any(set(i.split("+")) == {"pu", "k6"} for i in ids())  # noqa: E731
+        assert not egg()
+        panel.set_egg(True)
+        assert egg()
+        panel.set_combos([{"keys": ["k1", "k2"], "do": "standby"}])     # the key page saves: still there
+        assert egg() and "k1+k2" in ids()
+        panel.set_egg(False)
+        assert ids() == ["k1+k2"]
+
+
+class TestFaults:
+    def test_checks(self, tmp_path):
+        state = tmp_path / "state.json"
+        state.write_text('{"phase": "rollback_failed"}')
+        asound = tmp_path / "asound"
+        asound.mkdir()
+        (asound / "cards").write_text("--- no soundcards ---\n")
+        temp = tmp_path / "temp"
+        temp.write_text("83000\n")
+        assert lamp_faults.check(tmp_path, state, FakePanel(absent=True), asound, temp) == \
+            ["update", "sound", "panel", "heat"]
+        state.write_text('{"phase": "committed"}')
+        (asound / "cards").write_text(" 0 [Headphones     ]: bcm2835\n")
+        temp.write_text("52000\n")
+        assert lamp_faults.check(tmp_path, state, FakePanel(), asound, temp) == []
+        assert lamp_faults.check(None, tmp_path / "nope", None, tmp_path / "no-alsa", tmp_path / "no-temp") == []
+        assert lamp_faults.update_phase(state) == "committed"
+
+    def test_version_changed_once(self, tmp_path):
+        path = tmp_path / "lamp-version"
+        assert lamp_faults.version_changed(path, "1.3.0") is False          # a first start is not an update
+        assert lamp_faults.version_changed(path, "1.3.0") is False
+        assert lamp_faults.version_changed(path, "1.4.0") is True
+        assert lamp_faults.version_changed(path, "1.4.0") is False

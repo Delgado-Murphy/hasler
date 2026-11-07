@@ -165,7 +165,7 @@ class TestConfirm:
         actions.dispatch_all(left)
         assert not any(call[0] == "play_preset" for call in player.calls)
         assert c.poll(req["token"])["state"] == "confirmed"
-        assert replies[-1] == "confirmed"
+        assert replies[-1] == "bloom"
         c.consume(req["token"], "update", {"version": "1.2.0"})
         assert c.poll(req["token"])["state"] == "used"
         with pytest.raises(ConfirmError):              # once only
@@ -258,7 +258,7 @@ class TestConfirm:
         assert c.pending()                             # still asking - by the lamp's beckon
         req = c.request("reset")
         c.intercept([Event("k1", "tap")])
-        assert replies == ["confirmed"]                # the answering kick still comes
+        assert replies == ["bloom"]                    # the answering bloom still comes
         assert c.poll(req["token"])["state"] == "confirmed"
 
     def test_absent_panel_refuses(self, rig):

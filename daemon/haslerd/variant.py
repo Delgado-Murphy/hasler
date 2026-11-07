@@ -15,7 +15,7 @@ from typing import Any, Mapping
 
 import yaml
 
-from .panel.combos import ComboWatch
+from .panel.combos import ComboWatch, with_egg
 from .panel.controls import Control, Event, build_controls
 from .panel.io_base import (
     AbsentDigital,
@@ -187,6 +187,7 @@ class Panel:
         # Two keys held together (panel/combos.py). Idle - and never called -
         # until set_combos gives it a combination.
         self.combos = ComboWatch(controls)
+        self.egg = False        # geek mode: the hidden egg combination too (set_egg)
         # The last good digital reading and the poll time it was taken at,
         # kept by poll() for the key page's "Check this pair"
         # (keys_down). One reference swapped per poll: the web thread reads
@@ -212,7 +213,15 @@ class Panel:
 
     def set_combos(self, combos: list[dict]) -> None:
         """The key combinations to watch for (web/keymap.tune_combos)."""
-        self.combos.configure(combos)
+        self._combo_list = list(combos or [])
+        # Geek mode adds the hidden surprise combination (panel/combos.py EGG_KEYS).
+        self.combos.configure(with_egg(combos) if getattr(self, "egg", False) else combos)
+
+    def set_egg(self, on: bool) -> None:
+        """Geek mode on/off: watch for the hidden surprise combination too, or not."""
+        if bool(on) != self.egg:
+            self.egg = bool(on)
+            self.set_combos(getattr(self, "_combo_list", []))
 
     def poll(self, now: float) -> list[Event]:
         if self.absent:

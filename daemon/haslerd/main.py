@@ -40,6 +40,7 @@ from .bootresume import AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night
 from .ha.rest import HomeAssistant
 from .player.bluetooth import Bluetooth
 from .player.btvolume import PhoneVolume
+from .lamp import faults as lamp_faults
 from .lamp import handover, policy
 from .lamp.contract import BoxState, LampDriver, Look
 from .lamp import meanings as lamp_meanings
@@ -125,6 +126,7 @@ LOADING_POLL_S = 0.5    # "has the preset made a sound yet?", while loading
 LOADING_FAIL_S = 20.0   # no sound this long after a start: red pulses
 CAST_GRACE_S = 3.0      # blue stays this long after a phone lets go
 KEY_COUNTDOWN_AFTER_S = 0.5     # a shutdown key (Excelsior key 0) held this long starts the countdown
+UPDATE_OK_S = 12.0      # the green bloom and Morse OK after an update or setup: one go, then gone
 NIGHT_CHECK_S = 60.0    # sunset is not a thing to poll at 20 Hz
 UPDATE_POLL_S = 5.0     # "is an update being installed?" (one small file read)
 BOOT_MAX_S = 45.0       # warm-up breath gives way to ready by then at the latest...
@@ -192,6 +194,9 @@ REPLY_WORDS: dict[str, tuple[str, ...]] = {
     "fail": ("refuse3", "refuse"), "refuse3": ("fail", "refuse"),
     "refuse": ("refuse1", "fail"), "refuse1": ("refuse", "fail"),
     "ha": ("kick", "ack"),
+    # v2's green bloom ("that worked"); an engine without it swells, or kicks.
+    "bloom": ("ok", "swell", "confirmed", "kick", "ack"),
+    "ok": ("bloom", "swell", "confirmed", "kick", "ack"),
 }
 
 
@@ -279,6 +284,17 @@ class LampKeeper:
         # What the next boot breath draws (lamp/handover.py boot_doc), written on change.
         self.boot_file = handover.BOOT_FILE
         self._boot_sig: str | None = None
+        # Light language v2 (BoxState.fault/setup/offline/update_ok, set only
+        # where the BoxState has them): ``faults`` (lamp/faults.check, set by
+        # main) answers the reasons for an SOS; ``celebrate`` raises update_ok
+        # for UPDATE_OK_S (an update installed, setup done).
+        self.faults: Callable[[], list] | None = None
+        self.fault_reasons: list = []
+        self._next_fault_poll = 0.0
+        self._ok_until = 0.0
+        self._was_hotspot = False
+        self._geek = lamp_api.geek_doc({})
+        actions.on_egg = self.egg
         self._fed = False                   # engine.watchdog armed (first show): feed() each tick
         self._refused_panel = False         # the missing panel board said once (refuse3)
         # web/confirm.ConfirmBroker (set by main): a press on the radio is
@@ -359,6 +375,7 @@ class LampKeeper:
         self._next_night = 0.0
         self.apply_palette(doc)
         self.apply_prefs(doc)
+        self.apply_geek(doc)
 
     def apply_prefs(self, doc: dict) -> None:
         """settings.json ``lamp`` (brightness, key replies) onto the engine (also at start)."""
@@ -372,6 +389,30 @@ class LampKeeper:
         self._prefs, self._engine_does = prefs, done
         if changed and not done["brightness"]:
             self.look = None        # the next refresh shows the Look at the new level
+
+    def apply_geek(self, doc: dict) -> None:
+        """settings.json ``lamp.geek`` / ``lamp.callsign`` onto the engine (also at start)."""
+        self._geek = lamp_api.geek_doc(doc)
+        try:
+            lamp_api.apply_geek(self.driver, self._geek)
+        except Exception:
+            log.warning("lamp: could not apply geek mode", exc_info=True)
+        set_egg = getattr(self.panel, "set_egg", None)
+        if callable(set_egg):
+            set_egg(self._geek["geek"])         # the hidden combination only in geek mode
+
+    def celebrate(self, now: float | None = None) -> None:
+        """Something finished well (an update installed, setup done): the
+        green bloom and Morse OK (BoxState.update_ok) for UPDATE_OK_S."""
+        now = self.clock() if now is None else now
+        self._ok_until = now + UPDATE_OK_S
+
+    def egg(self) -> bool:
+        """The hidden key combination (or the page): an Easter egg, in geek mode only."""
+        if not self._geek.get("geek"):
+            log.info("lamp: no surprises outside geek mode")
+            return False
+        return lamp_api.play_egg(self.driver)
 
     def meaning(self) -> str:
         """What the lamp says now, in a word (lamp/meanings.STATUS) - /api/status ``lamp``."""
@@ -476,6 +517,24 @@ class LampKeeper:
                 self._offline_since = None
             elif self._offline_since is None:
                 self._offline_since = now
+            hot = bool(conn.hotspot)
+            if self._was_hotspot and not hot and conn.online:
+                log.info("lamp: setup done - the radio joined the Wi-Fi")
+                self.celebrate(now)
+            self._was_hotspot = hot
+        if self.faults is not None and now >= self._next_fault_poll:
+            self._next_fault_poll = now + lamp_faults.FAULT_POLL_S
+            try:
+                found = list(self.faults() or [])
+            except Exception:
+                log.debug("fault checks failed", exc_info=True)
+                found = self.fault_reasons
+            if found != self.fault_reasons:
+                if found:
+                    log.warning("lamp: SOS - %s needs a maker", ", ".join(found))
+                else:
+                    log.info("lamp: the fault cleared")
+            self.fault_reasons = found
         if now >= self._next_update_poll:
             self._next_update_poll = now + UPDATE_POLL_S
             self._updating = self._update_now()
@@ -662,6 +721,12 @@ class LampKeeper:
         state.source = current.source if current is not None else self.source
         state.panel_missing = bool(self.panel is not None and getattr(self.panel, "absent", False))
         state.sleeping = bool(sleep is not None and sleep.fading)
+        # v2 flags, only where this BoxState has them (the engine engineer's contract).
+        for flag, value in (("fault", bool(self.fault_reasons)), ("setup", state.hotspot),
+                            ("offline", state.offline_s >= lamp_policy.OFFLINE_AFTER_S),
+                            ("update_ok", now < self._ok_until)):
+            if hasattr(state, flag):
+                setattr(state, flag, value)
         if hasattr(state, "confirming"):
             pending = getattr(self.confirm, "pending", None)
             try:
@@ -1381,6 +1446,20 @@ def main(argv=None) -> int:
         saved = load_settings(getattr(app, "settings_file", None))
         keeper.apply_palette(saved)
         keeper.apply_prefs(saved)            # brightness, key replies (Settings -> Pilot lamp)
+        keeper.apply_geek(saved)             # geek mode, callsign
+        if not args.fake:
+            state_dir = box_paths(args).state
+            update_state = getattr(software, "state_file", None) if software is not None else None
+            keeper.faults = lambda: lamp_faults.check(state_dir=state_dir, update_state=update_state, panel=panel)
+            try:
+                from . import health
+                release = str(health._version())        # the running release, as "About this radio" says
+            except Exception:
+                release = ""
+            if (release and lamp_faults.version_changed(state_dir / "lamp-version", release)
+                    and lamp_faults.update_phase(update_state) in (None, "committed", "probation")):
+                log.info("lamp: first start of %s - an update installed", release)
+                keeper.celebrate()              # the green bloom and Morse OK, once
         app.lamp = driver       # the Lamp colours page's preview (web/server.py)
         app.lamp_meaning = keeper.meaning    # /api/status "lamp"
     stream_watch = None if args.fake else build_stream_watchdog(actions, app, keeper)

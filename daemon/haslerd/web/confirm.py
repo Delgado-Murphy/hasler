@@ -234,7 +234,7 @@ class ConfirmBroker:
                     break
             else:
                 return events
-        self._reply("confirmed")    # the engine's own word: never muted as a key dip
+        self._reply("bloom")        # accepted: the green bloom (v2; never muted as a key dip, older engines swell)
         return rest
 
     def tick(self, now: float | None = None) -> None:
