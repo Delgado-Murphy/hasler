@@ -7,7 +7,8 @@ room. go-librespot holds its own logged-in session (credentials persisted once,
 at install) and exposes a local REST API that can start any ``spotify:`` URI by
 itself. That is all this module talks to.
 
-Verified against go-librespot **v0.10.3** (released 2026-10-03), using
+Verified against go-librespot **v0.10.5** (released 2026-10-16; the routes
+below are unchanged since v0.10.3, 0.10.4-0.10.5 only added), using
 ``api-spec.yml`` at that tag (the spec is the source the daemon's router is
 generated from) and ``daemon/api_server.go`` / ``daemon/player.go`` for status
 codes:

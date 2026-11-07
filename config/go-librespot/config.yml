@@ -1,6 +1,6 @@
 # go-librespot - Spotify Connect device for haslerd to drive over its local API.
 # Installed to ~/.config/go-librespot/config.yml by scripts/install.sh.
-# Keys checked against config_schema.json at go-librespot v0.10.3.
+# Keys checked against config_schema.json at go-librespot v0.10.5.
 #
 # Credentials and player state live next to this file in state.json, written
 # after the one-time login (older releases used credentials.json). Sign in and

@@ -1,7 +1,7 @@
 """``/api/spotify/account``: which Spotify account the radio plays as - and
 signing it in from the key page, with no laptop.
 
-go-librespot (v0.10.3) keeps the account in ``state.json`` next to its
+go-librespot (v0.10.5) keeps the account in ``state.json`` next to its
 config.yml (``credentials: {username, data}``; ``data`` is a reusable login
 token - never logged, never shown). It signs in by itself once, at start,
 with whatever ``credentials: type:`` says, *only when state.json has no
