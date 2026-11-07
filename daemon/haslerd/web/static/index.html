@@ -202,6 +202,8 @@ button{cursor:pointer}
 .remote.offline .bank{opacity:.35;filter:saturate(.3)}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
 .hint-line{margin:0;color:var(--muted);font:12px/16px var(--sans);text-align:center}
+.lamp-line{margin-bottom:-8px;color:var(--text2)}
+.lamp-line b{color:var(--brass);font-weight:600}
 
 /* ---------- maker's mark ---------- */
 .mark{display:flex;align-items:center;justify-content:center;gap:10px;margin:0;color:#7D766B;
@@ -1077,6 +1079,7 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
     <div class="rooms" id="rooms" role="region" aria-label="Rooms"></div>
 
     <div class="foot">
+      <p class="hint-line lamp-line" id="lampLine" hidden></p>
       <p class="hint-line" id="hintLine">Tap a key to play · hold for its second job</p>
       <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
     </div>
@@ -1907,7 +1910,16 @@ function renderRemote(){
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
   $('nextBtn').disabled = !canNext;
   $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
-  paintTone(); paintCabinet(); paintRooms(); paintSleep();
+  paintTone(); paintCabinet(); paintRooms(); paintSleep(); paintLampLine();
+}
+// "Lamp: asleep" in words under the keys, for anyone who can't tell the colours apart.
+function paintLampLine(){
+  const el = $('lampLine'); if (!el) return;
+  const m = online && status && status.lamp, words = m ? LAMP_WORDS[m] || m.replace(/_/g, ' ') : '';
+  el.hidden = !words;
+  if (el.dataset.m === (words || '')) return;
+  el.dataset.m = words || ''; el.textContent = '';
+  if (words) el.append('Lamp: ', h('b', null, words));
 }
 function paintTone(){
   const t = status && status.tone, row = $('tone');
@@ -5520,6 +5532,7 @@ function renderRooms(panel){
   mrSig = '';
   fillMr(box);
   panel.append(setGroup('multiroom', 'Several rooms', box));
+  const others = otherRadiosGroup(); if (others) panel.append(others);
 }
 function loadRooms(){
   const again = () => { if (onPage('rooms')) rerender(); };
@@ -5529,9 +5542,165 @@ function loadRooms(){
 /* ---- 4 · Pilot lamp ---- */
 function renderLamp(panel){
   if (!settings){ panel.append(h('p', {class:'loading'}, 'Checking…')); return; }
+  lampMeanings(panel);
+  lampGlow(panel);
   lampSettings(panel);
+  panel.append(h('p', {class:'hint', id:'lampMakers', style:'padding:0 4px'}, 'Lamp colours are set by the makers',
+    makerOn() ? [' — ', h('a', {href:'#settings/maker/colours', id:'lampMakersLink', style:'color:var(--brass);text-underline-offset:3px'}, 'change them in Maker tools')] : null, '.'));
 }
 function loadLamp(){ loadSettings().then(() => { if (onPage('lamp')) rerender(); }); }
+
+/* ---- pilot lamp: what it means, Show me (POST /api/lamp/preview {look|reply}), brightness, key replies ---- */
+// The lamp's meanings (lamp/meanings.py): looks it settles into, then the one-off replies.
+const LAMP_MEANS = [
+  ['look', 'playing', 'Playing', 'Music from the radio’s own keys'],
+  ['look', 'ready', 'Ready', 'On and quiet — press a key to play'],
+  ['look', 'asleep', 'Asleep', 'Standby. A key or the knob wakes it'],
+  ['look', 'phone', 'A phone is playing', 'Bluetooth, AirPlay or Spotify from a phone'],
+  ['look', 'busy', 'Busy — don’t unplug', 'Updating or shutting down. When the lamp is dark, it’s safe to unplug'],
+  ['reply', 'heard', 'I heard you', 'A key press reached the radio'],
+  ['reply', 'no', 'No — something failed', 'What you asked for didn’t work. Try again in a moment'],
+  ['look', 'asking', 'Press a key on the radio', 'This page is asking you to confirm on the radio itself'],
+  ['look', 'setup', 'Set me up', 'The radio needs your Wi-Fi details'],
+];
+// /api/status "lamp" in words, for the front page: "Lamp: asleep".
+const LAMP_WORDS = {playing:'playing', ready:'ready', asleep:'asleep', phone:'a phone is playing', busy:'busy — don’t unplug',
+  asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone', offline:'no internet'};
+const lampLook = {showing:null, until:0, timer:null, busy:false};
+const lampPrefs = () => Object.assign({brightness:'normal', key_replies:true, present:false, show_s:5, identify_s:10}, (settings && settings.lamp) || {});
+function lampMeanings(panel){
+  const lp = lampPrefs();
+  const list = h('div', {class:'list', id:'lampMeans'});
+  for (const [kind, id, title, sub] of LAMP_MEANS){
+    const on = lampLook.showing === id;
+    list.append(h('div', {class:'li', 'data-mean':id},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, title), h('span', {class:'li-sub'}, sub)),
+      lp.present ? h('button', {type:'button', class:'li-act', id:'lampShow-' + id, 'aria-label':'Show me on the lamp: ' + title,
+        'aria-pressed': String(on), onclick: () => lampShow(kind, id, title)}, on ? 'Showing…' : 'Show me') : null));
+  }
+  panel.append(setGroup('means', 'What the lamp means', list,
+    h('p', {class:'hint', style:'padding:0 4px'}, lp.present ? 'Show me plays it on the radio’s lamp for a few seconds.'
+      : 'This radio has no lamp fitted, so there’s nothing to show.')));
+}
+async function lampShow(kind, id, title){
+  const lp = lampPrefs();
+  clearTimeout(lampLook.timer);
+  Object.assign(lampLook, {showing:id, until: Date.now() + (kind === 'look' ? lp.show_s : 2) * 1000});
+  rerender();
+  const back = () => { if (lampLook.showing === id){ lampLook.showing = null; if (onPage('lamp')) rerender(); } };
+  try {
+    const r = await api('POST', '/api/lamp/preview', {[kind]: id});
+    if (r.ok && r.json){
+      toast(r.json.showing ? 'On the lamp now: ' + title : 'This radio has no lamp to show it on');
+      lampLook.timer = setTimeout(back, Math.max(1500, lampLook.until - Date.now()));
+      return;
+    }
+    toast(capFirst((r.json && r.json.error) || 'The lamp didn’t take that').replace(/\.?$/, '.'), true);
+  } catch (_) { toast(NET_ERR, true); }
+  back();
+}
+// Leaving the page ends a look still showing: the lamp goes back to saying what the radio does.
+function leaveLamp(){
+  if (lampLook.showing && lampLook.until > Date.now())
+    api('POST', '/api/lamp/preview', {look: null}).catch(() => {});
+  clearTimeout(lampLook.timer); lampLook.showing = null;
+}
+function lampGlow(panel){
+  const lp = lampPrefs();
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Lamp brightness', id:'lampBright'});
+  for (const [k, l] of [['low', 'Low'], ['normal', 'Normal'], ['bright', 'Bright']])
+    seg.append(h('button', {type:'button', role:'radio', 'data-v':k, 'aria-checked': String(lp.brightness === k), tabindex: lp.brightness === k ? '0' : '-1',
+      disabled: lampLook.busy, onclick: () => { if (k !== lp.brightness) saveLampPrefs({brightness: k}, {brightness: lp.brightness}); }}, l));
+  segKeys(seg);
+  panel.append(setGroup('glow', 'Brightness', h('div', {class:'list'},
+    h('div', {class:'li col', style:'gap:12px'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'How bright the lamp glows'),
+        h('span', {class:'li-sub'}, 'Asleep stays a dim ember whatever you pick. At night it is dimmer still.')),
+      seg),
+    h('div', {class:'li'}, h('label', {class:'switch', for:'lampKeys', style:'flex:1'},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Key replies'),
+        h('span', {class:'li-sub'}, 'The lamp brightens when you press a key')),
+      h('input', {type:'checkbox', role:'switch', id:'lampKeys', checked: !!lp.key_replies, disabled: lampLook.busy,
+        onchange: e => saveLampPrefs({key_replies: e.target.checked}, {key_replies: !e.target.checked})})))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'These apply at once, with Undo.')));
+}
+// Arrow keys move between the choices of a segmented radio group.
+function segKeys(seg){
+  seg.addEventListener('keydown', e => {
+    const d = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!d) return;
+    const bs = [...seg.querySelectorAll('button')], i = bs.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    const b = bs[(i + d + bs.length) % bs.length]; b.click(); b.focus();
+  });
+}
+async function saveLampPrefs(change, undoTo){
+  lampLook.busy = true;
+  const focus = document.activeElement && document.activeElement.id;
+  try {
+    const r = await api('PUT', '/api/settings', {lamp: change});
+    if (r.ok && r.json){
+      settings = Object.assign(settings || {}, r.json);
+      const lp = lampPrefs();
+      const msg = 'brightness' in change ? 'Lamp brightness: ' + capFirst(lp.brightness)
+        : lp.key_replies ? 'The lamp brightens for key presses' : 'The lamp stays still when you press a key';
+      toast(msg, undoTo ? {undo: () => saveLampPrefs(undoTo)} : null);
+    } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that').replace(/\.?$/, '.'), true);
+  } catch (_) { toast(NET_ERR, true); }
+  lampLook.busy = false;
+  if (onPage('lamp')){
+    rerender();
+    const sel = 'brightness' in change ? '#lampBright [aria-checked="true"]' : '#lampKeys';
+    const f = document.querySelector(sel) || (focus && $(focus)); if (f) f.focus({preventScroll:true});
+  }
+}
+
+/* ---- Identify this radio (POST /api/lamp/identify; {peer: id} asks another Hasler) ---- */
+const identUi = {busy:{}};
+function identifyRow(){
+  const lp = lampPrefs();
+  if (!settings || !lp.present) return null;
+  return h('div', {class:'list', style:'margin-top:8px'}, h('div', {class:'li'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Identify this radio'),
+      h('span', {class:'li-sub'}, 'Its lamp signals for ' + Math.round(lp.identify_s) + ' seconds, so you can tell which radio this is')),
+    h('button', {type:'button', class:'li-act', id:'identSelf', disabled: !!identUi.busy.self, onclick: () => identify(null, 'self')},
+      identUi.busy.self ? 'Signalling…' : 'Identify')));
+}
+async function identify(peer, key, name){
+  identUi.busy[key] = true; rerender();
+  let secs = lampPrefs().identify_s;
+  try {
+    const r = await api('POST', '/api/lamp/identify', peer ? {peer} : {});
+    if (r.ok && r.json){
+      if (r.json.lamp){ secs = r.json.seconds || secs; toast(peer ? 'Look for the lamp on ' + name : 'Look for the lamp on this radio'); }
+      else { toast(peer ? name + ' has no lamp to signal with' : 'This radio has no lamp to signal with'); secs = 0; }
+    } else { toast(capFirst((r.json && r.json.error) || 'That didn’t work').replace(/\.?$/, '.'), true); secs = 0; }
+  } catch (_) { toast(NET_ERR, true); secs = 0; }
+  setTimeout(() => { identUi.busy[key] = false; if (view === 'settings') rerender(); }, Math.min(secs, 10) * 1000);
+  if (!secs){ identUi.busy[key] = false; }
+  if (view === 'settings') rerender();
+}
+// Rooms: the other Haslers at home, each with Identify (the radio asks that one's lamp).
+function otherRadiosGroup(){
+  if (!grp || grp.missing) return null;
+  const me = grp.self && grp.self.id, seen = new Set(), rooms = [];
+  for (const r of [grp.leader].concat(grp.members || [], grp.others || [])){
+    if (!r || !r.id || r.id === me || seen.has(r.id)) continue;
+    seen.add(r.id); rooms.push(r);
+  }
+  if (!rooms.length) return null;
+  const list = h('div', {class:'list', id:'otherRadios'});
+  for (const r of rooms){
+    const k = 'peer-' + rid(r.id), busy = !!identUi.busy[k];
+    list.append(h('div', {class:'li', 'data-peer':r.id},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, roomName(r)),
+        h('span', {class:'li-sub'}, r.online === false ? 'Not answering right now' : 'Find it by its lamp')),
+      h('button', {type:'button', class:'li-act', id:'ident-' + rid(r.id), disabled: busy || r.online === false,
+        'aria-label':'Identify ' + roomName(r), onclick: () => identify(r.id, k, roomName(r))}, busy ? 'Signalling…' : 'Identify')));
+  }
+  return setGroup('radios', 'Other Haslers at home', list);
+}
 
 /* ---- 5 · Source key & knobs (Keys & knobs before) ---- */
 // What each key plays is in Edit keys; this page holds the source key's list, knob calibration and the way back to defaults.
@@ -5550,7 +5719,7 @@ function loadKeysPage(){
 /* ---- 6 · This radio ---- */
 function renderRadio(panel){
   const w = settings && settings.wifi;
-  panel.append(setGroup('name', 'Name and address', roomList()));
+  panel.append(setGroup('name', 'Name and address', roomList(), identifyRow()));
   panel.append(setGroup('wifi', 'Wi-Fi', h('div', {class:'set-list'},
     setRow('wifi', 'Wi-Fi', !w ? 'Checking…' : w.hotspot ? 'Setup mode — not on your home Wi-Fi' : w.ssid ? 'On ' + w.ssid : 'Not connected', '/wifi'),
     setupNetRow())));
@@ -5849,8 +6018,8 @@ const SET_PAGES = [
     dirty: () => castNamesDirty().length > 0, discard: () => { castUi.names = {}; }, save: castSaveNames, busy: () => !!castUi.saving,
     what: () => nameAnd(castNamesDirty().map(castLabel)) + (castNamesDirty().length === 1 ? ' name' : ' names')},
   {id:'rooms', title:'Rooms', summary: roomsSummary, render: renderRooms, load: loadRooms, shown: () => !(grp && grp.missing)},
-  {id:'lamp', title:'Pilot lamp', summary: lampSummary, render: renderLamp, load: loadLamp,
-    dirty: () => lampUi.dirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
+  {id:'lamp', title:'Pilot lamp', summary: lampSummary, render: renderLamp, load: loadLamp, leave: leaveLamp,
+    dirty: lampDirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
   {id:'keys', get title(){ return hasSourceKey() ? 'Source key & knobs' : 'Knobs & keys'; }, summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
   {id:'radio', title:'This radio', summary: radioSummary, render: renderRadio, load: loadRadio, leave: leaveHelp,
     dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
@@ -5870,6 +6039,13 @@ const CITIES = [
   ['Rome', 41.9028, 12.4964], ['New York', 40.7128, -74.006],
 ];
 const lampUi = {coords:false, dirty:false, name:'', lat:'', lon:'', from:'22:00', to:'07:00', err:'', busy:false};
+// A new place waits for Save: the bar shows only while the draft differs from the saved place.
+function lampDirty(){
+  if (!lampUi.dirty) return false;
+  const loc = settings && settings.location;
+  if (!loc) return !!(lampUi.name.trim() || lampUi.lat.trim() || lampUi.lon.trim());
+  return lampUi.name.trim() !== (loc.name || '') || parseFloat(lampUi.lat) !== +loc.lat || parseFloat(lampUi.lon) !== +loc.lon;
+}
 function tonightText(t){
   if (!t) return '';
   if (t.mode === 'off') return 'Never dims for the night';
@@ -5911,7 +6087,7 @@ function lampSettings(panel){
       h('div', {class:'field'}, h('label', {for:'lampTo'}, 'Until'), h('input', {type:'time', id:'lampTo', value: lampUi.to, onchange: hours('to')}))) : null);
   const place = h('div', {class:'li col', style:'gap:12px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Where the radio stands'),
-      h('span', {class:'li-sub'}, loc ? (loc.name ? loc.name + ' · ' : '') + coordText(loc.lat, loc.lon) + (kind === 'sun' ? ' — sets sunset and sunrise' : '')
+      h('span', {class:'li-sub', id:'lampPlace'}, loc ? (loc.name ? loc.name + ' · ' : '') + coordText(loc.lat, loc.lon) + (kind === 'sun' ? ' — sets sunset and sunrise' : '')
         : 'Not chosen yet — pick a city')),
     h('div', {class:'field'}, h('label', {for:'lampName'}, 'City'),
       h('input', {type:'text', id:'lampName', list:'lampCities', autocomplete:'off', placeholder:'Madrid', value: lampUi.name, oninput: edit('name')}),
@@ -5921,11 +6097,13 @@ function lampSettings(panel){
       h('div', {class:'field'}, h('label', {for:'lampLat'}, 'Latitude'), h('input', {type:'number', id:'lampLat', inputmode:'decimal', step:'any', min:'-90', max:'90', value: lampUi.lat, oninput: edit('lat')})),
       h('div', {class:'field'}, h('label', {for:'lampLon'}, 'Longitude'), h('input', {type:'number', id:'lampLon', inputmode:'decimal', step:'any', min:'-180', max:'180', value: lampUi.lon, oninput: edit('lon')})))),
     lampUi.err ? h('p', {class:'err', role:'alert'}, lampUi.err) : null,
-    h('p', {class:'hint', style:'margin:0'}, 'A new place waits for Save at the bottom. The night choices above apply at once.'),
+    h('p', {class:'hint', style:'margin:0'}, 'A new place waits for Save at the bottom.'),
     navigator.geolocation ? h('div', {class:'acts'},
       h('button', {type:'button', class:'btn small', disabled: lampUi.busy, onclick: useHere}, 'Use this phone’s location')) : null);
-  panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box)));
-  panel.append(setGroup('place', 'Where the radio stands', h('div', {class:'list'}, place)));
+  // The place sets sunset and sunrise: only By the sun needs it (a draft being typed stays in view).
+  const showPlace = kind === 'sun' || lampDirty();
+  panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box, showPlace ? place : null),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'The night choices apply at once.')));
 }
 function useHere(){
   lampUi.busy = true; lampUi.err = ''; rerender();

@@ -40,7 +40,10 @@ from .ha.rest import HomeAssistant
 from .player.bluetooth import Bluetooth
 from .player.btvolume import PhoneVolume
 from .lamp.contract import BoxState, LampDriver, Look
+from .lamp import meanings as lamp_meanings
+from .lamp import policy as lamp_policy
 from .lamp.policy import look_for, reply_for
+from .web import lamp_api
 from .web import stations
 from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
 from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_floor_from, volume_limit_from
@@ -213,6 +216,10 @@ class LampKeeper:
         self._next_update_poll = 0.0
         self._counting = False
         self._settings: dict | None = None    # the page's last saved doc, if any
+        # Settings -> Pilot lamp: brightness and key replies (lamp/meanings.py),
+        # and which of them the engine takes itself (else this side fakes it).
+        self._prefs = lamp_meanings.prefs_doc({})
+        self._engine_does = {"brightness": False, "key_replies": False}
         # player/watchdog.StreamWatchdog (set by main): MPD stopped a preset by
         # itself - not "playing" then, and the loading breath while it recovers.
         self.watchdog = None
@@ -231,6 +238,9 @@ class LampKeeper:
     # -- hooks from Actions -----------------------------------------------
 
     def reply(self, name: str) -> None:
+        if (name in lamp_meanings.KEY_REPLIES and not self._prefs["key_replies"]
+                and not self._engine_does["key_replies"]):
+            return      # key replies off, and the engine can't drop them itself
         try:
             phone = False
             if name.startswith("source:"):
@@ -271,6 +281,34 @@ class LampKeeper:
         self._settings = dict(doc)
         self._next_night = 0.0
         self.apply_palette(doc)
+        self.apply_prefs(doc)
+
+    def apply_prefs(self, doc: dict) -> None:
+        """settings.json ``lamp`` (brightness, key replies) onto the engine (also at start)."""
+        prefs = lamp_meanings.prefs_doc(doc)
+        try:
+            done = lamp_api.apply_prefs(self.driver, prefs)
+        except Exception:
+            log.warning("lamp: could not apply brightness / key replies", exc_info=True)
+            done = {"brightness": False, "key_replies": False}
+        changed = prefs["brightness"] != self._prefs["brightness"]
+        self._prefs, self._engine_does = prefs, done
+        if changed and not done["brightness"]:
+            self.look = None        # the next refresh shows the Look at the new level
+
+    def meaning(self) -> str:
+        """What the lamp says now, in a word (lamp/meanings.STATUS) - /api/status ``lamp``."""
+        return lamp_meanings.meaning_of(self.state, lamp_policy)
+
+    def _scaled(self, look: Look) -> Look:
+        """Today's engine has no brightness scale: dim or lift the Look itself.
+
+        Ember is left alone - asleep must never look dark (dark = unplug).
+        """
+        k = lamp_meanings.BRIGHTNESS_FALLBACK.get(self._prefs["brightness"], 1.0)
+        if self._engine_does["brightness"] or k == 1.0 or look.colour in ("ember", "off"):
+            return look
+        return dataclasses.replace(look, level=min(1.0, look.level * k), floor=min(1.0, look.floor * k))
 
     def apply_palette(self, doc: dict) -> None:
         """settings.json ``lamp_palette`` over the release's palette (also at start)."""
@@ -461,6 +499,7 @@ class LampKeeper:
         """Recompute the Look; tell the engine only if it changed."""
         now = self.clock() if now is None else now
         look, fade = look_for(self.gather(now))
+        look = self._scaled(look)
         if look != self.look:
             log.debug("lamp %s -> %s (%.1f s)", self.look, look, fade)
             self.look = look
@@ -649,7 +688,13 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     settings = load_settings(state_dir / SETTINGS_FILE if state_dir is not None else None)
     if args.fake:
         player = fake_player(config, settings)
+        # HASLER_FAKE_LAMP=1: a lamp engine drawing to nowhere, so a page test
+        # sees the lamp's meanings, Show me and Identify answer as on a radio.
         lamp = None
+        if os.environ.get("HASLER_FAKE_LAMP"):
+            from .lamp.engine import LampEngine
+            from .lamp.outputs import NullOutput
+            lamp = LampEngine(NullOutput())
     else:
         player = MoodePlayer(moode_config(config, settings), state_dir=state_dir)
         lamp = open_lamp(variant.io.get("lamp") or {})
@@ -1093,8 +1138,11 @@ def main(argv=None) -> int:
         listeners = getattr(app, "lamp_listeners", None)
         if listeners is not None:
             listeners.append(keeper.settings_changed)
-        keeper.apply_palette(load_settings(getattr(app, "settings_file", None)))
+        saved = load_settings(getattr(app, "settings_file", None))
+        keeper.apply_palette(saved)
+        keeper.apply_prefs(saved)            # brightness, key replies (Settings -> Pilot lamp)
         app.lamp = driver       # the Lamp colours page's preview (web/server.py)
+        app.lamp_meaning = keeper.meaning    # /api/status "lamp"
     stream_watch = None if args.fake else build_stream_watchdog(actions, app, keeper)
     sleep = getattr(app, "sleep", None)
     if keeper is not None:

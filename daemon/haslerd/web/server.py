@@ -40,6 +40,16 @@ hear the doc, so the engine's ``set_palette`` follows at once.
 shows a colour on the lamp for 30 s after the last call (only the shutdown
 countdown outranks it); ``{"rgb": null}`` ends it.
 
+The owner's lamp (Settings -> Pilot lamp, web/lamp_api.py, lamp/meanings.py):
+``POST /api/lamp/preview {"look": name}`` or ``{"reply": name}`` plays one of
+the lamp's meanings on the real lamp for ~5 s ("Show me"; ``{"look": null}``
+ends it); ``POST /api/lamp/identify {"seconds": 1..60}`` (default 10) makes
+the lamp say "this radio", and with ``"peer": id`` asks another Hasler
+(multiroom) to. ``PUT /api/settings {"lamp": {"brightness":
+"low"|"normal"|"bright", "key_replies": bool}}`` persists to settings.json
+``lamp`` and the listeners apply it at once. ``/api/status`` ``lamp`` is the
+meaning showing now (lamp/meanings.STATUS), or None without a lamp.
+
 Knob calibration (``/api/knobs``) is the guided version of what we did by
 hand on the bench: the page asks the owner to hold each knob still at a few
 positions, reads ``GET /api/knobs/<id>/sample`` (the panel loop's own recent
@@ -109,7 +119,8 @@ from ..player.base import Preset
 from ..player.glr_config import SpotifyGuests, guests_from
 from ..player.moode import SOURCE_MPD_S, treble_db
 from ..player.sources.radio import mpd_patience
-from . import keymap, stations
+from . import keymap, lamp_api, stations
+from ..lamp import meanings as lamp_meanings
 from ..net import HOTSPOT_ADDRS
 from .confirm import ConfirmBroker, ConfirmError, ConfirmUnavailable
 from .hosts import AllowedHosts, valid_host
@@ -240,7 +251,7 @@ def volume_floor_from(raw: Any, limit: int | None) -> int:
 
 
 # settings.json keys the lamp listens to (kept in memory without a settings file).
-LAMP_KEYS = ("location", "night", "lamp_palette")
+LAMP_KEYS = ("location", "night", "lamp_palette", "lamp")
 
 
 def _rgb_from(raw: Any, name: str) -> list[float]:
@@ -321,6 +332,8 @@ class WebApp:
         # The lamp engine (lamp/engine.LampEngine: set_palette, preview), or
         # None for a radio without one; main() sets it once the lamp is up.
         self.lamp: Any = None
+        # The meaning the lamp shows now (main.LampKeeper.meaning), or None.
+        self.lamp_meaning: Callable[[], str | None] | None = None
         # player/watchdog.StreamWatchdog (main.py): MPD stopping a preset by itself.
         self.stream_watch: Any = None
         # sleep.SleepTimer (main.build_web, web/sleep_api.py), or None.
@@ -706,6 +719,9 @@ class WebApp:
             "group": self._group_status(),
             # The sleep timer (haslerd/sleep.py): {"ends_in_s", "fading", "minutes"} or None.
             "sleep": self.sleep.status() if self.sleep is not None else None,
+            # What the pilot lamp says now, in a word (lamp/meanings.STATUS:
+            # "asleep", "phone", "busy", "asking", ...); None = no lamp.
+            "lamp": self._lamp_status(),
             # The cabinet's other controls, from its descriptor (the Excelsior's):
             # latched = the latching key down now ("k3"; None = none, or no latching bank);
             # switches = [{"id", "label", "on"}] (SP); selectors = [{"id", "label",
@@ -1005,8 +1021,8 @@ class WebApp:
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
         ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``,
-        ``ytm`` ({"hide_explicit": bool})."""
-        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm"}
+        ``ytm`` ({"hide_explicit": bool}), ``lamp`` ({"brightness", "key_replies"})."""
+        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm", "lamp"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
@@ -1014,7 +1030,8 @@ class WebApp:
                              "{\"night\": \"sun\"|\"off\"|\"22:00-07:00\"}, "
                              "{\"room\": {\"name\", \"casting_names\"}}, "
                              "{\"spotify_guests\": true|false}, "
-                             "{\"ytm\": {\"hide_explicit\": true|false}}")
+                             "{\"ytm\": {\"hide_explicit\": true|false}}, "
+                             "{\"lamp\": {\"brightness\": \"low\"|\"normal\"|\"bright\", \"key_replies\": true|false}}")
         limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
         floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
                  if "volume_floor" in body else None)
@@ -1025,6 +1042,7 @@ class WebApp:
                 floor = volume_floor_range(limit)[1]
         place = night.location_from(body["location"]) if "location" in body else None
         mode = night.night_from(body["night"]) if "night" in body else None
+        prefs = lamp_meanings.prefs_from(body["lamp"]) if "lamp" in body else None
         room = self.room.change(body["room"]) if "room" in body else None
         mono = body.get("mono")
         if "mono" in body and not isinstance(mono, bool):
@@ -1058,6 +1076,8 @@ class WebApp:
                     doc["location"] = place
                 if mode is not None:
                     doc["night"] = mode
+                if prefs is not None:
+                    doc["lamp"] = {**lamp_meanings.prefs_doc(doc), **prefs}
                 if room is not None:
                     doc["room"] = room
                 if guests is not None:
@@ -1074,13 +1094,15 @@ class WebApp:
                     doc["location"] = place
                 if mode is not None:
                     doc["night"] = mode
+                if prefs is not None:
+                    doc["lamp"] = {**lamp_meanings.prefs_doc(doc), **prefs}
             if room is not None:
                 self.room.commit(room, body["room"])
             if guests is not None:
                 if self.settings_file is None:
                     self._guests = guests
                 self.spotify_guests.apply_async(guests)
-            if place is not None or mode is not None:
+            if place is not None or mode is not None or prefs is not None:
                 self._lamp_settings = {k: doc[k] for k in LAMP_KEYS if k in doc}
                 for listener in self.lamp_listeners:
                     try:
@@ -1092,6 +1114,8 @@ class WebApp:
                      place["name"] or "unnamed", place["lat"], place["lon"])
         if mode is not None:
             log.info("lamp night mode set to %s from the web page", mode)
+        if prefs is not None:
+            log.info("lamp %s from the web page", ", ".join(f"{k} {v}" for k, v in sorted(prefs.items())))
         if limit is not None:
             log.info("volume limit set to %s%% from the web page", limit)
         if floor is not None:
@@ -1180,9 +1204,16 @@ class WebApp:
         return self.lamp_palette()
 
     def lamp_preview(self, body: Any) -> dict:
-        """``{"rgb": [r, g, b], "level": name|0..1}`` on the lamp for a while; ``{"rgb": null}`` ends it."""
+        """``{"rgb": [r, g, b], "level": name|0..1}`` on the lamp for a while; ``{"rgb": null}`` ends it.
+
+        ``{"look": name}`` / ``{"reply": name}`` (lamp/meanings.py) play one of
+        the lamp's meanings for a few seconds instead (web/lamp_api.py).
+        """
+        if isinstance(body, dict) and "rgb" not in body and ("look" in body or "reply" in body):
+            return lamp_api.preview_named(self.lamp, body)
         if not isinstance(body, dict) or "rgb" not in body:
-            raise ValueError('expected {"rgb": [r, g, b], "level": "full"|"night"|"ember"} or {"rgb": null}')
+            raise ValueError('expected {"rgb": [r, g, b], "level": "full"|"night"|"ember"}, '
+                             '{"look": name}, {"reply": name} or {"rgb": null}')
         rgb = None if body["rgb"] is None else _rgb_from(body["rgb"], "rgb")
         raw = body.get("level", "full")
         if isinstance(raw, str):
@@ -1200,6 +1231,61 @@ class WebApp:
         return {"lamp": lamp is not None, "showing": rgb is not None and lamp is not None,
                 "expires_s": lamp_engine.PREVIEW_S if rgb is not None else 0}
 
+    def lamp_identify(self, body: Any) -> dict:
+        """``{"seconds": 1..60}``: the lamp says "this radio"; ``"peer": id`` asks another Hasler."""
+        body = {} if body is None else body
+        if not isinstance(body, dict) or not set(body) <= {"seconds", "peer"}:
+            raise ValueError('expected {"seconds": 1-60} and optionally {"peer": id}')
+        seconds = lamp_meanings.seconds_from(body.get("seconds"), lamp_meanings.IDENTIFY_S,
+                                             lamp_meanings.IDENTIFY_MAX_S)
+        peer = body.get("peer")
+        if peer is not None:
+            return self._identify_peer(peer, seconds)
+        shown = lamp_api.identify(self.lamp, seconds)
+        log.info("identify: lamp %s for %g s from the web page", "shown" if shown else "absent", seconds)
+        return {"lamp": shown, "seconds": seconds if shown else 0}
+
+    def _identify_peer(self, peer_id: Any, seconds: float) -> dict:
+        """Ask another Hasler (multiroom/peers.py) to identify itself."""
+        if not isinstance(peer_id, str) or not peer_id:
+            raise ValueError("peer must be a Hasler's id")
+        peers = getattr(self.group, "peers", None)
+        peer = peers.get(peer_id) if peers is not None else None
+        if peer is None:
+            raise Unavailable("That radio isn't in the list of Haslers at home right now.")
+        from ..multiroom import peers as mr_peers
+        fetch = getattr(peers, "fetch", None) or mr_peers.http_json
+        try:
+            status, doc = fetch("POST", mr_peers.url_for(peer.host, peer.port, "/api/lamp/identify"),
+                                {"seconds": seconds})
+        except mr_peers.PeerUnreachable as exc:
+            raise Unavailable(f"{peer.name} didn't answer.") from exc
+        if status == 404:
+            raise Unavailable(f"{peer.name} needs a software update to do that.")
+        if status != 200 or not isinstance(doc, dict):
+            raise Unavailable(f"{peer.name} couldn't do that (error {status}).")
+        log.info("identify: asked %s (%s) for %g s", peer.name, peer.id, seconds)
+        return {"lamp": bool(doc.get("lamp")), "seconds": doc.get("seconds", 0), "peer": peer.id}
+
+    def _lamp_status(self) -> str | None:
+        """What the lamp says now (lamp/meanings.STATUS), or None for a radio without a lamp."""
+        if self.lamp is None:
+            return None
+        try:
+            if self.confirm.pending():
+                return "asking"
+        except Exception:
+            pass
+        fn = self.lamp_meaning
+        if fn is None:
+            return None
+        try:
+            name = fn()
+        except Exception:
+            log.debug("lamp meaning unreadable", exc_info=True)
+            return None
+        return name if name in lamp_meanings.STATUS else None
+
     def _lamp_doc(self) -> dict:
         saved = self.lamp_settings()
         try:
@@ -1208,7 +1294,11 @@ class WebApp:
             log.debug("could not work out tonight's sun", exc_info=True)
             sun = None
         return {"location": night.location_doc(saved), "night": night.mode_from_settings(saved),
-                "tonight": sun}
+                "tonight": sun,
+                # Settings -> Pilot lamp: brightness and key replies (lamp/meanings.py);
+                # present = this radio has a lamp to show things on.
+                "lamp": {**lamp_meanings.prefs_doc(saved), "present": self.lamp is not None,
+                         "show_s": lamp_meanings.SHOW_S, "identify_s": lamp_meanings.IDENTIFY_S}}
 
     def _spotify_guests(self) -> bool:
         """settings.json ``spotify_guests`` (default on): go-librespot's zeroconf."""
@@ -2268,6 +2358,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: (app.stop(), self._json(200, {"ok": True})))
             elif path == "/api/lamp/preview":
                 self._guard(lambda: self._json(200, {"ok": True, **app.lamp_preview(self._body())}))
+            elif path == "/api/lamp/identify":
+                self._guard(lambda: self._json(200, {"ok": True, **app.lamp_identify(self._body())}))
             elif path == "/api/lamp/palette":       # as PUT, for clients that only POST
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
             elif path == "/api/settings":            # as PUT, for clients that only POST
