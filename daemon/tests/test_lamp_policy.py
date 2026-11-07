@@ -169,7 +169,7 @@ class FakePanel:
 
 
 @pytest.fixture
-def box():
+def box(tmp_path):
     variant = load_variant(VARIANTS / "hasler-hm.yaml")
     clock = Clock()
     player = FakePlayer()
@@ -179,6 +179,7 @@ def box():
     panel = FakePanel([switch])
     keeper = LampKeeper(driver, actions, panel, net, None, clock=clock,
                         night=lambda when, settings: False)
+    keeper.run_dir = tmp_path       # lamp/handover.py's notes
     keeper.boot_done()
     keeper.arm()
     return clock, player, actions, driver, net, keeper, switch
@@ -317,7 +318,8 @@ class TestKeeper:
         keeper.updating = lambda: 1 / 0
         keeper.tick(clock())
         keeper.close()
-        assert last(driver) == policy.READY and driver.closed is True
+        assert last(driver) == policy.READY and driver.closed is False
+        assert '"amber"' in (keeper.run_dir / "handover").read_text()
 
     def test_pu_key_replies_a_signature_of_where_it_went(self, box):
         clock, player, actions, driver, _, keeper, _ = box
@@ -368,10 +370,13 @@ class TestKeeper:
         actions.dispatch(Event("k5", "hold"))
         assert driver.replies == ["nudge", "nudge", "nudge"] and player.volume == 0.0
 
-    def test_any_other_exit_goes_dark_at_once(self, box):
+    def test_any_other_exit_hands_the_lamp_to_the_boot_breath(self, box):
+        # Never dark (that means "unplug"): the LED keeps its frame and the
+        # boot script breathes on from it until haslerd is back.
         _, _, _, driver, _, keeper, _ = box
         keeper.close()
-        assert driver.closed is True
+        assert driver.closed is False
+        assert '"amber"' in (keeper.run_dir / "handover").read_text()
 
     def test_loading_shows_before_the_start_and_ends_with_sound(self, box):
         clock, player, actions, driver, _, keeper, _ = box

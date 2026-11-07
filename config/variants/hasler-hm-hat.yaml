@@ -49,6 +49,9 @@ io:
     pins: {red: 17, green: 22, blue: 27}   # J2-13, J2-15, J2-16 - Pi header 11, 15, 13
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
     frequency_hz: 800
+    # pwm_hz: 400        # to try: longer pulses at the lowest duties (hasler-hm.yaml)
+    # The smallest duty a lit channel gets (its real share only): 7.5 us at 800 Hz.
+    min_duty: {red: 0.006, green: 0.006, blue: 0.006}
 
 controls:
   # J2: 2x13 keyed header, standard IDC numbering (pin 1 by the key slot).

@@ -9,8 +9,12 @@ Description=Hasler pilot lamp - early amber breath until haslerd takes over
 DefaultDependencies=no
 After=systemd-udev-trigger.service systemd-modules-load.service
 Wants=systemd-udev-trigger.service
-# haslerd.service is After= this unit and stops it in ExecStartPre= (SIGTERM;
-# the LED keeps its last duty), so they never both write the LED.
+# haslerd.service is After= this unit; haslerd asks it to let go of the LED
+# before its first frame (/run/hasler-lamp/takeover) and ExecStartPost= stops
+# it anyway (SIGTERM; the LED keeps its last duty), so they never both write
+# the LED. haslerd's ExecStopPost= starts it again between two haslerds
+# (hasler-lamp-boot --handover: it breathes on from the LED's last frame).
+# Conflicts=shutdown.target: never during a shutdown (the halt hook's turn).
 Conflicts=shutdown.target
 Before=shutdown.target
 # Only on a box with the overlays loaded (none of this on a dev laptop).

@@ -2,14 +2,26 @@
 """Early-boot pilot lamp: fade into an amber breath until haslerd takes over.
 
 docs/lamp.md "Boot and shutdown", stage "~3-5 s". Started by
-hasler-lamp-boot.service as soon as udev has loaded the pwm-gpio driver; stopped
-(SIGTERM) by systemd when haslerd.service starts, which Conflicts= with it.
+hasler-lamp-boot.service as soon as udev has loaded the pwm-gpio driver; it
+stops itself when haslerd asks for the LED (/run/hasler-lamp/takeover, below)
+and haslerd.service's ExecStartPost stops it anyway (SIGTERM) for a haslerd
+too old to ask.
 
 What it shows: a slow 2 s fade from dark up to a clearly visible amber, then a breath between 25 % and 60 %
 (perceptual), 3 s period, raised cosine. Perceptual -> linear with gamma 2.2,
 then the amber balance R 1.0 / G 0.15 / B 0. We cannot read the tone knob yet
 (that needs I2C and the panel), so it is always amber; haslerd corrects to
-ember within a second or two of starting if the knob is off.
+ember within a second or two of starting if the knob is off. haslerd's own
+warm-up carries this very breath on (main.py LampKeeper.take_over).
+
+Between two haslerds (a restart, a crash, an update; lamp/handover.py) it
+breathes too: haslerd.service's ExecStopPost runs ``hasler-lamp-boot
+--handover``, which reads the note haslerd left in /run/hasler-lamp/handover
+and starts this service again unless the box is shutting down (then haslerd
+left a steady ember for the halt hook). Started with a fresh note, it
+continues from whatever the LED shows - no fade from dark, no jump - into the
+amber breath, or the ember breath (15-35 %, 2.5 s, pure red: busy, don't
+unplug) while an update is installed.
 
 Hardware (docs/hardware.md "Pilot lamp"): common-anode RGB LED on 3.3 V, red
 GPIO17, green GPIO22, blue GPIO27, GPIO LOW = lit. Each pin is its own
@@ -18,24 +30,34 @@ the channel's polarity to "inversed", so duty_cycle is the *lit* time and a
 disabled channel idles HIGH = dark (the driver drives the idle level from the
 polarity). No manual duty inversion anywhere.
 
+PWM period: the one haslerd configured (io.lamp.pwm_hz), which it leaves in
+/var/lib/haslerd/lamp-period; 800 Hz without that file. A channel that is
+already running keeps its period (a handover never changes it).
+
 Discovery (the same rule as haslerd/lamp/outputs.py): a pwmchip belongs to
 GPIO N when its device/of_node/compatible says "pwm-gpio" and the second cell
 of device/of_node/gpios (<&gpio N flags>, big-endian u32) is N. If not all
 three answer that way, fall back to the pwm-gpio chips (or every chip, if none
 says) in pwmchip-number order = the overlay declaration order 17, 22, 27.
 
-On SIGTERM / SIGINT it just stops: pins stay exported and enabled at the last
-duty (the kernel keeps the PWM running), so there is no dark gap before haslerd
-writes. It leaves /run/hasler-lamp/boot with the breath's start time on
-CLOCK_MONOTONIC so the engine can carry on in phase if it wants to.
+When it stops (SIGTERM / SIGINT / haslerd's takeover) it just stops: pins
+stay exported and enabled at the last duty (the kernel keeps the PWM running),
+so there is no dark gap before haslerd writes. /run/hasler-lamp/boot holds its
+state for haslerd: the breath (colour, floor, peak, period_s, t0 on
+CLOCK_MONOTONIC), its pid while it runs, "released": true once it let go.
+The directory is group gpio and group-writable, so haslerd (User=pi, group
+gpio) can leave its notes there.
 
 Testing without a Pi (fake sysfs; the script creates pwm0/ on "export"):
 
-    HASLER_PWM_ROOT=/tmp/fakepwm scripts/hasler-lamp-boot --fake-sysfs --print
+    HASLER_PWM_ROOT=/tmp/fakepwm HASLER_LAMP_RUN=/tmp/lamprun \\
+        scripts/hasler-lamp-boot --fake-sysfs --print
 
   --fake-sysfs   build pwmchip0..2 for GPIO 17/22/27 under HASLER_PWM_ROOT first
   --print        log every frame's perceptual level and duties to stdout
   --seconds N    stop by itself after N seconds (default: run until killed)
+  --handover     ExecStopPost's step (above), then exit; HASLER_SYSTEMCTL
+                 names another systemctl for tests
 
 Python stdlib only (no venv - it runs long before the user's session).
 """
@@ -43,27 +65,44 @@ Python stdlib only (no venv - it runs long before the user's session).
 from __future__ import annotations
 
 import argparse
+import grp
 import json
 import math
 import os
 import signal
 import struct
+import subprocess
 import sys
 import time
 
 ROOT = os.environ.get("HASLER_PWM_ROOT", "/sys/class/pwm")
 FAKE = "HASLER_PWM_ROOT" in os.environ
 STATE_DIR = os.environ.get("HASLER_LAMP_RUN", "/run/hasler-lamp")
+PERIOD_FILE = os.environ.get("HASLER_LAMP_PERIOD_FILE", "/var/lib/haslerd/lamp-period")
+SYSTEMCTL = os.environ.get("HASLER_SYSTEMCTL", "systemctl")
+UNIT = "hasler-lamp-boot.service"
+GROUP = "gpio"                    # haslerd's SupplementaryGroups
 
 GPIOS = (17, 22, 27)              # red, green, blue - overlay declaration order
-PERIOD_NS = 1_250_000             # 800 Hz
+PERIOD_NS = 1_250_000             # 800 Hz, unless haslerd left another (PERIOD_FILE)
 GAMMA = 2.2
-BALANCE = (1.0, 0.15, 0.0)        # amber; docs/lamp.md "Palette"
 FADE_S = 2.0                      # a slow, visible fade up (the owner likes it slow)
-FLOOR, PEAK = 0.25, 0.60          # perceptual; 0.10/0.35 read as 'off' on this LED (bench, 20 Oct)
-BREATH_S = 3.0
 FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU
 WAIT_CHIPS_S = 10.0               # udev may still be loading pwm-gpio
+CONTINUE_S = 1.0                  # a handover: from the LED's frame into the breath
+HANDOVER_FRESH_S = 60.0           # an older note is a leftover, not a handover
+
+# The breaths, perceptual (docs/lamp.md; lamp/policy.py's names in brackets).
+LOOKS = {
+    # 0.10/0.35 read as 'off' on this LED (bench, 20 Oct)
+    "amber": {"floor": 0.25, "peak": 0.60, "period_s": 3.0, "balance": (1.0, 0.15, 0.0)},
+    # [SHUTTING_DOWN / UPDATING]: busy, don't unplug. Pure red, as the engine
+    # draws deep ember (its trace of green is under the floor).
+    "ember": {"floor": 0.15, "peak": 0.35, "period_s": 2.5, "balance": (1.0, 0.0, 0.0)},
+}
+FLOOR, PEAK = LOOKS["amber"]["floor"], LOOKS["amber"]["peak"]
+BREATH_S = LOOKS["amber"]["period_s"]
+BALANCE = LOOKS["amber"]["balance"]
 
 running = True
 
@@ -88,6 +127,19 @@ def write(path: str, value: object) -> bool:
     except OSError as e:
         log(f"write {value} -> {path}: {e.strerror}")
         return False
+
+
+def to_int(text: str) -> int | None:
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def configured_period() -> int:
+    """haslerd's period (PERIOD_FILE), else 800 Hz."""
+    value = to_int(read(PERIOD_FILE))
+    return value if value and 1000 <= value <= 100_000_000 else PERIOD_NS
 
 
 # --- discovery (keep identical to haslerd/lamp/outputs.py) ------------------
@@ -132,7 +184,7 @@ def discover() -> list[str] | None:
 # --- one channel ------------------------------------------------------------
 
 class Channel:
-    def __init__(self, chip: str):
+    def __init__(self, chip: str, period: int):
         self.dir = os.path.join(chip, "pwm0")
         self.duty = -1
         if not os.path.isdir(self.dir):
@@ -154,16 +206,24 @@ class Channel:
                 write(f("enable"), 0)
             write(f("polarity"), "inversed")    # disabled + inversed -> HIGH, dark
             enabled = False
-        if read(f("period")) != str(PERIOD_NS):
+        current = to_int(read(f("period"))) or 0
+        if enabled and current > 0:
+            period = current                    # a handover: never change it (a blink)
+        elif current != period:
             write(f("duty_cycle"), 0)           # duty must never exceed period
-            write(f("period"), PERIOD_NS)
+            write(f("period"), period)
+        self.period = period
         if not enabled:
             write(f("duty_cycle"), 0)
             write(f("enable"), 1)
         self.duty = int(read(f("duty_cycle")) or 0)
 
+    def lit(self) -> float:
+        """The lit fraction it shows now (linear)."""
+        return max(0.0, min(1.0, self.duty / self.period)) if self.period else 0.0
+
     def set(self, linear: float) -> int:
-        duty = round(max(0.0, min(1.0, linear)) * PERIOD_NS)
+        duty = round(max(0.0, min(1.0, linear)) * self.period)
         if duty != self.duty and write(self.f_duty, duty):
             self.duty = duty
         return duty
@@ -171,14 +231,35 @@ class Channel:
 
 # --- the look ---------------------------------------------------------------
 
+def breath_at(phase: float, floor: float, peak: float) -> float:
+    """Raised cosine; phase 0 = the peak (the fade up ends there)."""
+    return floor + (peak - floor) * (1 + math.cos(2 * math.pi * phase)) / 2
+
+
 def level_at(t: float) -> float:
     """Perceptual level t seconds after start: fade up to the peak, then breathe
     down and up again - so the first thing anyone sees is a clear glow."""
     if t < FADE_S:
         x = t / FADE_S
         return PEAK * x * x * (3 - 2 * x)       # smoothstep 0 -> peak
-    phase = (t - FADE_S) / BREATH_S
-    return FLOOR + (PEAK - FLOOR) * (1 + math.cos(2 * math.pi * phase)) / 2
+    return breath_at((t - FADE_S) / BREATH_S, FLOOR, PEAK)
+
+
+def continue_at(t: float, start: float, look: dict) -> float:
+    """A handover: from ``start`` (what the LED showed) into ``look``'s breath.
+
+    The breath starts at the point nearest ``start`` (on its way down), and a
+    CONTINUE_S smoothstep blends the two, so a level outside the breath's
+    range glides in instead of jumping."""
+    floor, peak, period = look["floor"], look["peak"], look["period_s"]
+    x = (min(peak, max(floor, start)) - floor) / (peak - floor)
+    phase0 = math.acos(max(-1.0, min(1.0, 2 * x - 1))) / (2 * math.pi)
+    target = breath_at(phase0 + t / period, floor, peak)
+    if t >= CONTINUE_S:
+        return target
+    w = t / CONTINUE_S
+    w = w * w * (3 - 2 * w)
+    return start + (target - start) * w
 
 
 def make_fake_sysfs() -> None:
@@ -200,12 +281,104 @@ def make_fake_sysfs() -> None:
                 f.write(val + "\n")
 
 
+# --- the notes in STATE_DIR (haslerd/lamp/handover.py) -----------------------
+
+def state_dir() -> bool:
+    """STATE_DIR, group gpio and group-writable for haslerd's notes."""
+    try:
+        os.makedirs(STATE_DIR, exist_ok=True)
+    except OSError:
+        return False
+    try:
+        os.chown(STATE_DIR, -1, grp.getgrnam(GROUP).gr_gid)
+        os.chmod(STATE_DIR, 0o2775)
+    except (KeyError, OSError):
+        pass                                    # no such group / not root: fine
+    return True
+
+
+def note(name: str) -> str:
+    return os.path.join(STATE_DIR, name)
+
+
+def save_state(doc: dict) -> None:
+    try:
+        tmp = note(".boot.tmp")
+        with open(tmp, "w") as f:
+            json.dump(doc, f)
+        os.replace(tmp, note("boot"))
+        os.chmod(note("boot"), 0o644)
+    except OSError:
+        pass
+
+
+def take_handover() -> str | None:
+    """A fresh note from haslerd's exit: its mode (amber | ember), used up."""
+    path = note("handover")
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+        os.unlink(path)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or time.time() - float(doc.get("at") or 0) > HANDOVER_FRESH_S:
+        return None
+    mode = doc.get("mode")
+    return mode if mode in LOOKS else None
+
+
+def system_stopping() -> bool:
+    try:
+        out = subprocess.run([SYSTEMCTL, "is-system-running"], capture_output=True,
+                             text=True, timeout=2).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out == "stopping"
+
+
+def handover() -> int:
+    """ExecStopPost: breathe on between two haslerds, unless the box is going down.
+
+    haslerd's note says how (lamp/handover.py); a haslerd that crashed left
+    none, and gets the amber breath. "hold" (a shutdown) and a stopping
+    system leave the LED alone for the halt hook."""
+    path = note("handover")
+    try:
+        with open(path) as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        doc = {}
+    mode = doc.get("mode") if isinstance(doc, dict) else None
+    if mode == "hold" or system_stopping():
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        return 0
+    if mode not in LOOKS:
+        mode = "amber"
+    if state_dir():
+        try:
+            with open(path, "w") as f:
+                json.dump({"mode": mode, "at": time.time()}, f)
+        except OSError:
+            pass
+    try:
+        subprocess.run([SYSTEMCTL, "--no-block", "start", UNIT], timeout=5)
+    except (OSError, subprocess.SubprocessError) as e:
+        log(f"could not start {UNIT}: {e}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--fake-sysfs", action="store_true")
     ap.add_argument("--print", action="store_true")
     ap.add_argument("--seconds", type=float, default=0.0)
+    ap.add_argument("--handover", action="store_true")
     args = ap.parse_args()
+    if args.handover:
+        return handover()
     if args.fake_sysfs:
         if not FAKE:
             log("--fake-sysfs needs HASLER_PWM_ROOT"); return 2
@@ -216,6 +389,13 @@ def main() -> int:
         running = False
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
+
+    have_dir = state_dir()
+    try:
+        os.unlink(note("takeover"))             # a leftover from a haslerd before
+    except OSError:
+        pass
+    mode = take_handover() if have_dir else None
 
     deadline = time.monotonic() + WAIT_CHIPS_S
     chips = discover()
@@ -228,26 +408,38 @@ def main() -> int:
         return 0                                # nothing to do; haslerd copes
     log("chips: " + ", ".join(f"GPIO{g}={os.path.basename(c)}"
                               for g, c in zip(GPIOS, chips)))
-    channels = [Channel(c) for c in chips]
+    period = configured_period()
+    channels = [Channel(c, period) for c in chips]
+
+    look = LOOKS[mode or "amber"]
+    balance = look["balance"]
+    start = 0.0
+    if mode is not None:
+        # What the LED shows (the red channel carries both looks), perceptual.
+        start = channels[0].lit() ** (1.0 / GAMMA)
+        log(f"handover ({mode}): breathing on from {start:.2f}")
 
     t0 = time.monotonic()
-    try:
-        os.makedirs(STATE_DIR, exist_ok=True)
-        with open(os.path.join(STATE_DIR, "boot"), "w") as f:
-            json.dump({"colour": "amber", "t0_monotonic": t0, "fade_s": FADE_S,
-                       "floor": FLOOR, "peak": PEAK, "period_s": BREATH_S}, f)
-    except OSError:
-        pass
+    state = {"colour": mode or "amber", "t0_monotonic": t0,
+             "fade_s": CONTINUE_S if mode else FADE_S, "floor": look["floor"],
+             "peak": look["peak"], "period_s": look["period_s"], "pid": os.getpid()}
+    if have_dir:
+        save_state(state)
 
     frame = 1.0 / FPS
     nxt = t0
+    takeover = note("takeover")
+    p = start
     while running:
+        if have_dir and os.path.exists(takeover):
+            log("haslerd takes over")
+            break
         t = time.monotonic() - t0
         if args.seconds and t >= args.seconds:
             break
-        p = level_at(t)
+        p = continue_at(t, start, look) if mode else level_at(t)
         lin = p ** GAMMA
-        duties = [ch.set(lin * k) for ch, k in zip(channels, BALANCE)]
+        duties = [ch.set(lin * k) for ch, k in zip(channels, balance)]
         if args.print:
             print(f"{t:6.3f} level={p:.3f} duty_ns={duties}", flush=True)
         nxt += frame
@@ -257,6 +449,12 @@ def main() -> int:
         else:
             nxt = time.monotonic()
     # Leave everything exactly as it is: exported, enabled, last duty.
+    if have_dir:
+        save_state({**state, "pid": None, "released": True, "level": round(p, 4)})
+        try:
+            os.unlink(takeover)
+        except OSError:
+            pass
     return 0
 
 

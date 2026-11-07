@@ -196,6 +196,7 @@ class Panel:
         # this monotonic time, and after it for any key still held from then.
         self._hush_until = 0.0
         self._hushed: set[str] = set()
+        self._downs: list[Event] = []       # press hints, until take_downs
 
     @classmethod
     def from_variant(cls, variant: Variant, fake: bool = False) -> "Panel":
@@ -235,11 +236,28 @@ class Panel:
         events: list[Event] = []
         for control in self.controls:
             events.extend(control.update(now, digital, analog))
+        # Keys' press hints (panel/controls.py) go aside for the lamp
+        # (take_downs): combinations, hush and everything else see the
+        # events exactly as before.
+        downs = [e for e in events if e.kind == "down"]
+        if downs:
+            events = [e for e in events if e.kind != "down"]
         if self.combos.active:
             events = self.combos.filter(now, events)
         if self._hushed or now < self._hush_until:
             events = self._hush(now, digital, events)
+            keys = {c.id for c in self.controls if c.kind == "momentary"}
+            downs = [e for e in downs if e.control not in self._hushed
+                     and not (e.control in keys and now < self._hush_until)]
+        self._downs.extend(downs)
         return events
+
+    def take_downs(self) -> list[Event]:
+        """The press hints (``down``) since the last call, for Actions.key_down:
+        the main loop answers them with the lamp's dip before the polls'
+        events. Never more than a handful."""
+        downs, self._downs = self._downs, []
+        return downs
 
     def hush(self, until: float) -> None:
         """Keys do nothing until ``until`` (monotonic), nor afterwards until each
