@@ -172,7 +172,7 @@ def test_effective_variant_applies_the_overlay(paths):
     assert specs["volume"]["curve"] == [[0, 0], [100, 100]]
     assert specs["volume"]["channel"] == 1
     assert specs["tone"]["end_switch"] == {"id": "power", "pin": "d8", "off_hold_ms": 3000}
-    assert v.io["lamp"]["balance"] == {"red": 0.9} and v.io["lamp"]["backend"] == "pwm-sysfs"
+    assert v.io["lamp"]["balance"]["red"] == 0.9 and v.io["lamp"]["backend"] == "pwm-sysfs"
     assert v.actions == plain.actions
 
 

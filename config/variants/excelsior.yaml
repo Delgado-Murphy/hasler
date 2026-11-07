@@ -37,8 +37,22 @@ io:
     common: anode
     frequency_hz: 800
     # pwm_hz: 400        # to try: longer pulses at the lowest duties (hasler-hm.yaml)
-    # The smallest duty a lit channel gets (its real share only): 7.5 us at 800 Hz.
-    min_duty: {red: 0.006, green: 0.006, blue: 0.006}
+    # The bench HM's Lamp check (2026-11-07, 1.4.0, frosted 5 mm common-anode
+    # RGB on 220/100/100 ohm, warm): the standard for every radio fitted with
+    # this LED. A radio's own Lamp check saves over it (variant.d), and "Back
+    # to standard" comes back here.
+    min_duty: {red: 0.0075, green: 0.00375, blue: 0.0075}
+    balance: {red: 1.0, green: 0.75, blue: 1.1667}
+    palette:
+      amber:
+        day: [1.0, 0.235, 0.0]
+        night: [1.0, 0.1863, 0.0]
+      ember: [1.0, 0.06, 0.0]
+      blue: [0.04, 0.0, 1.0]
+      green: [0.0, 1.0, 0.0]
+      red: [1.0, 0.0, 0.0]
+    level_gain: {amber: 1.0, ember: 1.0, blue: 1.0, green: 0.684, red: 1.0, gold: 1.0}
+    levels: {ember_day: 0.275, ember_night: 0.0469}
 
 controls:
   - id: presets

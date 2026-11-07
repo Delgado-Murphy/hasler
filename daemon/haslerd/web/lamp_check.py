@@ -306,6 +306,20 @@ def standard(engine: Any, lamp: Any = None) -> dict:
     }
 
 
+def over_descriptor(standard_doc: dict, lamp: Any) -> dict:
+    """The standard values with the variant descriptor's own ``io.lamp``
+    calibration over them: a model whose LED was checked once ships that
+    check, and "Back to standard" comes back to it, not to the engine's
+    uncalibrated constants."""
+    mine = saved_from(lamp)
+    out = {k: (dict(v) if isinstance(v, dict) else v) for k, v in standard_doc.items()}
+    for key, value in mine.items():
+        if key == "calibrated" or not isinstance(value, dict):
+            continue
+        out[key] = {**(out.get(key) or {}), **value}
+    return out
+
+
 def _looks(policy: Any) -> list[tuple[str, Any]]:
     """(id, Look) for every Look the policy module exposes, in its order, once each."""
     from ..lamp.contract import Look

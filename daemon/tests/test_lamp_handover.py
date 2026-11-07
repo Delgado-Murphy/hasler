@@ -328,7 +328,8 @@ def test_excelsior_has_the_hat_lamp():
 
 def test_min_duty_floor_in_every_variant_with_a_lamp():
     for name in ("hasler-hm.yaml", "hasler-hm-hat.yaml", "excelsior.yaml"):
-        assert load_variant(VARIANTS / name).io["lamp"]["min_duty"] == {"red": 0.006, "green": 0.006, "blue": 0.006}
+        # The bench LED's Lamp check (2026-11-07): the standard for every radio with this LED.
+        assert load_variant(VARIANTS / name).io["lamp"]["min_duty"] == {"red": 0.0075, "green": 0.00375, "blue": 0.0075}
         assert "pwm_hz" not in load_variant(VARIANTS / name).io["lamp"]      # an option, not the default
 
 

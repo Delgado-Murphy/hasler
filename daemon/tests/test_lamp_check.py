@@ -158,8 +158,10 @@ class TestSave:
         assert heard == ["hasler-hm"]
         assert app.lamp.cals[-1]["levels"] == CAL["levels"] and "calibrated" in app.lamp.cals[-1]
         app.delete_lamp_calibration()
-        # Back to the descriptor's io.lamp (hasler-hm.yaml has min_duty), not to nothing.
-        assert app.lamp.cals[-1] == {"min_duty": {"red": 0.006, "green": 0.006, "blue": 0.006}}
+        # Back to the descriptor's io.lamp (hasler-hm.yaml ships the bench LED's check), not to nothing.
+        back = app.lamp.cals[-1]
+        assert back["min_duty"] == {"red": 0.0075, "green": 0.00375, "blue": 0.0075}
+        assert back["level_gain"]["green"] == 0.684 and "calibrated" not in back
 
     def test_a_live_save_keeps_a_custom_amber_band(self, app):
         write_overlay(app, {"schema": 1, "io": {"lamp": {"amber_band": [0.1, 0.25]}}})
@@ -281,14 +283,17 @@ class TestValidation:
 
 
 class TestGet:
-    def test_standard_follows_the_engine(self, app):
+    def test_standard_follows_the_descriptor_over_the_engine(self, app):
         doc = app.lamp_calibration()
         assert doc["variant"] == "hasler-hm" and doc["lamp"] and doc["can_save"]
         assert doc["saved"] == {} and doc["raw_preview"] is False
         std = doc["standard"]
         assert set(std) == CONTRACT - {"calibrated"}
-        assert std["palette"]["amber"]["day"] == list(eng.DEFAULT_PALETTE["amber"])
-        assert std["levels"] == {"ember_day": eng.EMBER_LEVEL, "ember_night": eng.EMBER_NIGHT}
+        # hasler-hm.yaml ships the bench LED's check: that is "standard", not the engine's constants.
+        assert std["palette"]["amber"]["day"] == [1.0, 0.235, 0.0]
+        assert std["palette"]["blue"] == [0.04, 0.0, 1.0]
+        assert std["levels"] == {"ember_day": 0.275, "ember_night": 0.0469}
+        assert std["level_gain"]["gold"] == 1.0
         assert lamp_check.check(std) == std                     # a valid calibration itself
         assert doc["cpu_temp_c"] == 51.2
 
@@ -604,3 +609,29 @@ class TestHttp:
         status, _ = self.call(url + "/api/lamp/preview", "POST", {"duty": [1, 0, 0]}, ctype="text/plain")
         assert status == 403
         assert not overlay_file(app).exists() and app.lamp.previews == []
+
+
+class TestStandardFromTheDescriptor:
+    """A model's file carries its LED's check: that is the standard."""
+
+    def test_descriptor_values_over_the_engine(self):
+        from haslerd.web import lamp_check
+        base = {"min_duty": {"red": 0.006, "green": 0.006, "blue": 0.006},
+                "balance": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                "palette": {"amber": {"day": [1, 0.17, 0], "night": [1, 0.17, 0]}, "ember": [1, 0.06, 0]},
+                "level_gain": {"green": 0.55}, "levels": {"ember_day": 0.2, "ember_night": 0.18}}
+        out = lamp_check.over_descriptor(base, {"backend": "pwm-sysfs", "min_duty": {"green": 0.00375},
+                                                "palette": {"ember": [1, 0.05, 0]},
+                                                "level_gain": {"green": 0.684}})
+        assert out["min_duty"] == {"red": 0.006, "green": 0.00375, "blue": 0.006}
+        assert out["palette"]["ember"] == [1, 0.05, 0] and out["palette"]["amber"]["day"] == [1, 0.17, 0]
+        assert out["level_gain"]["green"] == 0.684 and out["levels"] == base["levels"]
+        assert base["min_duty"]["green"] == 0.006           # the engine's doc is left alone
+
+    def test_shipped_variants_validate(self):
+        import yaml
+        from conftest import VARIANTS
+        from haslerd.web import lamp_check
+        for name in ("hasler-hm", "hasler-hm-hat", "excelsior"):
+            lamp = yaml.safe_load((VARIANTS / f"{name}.yaml").read_text())["io"]["lamp"]
+            lamp_check.check({k: v for k, v in lamp_check.saved_from(lamp).items()})

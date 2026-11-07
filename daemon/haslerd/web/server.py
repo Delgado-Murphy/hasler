@@ -112,6 +112,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlparse
 
+import yaml
+
 from .. import __version__
 from ..actions import Actions
 from ..lamp import night
@@ -1421,7 +1423,8 @@ class WebApp:
             "can_save": self.box_paths is not None,
             "raw_preview": callable(getattr(lamp, "preview_duty", None)) or (callable(preview) and lamp_check.accepts(preview, "raw")),
             "saved": lamp_check.saved_from((self._overlay().get("io") or {}).get("lamp")),
-            "standard": lamp_check.standard(lamp_engine, lamp),
+            "standard": lamp_check.over_descriptor(lamp_check.standard(lamp_engine, lamp),
+                                                   self._descriptor_lamp()),
             # The sweep; the page sends {"draft", "look": id, "night"} and
             # the engine draws it (there is no model of the engine on the page).
             "looks": lamp_check.sweep(policy),
@@ -1430,6 +1433,19 @@ class WebApp:
             "preview_s": getattr(lamp_engine, "PREVIEW_S", 30.0),
             "cpu_temp_c": lamp_check.cpu_temp_c(self.cpu_temp_file),
         }
+
+    def _descriptor_lamp(self) -> dict:
+        """The variant descriptor's own ``io.lamp`` (the release's file, without
+        this radio's overlay); {} when it can't be read."""
+        path = getattr(self.actions.variant, "path", None)
+        if not path:
+            return {}
+        try:
+            doc = yaml.safe_load(Path(path).read_text()) or {}
+        except (OSError, yaml.YAMLError):
+            return {}
+        lamp = (doc.get("io") or {}).get("lamp") if isinstance(doc, dict) else None
+        return lamp if isinstance(lamp, dict) else {}
 
     def put_lamp_calibration(self, body: Any) -> dict:
         """Save the Lamp check's result into the overlay's ``io.lamp`` and apply it."""

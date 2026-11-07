@@ -45,21 +45,24 @@ io:
     # long, so the lowest duties draw more reliably; still far above flicker.
     # The boot breath follows it from the next boot (lamp-period).
     # pwm_hz: 400
-    # The smallest duty a lit channel gets (a channel's real share of the
-    # colour only; a trace under it goes dark). 0.6 % = 7.5 us at 800 Hz: the
-    # hrtimer PWM draws shorter pulses unevenly at night.
-    min_duty: {red: 0.006, green: 0.006, blue: 0.006}
-    # Calibrate by eye at night. Linear RGB ratios per palette name (defaults
-    # in lamp/engine.py), then a per-channel balance after gamma:
-    # palette:
-    #   amber: [1.0, 0.15, 0.0]
-    #   amber_pale: [1.0, 0.22, 0.0]
-    #   ember: [1.0, 0.10, 0.0]
-    #   blue: [0.0, 0.0, 1.0]
-    #   white: [1.0, 0.35, 0.06]
-    #   red: [1.0, 0.03, 0.0]
-    #   magenta: [0.25, 0.0, 1.0]
-    # balance: {red: 1.0, green: 1.0, blue: 1.0}
+    # min_duty: the smallest duty a lit channel gets (a channel's real share of
+    # the colour only; a trace under it goes dark).
+    # The bench HM's Lamp check (2026-11-07, 1.4.0, frosted 5 mm common-anode
+    # RGB on 220/100/100 ohm, warm): the standard for every radio fitted with
+    # this LED. A radio's own Lamp check saves over it (variant.d), and "Back
+    # to standard" comes back here.
+    min_duty: {red: 0.0075, green: 0.00375, blue: 0.0075}
+    balance: {red: 1.0, green: 0.75, blue: 1.1667}
+    palette:
+      amber:
+        day: [1.0, 0.235, 0.0]
+        night: [1.0, 0.1863, 0.0]
+      ember: [1.0, 0.06, 0.0]
+      blue: [0.04, 0.0, 1.0]
+      green: [0.0, 1.0, 0.0]
+      red: [1.0, 0.0, 0.0]
+    level_gain: {amber: 1.0, ember: 1.0, blue: 1.0, green: 0.684, red: 1.0, gold: 1.0}
+    levels: {ember_day: 0.275, ember_night: 0.0469}
 
 controls:
   # Prototype stripboard (Paper PB3): each key sits on the MCP pin its J2
