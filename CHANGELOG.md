@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.7.3 - 2026-11-07
+
+- Shortcuts for your phone are gone again, with the Add to Home Screen
+  hint. The page works as it did in 1.7.1.
+
 ## 1.7.2 - 2026-11-07
 
 - **Shortcuts for your phone** (Settings → Phones): Louder, Quieter, keys

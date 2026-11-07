@@ -142,39 +142,6 @@ page is dispatched as the same event the panel would send.
   hotspot; a captive portal (`config/captive/`) sends the phone to haslerd's
   `/wifi` page, and `scripts/hasler-wifi-join` joins the network.
 
-### The phone shortcuts API
-
-Shortcuts on people's phones call these for years, so they are a **stable
-public API**: change them only by adding. Each is a POST with a JSON body
-(`Content-Type: application/json`), to `http://hasler.local` or the radio's
-IP. An iPhone shortcut ("Get Contents of URL") sends that Host and no Origin,
-so it passes the change guard; a page on another site is refused.
-
-| Call | Body | Does |
-|---|---|---|
-| `POST /api/volume` | `{"delta": 5}` / `{"delta": -5}` (or `{"value": 0-100}`) | louder / quieter, within the ceiling; answers `{"volume"}` |
-| `POST /api/press` | `{"key": "k1"…"k6", "event": "tap"}` | as if the key were pressed |
-| `POST /api/standby` | `{}` toggles, `{"on": true\|false}` sets | answers `{"standby"}` |
-| `POST /api/playpause` | `{}` | playing stops; quiet plays the last station; standby wakes. Answers `{"playing"}` |
-| `POST /api/next` | `{}` | the next song |
-| `GET /api/status` | | what plays, the volume |
-
-Nothing here needs a press on the radio, and nothing that does (updates,
-Wi-Fi, reset, restart, handover, allowed addresses) may join it.
-`web/phone_api.py` holds the table the shortcuts are made from:
-
-- **iPhone:** `tools/shortcuts/build.sh` writes one shortcut per action
-  (`make_shortcuts.py`, unsigned copies in `tools/shortcuts/unsigned/`),
-  signs them on a Mac (`shortcuts sign --mode anyone`) into the org site's
-  `/shortcuts/`, and the site serves them. Re-run it after changing the table.
-- **Android:** `GET /do/<action>` (`louder`, `quieter`, `key/1`…`key/6`,
-  `standby`, `playpause`, `next`) is a tiny page with its own title and icon
-  for Chrome's "Add to Home screen". The GET changes nothing; the page's own
-  same-origin POST does, once, when it is really on screen (not prerendered,
-  reloaded or restored), so a link preview or prefetch can't turn it up.
-- `tests/test_phone_shortcuts.py` checks every hosted shortcut against the
-  table and the guard as an iPhone meets it.
-
 Where the code is: `daemon/haslerd/web/` (`server.py`, one `*_api.py` per
 area), `scripts/hasler-web-front`, `scripts/hasler-wifi-join`.
 More: [build guide, "The key page on port 80"](build-guide.md#the-key-page-on-port-80),

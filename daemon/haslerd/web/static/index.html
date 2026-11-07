@@ -204,11 +204,6 @@ button{cursor:pointer}
 .sleep-btn:focus-visible,.sleep-chip:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .sleep-row{display:flex;justify-content:center;padding:10px 0 0}
 .sleep-row[hidden]{display:none}
-.a2hs{display:flex;align-items:center;justify-content:center;gap:6px;margin:12px 16px 0;color:var(--muted);font-size:12.5px;line-height:17px;text-align:center}
-.a2hs[hidden]{display:none}
-.a2hs b{color:var(--text2);font-weight:600}
-.a2hs-x{flex:none;width:44px;height:44px;margin:-12px -10px -12px 0;border:0;background:none;color:var(--muted);font:400 18px/1 var(--sans);border-radius:50%}
-.a2hs-x:focus-visible{outline:2px solid var(--amber);outline-offset:-6px}
 .sleep-chip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:4px 14px;border:1px solid var(--line2);border-radius:999px;background:none;
   color:var(--brass);font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
 .sleep-chip .x{opacity:.6;font:400 15px/1 var(--sans)}
@@ -766,11 +761,6 @@ input[type=range]::-moz-range-track{height:4px;border-radius:2px;--stop:calc(12p
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-10px;border-radius:50%;border:0;background:radial-gradient(circle at 40% 30%,#F0D59A,#C9A15A 55%,#7A5A2C)}
 input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;border:0;background:radial-gradient(circle at 40% 30%,#F0D59A,#C9A15A 55%,#7A5A2C)}
 .steps{margin:0;padding-left:22px;color:var(--text2);font-size:14px}
-.sc-card{display:flex;flex-direction:column;gap:10px}
-.sc-card .li.sc-row{min-height:60px;padding:8px 12px 8px 16px}
-.sc-grid{display:grid;grid-template-columns:repeat(6,minmax(44px,1fr));gap:6px}
-.sc-grid .btn{padding:10px 0;font-family:var(--serif);font-size:17px}
-.sc-card details.how > *:not(summary){margin-top:6px}
 .steps li{margin:0 0 6px}
 .steps b{color:var(--cream);font-weight:600}
 .steps li::marker{font-family:var(--mono);color:var(--muted)}
@@ -1347,8 +1337,6 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
     <div class="sleep-row" id="sleepRow" hidden>
       <button type="button" class="sleep-chip" id="sleepChip"><span id="sleepTxt">Sleep</span><span class="x" aria-hidden="true">×</span></button>
     </div>
-
-    <p class="a2hs" id="a2hs" hidden><span id="a2hsTxt"></span><button type="button" class="a2hs-x" id="a2hsX" aria-label="Don’t show this again">×</button></p>
 
     <div class="tone" id="tone" hidden aria-live="off">
       <span>Tone</span>
@@ -2189,23 +2177,6 @@ function syncKnob(){
   if (!K.drag && Date.now() - K.lastUser > 1500 && status.volume != null){ K.v = Math.min(100, Math.round(status.volume)); K.sent = K.v; }
   paintKnob();
 }
-
-/* ================= the Add to Home Screen hint =================
-   Phones only, in the browser (not opened from the home screen), once: shown, it is remembered on
-   this phone; × hides it now. Without storage it stays away rather than nag on every visit. */
-(function a2hsHint(){
-  const A2HS_KEY = 'hasler.a2hs';
-  const kind = phoneKind();
-  if (kind === 'desktop') return;
-  const standalone = navigator.standalone === true || (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches));
-  if (standalone) return;
-  try { if (localStorage.getItem(A2HS_KEY)) return; localStorage.setItem(A2HS_KEY, 'shown'); } catch (_) { return; }
-  const txt = $('a2hsTxt'), box = $('a2hs');
-  if (kind === 'ios') txt.append('For one tap next time: ', h('b', null, 'Share'), ' → ', h('b', null, 'Add to Home Screen'), '.');
-  else txt.append('For one tap next time: ', h('b', null, '⋮'), ' → ', h('b', null, 'Add to Home screen'), '.');
-  box.hidden = false;
-  $('a2hsX').addEventListener('click', () => { box.hidden = true; try { localStorage.setItem(A2HS_KEY, 'dismissed'); } catch (_) {} });
-})();
 
 /* ================= remote: standby / next ================= */
 $('standbyBtn').addEventListener('click', async () => {
@@ -5957,7 +5928,7 @@ const swVer = () => (software && software.version) || (settings && settings.vers
 const SET_STATIC = {
   sound:'How loud it goes, the first click, and what the tone knob does',
   keys:'What each key plays, and what the source key steps through',
-  phones:'AirPlay, Bluetooth and Spotify from a phone, shortcuts, and what phones call the radio',
+  phones:'AirPlay, Bluetooth and Spotify from a phone, and what phones call the radio',
   accounts:'Spotify and YouTube Music — the accounts the keys play from',
   rooms:'This room’s name, and playing in step with the other Haslers',
   lamp:'How bright, when it dims, and what each colour means',
@@ -6493,79 +6464,6 @@ function loadSound(){
 }
 function leaveSound(){ fxFlushAll(); }
 
-/* ---- Phones → Shortcuts for your phone (web/phone_api.py; GET /api/phone-shortcuts) ----
-   iPhone: signed shortcuts the makers host (one "Get Contents of URL" each), then where to put them.
-   Android: the radio's own /do/<action> links, put on the home screen from Chrome. No app either way. */
-const SHORTCUTS_SITE = 'https://delgado-murphy.github.io/shortcuts/';
-let phoneSc = null;           // {actions:[{id,name,label,path,body,file,link}], step} once loaded
-function phoneKind(){
-  const ua = navigator.userAgent || '';
-  if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
-  if (/Android/.test(ua)) return 'android';
-  return 'desktop';
-}
-function loadPhoneShortcuts(){
-  if (phoneSc) return Promise.resolve(phoneSc);
-  return api('GET', '/api/phone-shortcuts').then(r => { if (r.ok && r.json) phoneSc = r.json; return phoneSc; }).catch(() => null);
-}
-const scFileUrl = a => SHORTCUTS_SITE + encodeURIComponent(a.name.replace(/\//g, '-')) + '.shortcut';
-function scRow(a, kind){
-  const add = kind === 'ios'
-    ? h('a', {class:'btn small inline', href: scFileUrl(a), 'aria-label': 'Add ' + a.name}, 'Add')
-    : h('a', {class:'btn small inline', href: '/do/' + a.id, 'aria-label': 'Open ' + a.name}, 'Open');
-  return h('div', {class:'li sc-row'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, a.name)), add);
-}
-function scKeysRow(acts, kind){
-  // Keys 1–6 in one row of small buttons: six full rows would bury the rest.
-  return h('div', {class:'li col sc-keys', style:'gap:10px'},
-    h('span', {class:'li-title'}, kind === 'ios' ? 'Hasler key 1 … 6' : 'Key 1 … 6'),
-    h('div', {class:'sc-grid'}, acts.map(a => h('a', {class:'btn small', href: kind === 'ios' ? scFileUrl(a) : '/do/' + a.id,
-      'aria-label': (kind === 'ios' ? 'Add ' : 'Open ') + a.name}, a.id.split('/')[1]))));
-}
-function scList(kind){
-  const acts = phoneSc.actions, keys = acts.filter(a => a.id.startsWith('key/')), rest = acts.filter(a => !a.id.startsWith('key/'));
-  const first = rest.filter(a => a.id === 'louder' || a.id === 'quieter'), last = rest.filter(a => a.id !== 'louder' && a.id !== 'quieter');
-  return h('div', {class:'list', id: kind === 'ios' ? 'scIos' : 'scAndroid'},
-    first.map(a => scRow(a, kind)), scKeysRow(keys, kind), last.map(a => scRow(a, kind)));
-}
-const scHow = (id, summary, ...kids) => h('details', {class:'how', id}, h('summary', null, summary), ...kids);
-function scIosPart(){
-  const host = location.hostname;
-  return [
-    h('p', {class:'hint sc-lead'}, 'Tap ', h('b', null, 'Add'), ', then ', h('b', null, 'Add Shortcut'), '. The first time, Shortcuts asks to connect to hasler.local: tap ', h('b', null, 'Allow'), '.'),
-    scList('ios'),
-    scHow('scIosWhere', 'Lock Screen, Control Center, Action button, Back Tap, Siri',
-      h('ol', {class:'steps'},
-        h('li', null, h('b', null, 'Siri: '), 'say the name, “Hasler louder”.'),
-        h('li', null, h('b', null, 'Back Tap: '), 'Settings → Accessibility → Touch → Back Tap. Double Tap: Hasler louder. Triple Tap: Hasler quieter. Then tap the back of the phone.'),
-        h('li', null, h('b', null, 'Action button '), '(iPhone 15 Pro and later): Settings → Action Button → swipe to Shortcut → choose one.'),
-        h('li', null, h('b', null, 'Control Center: '), 'swipe down from the top right, touch and hold → Add a Control → Shortcut → choose one.'),
-        h('li', null, h('b', null, 'Lock Screen: '), 'touch and hold the Lock Screen → Customize → Lock Screen → tap a button at the bottom → Shortcut → choose one.'))),
-    host !== 'hasler.local' && !/^[\d.]+$|:/.test(host) ? scHow('scIosOther', 'More than one Hasler?',
-      h('p', {class:'hint'}, 'The shortcuts call hasler.local. For this radio, open one in Shortcuts, tap the address and change hasler.local to ', h('b', null, host), '.')) : null];
-}
-function scAndroidPart(){
-  return [
-    h('p', {class:'hint sc-lead'}, 'Each one is a link on the radio. Open it and it happens; put it on your home screen for one tap.'),
-    scList('android'),
-    scHow('scAndroidHow', 'Put one on your home screen',
-      h('ol', {class:'steps'},
-        h('li', null, 'Tap ', h('b', null, 'Open'), ' beside the one you want (it happens once, the radio answers).'),
-        h('li', null, 'In Chrome, tap ', h('b', null, '⋮'), ' → ', h('b', null, 'Add to Home screen'), ' → ', h('b', null, 'Add'), '.'),
-        h('li', null, 'Tap the new icon whenever you like.'))),
-    h('p', {class:'hint', id:'scAndroidLimits'}, 'A Quick Settings tile or the volume buttons would need an app, and these use none. While your phone plays to the radio over Bluetooth or Spotify, its volume buttons already turn the radio up and down.')];
-}
-function shortcutsGroup(){
-  const kind = phoneKind();
-  if (!phoneSc) return setGroup('shortcuts', 'Shortcuts for your phone', skel(2));
-  const wifi = h('p', {class:'hint', id:'scWifi'}, 'They work on the home Wi-Fi, where the radio is.');
-  let body;
-  if (kind === 'ios') body = [...scIosPart(), wifi];
-  else if (kind === 'android') body = [...scAndroidPart(), wifi];
-  else body = [h('p', {class:'hint sc-lead', id:'scDesktop'}, 'One tap or a word to Siri turns the radio up or down, plays a key or puts it to sleep. Open this page on your phone to add them.'),
-    scHow('scDeskIos', 'iPhone', ...scIosPart()), scHow('scDeskAndroid', 'Android', ...scAndroidPart()), wifi];
-  return setGroup('shortcuts', 'Shortcuts for your phone', h('div', {class:'sc-card', 'data-kind': kind}, body));
-}
 /* ---- 3 · Phones: playing from one, your phones, what happens when it stops, what phones call the radio ---- */
 function renderPhones(panel){
   if (!castDoc && !(srcDoc && (srcDoc.err || srcDoc.missing))){ panel.append(setGroup('play', 'Play from a phone', skel(3))); return; }
@@ -6578,7 +6476,6 @@ function renderPhones(panel){
   // Your phones: the Bluetooth block (what plays, the paired phones, pairing, reconnecting), on a radio that has it.
   panel.append(setGroup('bt', 'Your phones', h('div', {class:'list', id:'btBox'})));
   fillCast();
-  panel.append(shortcutsGroup());
   // Set once and left: folded under More options (open for a name waiting for Save, or arrived at by address).
   panel.append(moreSec('phones', 'More options', [
     srcDoc && !srcDoc.missing && !srcDoc.err ? setGroup('back', 'When a phone stops', h('div', {class:'list'}, h('div', {class:'li'},
@@ -6592,7 +6489,7 @@ function renderPhones(panel){
 }
 function loadPhones(){
   const again = () => { if (onPage('phones')) rerender(); };
-  loadSettings().then(again); loadSources().then(again); loadPhoneShortcuts().then(again);
+  loadSettings().then(again); loadSources().then(again);
   castSchedule();
 }
 // One name for every way a phone plays to the radio; the per-service names under "A different name for one of them".

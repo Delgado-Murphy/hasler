@@ -17,7 +17,6 @@ The repository, top level:
 | `scripts/` | Root helpers the service calls through sudoers (`hasler-*`), box setup (`bootstrap.sh`, `install.sh`, `hasler-install`), `panel-probe.py`. |
 | `scripts/release/` | Building and signing releases ([release.md](release.md)). |
 | `scripts/ci/`, `scripts/stations/` | The weekly station check and the dependency bump; building the station collection. |
-| `tools/shortcuts/` | The iPhone shortcuts the org site hosts: `build.sh` makes and signs them on a Mac ([the phone shortcuts API](architecture.md#the-phone-shortcuts-api)). |
 | `tools/checkin/` | The Cloudflare Worker behind the daily check-in and **Send to the makers** ([README](../tools/checkin/README.md), [SUPPORT.md](../tools/checkin/SUPPORT.md)). |
 | `hardware/hat/` | The Hasler HAT in KiCad, the scripts that generate it (`gen/`), fabrication files, [ordering and bring-up](../hardware/hat/ORDERING.md). |
 | `docs/` | Owner guide (`using.md`, `lamp.md`, `remote-help.md`), maker and developer docs, HAT brief and design (`hat/`), the prototype board (`prototype/`). |
