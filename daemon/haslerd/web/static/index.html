@@ -1102,7 +1102,9 @@ pre.say{margin:0;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;f
 .req-msg{display:flex;flex-direction:column;gap:3px;padding:0 0 0 12px;border-left:2px solid var(--line);color:var(--cream);font-size:14.5px;line-height:21px;overflow-wrap:anywhere}
 .req-msg.mine{color:var(--text2)}
 .req-msg.theirs{border-left-color:var(--brass)}
-.req-msg.mark{color:var(--muted);font-size:13px;line-height:18px}
+.req-msg.event{border-left-color:transparent}
+.req-msg.event .req-who{gap:6px}
+.req-msg.event.st-done .req-who b{color:#8FCF9F;font-weight:700}
 .req-who{display:flex;align-items:center;gap:8px;color:var(--muted);font:12px/16px var(--sans)}
 .req-new{display:inline-block;padding:0 6px;border-radius:4px;background:rgba(255,178,56,.14);color:var(--amber);font:600 10.5px/16px var(--sans);letter-spacing:.06em;text-transform:uppercase}
 .req-wait{margin:0}
@@ -1116,7 +1118,7 @@ a.btn{text-decoration:none}
 .md ul,.md ol{margin:4px 0 0;padding-left:20px}
 .md ul{list-style:disc}.md ol{list-style:decimal}
 .md li + li{margin-top:2px}
-.md .md-h{margin-top:8px}.md .md-h:first-child{margin-top:0}
+.md .md-h{margin-top:10px}.md .md-h:first-child{margin-top:0}.md .md-h strong{font-size:1.08em}
 .md strong{color:var(--title);font-weight:600}
 .md code{padding:1px 5px;border-radius:5px;background:var(--well);font:12.5px/18px var(--mono)}
 .md a{color:var(--brass);text-underline-offset:3px;overflow-wrap:anywhere}
@@ -7933,6 +7935,9 @@ function renderRequests(panel){
         h('button', {type:'button', class:'btn small', disabled: reqUi.busy, onclick: reqRetry}, 'Send now'),
         h('button', {type:'button', class:'btn small', disabled: reqUi.busy, onclick: () => reqForget(p.id)}, 'Don’t send')))))));
   if (!reqs.length) return;
+  // A change of state ("Your request #2 is done.") is one quiet line, not a message.
+  const stateLine = x => h('li', {class:'req-msg event st-' + x.state},
+    h('span', {class:'req-who'}, x.state === 'done' ? h('b', {'aria-hidden':'true'}, '✓') : null, h('span', null, String(x.text || '').replace(/\.$/, '') + ' · ' + day(x.at))));
   const msg = (cls, who, at, text, isNew) => h('li', {class:'req-msg ' + cls},
     h('span', {class:'req-who'}, h('span', null, who + ' · ' + day(at)), isNew ? h('span', {class:'req-new'}, 'New') : null),
     cls === 'theirs' ? mdLite(text) : h('span', {class:'req-txt'}, text));
@@ -7942,7 +7947,7 @@ function renderRequests(panel){
     h('ol', {class:'req-thread', 'aria-label':'Messages'},
       msg('mine', 'You', r.at, r.title || 'A report, no words'),
       (r.replies || []).map(x => x.mine ? msg('mine', 'You', x.at, x.text)
-        : msg(x.state ? 'mark' : 'theirs', 'Delgado & Murphy', x.at, x.text, reqUi.fresh.has(r.number + ':' + x.at + ':' + x.text.length)))),
+        : x.state ? stateLine(x) : msg('theirs', 'Delgado & Murphy', x.at, x.text, reqUi.fresh.has(r.number + ':' + x.at + ':' + x.text.length)))),
     (r.replies || []).length || st === 'done' ? null : h('p', {class:'hint req-wait'}, 'No answer yet. When one comes, the gear shows a dot.'),
     canSend() ? reqBack(r) : null); };
   panel.append(setGroup('reqs', 'Your requests', h('div', {class:'list', id:'reqList'}, reqs.map(card)),
