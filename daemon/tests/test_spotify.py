@@ -1,6 +1,6 @@
 """SpotifySource against a stub go-librespot. Loopback only, no real network.
 
-The stub speaks just enough of go-librespot v0.10.3's API to check routes,
+The stub speaks just enough of go-librespot v0.10.5's API to check routes,
 bodies and ordering - including its habit of answering 204 for "no session",
 which must count as failure, not success.
 """

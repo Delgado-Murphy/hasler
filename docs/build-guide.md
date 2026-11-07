@@ -734,6 +734,103 @@ a ~4 s probe). A moOde update replaces those files. Covers and quick titles then
 go back to moOde's defaults until you run `sudo scripts/bootstrap.sh` again (safe
 to repeat). The originals are kept as `*.hasler-orig`.
 
+### Updating the player underneath
+
+Our release (haslerd, its Python wheels, go-librespot, deno) arrives over the
+air and is always built against the newest of each. The layer under it does
+not: **MPD, moOde and moOde's audio stack come from moOde's own archive**
+(dl.cloudsmith.io/public/moodeaudio), and the night security lane
+(`hasler-os-update`) deliberately never touches them. You update that layer by
+hand, on the bench radio first, one moOde release at a time.
+
+**Which way, and why.** MPD is updated by updating moOde, never on its own.
+moOde builds MPD with its own patches and options (`0.24.x-Nmoode1`), writes
+`mpd.conf` from its database and holds the package (`apt-mark showhold`). A
+self-built or Debian MPD would drop those patches, and the next moOde update
+would fight it. So: wait for moOde to package an MPD, then take that moOde
+release. A custom MPD build is only worth it for a fault that hurts us and
+moOde won't ship soon; it is then a bench experiment with the moOde package
+kept for the way back.
+
+As of 2026-11-07: the radio runs moOde 10.3.6 (r1036) with MPD 0.24.15. moOde
+10.3.7 (r1037, 2026-11-01) brings MPD **0.24.17**, which takes in 0.24.16's
+long hardening round (protocol, decoders, curl/HLS input, UPnP, httpd) and
+fixes from 0.24.17. Upstream is at 0.24.18 (2026-10-30: an ALSA mixer data race
+that could set the wrong volume, and more). moOde has not packaged that yet.
+MPD 0.25 is not released. Take 10.3.7 now, and 0.24.18 when moOde ships it.
+
+**Before (5 minutes, all reversible):**
+
+1. On the key page, check the radio says *idle* and no update is running
+   (`sudo /usr/local/sbin/hasler-update status`).
+2. Keep moOde's own backup: moOde → Configure → System → Backup (saves its
+   settings, stations and radio covers to a zip on your laptop).
+3. Write down what is installed now:
+   ```bash
+   mkdir -p ~/player-update && cd ~/player-update
+   dpkg-query -W -f='${Package}=${Version}\n' > before.list
+   apt-mark showhold > holds-before.list
+   mpd --version | head -1 > mpd-before.txt
+   ```
+4. Best of all, power off and image the SD card on your laptop (`dd`, or any
+   SD-card backup tool). It is the one way back that undoes everything at
+   once.
+
+**Update:** moOde → Configure → System → **Software update → Check**, then
+**Install**. Let it finish (it can take 10 minutes; the web page may stop
+answering meanwhile) and reboot when it asks. Do *not* use `apt upgrade` for
+this: the plain upgrade would also try to swap moOde's held builds (ALSA,
+chromium, CamillaDSP, shairport-sync) for Debian's or Raspberry Pi's.
+
+**After:**
+
+1. Put our two moOde lines back (see "After a moOde update"):
+   `sudo /opt/hasler/current/app/setup/scripts/bootstrap.sh` on a signed-release
+   radio (`sudo scripts/bootstrap.sh` from a checkout). Safe to repeat.
+2. Check: `mpd --version | head -1` shows the new MPD;
+   `systemctl is-active mpd haslerd go-librespot` all `active`;
+   `curl -s localhost:8080/api/health` is green; `apt-mark showhold` still
+   lists `mpd`, `moode-player`, `shairport-sync` and the ALSA packages
+   (compare with `holds-before.list`).
+3. Listen: a radio preset, a YouTube Music key, a Spotify key, the volume and
+   tone knobs, then AirPlay and Bluetooth from a phone. Check that moOde's
+   output device is still the amp (Configure → Audio). If that page shows the
+   wrong card, reload it before saving anything: mid-boot it can show a
+   different card name, and saving then breaks the output.
+4. AirPlay: moOde 10.3.7 offers shairport-sync 5.6.2 only as a "user
+   build/install". We stay on Debian's 4.3.7 (`config/moode/shairport-sync.conf`)
+   until it has been tried on the bench.
+
+**The way back:**
+
+- One package (say MPD misbehaves): moOde's archive keeps earlier builds.
+  `sudo apt-mark unhold mpd && sudo apt-get install --allow-downgrades
+  mpd=0.24.15-2moode1 && sudo apt-mark hold mpd`, then reboot. Take the exact
+  version from `before.list`.
+- The whole moOde release: put back each package from `before.list` whose
+  version changed (`diff before.list <(dpkg-query -W -f='${Package}=${Version}\n')`)
+  the same way, re-hold them (`xargs -a holds-before.list sudo apt-mark hold`),
+  restore moOde's backup zip, and reboot.
+- Anything stranger: write the SD image back.
+
+**Leftovers worth knowing.** A radio that started on the old rsync layout can
+still have `/usr/local/bin/go-librespot` and `/usr/local/bin/deno` from that
+time. Nothing uses them (haslerd's and go-librespot's units run the copies in
+`/opt/hasler/current/bin` first), so they are harmless. Remove them only after
+a good reboot if you want things tidy.
+
+**Over the air, later.** This could ride our OTA safely as a separate "player"
+lane, built from what `hasler-os-update` already does: a signed release names
+exact moOde package versions it was tested with (for example
+`requires.player: {moode-player: 10.3.7-1moode1, mpd: 0.24.17-2moode1}`); the
+radio installs exactly those versions from moOde's archive, at night in
+standby, with the same `dpkg-query` snapshot, rebuilt `.deb`s of the replaced
+versions and health check as the security lane, plus a short MPD playback
+probe; a failure puts the saved `.deb`s back and pauses the lane. It must
+re-run our `bootstrap.sh` moOde patch afterwards and needs a reboot, so it would
+be opt-in and bench-first. It is **not built yet**: until it is, use the
+procedure above.
+
 ### Boot time
 
 A radio should play soon after you switch it on. moOde's worker waits for the
