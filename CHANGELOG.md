@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.2 - 2026-11-07
 
 - **Shortcuts for your phone** (Settings → Phones): Louder, Quieter, keys
   1–6, Standby, Play/pause and Next song. iPhone: add them from our site, then
