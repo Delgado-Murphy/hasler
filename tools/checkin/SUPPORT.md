@@ -43,9 +43,11 @@ What the Worker does (`support.js`, read it - it is short):
   comment ("Sent again from the radio") to the issue it already made, and
   the radio shows the same number.
 - **Replies**: a comment with a line starting `/owner ` (anything after it,
-  to the end of the comment, line breaks kept, up to 2000 characters) is
-  queued for that issue's radio; the page shows a little Markdown (bold,
-  italic, `code`, lists, headings, https links). Editing that comment sends
+  to the end of the comment, line breaks and indentation kept, up to 2000
+  characters) is queued for that issue's radio; the page shows GitHub-style
+  Markdown, safely (bold, italic, strikethrough, `code` and fenced code,
+  quotes, nested and task lists, headings, rules, https and mailto links;
+  images as a link, tables and HTML as plain text). Editing that comment sends
   the new words in place of the old. Everything else on the issue - triage, notes between the
   two of you - stays private; the owner sees only `/owner` text. Closing
   with such a comment works too (GitHub sends the comment first).

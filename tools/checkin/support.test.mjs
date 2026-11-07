@@ -211,6 +211,10 @@ test("the issue's state reaches the radio: seen once, done (folding a reply not 
 test("a /owner reply keeps its line breaks (capped); editing it queues the new words under the same id", async () => {
   assert.equal(ownerReply("/owner Hello!! **how are you**\n\n\n### Hope all is good\r\n- one  \n- two"), "Hello!! **how are you**\n\n### Hope all is good\n- one\n- two");
   assert.equal(ownerReply("/owner " + "x".repeat(3000)).length, 2000);
+  // Indentation survives (nested lists, fenced code); trailing spaces go; 3+ newlines become one blank line.
+  assert.equal(ownerReply("/owner Try:   \n\n\n\n```\nsudo  systemctl restart haslerd\n    --verbose\n```\n- one\n  - one.a\n\t- tabbed\n\n\n"),
+    "Try:\n\n```\nsudo  systemctl restart haslerd\n    --verbose\n```\n- one\n  - one.a\n\t- tabbed");
+  assert.equal(ownerReply("/owner " + "x".repeat(1999) + "\n   y"), "x".repeat(1999));
   const e = env();
   await send(e, report());
   await hook(e, comment(12, "/owner First go"));

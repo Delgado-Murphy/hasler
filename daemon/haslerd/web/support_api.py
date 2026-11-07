@@ -384,7 +384,7 @@ class SupportApi:
                 continue
             threads.setdefault(n["issue"], []).append({
                 "at": str(n.get("replied_at") or n.get("at") or "")[:40],
-                "text": tidy_text(n["text"]),
+                "text": tidy_text(n["text"], keep_indent=True),
                 "state": n.get("state") if n.get("state") in STATES else None,
                 "seen": _epoch(n.get("at")) <= seen_at,
                 "_k": _epoch(n.get("at"))})       # in order by the radio's own clock, as the owner's words are
@@ -631,7 +631,7 @@ class SupportApi:
                 if not isinstance(r, dict) or r.get("id") is None:
                     continue
                 ids.append(r["id"])
-                text = tidy_text(r.get("text"))
+                text = tidy_text(r.get("text"), keep_indent=True)
                 issue = r.get("issue") if isinstance(r.get("issue"), int) else None
                 if text and r.get("edited") and str(r["id"]) in known:
                     edits[str(r["id"])] = text    # the maker edited their reply: the new words in its place

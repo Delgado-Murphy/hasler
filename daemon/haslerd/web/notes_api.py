@@ -36,14 +36,18 @@ NOTES_SHOWN = 20          # the page needs the newest few; the file keeps up to 
 TEXT_MAX = 2000          # a maker's note or reply; line breaks kept (the page shows a little Markdown)
 
 
-def tidy_text(text: Any, cap: int = TEXT_MAX) -> str:
-    """Spaces squeezed within each line, line breaks kept, at most one blank line in a row, capped."""
+def tidy_text(text: Any, cap: int = TEXT_MAX, keep_indent: bool = False) -> str:
+    """Spaces squeezed within each line, line breaks kept, at most one blank line in a row, capped.
+
+    ``keep_indent``: the makers' Markdown as written - each line only loses its trailing spaces, so
+    nested lists and code keep their indentation (and spaces inside a line stay)."""
     out: list[str] = []
     for line in str(text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
-        line = " ".join(line.split())
+        line = line.rstrip() if keep_indent else " ".join(line.split())
         if line or (out and out[-1]):
             out.append(line)
-    return "\n".join(out).strip()[:cap].rstrip()
+    joined = "\n".join(out)
+    return (joined.rstrip() if keep_indent else joined.strip())[:cap].rstrip()
 
 
 def _epoch(stamp: Any) -> float:
@@ -70,7 +74,7 @@ def read_notes(state_dir: Path | None) -> list[dict]:
         if not isinstance(doc, dict) or not doc.get("at") or not str(doc.get("text") or "").strip():
             continue
         out.append((_epoch(doc["at"]), i, {"at": str(doc["at"])[:40], "by": str(doc.get("by") or "")[:40],
-                                           "text": tidy_text(doc["text"])}))
+                                           "text": tidy_text(doc["text"], keep_indent=True)}))
     # newest first; two notes in the same second keep the file's order (the later line is newer)
     out.sort(key=lambda t: (t[0], t[1]), reverse=True)
     return [n for _, _, n in out]

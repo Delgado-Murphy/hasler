@@ -1118,10 +1118,19 @@ a.btn{text-decoration:none}
 .md ul,.md ol{margin:4px 0 0;padding-left:20px}
 .md ul{list-style:disc}.md ol{list-style:decimal}
 .md li + li{margin-top:2px}
-.md .md-h{margin-top:10px}.md .md-h:first-child{margin-top:0}.md .md-h strong{font-size:1.08em}
+.md .md-h{margin-top:12px}.md .md-h:first-child{margin-top:0}
 .md strong{color:var(--title);font-weight:600}
-.md code{padding:1px 5px;border-radius:5px;background:var(--well);font:12.5px/18px var(--mono)}
+.md .md-h strong{font-size:16px;line-height:22px;color:var(--title)}
+.md code{padding:1px 5px;border-radius:5px;background:rgba(201,161,90,.12);font:12.5px/18px var(--mono);box-decoration-break:clone;-webkit-box-decoration-break:clone}
 .md a{color:var(--brass);text-underline-offset:3px;overflow-wrap:anywhere}
+.md pre{margin:8px 0 0;padding:8px 10px;border-radius:8px;background:var(--well);overflow-x:auto;font:12.5px/18px var(--mono);white-space:pre}
+.md pre code{padding:0;background:none}
+.md blockquote{margin:8px 0 0;padding-left:10px;border-left:2px solid var(--line);color:var(--muted)}
+.md blockquote + p,.md pre + p,.md hr + p{margin-top:8px}
+.md hr{border:0;border-top:1px solid var(--line);margin:10px 0}
+.md li > ul,.md li > ol{margin-top:2px}
+.md .md-task{list-style:none;margin-left:-20px}.md .md-task input{margin:0 6px 0 0;vertical-align:-2px;accent-color:var(--brass)}
+.md del{color:var(--muted)}
 /* An empty list says so as plain words, never in a box that looks like a field to type in. */
 .list:has(> .li:only-child > .li-sub:only-child){border:0;background:none}
 .list > .li:only-child:has(> .li-sub:only-child){min-height:0;padding:4px 4px 0;border-top:0}
@@ -7507,55 +7516,83 @@ async function copyText(text, msg){
 }
 
 /* The makers' words (a /owner reply on GitHub, a hasler-note) as a little, safe Markdown: paragraphs and line
-   breaks, **bold**, *italic*, `code`, - and 1. lists, # headings as bold lines, links only to https:// and mailto:
-   (a new tab), everything else plain text. Built as DOM nodes with textContent, never innerHTML. */
-const MD_INLINE = /(`+)([^`]+?)\1|\*\*(?=\S)([^]+?)\*\*|\*(?=[^\s*])([^*]+?)\*|\[([^\[\]]*)\]\(([^()\s]*)\)|(https:\/\/[^\s<>()\[\]]+)/g;
+   breaks, **bold** / __bold__, *italic* / _italic_, ~~struck~~, `code` and ``` fenced code, > quotes, ---, - and 1.
+   lists (nested, a start number, - [x] tasks), # headings as bold lines, \-escapes, links only to https:// and
+   mailto: (<autolinks>, bare https:// URLs with (parens), [text](url "title"), an image as a link "Picture: alt"),
+   each in a new tab and saying so to a screen reader; everything else (tables, HTML) plain text.
+   Built as DOM nodes with textContent, never innerHTML. */
+const MD_INLINE = /\\([!-\/:-@\[-`{-~])|(`+)(.+?)\2(?!`)|\*\*(?=\S)([^]+?)\*\*|__(?=\S)([^]+?)__(?!\w)|~~(?=\S)([^]+?)~~|\*(?=[^\s*])([^*]+?)\*|(?<![\w_])_(?=[^\s_])([^_]+?)_(?![\w_])|!?\[([^\[\]]*)\]\(((?:[^()\s]|\([^()\s]*\))*)(?:\s+"[^"]*")?\)|<((?:https|mailto):[^\s<>]+)>|(https:\/\/(?:[^\s<>()\[\]]|\([^\s<>()\[\]]*\))+)/g;
 function mdHref(u){
   try { const x = new URL(u); return (x.protocol === 'https:' && /^https:\/\//i.test(u)) || (x.protocol === 'mailto:' && /^mailto:[^\s]+$/i.test(u)) ? x.href : null; }
   catch (_) { return null; }
 }
 function mdInline(s, depth, noLink){
-  const out = [];
+  const out = [], re = new RegExp(MD_INLINE.source, 'g'), text = t => document.createTextNode(t);
+  const deeper = t => depth < 3 ? mdInline(t, depth + 1, noLink) : [text(t)];
+  const link = (u, kids) => { const href = !noLink && mdHref(u); return href ? h('a', {href, target:'_blank', rel:'noopener noreferrer'}, kids, h('span', {class:'sr'}, ' (opens in a new tab)')) : null; };
   let at = 0, m;
-  const re = new RegExp(MD_INLINE.source, 'g');
   while ((m = re.exec(s))){
-    if (m.index > at) out.push(document.createTextNode(s.slice(at, m.index)));
+    if (m.index > at) out.push(text(s.slice(at, m.index)));
     at = re.lastIndex;
-    const deeper = t => depth < 3 ? mdInline(t, depth + 1, noLink) : [document.createTextNode(t)];
-    if (m[2] != null) out.push(h('code', null, m[2]));
-    else if (m[3] != null) out.push(h('strong', null, deeper(m[3])));
-    else if (m[4] != null) out.push(h('em', null, deeper(m[4])));
-    else if (m[5] != null){
-      const href = !noLink && mdHref(m[6]);
-      out.push(href ? h('a', {href, target:'_blank', rel:'noopener noreferrer'}, depth < 3 ? mdInline(m[5] || m[6], depth + 1, true) : m[5] || m[6])
-        : document.createTextNode(m[0]));
-    } else {
-      const url = m[7].replace(/[.,;:!?'"]+$/, ''), href = !noLink && mdHref(url);
+    if (m[1] != null) out.push(text(m[1]));                                    // \* -> *
+    else if (m[3] != null) out.push(h('code', null, m[3].replace(/^ (.*) $/, '$1')));
+    else if (m[4] != null || m[5] != null) out.push(h('strong', null, deeper(m[4] ?? m[5])));
+    else if (m[6] != null) out.push(h('del', null, deeper(m[6])));
+    else if (m[7] != null || m[8] != null) out.push(h('em', null, deeper(m[7] ?? m[8])));
+    else if (m[10] != null){                                                    // [text](url), ![alt](url) as a link
+      const img = m[0][0] === '!', label = img ? 'Picture' + (m[9] ? ': ' + m[9] : '') : m[9] || m[10];
+      out.push(link(m[10], img || depth >= 3 ? label : mdInline(label, depth + 1, true)) || text(m[0]));
+    } else if (m[11] != null) out.push(link(m[11], m[11].replace(/^mailto:/, '')) || text(m[0]));
+    else {
+      let url = m[12].replace(/[.,;:!?'"*_~]+$/, '');
       re.lastIndex = at = m.index + url.length;
-      out.push(href ? h('a', {href, target:'_blank', rel:'noopener noreferrer'}, url) : document.createTextNode(url));
+      out.push(link(url, url) || text(url));
     }
   }
-  if (at < s.length) out.push(document.createTextNode(s.slice(at)));
+  if (at < s.length) out.push(text(s.slice(at)));
   return out;
 }
-function mdLite(text){
-  const box = h('div', {class:'md'}), lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
-  let para = null, list = null;
-  const end = () => { para = null; list = null; };
+function mdLite(text, depth = 0){
+  const box = h(depth ? 'blockquote' : 'div', depth ? null : {class:'md'});
+  const lines = String(text || '').replace(/\r\n?/g, '\n').replace(/\t/g, '    ').split('\n');
+  let para = null, lists = [], quote = null, fence = null;
+  const end = () => { para = null; lists = []; };
   for (const raw of lines){
-    const line = raw.trim();
-    if (!line){ end(); continue; }
-    const hd = /^#{1,6}\s+(.*)$/.exec(line), ul = /^[-*+]\s+(.*)$/.exec(line), ol = /^\d{1,3}[.)]\s+(.*)$/.exec(line);
-    if (hd){ end(); box.append(h('p', {class:'md-h'}, h('strong', null, mdInline(hd[1].replace(/\s#+$/, ''), 0)))); continue; }
-    if (ul || ol){
-      const tag = ul ? 'ul' : 'ol';
-      if (!list || list.tagName.toLowerCase() !== tag){ para = null; list = h(tag); box.append(list); }
-      list.append(h('li', null, mdInline((ul || ol)[1], 0))); continue;
+    if (fence){                                                                 // ``` ... ``` verbatim
+      if (raw.trim().startsWith(fence.mark) && !raw.trim().slice(fence.mark.length).trim()) fence = null;
+      else fence.code.append((fence.code.firstChild ? '\n' : '') + raw.replace(new RegExp('^ {0,' + fence.ind + '}'), ''));
+      continue;
     }
-    list = null;
+    const line = raw.trim(), ind = raw.length - raw.trimStart().length;
+    if (quote && !/^>/.test(line)){ box.append(depth < 2 ? mdLite(quote.join('\n'), depth + 1) : h('p', null, quote.join(' '))); quote = null; }
+    if (!line){ end(); continue; }
+    const fm = /^(`{3,}|~{3,})/.exec(line);
+    if (fm){ end(); fence = {mark: fm[1], ind, code: h('code')}; box.append(h('pre', null, fence.code)); continue; }
+    if (line[0] === '>'){ end(); (quote = quote || []).push(line.replace(/^> ?/, '')); continue; }
+    if (/^([-*_])( *\1){2,}$/.test(line)){ end(); box.append(h('hr')); continue; }
+    const hd = /^#{1,6}\s+(.*)$/.exec(line), li = /^(?:([-*+])|(\d{1,9})[.)])\s+(.*)$/.exec(line);
+    if (hd){ end(); box.append(h('p', {class:'md-h'}, h('strong', null, mdInline(hd[1].replace(/\s#+$/, ''), 0)))); continue; }
+    if (li){
+      const tag = li[1] ? 'ul' : 'ol';
+      while (lists.length && ind < lists[lists.length - 1].ind) lists.pop();     // back out of a nested list
+      let top = lists[lists.length - 1];
+      if (top && ind >= top.ind + 2 && top.el.lastChild && lists.length < 3){    // a nested list, in the item above
+        top = {ind, el: h(tag, {start: li[2] && +li[2] !== 1 ? +li[2] : null})}; lists[lists.length - 1].el.lastChild.append(top.el); lists.push(top);
+      } else if (!top || top.el.tagName.toLowerCase() !== tag){
+        top = {ind, el: h(tag, {start: li[2] && +li[2] !== 1 ? +li[2] : null})};
+        if (lists.length) lists[lists.length - 1] = top; else { lists = [top]; }
+        para = null; (lists.length > 1 ? lists[lists.length - 2].el.lastChild : box).append(top.el);   // - after 1. at the same level
+      }
+      const task = /^\[([ xX])\]\s+(.*)$/.exec(li[3]);
+      top.el.append(h('li', task ? {class:'md-task'} : null, task ? [h('input', {type:'checkbox', disabled:true, checked: task[1] !== ' ', 'aria-label': task[1] !== ' ' ? 'Done' : 'To do'}), ' '] : null, mdInline(task ? task[2] : li[3], 0)));
+      continue;
+    }
+    if (lists.length && ind >= 2){ const lastLi = lists[lists.length - 1].el.lastChild; lastLi.append(h('br'), ...mdInline(line, 0)); continue; }
+    lists = [];
     if (para) para.append(h('br'), ...mdInline(line, 0));
     else { para = h('p', null, mdInline(line, 0)); box.append(para); }
   }
+  if (quote) box.append(depth < 2 ? mdLite(quote.join('\n'), depth + 1) : h('p', null, quote.join(' ')));
   return box;
 }
 

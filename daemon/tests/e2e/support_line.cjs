@@ -224,6 +224,11 @@ async function wire(page, sup, opts = {}){
         xss: '<script>alert(1)</script> <img src=x onerror=alert(1)> [x](javascript:alert(1)) [y](JAVASCRIPT:alert(1)) [z](data:text/html,hi)',
         nest: '[a [b]](https://evil.example) [**bold link**](https://ok.example/a?b=1&c=2) https://bare.example/x. mailto [m](mailto:hola@example.org)',
         attr: '[q](https://ok.example/"onmouseover="alert(1))',
+        // a real /owner reply in GitHub's Markdown (indentation kept by the Worker and the radio)
+        rich: '> On Nov 3 you wrote:\n> The radio stops after an hour\n\n## What we found\n\nThanks! Fixed in __1.7.4__, _not_ ~~1.7.3~~. Try:\n\n' +
+          '```\nsudo systemctl restart haslerd\n  --verbose **not bold**\n```\n\n- [x] update radio\n- [ ] check wifi\n  - 2.4 GHz only\n    3. deep\n- done\n\n' +
+          '3. third\n4. fourth\n\n---\n\nSee https://en.wikipedia.org/wiki/Radio_(disambiguation). or <https://ok.example/x> or [docs](https://ok.example/d "Docs").\n' +
+          '![shot](https://ok.example/s.png) \\*not italic\\* snake_case_name `a    b` | a | b |',
       };
       const md = makeSupport();
       md.sent(30, 'Markdown');
@@ -233,7 +238,8 @@ async function wire(page, sup, opts = {}){
       await wire(page, md);
       await page.goto(radio.base + '/#settings/radio/requests');
       await until(() => page.isVisible('#req-30 .req-msg.theirs'), 8000, 'the replies');
-      const got = await page.$$eval('#req-30 .req-msg.theirs .md', els => els.map(el => ({html: el.innerHTML, text: el.textContent,
+      const got = await page.$$eval('#req-30 .req-msg.theirs .md', els => els.map(el => ({html: el.innerHTML, text: (c => { c.querySelectorAll('.sr').forEach(x => x.remove()); return c.textContent; })(el.cloneNode(true)),
+        sr: [...el.querySelectorAll('a')].every(a => a.lastChild.className === 'sr' && a.lastChild.textContent === ' (opens in a new tab)'),
         links: [...el.querySelectorAll('a')].map(a => [a.getAttribute('href'), a.target, a.rel])})));
       const out = Object.fromEntries(Object.keys(CASES).map((k, i) => [k, got[i]]));
       assert(!alerted && !(await page.$('#req-30 script, #req-30 img')), 'nothing ran');
@@ -245,8 +251,25 @@ async function wire(page, sup, opts = {}){
       assert(JSON.stringify(out.nest.links) === JSON.stringify([['https://evil.example/', '_blank', 'noopener noreferrer'], ['https://ok.example/a?b=1&c=2', '_blank', 'noopener noreferrer'],
         ['https://bare.example/x', '_blank', 'noopener noreferrer'], ['mailto:hola@example.org', '_blank', 'noopener noreferrer']]), 'links: ' + JSON.stringify(out.nest.links) + ' ' + out.nest.html);
       // nested brackets: no disguised link; the address inside shows as itself
-      assert(/\[a \[b\]\]\(https:\/\/evil\.example\)/.test(out.nest.text) && /<a [^>]*>https:\/\/evil\.example<\/a>/.test(out.nest.html), 'nested: ' + out.nest.html);
+      assert(/\[a \[b\]\]\(https:\/\/evil\.example\)/.test(out.nest.text) && /<a [^>]*>https:\/\/evil\.example<span class="sr"> \(opens in a new tab\)<\/span><\/a>/.test(out.nest.html), 'nested: ' + out.nest.html);
+      assert(Object.values(out).every(o => o.sr), 'every link says it opens a new tab, to a screen reader');
       assert(out.attr.links.every(l => !/"/.test(l[0]) || /%22/.test(l[0])) && !/<a [^>]*\sonmouseover=/.test(out.attr.html), 'no attribute breakout: ' + out.attr.html);
+      // the rich reply: quote, heading, __bold__ _em_ ~~del~~, a fence verbatim, tasks, nested lists, a start number, hr, links
+      const r = out.rich.html;
+      const has = (re, what) => assert(re.test(r), what + ': ' + r);
+      has(/^<blockquote><p>On Nov 3 you wrote:<br>The radio stops after an hour<\/p><\/blockquote><p class="md-h"><strong>What we found<\/strong><\/p>/, 'quote, then heading');
+      has(/<strong>1\.7\.4<\/strong>, <em>not<\/em> <del>1\.7\.3<\/del>/, 'bold, em, del');
+      has(/<pre><code>sudo systemctl restart haslerd\n  --verbose \*\*not bold\*\*<\/code><\/pre>/, 'fence verbatim, indent kept');
+      has(/<li class="md-task"><input type="checkbox" disabled="" aria-label="Done"> update radio<\/li>/, 'done task');
+      has(/<li class="md-task"><input type="checkbox" disabled="" aria-label="To do"> check wifi<ul><li>2\.4 GHz only<ol start="3"><li>deep<\/li><\/ol><\/li><\/ul><\/li><li>done<\/li><\/ul>/, 'nested lists');
+      has(/<ol start="3"><li>third<\/li><li>fourth<\/li><\/ol><hr>/, 'start number, hr');
+      const ticks = await page.$$eval('#req-30 .md-task input', els => els.map(e => e.checked));
+      assert(JSON.stringify(ticks) === '[true,false]', 'ticked as written: ' + ticks);
+      assert(JSON.stringify(out.rich.links.map(l => l[0])) === JSON.stringify(['https://en.wikipedia.org/wiki/Radio_(disambiguation)', 'https://ok.example/x', 'https://ok.example/d', 'https://ok.example/s.png']),
+        'links: ' + JSON.stringify(out.rich.links));
+      has(/>Picture: shot<span class="sr">/, 'an image is a link, never loaded');
+      has(/<\/a>\. or /, 'the full stop after a bare URL stays outside it');
+      assert(/ \*not italic\* snake_case_name a {4}b \| a \| b \|$/.test(out.rich.text) && /<code>a {4}b<\/code>/.test(r), 'escapes, snake_case, code spaces, a table as text: ' + out.rich.text);
       await page.close();
     });
 

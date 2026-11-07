@@ -239,7 +239,10 @@ export async function signatureOk(secret, body, header) {
 export function ownerReply(commentBody) {
   const m = /^\/owner[ \t]+(\S[\s\S]*)$/m.exec(String(commentBody || ""));
   if (!m) return null;
-  const text = tidyLines(m[1]).slice(0, MAX_REPLY).trim();
+  // Markdown kept as written: indentation (nested lists, code) and spaces inside a line stay; only
+  // trailing spaces go and at most one blank line in a row (tidyLines would flatten the indents).
+  const text = String(m[1]).replace(/\r\n?/g, "\n").split("\n").map(l => l.trimEnd()).join("\n")
+    .replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "").slice(0, MAX_REPLY).trimEnd();
   return text || null;
 }
 

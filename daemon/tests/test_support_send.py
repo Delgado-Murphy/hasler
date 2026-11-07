@@ -426,3 +426,26 @@ def test_the_owner_writes_back_on_a_request(sendable):
     srv.down, srv.status = False, 429
     status, doc = api.route("POST", "/api/support/reply", {"number": 12, "note": "hi"})
     assert status == 429 and "tomorrow" in doc["error"]
+
+
+def test_tidy_text_keeps_the_makers_indentation():
+    md = "Try:   \r\n\n\n\n```\nsudo  systemctl restart haslerd\n    --verbose\n```\n- one\n  - one.a\n\n\n"
+    assert notes_api.tidy_text(md, keep_indent=True) == \
+        "Try:\n\n```\nsudo  systemctl restart haslerd\n    --verbose\n```\n- one\n  - one.a"
+    # the owner's own words (and anything else) still squeezed as before
+    assert notes_api.tidy_text("  a   b \n\n\n   c  ") == "a b\n\nc"
+    assert notes_api.tidy_text("x" * 1999 + "\n   y", cap=2000, keep_indent=True) == "x" * 1999
+
+
+def test_a_rich_reply_keeps_its_markdown(sendable):
+    app, api, srv, state = sendable
+    api.send({"note": "x"})                       # #12
+    md = "Fixed:\n\n- one\n  - one.a\n\n```\n  indented  code\n```"
+    srv.replies = [{"id": "c1", "at": "2026-11-08T09:00:00Z", "text": md + "   \n\n\n", "issue": 12}]
+    assert api.pull_replies()["added"] == 1
+    assert notes_api.read_notes(state)[0]["text"] == md
+    assert api.doc()["requests"][0]["replies"][0]["text"] == md
+    # an edit keeps it too
+    srv.replies = [{"id": "c1", "text": md + "\n    - deeper", "issue": 12, "edited": True}]
+    api.pull_replies()
+    assert notes_api.read_notes(state)[0]["text"] == md + "\n    - deeper"
