@@ -160,6 +160,20 @@ if [[ -d /etc/nginx/sites-enabled ]] && put "$REPO/config/captive/nginx-captive.
   fi
 fi
 
+# --- the key page on port 80 -----------------------------------------------------------
+# http://hasler.local/ is the key page and moOde's pages move to :8081: one
+# nginx site file of ours (scripts/hasler-web-front; moOde's files untouched).
+# haslerd keeps :8080 too and puts the site back whenever a moOde update drops
+# it (web/front.py), so this only makes the first boot right.
+if [[ -d /etc/nginx/sites-enabled && -f "$REPO/scripts/hasler-web-front" ]]; then
+  if (( DRY )); then
+    echo "   would put the key page on port 80 (scripts/hasler-web-front ensure)"
+  else
+    bash "$REPO/scripts/hasler-web-front" ensure >/dev/null \
+      || warn "the key page stays on :8080 for now (hasler-web-front ensure failed; haslerd tries again)"
+  fi
+fi
+
 # The setup hotspot itself (moOde's apd0) - a password if it has none (moOde's
 # import of Raspberry Pi Imager's Wi-Fi blanks it, and then it never starts),
 # its address if the profile lost it - is haslerd's job at every start

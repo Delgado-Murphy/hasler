@@ -1,0 +1,202 @@
+#!/bin/bash
+# hasler-web-front - the Hasler key page on the radio's main port.
+#
+# http://hasler.local/ opens the key page; moOde's own pages move to
+# http://hasler.local:8081/. haslerd keeps listening on :8080 itself, so old
+# bookmarks, Home Assistant (_hasler._tcp says 8080), multiroom peers and the
+# radio's own scripts are unchanged. docs/build-guide.md "The key page on port 80".
+#
+# How: moOde's nginx already owns port 80. One file of ours in its
+# sites-enabled (SITE below) adds two servers, and moOde's own files are never
+# edited:
+#   :80   every Host name but the loopback ones -> haslerd on 127.0.0.1:8080.
+#         nginx picks a server by name before it falls back to the
+#         default_server, so this wins over moOde's "server_name _" without
+#         touching it. localhost keeps moOde's site (its local display opens
+#         http://localhost/, its scripts call it), as do requests without a Host
+#         and the setup hotspot's addresses (hasler-captive.conf listens on those
+#         exact addresses, and nginx chooses by address first).
+#   :8081 moOde's site, through moOde's own moode-locations.conf.
+# 8081, not 8000: 8000 is MPD's HTTP stream in moOde's mpd.conf.
+#
+# Kept across moOde updates: moOde's package install and its HTTPS switch empty
+# sites-enabled/. haslerd (web/front.py) checks port 80 at start and every ten
+# minutes and runs `sudo hasler-web-front ensure` when it no longer answers -
+# until then the key page is still on :8080. The same check puts the captive
+# portal back (hasler-captive.conf, from the release in use) when it is missing
+# or out of date.
+#
+# Run as root by haslerd through sudo (config/sudoers/haslerd allows exactly
+# this file); it takes no paths or text from its caller.
+#
+#     hasler-web-front ensure   put the site in place (and the captive portal), nginx -t, reload
+#     hasler-web-front remove   take the site away again (box.yaml web.front: false)
+#     hasler-web-front status   is it in place? (no changes)
+#     hasler-web-front show     print the site file
+#
+# Prints one JSON line: {"ok": true|false, "front": in place?, "changed": bool, "error": "..."}.
+# HASLER_ROOT prefixes every path (tests); sudo resets the environment.
+set -u
+ROOT="${HASLER_ROOT:-}"
+SITES="$ROOT/etc/nginx/sites-enabled"
+SITE="$SITES/hasler-web.conf"
+CAPTIVE="$SITES/hasler-captive.conf"
+CAPTIVE_SRC="$ROOT/opt/hasler/current/app/config/captive/nginx-captive.conf"
+NGINX="${HASLER_NGINX:-nginx}"
+SYSTEMCTL="${HASLER_SYSTEMCTL:-systemctl}"
+
+site() {
+cat <<'EOF'
+# Written by /usr/local/sbin/hasler-web-front (shipped with every Hasler
+# release; haslerd puts it back when it goes missing). Edits are replaced.
+#
+# http://hasler.local/ is the Hasler key page, handed to haslerd on :8080
+# (which still answers there itself); moOde's own pages are on :8081.
+# moOde's moode-http.conf is left as it is: requests to localhost or without a
+# Host still reach it on port 80.
+
+# moOde's site on its new port, with moOde's own locations.
+server {
+	listen 8081;
+	listen [::]:8081;
+	server_name _;
+	root /var/www;
+	index index.html index.htm;
+	include moode-locations.conf;
+}
+
+# The key page on the main port: any name but the loopback ones. A name beats
+# moOde's default_server; the captive checks' exact names (hasler-captive.conf)
+# beat this regex.
+server {
+	listen 80;
+	listen [::]:80;
+	server_name "~^(?!(?:localhost|127\.0\.0\.1|\[::1\])$).";
+
+	location / {
+		proxy_pass http://127.0.0.1:8080;
+		proxy_http_version 1.1;
+		proxy_set_header Connection "";
+		# As the browser sent it: haslerd compares Host with Origin.
+		proxy_set_header Host $http_host;
+		# Who asked, and on which of the radio's addresses (haslerd reads these
+		# only from a loopback connection, and nginx replaces any a client sent).
+		proxy_set_header X-Hasler-Peer $remote_addr;
+		proxy_set_header X-Hasler-Local $server_addr;
+		proxy_set_header X-Forwarded-For "";
+		proxy_redirect off;
+		proxy_buffering off;
+		proxy_request_buffering off;
+		proxy_connect_timeout 3s;
+		proxy_read_timeout 300s;
+		proxy_send_timeout 300s;
+		client_max_body_size 1m;
+		error_page 502 504 = @hasler_starting;
+	}
+
+	# haslerd restarting (an update, a crash: back in seconds).
+	location @hasler_starting {
+		default_type text/html;
+		add_header Cache-Control "no-store" always;
+		add_header Retry-After "5" always;
+		return 503 '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta http-equiv="refresh" content="5"><title>Hasler</title><body style="font:17px/1.5 system-ui,sans-serif;max-width:32em;margin:2em auto;padding:0 16px"><h1 style="font-size:22px">The radio is starting its page</h1><p>This page tries again by itself in a few seconds.</p><p>The player&rsquo;s own pages are on port 8081: <a id="m" href="/">open them</a>.</p><script>document.getElementById("m").href="http://"+location.hostname+":8081/"</script></body>';
+	}
+}
+EOF
+}
+
+say() {   # say OK FRONT CHANGED [ERROR]
+  local err="${4:-}"
+  err="${err//\\/\\\\}"; err="${err//\"/\\\"}"; err="$(printf '%s' "$err" | tr '\n\t' '  ' | cut -c1-300)"
+  printf '{"ok": %s, "front": %s, "changed": %s, "error": "%s"}\n' "$1" "$2" "$3" "$err"
+}
+
+in_place() { [[ -f "$SITE" ]] && cmp -s <(site) "$SITE"; }
+bool() { if "$@"; then echo true; else echo false; fi; }
+
+reload() {
+  # Not running (a bench without nginx started): the files are read at its start.
+  if "$SYSTEMCTL" is-active --quiet nginx 2>/dev/null; then
+    "$SYSTEMCTL" reload nginx >/dev/null 2>&1 || return 1
+  fi
+  return 0
+}
+
+# A dot name next to DEST: nginx's "include sites-enabled/*" skips it.
+dot() { printf '%s/.%s.%s' "$(dirname "$1")" "$(basename "$1")" "$2"; }
+
+# put DEST SRC_CMD... : write DEST from a command's output, atomically; prints
+# "same" or "new"/"replaced"; the old copy (if any) is kept as .DEST.was
+put() {
+  local dest="$1"; shift
+  local tmp; tmp="$(dot "$dest" tmp)"
+  "$@" > "$tmp" || { rm -f "$tmp"; return 1; }
+  if [[ -f "$dest" ]] && cmp -s "$tmp" "$dest"; then rm -f "$tmp"; echo same; return 0; fi
+  chmod 0644 "$tmp"
+  if [[ -f "$dest" ]]; then cp -p "$dest" "$(dot "$dest" was)"; echo replaced; else echo new; fi
+  mv -f "$tmp" "$dest"
+}
+
+# undo DEST HOW: put back what put() found
+undo() {
+  local was; was="$(dot "$1" was)"
+  if [[ "$2" == replaced && -f "$was" ]]; then mv -f "$was" "$1"; else rm -f "$1"; fi
+}
+
+cmd="${1:-status}"
+[[ $# -le 1 ]] || { echo "usage: hasler-web-front ensure|remove|status|show" >&2; exit 2; }
+case "$cmd" in
+  show)
+    site; exit 0 ;;
+  status)
+    say true "$(bool in_place)" false; exit 0 ;;
+  ensure|remove) ;;
+  *) echo "usage: hasler-web-front ensure|remove|status|show" >&2; exit 2 ;;
+esac
+
+if [[ ! -d "$SITES" ]]; then
+  say false false false "no nginx sites-enabled here (not a moOde radio?)"; exit 1
+fi
+
+if [[ "$cmd" == remove ]]; then
+  if [[ ! -e "$SITE" ]]; then say true false false; exit 0; fi
+  rm -f "$SITE" "$(dot "$SITE" was)"
+  reload || { say false false true "nginx did not reload"; exit 1; }
+  say true false true; exit 0
+fi
+
+# ensure. Each file on its own: one nginx rejects is taken back without
+# taking the other with it, and an nginx already broken by something else is
+# left alone (a reload would fail anyway, and this would look like the culprit).
+# try DEST SRC_CMD... -> prints same|changed, or the reason on failure (rc 1)
+try() {
+  local dest="$1"; shift
+  local how out
+  how="$(put "$dest" "$@")" || { echo "could not write $dest"; return 1; }
+  if [[ "$how" == same ]]; then rm -f "$(dot "$dest" was)"; echo same; return 0; fi
+  if ! out="$("$NGINX" -t 2>&1)"; then
+    undo "$dest" "$how"
+    if "$NGINX" -t >/dev/null 2>&1; then
+      echo "nginx rejected $(basename "$dest"): $(printf '%s' "$out" | grep -m1 -i emerg)"
+    else
+      echo "nginx's configuration is broken already: $(printf '%s' "$out" | grep -m1 -i emerg)"
+    fi
+    return 1
+  fi
+  rm -f "$(dot "$dest" was)"
+  echo changed
+}
+
+if ! site_how="$(try "$SITE" site)"; then
+  say false false false "$site_how"; exit 1
+fi
+captive_how=same
+if [[ -f "$CAPTIVE_SRC" ]]; then
+  # The captive portal's own trouble is not the key page's: no failure here.
+  captive_how="$(try "$CAPTIVE" cat "$CAPTIVE_SRC")" || captive_how=same
+fi
+if [[ "$site_how" == same && "$captive_how" == same ]]; then
+  say true true false; exit 0
+fi
+reload || { say false true true "nginx did not reload"; exit 1; }
+say true true true

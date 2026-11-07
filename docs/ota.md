@@ -159,7 +159,7 @@ optional haslerd override blocks are the same as in the old
   paths (`moodeutl`, `amixer`, `bluetoothctl`), `spotify:` (`enabled`,
   `base_url` `http://127.0.0.1:3678`, `timeout`, `status_timeout`) and `ytm:`
   (`enabled`, `port` 8099 - keep it fixed, `ytdlp`, `cookies`, `catalog`).
-- `web:` `enabled`, `host`, `port` (8080), `hostnames`, `allow_unconfirmed`
+- `web:` `enabled`, `host`, `port` (8080), `front` (true: also on port 80 through moOde's nginx, moOde on 8081; build-guide.md "The key page on port 80"), `hostnames`, `allow_unconfirmed`
   (bench only: no key press needed to confirm).
 - `connectivity:` `host`, `port`, `timeout_s`, `interval_s` (the probe behind
   the lamp's offline look).

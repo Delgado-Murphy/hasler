@@ -36,7 +36,7 @@ phone. It works like the old radio: press a key, and music plays.
    playlist. Press the playing station's key again, and the radio goes to
    sleep.
 4. **Open the key page.** On a phone or computer on the same Wi-Fi, open
-   **http://hasler.local:8080**. Tap the gear: **Make it yours** lists what
+   **http://hasler.local**. Tap the gear: **Make it yours** lists what
    is still yours to choose, in order.
 5. **Set how loud it may go.** Settings → **Sound** → Volume ceiling. It
    protects the old speaker. It is usually set already (the number is on the
@@ -276,10 +276,9 @@ How it works inside: [multiroom.md](multiroom.md).
 The key page controls the radio from a phone or computer on the **same
 Wi-Fi**:
 
-**http://hasler.local:8080**
+**http://hasler.local**
 
-If that doesn't open, try the radio's IP address from your router, with
-`:8080` at the end. A second Hasler is `hasler-2.local`; **Settings → Rooms**
+If that doesn't open, try the radio's IP address from your router. A second Hasler is `hasler-2.local`; **Settings → Rooms**
 shows each radio's address.
 
 ### The front screen
@@ -382,7 +381,7 @@ asks you to **press any key on the radio within 30 seconds**. That proves
 someone is standing next to it.
 
 One honest line: the player underneath (moOde) has its own pages on the
-radio's address without `:8080`, and they ask for no key press. The radio
+radio's address at `:8081`, and they ask for no key press. The radio
 trusts your home network, as your printer does. If you keep guests on a
 separate network, that is enough.
 
@@ -467,7 +466,7 @@ line, `hotspot_password = …`, gives the radio's setup network a new password,
 in case you lost the old one.
 
 A network cable from the router also works: the radio is then at
-**http://hasler.local:8080**.
+**http://hasler.local**.
 
 ## Moving the radio
 

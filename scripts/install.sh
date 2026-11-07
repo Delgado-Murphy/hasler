@@ -176,6 +176,8 @@ put_file "$REPO/scripts/hasler-dsp" /usr/local/bin/hasler-dsp 0755 || true
 put_file "$REPO/scripts/hasler-tone" /usr/local/bin/hasler-tone 0755 || true
 put_file "$REPO/scripts/hasler-wifi-join" /usr/local/sbin/hasler-wifi-join 0755 || true
 put_file "$REPO/scripts/hasler-timezone" /usr/local/sbin/hasler-timezone 0755 || true
+# The key page on port 80, moOde's pages on :8081 (haslerd keeps it so: web/front.py).
+put_file "$REPO/scripts/hasler-web-front" /usr/local/sbin/hasler-web-front 0755 || true
 
 # --- pilot lamp: firmware, kernel PWM, boot breath, halt ----------------------
 # docs/lamp.md "Boot and shutdown". The LED (common anode, R17 / G22 / B27,

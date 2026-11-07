@@ -83,7 +83,7 @@ knobs ──▶ ADS1115 ────────────────┤
                                haslerd ──▶ pilot lamp
                     ┌─────────────┼──────────────┬───────────────────┐
                     ▼             ▼              ▼                   ▼
-             MPD (moOde)    go-librespot     key page :8080    Home Assistant
+             MPD (moOde)    go-librespot     key page :80/:8080   Home Assistant
           radio, YouTube      Spotify                            (optional)
               Music
 

@@ -22,7 +22,7 @@ It takes about **20 minutes**, most of it waiting.
    Wi-Fi and the name `hasler`.
 2. Copy the **Hasler first-boot files** onto the card.
 3. Card into the radio, power on, wait about 20 minutes (it restarts 3-4 times).
-4. Open **http://hasler.local:8080**. Set the volume ceiling, then sign in to
+4. Open **http://hasler.local**. Set the volume ceiling, then sign in to
    the services you use.
 
 ## 1. Write moOde to the card
@@ -112,7 +112,7 @@ minutes.** It restarts several times by itself:
 The pilot lamp stays dark until stage 5; from then on it **breathes amber**
 while the radio starts, as it always will.
 
-> **Checkpoint:** after about 20 minutes, **http://hasler.local:8080** opens
+> **Checkpoint:** after about 20 minutes, **http://hasler.local** opens
 > the key page, and **Settings → This radio → Updates** shows a version. Press
 > key 1: a station plays.
 
