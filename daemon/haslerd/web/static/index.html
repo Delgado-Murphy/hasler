@@ -984,7 +984,16 @@ const IC = {
 // writes (GET/PUT/DELETE), never a POST unless asked, never a one-time confirm token.
 // An HTTP answer, good or bad, is never retried. opts: timeout, retry, onRetry(n), signal.
 let netFails = 0;          // changes (not reads) that never got an answer
+// A change refused only because of the address the page is open at (web/hosts.py):
+// offer to allow it, and once allowed send the same request again, so whoever
+// asked gets the real answer (a key's Save, a Try it, a setting).
 async function api(method, url, body, opts = {}){
+  const r = await apiOnce(method, url, body, opts);
+  if (r.status === 403 && r.json && r.json.allow_host && await allowHost(r.json.allow_host))
+    return apiOnce(method, url, body, opts);
+  return r;
+}
+async function apiOnce(method, url, body, opts = {}){
   // Every change goes as JSON: the radio refuses anything else (its CSRF guard).
   const send = method !== 'GET' && method !== 'HEAD';
   const once = !!(send && body && body.confirm);
@@ -1005,7 +1014,6 @@ async function api(method, url, body, opts = {}){
       const txt = await r.text();
       let j = null;
       try { j = JSON.parse(txt); } catch (_) {}
-      if (r.status === 403 && j && j.allow_host){ hostUi.refused = {method, url, body}; setTimeout(() => offerHost(j.allow_host), 0); }
       return {status:r.status, ok:r.ok, json:j};
     } catch (e) {
       if (n >= tries || (up && up.aborted)){ if (send && !(up && up.aborted)) netFails++; throw e; }
@@ -6424,11 +6432,17 @@ function joinHelp(wrap, slot){
 /* ---------- changes through another address (web/hosts.py) ---------- */
 // A change refused because the page is open at a name the radio doesn't know
 // (a home dashboard, a domain): offer to allow it, with a press on the radio.
-const hostUi = {asking:false, declined:false, refused:null};
-function offerHost(host){
+// Resolves true once allowed; every refused request meanwhile waits for the same answer.
+const hostUi = {declined:false, wait:null};
+function allowHost(host, again){
+  if (again) hostUi.declined = false;
+  if (hostUi.wait) return hostUi.wait;
+  if (hostUi.declined || $('dlg').open) return Promise.resolve(false);
+  hostUi.wait = new Promise(resolve => offerHost(host, resolve)).finally(() => { hostUi.wait = null; });
+  return hostUi.wait;
+}
+function offerHost(host, done){
   const dlg = $('dlg');
-  if (hostUi.asking || hostUi.declined || dlg.open) return;
-  hostUi.asking = true;
   dlg.textContent = '';
   let go = false;
   dlg.append(h('h2', {id:'dlgTitle'}, 'Allow changes from this address?'),
@@ -6439,40 +6453,22 @@ function offerHost(host){
       h('button', {type:'button', class:'btn small primary', id:'hostAllow', onclick: () => { go = true; dlg.close(); }}, 'Allow this address')));
   dlg.onclose = async () => {
     dlg.onclose = null;
-    if (!go){ hostUi.declined = true; hostUi.asking = false; return; }
+    if (!go){ hostUi.declined = true; done(false); return; }
     const token = await pressToConfirm('hostname', null, 'Allow ' + host, 'Then changes made here will reach the radio.');
+    let ok = false;
     if (token){
       try {
-        const r = await api('POST', '/api/hosts', {confirm: token});
-        if (r.ok){ hosts = null; loadHosts(); await redoRefused(host); }
+        const r = await apiOnce('POST', '/api/hosts', {confirm: token});
+        ok = r.ok;
+        if (ok) toast('Changes from ' + host + ' now reach the radio.');
         else toast((r.json && r.json.error) || 'The radio didn’t allow it.', true);
       } catch (_) { toast(NET_ERR, true); }
+      hosts = null; loadHosts();
     }
-    hostUi.asking = false;
+    done(ok);
   };
   dlg.onclick = null;
   dlg.showModal();
-}
-// Allowed: the change that was refused goes again, so nothing needs saving twice.
-const ADDR_ERR = /not this radio.s address/;
-async function redoRefused(host){
-  const was = hostUi.refused; hostUi.refused = null;
-  const done = 'Changes from ' + host + ' now reach the radio';
-  // Edit keys: its own Save, so the sheet shows what happened.
-  if (view === 'edit' && general.some(g => ADDR_ERR.test(g))){
-    general = general.filter(g => !ADDR_ERR.test(g)); saveMsg = {text:'', bad:false};
-    toast(done + '. Saving your change…');
-    if (isDirty()) await save(); else rerender();
-    return;
-  }
-  if (!was){ toast(done + '.'); return; }
-  try {
-    const r = await api(was.method, was.url, was.body);
-    toast(r.ok ? done + ', and your change went through.' : done + '. Try your change again.', !r.ok);
-  } catch (_) { toast(done + '. Try your change again.'); }
-  // The page reads the radio again, so stale "not saved" lines go.
-  if (view === 'settings'){ const pg = SET_PAGE[curPage()]; if (pg && pg.load) pg.load(); rerender(); }
-  else rerender();
 }
 // This radio → Other addresses: GET /api/hosts.
 let hosts = null;
@@ -6503,7 +6499,7 @@ function hostsGroup(){
     'Only the radio’s own addresses can change things. Open it through your own dashboard or address and the page offers to allow it.')));
   if (d.this_allowable) rows.push(h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, d.this), h('span', {class:'li-sub'}, 'This page’s address · can’t make changes yet')),
-    h('button', {type:'button', class:'li-act', onclick: () => { hostUi.declined = false; offerHost(d.this); }}, 'Allow')));
+    h('button', {type:'button', class:'li-act', onclick: () => allowHost(d.this, true)}, 'Allow')));
   return setGroup('hosts', 'Other addresses', h('div', {class:'list'}, ...rows));
 }
 
