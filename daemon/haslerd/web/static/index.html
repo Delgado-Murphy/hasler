@@ -75,6 +75,7 @@ button{cursor:pointer}
   background:radial-gradient(circle farthest-corner at 50% 35%,#FBF0D4 0%,#EFDAA8 62%,#D6BA7E 100%);transition:filter .6s ease}
 .glass.off{filter:brightness(.72) saturate(.55)}
 .glass.offline{filter:brightness(.6) saturate(.3)}
+.glass.offline .song-title,.glass.offline .song-sub{white-space:normal;overflow:visible}
 .dial-head{display:flex;justify-content:space-between;gap:10px;color:#6E5330;font:9.5px/13px var(--mono);letter-spacing:.18em;text-transform:uppercase}
 .dial-head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dial-head span:last-child{flex:none}
@@ -154,6 +155,7 @@ button{cursor:pointer}
 .tone-db{min-width:5.5em;text-align:right;color:var(--brass);font-variant-numeric:tabular-nums}
 .tone-off{color:var(--red-text)}
 .remote.offline .controls,.remote.offline .tone,.remote.offline .bank{opacity:.55;filter:saturate(.5);transition:opacity .3s}
+.remote.offline .bank{opacity:.35;filter:saturate(.3)}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
 .hint-line{margin:0;color:var(--muted);font:12px/16px var(--sans);text-align:center}
 
@@ -269,15 +271,16 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .actions{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;margin:auto -18px 0;padding:14px 18px calc(16px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(31,21,13,0),#1F150D 22%)}
 .btn{flex:1 1 0;min-height:48px;padding:12px 14px;border:1px solid var(--line2);border-radius:12px;background:none;color:var(--brass);font:700 15px/20px var(--sans);display:inline-flex;align-items:center;justify-content:center;gap:8px}
-.btn:hover:not(:disabled){border-color:#7A5A36}
+.btn:hover:not(:disabled):not([aria-disabled="true"]){border-color:#7A5A36}
 .btn.primary{border:0;background:var(--amber);color:#1A1208;font-weight:800;box-shadow:0 0 18px rgba(255,178,56,.3)}
-.btn.primary:hover:not(:disabled){filter:brightness(1.05)}
-.btn:disabled{opacity:.55;cursor:default}
+.btn.primary:hover:not(:disabled):not([aria-disabled="true"]){filter:brightness(1.05)}
+.btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:default}
 .btn.small{flex:none;min-height:44px;padding:10px 18px;border-radius:10px;font-size:14px}
 .btn.inline{flex:none}
 .save-msg{margin:-6px 0 0;font-size:13px;color:var(--muted);text-align:center}
 .save-msg.bad{color:#F07A62;font-weight:600}
 .save-msg:empty{display:none}
+.tp-row{display:flex;justify-content:center;margin:-4px 0 0}
 .keylist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .keylist button{display:flex;align-items:center;gap:14px;width:100%;min-height:56px;padding:8px 4px;border:0;border-bottom:1px solid var(--line);background:none;text-align:left}
 .keylist button:hover{background:rgba(201,161,90,.05)}
@@ -862,7 +865,7 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .savebar .btn.small{min-width:84px}
 @media (min-width:960px){ .savebar{margin:8px 0 0;border:1px solid var(--line2);border-radius:14px} }
 html.has-bar{scroll-padding-bottom:110px}
-html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
+html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
 .toast.act{pointer-events:auto;display:flex;align-items:center;gap:14px;text-align:left;padding:6px 6px 6px 16px;width:max-content;max-width:min(400px,calc(100vw - 32px))}
 .toast.act > span{flex:1;min-width:0}
 .toast-undo{flex:none;min-height:44px;min-width:64px;padding:0 14px;border:1px solid var(--line2);border-radius:10px;background:none;color:var(--amber);font:800 14px/18px var(--sans)}
@@ -961,6 +964,7 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
 
 <dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<p class="sr" id="pairSay" aria-live="polite"></p>
 
 <script>
 (() => {
@@ -1011,12 +1015,28 @@ const IC = {
 let netFails = 0;          // changes (not reads) that never got an answer
 // A change refused only because of the address the page is open at (web/hosts.py):
 // offer to allow it, and once allowed send the same request again, so whoever
-// asked gets the real answer (a key's Save, a Try it, a setting).
+// asked gets the real answer (a key's Save, a Try it, a setting). opts.onAllow():
+// the request now waits on the person (the offer, a key press), so a "Still trying…" timer can stop.
 async function api(method, url, body, opts = {}){
   const r = await apiOnce(method, url, body, opts);
-  if (r.status === 403 && r.json && r.json.allow_host && await allowHost(r.json.allow_host))
-    return apiOnce(method, url, body, opts);
+  if (hostOf(r)){
+    if (opts.onAllow) opts.onAllow();
+    if (await allowHost(r.json.allow_host)) return apiOnce(method, url, body, opts);
+  }
   return r;
+}
+// A refusal only for the page's address, in plain words, with the way to allow it.
+const hostOf = r => (r && r.status === 403 && r.json && r.json.allow_host) || null;
+const hostWords = host => 'This page is open at ' + host + ', which can’t make changes yet.';
+// "Allow this address": the offer again (even after Not now); once allowed, again() sends what was refused.
+// Focus then goes to the message the link was in (by id), or to `back`.
+function hostLink(host, msgId, again, back){
+  return h('button', {type:'button', class:'link', onclick: async () => {
+    const ok = await allowHost(host, true);
+    if (ok && again) await again();
+    const f = $(msgId) || (back && $(back));
+    if (f){ if (!f.hasAttribute('tabindex') && !/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(f.tagName)) f.tabIndex = -1; f.focus({preventScroll:true}); }
+  }}, 'Allow this address');
 }
 async function apiOnce(method, url, body, opts = {}){
   // Every change goes as JSON: the radio refuses anything else (its CSRF guard).
@@ -1419,15 +1439,18 @@ function holdName(k){
 function tap(id){
   flashUntil[id] = Date.now() + 260;
   const k = cfg && cfg.keys.find(x => x.id === id);
-  if (k && k.tap && k.tap.do === 'preset') optimistic = {key:id, until: Date.now() + 3500};
+  // The key of the station playing, again: the radio goes to standby (actions.py "again").
+  const off = !!(k && k.tap && k.tap.do === 'preset' && currentKey() === id && status && status.playing && status.playing.source === 'radio');
+  if (k && k.tap && k.tap.do === 'preset' && !off) optimistic = {key:id, until: Date.now() + 3500};
   paintBank(); renderDial();
   setTimeout(paintBank, 280);
-  press(id, 'tap');
+  press(id, 'tap', false, off ? 'Standby — tap again to play' : null);
 }
-async function press(id, event, quiet){
+async function press(id, event, quiet, okMsg){
   try {
     const r = await api('POST', '/api/press', {key:id, event});
     if (!r.ok && !quiet) toast((r.json && r.json.error) || 'The radio didn’t take that press.', true);
+    else if (r.ok && okMsg) toast(okMsg);
   } catch (_) { if (!quiet) toast(NET_ERR, true); }
   if (!quiet) pollSoon();
 }
@@ -1689,9 +1712,8 @@ function renderRemote(){
   paintBank(); renderDial(); syncKnob();
   const sb = !!(status && status.standby);
   $('remote').classList.toggle('offline', !online);   // last-known knob and keys, dimmed
+  // A toggle: always called Standby, pressed while the radio sleeps.
   $('standbyBtn').setAttribute('aria-pressed', String(sb));
-  $('standbyBtn').setAttribute('aria-label', sb ? 'Wake the radio' : 'Standby');
-  $('standbyLbl').textContent = sb ? 'Wake' : 'Standby';
   // A live radio station has no next song: grey Next out rather than let it do nothing.
   const pl = status && status.playing;
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
@@ -1804,11 +1826,14 @@ $('goSettings').addEventListener('click', () => go('settings'));
 function renderPanel(){
   const panel = $('panel');
   const v = view === 'remote' ? (wide.matches ? 'browse' : null) : view;
-  if (!v){ panel.textContent = ''; return; }
-  if (v === 'edit') renderEdit();
+  if (!v) panel.textContent = '';
+  else if (v === 'edit') renderEdit();
   else if (v === 'browse') renderBrowse();
   else if (v === 'settings') renderSettings();
+  paintActionsBar();
 }
+// Edit keys' sticky Test / Save bar: the toast sits above it, as above Settings' save bar.
+function paintActionsBar(){ document.documentElement.classList.toggle('has-actions', view === 'edit' && !!$('panel').querySelector('.actions')); }
 function screenTop(title, backTo, extra){
   const kids = [];
   if (backTo !== false) kids.push(h('button', {type:'button', class:'round', 'aria-label': backTo === 'settings' ? 'Back to Settings' : 'Back', onclick: () => go(backTo || '')}, IC.back()));
@@ -1847,13 +1872,15 @@ function renderEdit(){
   }
   panel.append(strip);
   const sheet = h('section', {class:'sheet', 'aria-label': ed.key ? 'Key settings' : 'Keys'}, h('div', {class:'grab', 'aria-hidden':'true'}));
-  if (general.length) sheet.append(h('div', {class:'alert', role:'alert'}, h('strong', null, 'The radio didn’t accept these settings:'), h('ul', null, general.map(g => h('li', null, g)))));
+  if (general.length && general[0].host) sheet.append(h('div', {class:'alert', role:'alert', id:'genAlert'}, hostWords(general[0].host), ' ', hostLink(general[0].host, 'genAlert', save, 'saveMsg')));
+  else if (general.length) sheet.append(h('div', {class:'alert', role:'alert'}, h('strong', null, 'The radio didn’t accept these settings:'), h('ul', null, general.map(g => h('li', null, g)))));
   const k = ed.key && draft.keys.find(x => x.id === ed.key);
   const cb = !k && ed.combo && comboById(ed.combo);
   if (cb){ sheet.setAttribute('aria-label', 'Key combination'); comboSheet(sheet, cb); }
   else if (!k) sheet.append(keyList());
   else keySheet(sheet, k);
   panel.append(sheet);
+  paintActionsBar();
 }
 // Another key keeps the tab that's open (or opens `slot`); the address follows: #edit/k3, #edit/k3/hold.
 function selectKey(id, slot){
@@ -1963,10 +1990,11 @@ function keySheet(sheet, k){
   else actionSection(sheet, k, 'tap');
   const p = !onHold && tapV === 'preset' ? presetIn(draft, k.tap.n) : null;
   const dirty = isDirty();
-  sheet.append(h('p', {class:'save-msg' + (saveMsg.bad ? ' bad' : ''), role:'status', 'aria-live':'polite'}, saveMsg.text));
+  const pill = testPill(k); if (pill) sheet.append(h('div', {class:'tp-row'}, pill));
+  sheet.append(saveMsgView());
   sheet.append(h('div', {class:'actions'},
-    onHold ? null : h('button', {type:'button', class:'btn', id:'testBtn', disabled: !p, onclick: () => testPreset(p)}, 'Test on the radio'),
-    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': keyLabel(k).replace(/^Key/, 'key'), disabled: saving || !dirty, onclick: save},
+    onHold ? null : h('button', {type:'button', class:'btn', id:'testBtn', disabled: !p, 'aria-disabled': testUi.busy ? 'true' : null, onclick: () => testPreset(p, k.id)}, testUi.busy ? 'Tuning in…' : 'Test on the radio'),
+    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': keyLabel(k).replace(/^Key/, 'key'), 'aria-disabled': saving || !dirty ? 'true' : null, onclick: save},
       saveLbl(dirty, keyLabel(k).replace(/^Key/, 'key')))));
 }
 function presetSection(sheet, k){
@@ -2085,7 +2113,7 @@ function spotifySection(body, k, p){
     oninput: e => {
       const pp = ownPreset(k); pp.uri = e.target.value; clearErr('p' + pp.n + '.uri');
       if (!(pp.name || '').trim() && pp.uri.trim()){ const m = /(playlist|album|track|artist|show|episode)/i.exec(pp.uri); pp.name = 'Spotify ' + (m ? m[1].toLowerCase() : 'link'); autoName[pp.n] = pp.name; }
-      const btn = $('saveBtn'); if (btn){ btn.disabled = !isDirty(); btn.textContent = saveLbl(isDirty(), keyLabel(k).replace(/^Key/, 'key')); }
+      paintSave();
     },
     onblur: () => { const i = presetIssues(presetIn(draft, k.tap.n)); if (i.uri && p.uri.trim()) hints['p' + k.tap.n + '.uri'] = i.uri; rerender(); }});
   body.append(h('label', {for:'spuri'}, 'Spotify link'), inp, h('p', {class:'hint', id:'sphint'}, 'A playlist, album or track. In Spotify: Share → Copy link.'));
@@ -2207,7 +2235,17 @@ function verbPicker(k, slot){
   const rank = v => { const i = HA_ORDER.indexOf(v); return i < 0 ? 99 : i; };
   const verbs = all.filter(x => !isHa(x.do)).concat(all.filter(x => isHa(x.do)).sort((a, b) => rank(a.do) - rank(b.do)));
   if (cur === 'custom') verbs.push({do:'custom', label: k[slot].label || 'Custom'});
-  const ul = h('div', {class:'picker', role:'radiogroup', 'aria-label': slot === 'tap' ? 'What a tap does' : slot === 'combo' ? 'What the combination does' : 'What holding does'});
+  const ul = h('div', {class:'picker', role:'radiogroup', 'aria-label': slot === 'tap' ? 'What a tap does' : slot === 'combo' ? 'What the combination does' : 'What holding does',
+    // Arrow keys move the choice (one stop in the Tab order); Enter or Space takes it, as a tap does.
+    onkeydown: e => {
+      const d = {ArrowDown:1, ArrowRight:1, ArrowUp:-1, ArrowLeft:-1}[e.key], all = [...ul.querySelectorAll('[role=radio]')];
+      const i = all.indexOf(document.activeElement); if (!d || i < 0) return;
+      e.preventDefault();
+      const nx = all[(i + d + all.length) % all.length];
+      for (const b of all){ b.setAttribute('aria-checked', String(b === nx)); b.tabIndex = b === nx ? 0 : -1; }
+      nx.focus();
+    }});
+  const tabStop = verbs.some(x => x.do === cur) ? cur : verbs.length && verbs[0].do;
   let haHead = false;
   for (const vb of verbs){
     const needsHa = isHa(vb.do) && !(haState && haState.connected), needsMr = vb.do === 'join_group' && !mrOn();
@@ -2215,7 +2253,7 @@ function verbPicker(k, slot){
     const label = vb.do === 'preset' ? 'Play music' : verbShort(vb.do);
     const base = vb.do === 'preset' ? 'A station, playlist or album' : VERB_DESC[vb.do] || (vb.label !== label ? vb.label : '');
     const desc = base + (needsHa ? (base ? ' · ' : '') + 'needs Home Assistant' : '') + (needsMr ? ' · switch on Play in several rooms (Settings → Rooms)' : '');
-    ul.append(h('button', {type:'button', role:'radio', 'aria-checked': String(cur === vb.do),
+    ul.append(h('button', {type:'button', role:'radio', 'aria-checked': String(cur === vb.do), tabindex: vb.do === tabStop ? '0' : '-1',
       onclick: () => {
         if (vb.do !== 'custom') setVerb(k, slot, vb.do);
         const simple = isHa(vb.do) && vb.do !== 'ha_light' && vb.do !== 'ha_service';
@@ -2334,7 +2372,8 @@ function haChanged(k, slot){
 function paintSave(){
   const b = $('saveBtn'); if (!b) return;
   const dirty = isDirty();
-  b.disabled = saving || !dirty;
+  // aria-disabled, not disabled: a focused Save keeps the focus while it saves and after.
+  if (saving || !dirty) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
   b.textContent = saveLbl(dirty, b.dataset.label || '');
 }
 // After a save that got no answer, the button offers to send the same again.
@@ -2474,6 +2513,7 @@ function tryRow(wrap, k, slot){
   wrap.append(h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', id:'trybtn-' + slot, disabled: !!(res && res.busy), onclick: () => tryAction(k, slot)},
     res && res.busy ? [h('span', {class:'spin', 'aria-hidden':'true'}), ' Trying…'] : 'Try it')));
   if (res && !res.busy) wrap.append(h('div', {class:'try-box ' + (res.ok ? 'ok' : 'bad'), id:'try-' + slot, role:'status'}, res.text,
+    res.host ? h('div', null, hostLink(res.host, 'try-' + slot, () => tryAction(k, slot), 'trybtn-' + slot)) : null,
     res.warnings && res.warnings.length ? h('ul', null, res.warnings.map(w => h('li', null, w))) : null));
 }
 async function tryAction(k, slot){
@@ -2482,6 +2522,7 @@ async function tryAction(k, slot){
   try {
     const r = await api('POST', '/api/ha/try', {action: normAct(k[slot])});
     if (r.ok && r.json && r.json.ok !== false) tryRes[key] = {ok:true, text:'Done — Home Assistant did it.', warnings: r.json.warnings || []};
+    else if (hostOf(r)) tryRes[key] = {ok:false, text: hostWords(hostOf(r)), host: hostOf(r)};
     else tryRes[key] = {ok:false, text: r.json && r.json.error ? capFirst(r.json.error) + '.' : 'Home Assistant didn’t do it (error ' + r.status + ').'};
   } catch (_) { tryRes[key] = {ok:false, text:NET_ERR}; }
   if (view === 'edit') rerender();
@@ -2653,16 +2694,79 @@ function serviceEditor(wrap, k, slot){
 }
 
 /* ---------- test / save ---------- */
-async function testPreset(p){
-  const btn = $('testBtn');
+// The Save line under a key or a combination: one element for the page's life, its text
+// changed in place, so a screen reader hears each new message (a fresh live region says nothing).
+let saveMsgEl = null, saveMsgSig = '';
+function saveMsgView(){
+  if (!saveMsgEl) saveMsgEl = h('p', {class:'save-msg', id:'saveMsg', role:'status', 'aria-live':'polite', tabindex:'-1'});
+  const sig = (saveMsg.text || '') + '|' + (saveMsg.host || '');
+  if (sig !== saveMsgSig){
+    saveMsgSig = sig; saveMsgEl.textContent = saveMsg.text || '';
+    if (saveMsg.host) saveMsgEl.append(' ', hostLink(saveMsg.host, 'saveMsg', () => saveMsg.retry && saveMsg.retry()));
+  }
+  saveMsgEl.classList.toggle('bad', !!saveMsg.bad);
+  return saveMsgEl;
+}
+// "Test on the radio": "Trying on the radio · 0:30 · Back" while it plays, Back putting on what
+// played before (the same station again, standby or quiet). After 30 s it just stays on.
+const TEST_S = 30;
+const testUi = {busy:false, key:null, end:0, back:null};
+function testPill(k){
+  if (testUi.key !== k.id || !(testUi.busy || testUi.end > Date.now())) return null;
+  return h('div', {class:'pv-pill', id:'tpPill', role:'group', 'aria-label':'Trying on the radio'},
+    h('span', {class:'pv-dot', 'aria-hidden':'true'}),
+    testUi.busy ? h('span', null, 'Tuning in…')
+      : h('span', null, h('span', {class:'pv-what'}, 'Trying on the radio · '), h('span', {class:'pv-short', 'aria-hidden':'true'}, 'Trying · '),
+          h('span', {id:'tpLeft'}, pvText({end: testUi.end}))),
+    !testUi.busy && testUi.back ? h('button', {type:'button', id:'tpBack', 'aria-label': testUi.back.label, onclick: testBack}, 'Back') : null);
+}
+// What to go back to after a Test: what the radio is doing now (st: a fresh /api/status).
+function testBackTo(st){
+  if (!st) return null;
+  if (st.standby) return {label:'Back to standby', go: () => api('POST', '/api/standby', {on:true}, {retry:1}), done:'Standby'};
+  const pl = st.playing;
+  if (pl && (pl.uri || pl.kind)) return {label:'Back to ' + (pl.name || 'what was playing'), go: () => api('POST', '/api/play', {preset: pl}, {timeout:30000}), done:'Back to ' + (pl.name || 'what was playing')};
+  if (!pl && !RENDERERS.includes(st.source) && !(st.source === 'spotify' && st.renderer)) return {label:'Back to quiet', go: () => api('POST', '/api/stop', {}), done:'Stopped'};
+  return null;      // a phone over Bluetooth or AirPlay: nothing the page can put back
+}
+async function testBack(){
+  const b = testUi.back; if (!b) return;
+  testUi.end = 0; testUi.back = null; saveMsg = {text:'', bad:false};
+  if (view === 'edit') rerender();
+  const t = $('testBtn'); if (t) t.focus({preventScroll:true});
+  try { const r = await b.go(); if (r.ok) toast(b.done); else toast(capFirst((r.json && r.json.error) || 'The radio didn’t go back (error ' + r.status + ')') + '.', true); }
+  catch (_) { toast(NET_ERR, true); }
+  pollSoon();
+}
+setInterval(() => {
+  if (!testUi.end) return;
+  if (testUi.end > Date.now()){ const el = $('tpLeft'); if (el) el.textContent = pvText({end: testUi.end}); return; }
+  testUi.end = 0; testUi.back = null;
+  const el = $('tpPill');
+  if (el){ const had = el.contains(document.activeElement); el.parentNode.remove(); if (had){ const t = $('testBtn'); if (t) t.focus({preventScroll:true}); } }
+}, 1000);
+async function testPreset(p, keyId){
+  if (testUi.busy) return;
   if (!(p.uri || '').trim() && !ytmRef(p).kind){ saveMsg = {text:'Choose something to play first.', bad:true}; rerender(); return; }
-  if (btn){ btn.disabled = true; btn.textContent = 'Tuning in…'; }
+  const again = testUi.end > Date.now(), was = testUi.back;     // a second Test still goes back to the first "before"
+  Object.assign(testUi, {busy:true, key: keyId || ed.key, end:0, back:null});
+  saveMsg = {text:'', bad:false}; rerender();
+  let back = was;
+  if (!again){
+    let st = null;
+    try { const g = await apiOnce('GET', '/api/status', undefined, {timeout:3000, retry:0}); if (g.ok) st = g.json; } catch (_) {}
+    back = testBackTo(st);
+  }
   try {
     const r = await api('POST', '/api/play', {preset:Object.assign({name:(p.name || '').trim() || 'Test', source:p.source, uri:(p.uri || '').trim(), shuffle: p.source !== 'radio' && !ytmEndless(p) && !!p.shuffle}, ytmRef(p))}, {timeout:30000});
-    if (r.json && r.json.ok){ saveMsg = {text:'Playing on the radio.', bad:false}; }
+    if (r.json && r.json.ok){ saveMsg = {text:'Playing on the radio.', bad:false}; testUi.end = Date.now() + TEST_S * 1000; testUi.back = back; }
+    else if (hostOf(r)) saveMsg = {text: hostWords(hostOf(r)), bad:true, host: hostOf(r), retry: () => testPreset(p, keyId)};
     else saveMsg = {text:(r.json && r.json.error) || 'Couldn’t play that (error ' + r.status + ').', bad:true};
   } catch (e) { saveMsg = {text: e.name === 'TimeoutError' ? 'The radio took too long to answer. Try again.' : NET_ERR, bad:true}; }
-  rerender(); pollSoon();
+  testUi.busy = false;
+  if (saveMsg.bad) toast(saveMsg.text, true);
+  if (view === 'edit') rerender();
+  pollSoon();
 }
 // What a config holds, as the editor would send it: to tell whether a save the
 // reply got lost for has landed.
@@ -2677,7 +2781,10 @@ async function save(){
   let focusAfter = null, r = null;
   const still = () => { if (saving){ saveMsg = {text:'Still trying…', bad:false}; if (view === 'edit') rerender(); } };
   const slow = setTimeout(still, 4000);
-  try { r = await api('PUT', '/api/config', body, {onRetry: still}); }
+  // The offer to allow this address is up: it waits on the person now, not on the network.
+  let asked = false;
+  const onAllow = () => { asked = true; clearTimeout(slow); if (saveMsg.text === 'Still trying…'){ saveMsg = {text:'Saving…', bad:false}; if (view === 'edit') rerender(); } };
+  try { r = await api('PUT', '/api/config', body, {onRetry: still, onAllow}); }
   catch (_) {
     // The answer may be what got lost: if the radio has these keys already, it saved.
     try {
@@ -2708,11 +2815,20 @@ async function save(){
     }
     const bad = draft.keys.filter(k => keyErrCount(k)).map(keyLabel).concat(badC.map(comboName));
     saveMsg = {text:'Not saved — ' + (bad.length ? 'check ' + bad.join(', ') : 'see the message above') + '.', bad:true};
+  } else if (hostOf(r)){
+    general = [{host: hostOf(r)}];
+    saveMsg = {text:'Not saved — this page’s address can’t make changes yet.', bad:true};
   } else {
     general = [(r.json && (r.json.error || r.json.message)) || 'Saving failed (error ' + r.status + ').'];
     saveMsg = {text:'Not saved — the radio said no.', bad:true};
   }
   saving = false; rerender();
+  if (saveMsg.bad){
+    const host = hostOf(r);
+    toast(saveMsg.text, host ? {bad:true, action:'Allow this address', run: async () => { if (await allowHost(host, true)) await save(); const m = $('saveMsg'); if (m) m.focus({preventScroll:true}); }} : true);
+    // Back from the offer to allow this address (Not now): to what it says, and its link.
+    if (asked && view === 'edit'){ const m = $('genAlert') || $('saveMsg'); if (m){ if (!m.hasAttribute('tabindex')) m.tabIndex = -1; m.focus({preventScroll:true}); } }
+  }
   const fa = focusAfter && $(focusAfter); if (fa){ fa.scrollIntoView({block:'center'}); fa.focus({preventScroll:true}); }
   const el = $('panel').querySelector('.err, .alert'); if (el && saveMsg.bad) el.scrollIntoView({block:'center', behavior: reduced.matches ? 'auto' : 'smooth'});
 }
@@ -2964,13 +3080,14 @@ function comboSheet(sheet, c){
   if (ed.pick !== 'combo') sheet.append(h('div', {class:'sub-lbl'}, h('span', null, 'Then it does')));
   actionSection(sheet, c, 'combo');
   const dirty = isDirty(), ready = comboReady(c), lbl = two ? name : 'combination';
-  sheet.append(h('p', {class:'save-msg' + (saveMsg.bad ? ' bad' : ''), role:'status', 'aria-live':'polite'}, saveMsg.text));
+  sheet.append(saveMsgView());
   sheet.append(h('div', {class:'actions'},
     h('button', {type:'button', class:'btn', id:'comboTry', disabled: !ready, onclick: () => tryCombo(c)}, 'Try it on the radio'),
-    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': lbl, disabled: saving || !dirty || !ready, onclick: () => saveCombo(c)},
+    h('button', {type:'button', class:'btn primary', id:'saveBtn', 'data-label': lbl, 'aria-disabled': saving || !dirty || !ready ? 'true' : null, onclick: () => saveCombo(c)},
       saveLbl(dirty || !ready, lbl))));
 }
 function saveCombo(c){
+  if (saving || !isDirty()) return;
   if (!comboReady(c)){ saveMsg = {text: c.keys.length < 2 ? 'Pick two keys first.' : 'Choose what it does first.', bad:true}; rerender(); return; }
   save();
 }
@@ -2981,6 +3098,7 @@ async function tryCombo(c){
   try {
     const r = await api('POST', '/api/press', {combo: comboOrder(c.keys)});
     if (r.ok && (!r.json || r.json.ok !== false)) saveMsg = {text:'The radio did it: ' + comboWhat(c.combo, true) + '.', bad:false};
+    else if (hostOf(r)) saveMsg = {text: hostWords(hostOf(r)), bad:true, host: hostOf(r), retry: () => tryCombo(c)};
     else saveMsg = {text: ((r.json && r.json.error) ? capFirst(r.json.error) : 'The radio didn’t do it (error ' + r.status + ')') + '. Try again.', bad:true};
   } catch (_) { saveMsg = {text:NET_ERR, bad:true}; }
   if (view === 'edit') rerender();
@@ -5879,7 +5997,7 @@ function pairRow(bt){
   const pairing = left > 0;
   return h('div', {class:'li col', style:'gap:8px'},
     h('span', {class:'li-title'}, 'A new phone'),
-    pairing ? h('p', {class:'li-sub', id:'pairLeft', 'aria-live':'polite'}, pairText(left, bt))
+    pairing ? h('p', {class:'li-sub', id:'pairLeft'}, pairText(left, bt))
       : h('span', {class:'li-sub'}, btOff ? 'Turn Bluetooth on above first.' : 'Opens Bluetooth so a phone can find the radio. Phones that paired before connect on their own.'),
     castUi.pairMsg ? h('p', {class:'err', role:'alert'}, castUi.pairMsg) : null,
     h('div', null, h('button', {type:'button', class:'btn small inline', id:'pairBtn', disabled: pairing || btOff || !!castUi.busy.pair, onclick: pairPhone},
@@ -5998,15 +6116,23 @@ async function pairPhone(){
   } catch (_) { castUi.pairMsg = NET_ERR; }
   delete castUi.busy.pair;
   paintCast();
-  const b = $('pairBtn'); if (b && b.disabled){ const t = $('pairLeft'); if (t){ t.tabIndex = -1; t.focus({preventScroll:true}); } }
+  const b = $('pairBtn'); if (b && b.disabled){ const t = $('pairLeft'); if (t){ t.tabIndex = -1; t.focus({preventScroll:true}); pairSaid = Math.max(1, Math.round((castUi.pairEnd - Date.now()) / 1000)); } }
 }
+// The countdown is read out (#pairSay) when it starts, every 30 s and when it ends - not every second.
+let pairSaid = 0;          // seconds left when it was last read out; 0: not counting
 function startPairTick(){
   clearInterval(pairTimer);
   pairTimer = setInterval(() => {
     const left = Math.max(0, Math.round((castUi.pairEnd - Date.now()) / 1000));
     const el = $('pairLeft');
-    if (left <= 0){ clearInterval(pairTimer); castUi.pairEnd = 0; paintCast(); return; }
-    if (el){ const bt = castDoc && (castDoc.targets || []).find(t => t.id === 'bluetooth'); el.textContent = pairText(left, bt); }
+    if (left <= 0){
+      clearInterval(pairTimer); castUi.pairEnd = 0;
+      if (pairSaid){ pairSaid = 0; $('pairSay').textContent = 'Pairing time is up.'; }
+      paintCast(); return;
+    }
+    const bt = castDoc && (castDoc.targets || []).find(t => t.id === 'bluetooth');
+    if (el) el.textContent = pairText(left, bt);
+    if (!pairSaid || pairSaid - left >= 30){ pairSaid = left; $('pairSay').textContent = pairText(left, bt); }
   }, 1000);
 }
 /* ---- Bluetooth (web/bluetooth_api.py): paired phones, what plays, what the radio keys do ---- */
