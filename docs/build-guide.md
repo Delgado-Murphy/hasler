@@ -654,6 +654,58 @@ owner should not stumble on:
 With Maker tools on, Settings → This radio → Updates also shows the **update
 channel** (Stable or Bench).
 
+### Support: what the owner can send you, and what you leave behind
+
+Put your address on the radio at install (`makers_contact = hola@…` in
+`hasler.txt`, or `makers: {contact: …}` in `box.yaml`): the key page then
+names you under Help from the makers, **Tell the makers** writes the mail,
+and the welcome card can print it. Without it the page says "the people who
+built your radio".
+
+**The phone script.** An owner who phones can read you six lines from
+**Settings → Something's wrong? → Say this to the makers** (the report's
+header: room, short id, model, version, channel, last check; the lamp in
+words with the fault; what plays, volume, standby; running for, last switched
+off; Wi-Fi, internet). If they can't find the page, ask in this order: *Is
+the lamp moving? What colour? Is it tapping? Open Settings and read me the
+two lines under the cabinet's name* (the version and the short id, the same
+four letters as the tail of the radio's tailnet name). Then, if you need to
+look: *Settings → Something's wrong? → Tell the makers*, or remote help.
+
+**On the bench, the order of looking** (each survives a power cut unless
+said otherwise): the owner's report; `hasler-boot-report`; `hasler-update
+status`; `hasler-os-update status`; `hasler-help status`;
+`/var/lib/haslerd/stream-events.jsonl` and `/opt/yt-dlp/events.jsonl`;
+`journalctl -b -1` (the previous boot, if log2ram synced); `vcgencmd
+get_throttled`; `hasler-bootcfg-guard check`. Before it goes back: a maker
+note (below); the Lamp check if the LED was touched; Calibrate if a pot was
+touched; `box.yaml` unchanged; the volume ceiling as it was (it lives in
+`settings.json`, which a new card loses - a paired spare keeps it).
+
+**Maker notes on the radio.** `hasler-note "Replaced the memory card and put
+your keys back. The SOS is gone."` (as pi or root, over remote help or on
+the bench; `--ok` makes the lamp bloom green and tap OK as well). It shows
+on the key page under This radio → **From the makers** with the date, and
+the owner's Seen folds it away. The rule: a note names parts and settings -
+the card, a knob, the ceiling - never people. At a hand-over leave one too
+("handed over; keys and accounts cleared; ceiling 62"); the notes stay with
+the radio.
+
+**A paired spare card** goes in the envelope with the welcome card: on the
+finished radio, `sudo hasler-install memory /tmp/memory` copies its memory
+(box.yaml with the same `box_id`, the calibration overlay, the trust,
+`settings.json` with the ceiling, `keys.yaml`, `stations.json` - never
+`secrets/`); copy that folder as `hasler-memory` onto the bootfs drive of a
+card made with [new-install.md](new-install.md), next to `hasler.txt`. The
+install lays it down first. Swapping the card is then: unplug, swap, plug in,
+sign in to Spotify and YouTube Music again. "The radio's memory, as of
+today" - redo it after a calibration or a new set of keys if you can.
+
+**The check-in** (docs/ota.md §5) is the owner's switch, not yours: put
+`checkin_url` in `hasler.txt` so it *can* be sent, ask at the handover, and
+let them press it (or say no). The dashboard is
+[tools/checkin](../tools/checkin/README.md).
+
 ### After a moOde update
 
 `scripts/bootstrap.sh` adds two lines to moOde for YouTube Music: one in

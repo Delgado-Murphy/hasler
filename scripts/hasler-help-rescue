@@ -1,0 +1,63 @@
+#!/bin/bash
+# hasler-help-rescue - remote help from a file on the SD card, for a radio
+# whose keys are dead (no press can say yes) and whose knobs don't answer
+# either: the last resort, a sibling of hasler-wifi-rescue. Physical access to
+# the card is the consent.
+#
+# Put a plain text file called hasler-help.txt on the card's boot partition
+# (the drive called "bootfs" on any computer), next to config.txt, with one
+# line:
+#
+#     start
+#
+# hasler-help-rescue.service runs this at boot once the network is up. It
+# runs `hasler-help rescue` (Tailscale for 24 h, a one-time login link for
+# the makers; docs/remote-help.md), writes what happened - and the link - to
+# hasler-help-result.txt next to it, and deletes hasler-help.txt. The link is
+# also on the key page under This radio -> Help from the makers; it works for
+# one hour, so delete the result file once it is sent.
+set -u
+BOOT=/boot/firmware
+IN="$BOOT/hasler-help.txt"
+OUT="$BOOT/hasler-help-result.txt"
+HELPER=/usr/local/sbin/hasler-help
+[[ -f "$IN" ]] || exit 0
+
+# The one word the file may hold (BOM, CRLF and case forgiven).
+WORD="$(tr -d '\r\357\273\277' < "$IN" | grep -v '^[[:space:]]*#' | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]' | head -c 20)"
+
+{
+  echo "hasler-help-rescue, $(date '+%Y-%m-%d %H:%M')"
+  if [[ "$WORD" != "start" ]]; then
+    echo "Nothing to do: the file needs the one line 'start'."
+  else
+    python3 -I - "$HELPER" <<'PY'
+import json, subprocess, sys, time
+p = subprocess.run([sys.argv[1], "rescue"], capture_output=True, text=True, timeout=120)
+doc = {}
+for line in reversed(p.stdout.strip().splitlines()):
+    try:
+        doc = json.loads(line); break
+    except ValueError:
+        continue
+if not doc.get("ok"):
+    print("Remote help couldn't start: " + str(doc.get("error") or p.stderr.strip()[-200:] or "no answer"))
+elif doc.get("auth_url"):
+    until = time.strftime("%H:%M", time.localtime(doc.get("approve_by") or time.time() + 3600))
+    print("Remote help is waiting for a maker. Send the makers this link, and nobody else:")
+    print()
+    print("    " + doc["auth_url"])
+    print()
+    print("It works until " + until + " (one hour). It is also on the key page under")
+    print("This radio -> Help from the makers. Delete this file once the link is sent.")
+elif doc.get("backend") == "Running":
+    print("Remote help is already on: the radio is connected to the makers' network.")
+else:
+    print("Remote help started, but no link came yet; look at the key page under This radio.")
+PY
+  fi
+} > "$OUT" 2>&1
+
+rm -f "$IN"
+sync
+exit 0

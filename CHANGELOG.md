@@ -12,6 +12,52 @@
   knob. A radio that kept the 19 Oct stripboard curve in variant.d has its tone
   backwards until Calibrate is re-run (or the overlay's tone curve replaced).
 
+Support: from "something's wrong" to "it's fixed, and stays fixed".
+
+- **Something's wrong?** on the Settings home: the radio checks itself and
+  says what it found, in plain words - the lamp right now (colour, rhythm,
+  meaning, with the fault named), six lines to read out to the makers on the
+  phone, a card for each thing wrong (a full memory card, dead keys, no sound
+  card, heat, a stuck update, a stalled station, no internet, the setup
+  hotspot, a rollback, stale updates, player restarts, a power cut, a player
+  not answering) with one thing to try, and "Everything answers" when it does.
+  A rollback's reason is now in the owner's words on the Updates page ("the
+  keys weren't answering after the switch"); the raw string stays for the
+  makers. The front page's "Can't reach the radio" says the two things that
+  usually explain it; the stale-updates line says the radio keeps working.
+- **Tell the makers**: a report (`GET /api/report`) with what the makers ask
+  first and the last few things that went wrong inside, assembled by the radio
+  with no password, account, phone name or login link in it (the Wi-Fi name
+  only with the tick), plus the owner's own line; Share…, Copy, or Email the
+  makers when `makers.contact` is in box.yaml (`makers_contact` in hasler.txt;
+  `/api/info` `makers_contact`). The radio's short id (`/api/info` `short_id`)
+  is at the bottom of Settings.
+- **From the makers**: `hasler-note "…" [--ok]` leaves a note on the radio
+  (`maker-notes.jsonl`, capped), shown under This radio with the date; Seen
+  folds it away. `--ok` makes the lamp bloom green and tap OK.
+- **Remote help's edges**: the owner's 24-hour yes survives a restart (a new
+  link after boot, no second key press: `hasler-help-resume.service`,
+  `/var/lib/hasler-help/consent.json`); "Remote help is waiting" also on the
+  front page, and "no internet" when there is none; the waiting copy says what
+  to do after the hour; afterwards, how long a maker was on. With the key
+  board dead but the knobs alive, a turn of the volume knob says yes for help;
+  with nothing to touch, `hasler-help.txt` on the card's boot partition with
+  the line `start` (`hasler-help-rescue`). The no-panel message is for the
+  owner now.
+- **Tell the makers how the radio is**: the opt-in daily check-in, off by
+  default, under Updates - about half a kilobyte after the daily check to the
+  makers' own endpoint (`checkin_url`; `tools/checkin/`: a Cloudflare Worker +
+  KV with a one-table dashboard), with "See what it sends" showing today's
+  payload verbatim. Nothing about the network, names, the room, a place or
+  what plays - a test keeps the forbidden keys out. Skipped on a metered
+  connection; "Couldn't send today" when it couldn't.
+- The boot lamp taps SOS after ten minutes without haslerd. A paired spare
+  card: `hasler-install memory DIR` on the radio, `hasler-memory/` on the new
+  card (box.yaml with the same box_id, calibration, trust, settings, keys,
+  stations; never secrets). Docs: "If the radio has to come back", "If the
+  makers can't be reached", the three "boots but no page" signatures, "Dark
+  after plugging in?", the makers' phone script and bench order.
+
 ## 1.4.0 - 2026-11-07
 
 The pilot lamp, light language v2.

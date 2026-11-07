@@ -432,7 +432,8 @@ class TestSoftware:
         status.write_text(json.dumps(s))
         st = sw.status()
         assert st["last_result"] == {"ok": False, "version": "1.3.0", "back_to": "1.2.0",
-                                     "reason": "MPD not answering", "at": "2026-10-19T03:05:00Z"}
+                                     "reason": "MPD not answering", "why": "MPD not answering",   # unknown phrase: as it is
+                                     "at": "2026-10-19T03:05:00Z"}
         assert st["stale"] is True
 
     def test_installing_is_the_trial_phase_only(self, box):

@@ -23,8 +23,13 @@ the makers' tailnet; ``peers_active`` ([{name, user}], from the helper:
 tailnet devices with a live session to the radio in the last ~2 min) says
 whether a maker is actually on it now, and ``status_text`` says so: "A maker
 is connected now (wmurphy@github)." or "Connected - waiting for a maker.". ``last`` is how the previous session
-ended ({"at", "why": stopped|expired|unapproved|wrong-tailnet|failed}) until
-the next start or a reboot. Times are epoch seconds.
+ended ({"at", "why": stopped|expired|unapproved|wrong-tailnet|failed,
+"text", "maker_seconds", "words": "A maker was on for 40 minutes; help ended
+at 18:02 when you pressed Stop."}) until the next start or a reboot.
+``resumed`` is true for a session the helper started again at boot from the
+owner's unexpired 24-hour yes (docs/remote-help.md): a new link, no new key
+press - the page says "The radio restarted; send the makers this link
+again". Times are epoch seconds.
 
 The login URL lets whoever opens it add this radio to *their* tailnet, so it
 is treated like a password: never logged, only returned to the page, and
@@ -80,6 +85,43 @@ WHY_TEXT = {
     "wrong-tailnet": "The radio joined a tailnet that isn't the makers', so help was ended.",
     "failed": "Remote help couldn't start.",
 }
+# "...; help ended at 18:02 when you pressed Stop."
+WHY_ENDED = {
+    "stopped": "when you pressed Stop",
+    "expired": "when the 24 hours were up",
+    "unapproved": "because nobody approved the link within an hour",
+    "wrong-tailnet": "because the radio joined a tailnet that isn't the makers'",
+    "failed": "because it couldn't start",
+}
+
+
+def minutes_words(seconds: Any) -> str:
+    """40 s -> "less than a minute", 2400 -> "40 minutes", 5400 -> "1 h 30 min"."""
+    try:
+        s = max(0, int(seconds))
+    except (TypeError, ValueError):
+        return ""
+    if s < 60:
+        return "less than a minute"
+    m = round(s / 60)
+    if m < 60:
+        return f"{m} minute{'s' if m != 1 else ''}"
+    return f"{m // 60} h" + (f" {m % 60} min" if m % 60 else "")
+
+
+def last_words(last: dict, clock_tz: Callable[[float], str] | None = None) -> str:
+    """The previous session in a sentence: how long a maker was on, when and
+    why it ended. ``clock_tz`` turns the end time into "18:02" (local time)."""
+    at = last.get("at")
+    when = ""
+    if isinstance(at, (int, float)) and not isinstance(at, bool):
+        when = (clock_tz or (lambda t: time.strftime("%H:%M", time.localtime(t))))(float(at))
+    ended = WHY_ENDED.get(str(last.get("why")), "")
+    on = last.get("maker_seconds")
+    head = (f"A maker was on for {minutes_words(on)}" if isinstance(on, (int, float)) and on > 0
+            else "No maker came on")
+    tail = "help ended" + (f" at {when}" if when else "") + (f" {ended}" if ended else "")
+    return f"{head}; {tail}."
 
 
 def slug(text: str, limit: int) -> str:
@@ -264,8 +306,11 @@ class HelpApi:
         address = st.get("address") if state == "connected" else None
         last = st.get("last") if isinstance(st.get("last"), dict) else None
         if last is not None:
+            secs = last.get("maker_seconds")
             last = {"at": last.get("at"), "why": last.get("why"),
-                    "text": WHY_TEXT.get(str(last.get("why")), "")}
+                    "text": WHY_TEXT.get(str(last.get("why")), ""),
+                    "maker_seconds": int(secs) if isinstance(secs, (int, float)) and not isinstance(secs, bool) else None,
+                    "words": last_words(last)}
         on = state in ("starting", "waiting", "connected")
         peers = peers_from(st.get("peers_active")) if state == "connected" else []
         return {
@@ -280,6 +325,8 @@ class HelpApi:
             "started_at": st.get("started_at") if on else None,
             "expires_at": st.get("expires_at") if on else None,
             "approve_by": st.get("approve_by") if state in ("starting", "waiting") else None,
+            # started again at boot from the owner's unexpired yes: a new link to send
+            "resumed": bool(st.get("resumed")) if on else False,
             "address": address,
             "dns_name": st.get("dns_name") if state == "connected" else None,
             "tailnet": st.get("tailnet") if state == "connected" else None,

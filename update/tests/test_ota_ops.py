@@ -185,6 +185,7 @@ def test_sudoers_source_is_todays_rules():
     text = (ROOT / "config/sudoers/haslerd").read_text()
     rules = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
     assert rules == ["pi ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /bin/systemctl poweroff, "
+                     "/usr/bin/systemctl reboot, /bin/systemctl reboot, "
                      "/usr/local/sbin/hasler-wifi-join, /usr/local/sbin/hasler-audio-mono, "
                      "/usr/local/sbin/hasler-multiroom, /usr/local/sbin/hasler-bt-accept, /usr/local/sbin/hasler-help, "
                      "/usr/bin/systemctl try-restart go-librespot.service, "

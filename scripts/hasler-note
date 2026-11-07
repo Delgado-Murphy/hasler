@@ -1,0 +1,144 @@
+#!/usr/bin/python3 -I
+"""hasler-note - a maker's note on the radio: "From the makers" on the key page.
+
+    hasler-note "Replaced the memory card and put your keys back. The SOS is gone."
+    hasler-note --ok "Calibrated the volume knob"        # the lamp says OK too
+    hasler-note --list
+
+Run as pi or root over remote help or on the bench (docs/remote-help.md
+"After help"). Appends {"at", "by", "text"} to /var/lib/haslerd/maker-notes.jsonl
+(the state directory; HASLER_STATE for tests), kept to the last NOTES_KEEP
+lines / NOTES_MAX_BYTES like the stream events, and owned by the state
+directory's owner even when root wrote it. haslerd shows the notes under This
+radio (web/notes_api.py), newest first, with the date; the owner's Seen folds
+them away. ``--ok`` also plays the green bloom and OK on the pilot lamp
+(POST /api/lamp/preview {"reply": "ok"} on the radio's own page), so the maker
+says "done" and the radio says it too.
+
+Rule for makers (docs/build-guide.md "Notes for makers"): a note names parts
+and settings - the card, a knob, the ceiling - never people. Python stdlib
+only; no sudo needed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import getpass
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+
+STATE = os.environ.get("HASLER_STATE") or "/var/lib/haslerd"
+NOTES = "maker-notes.jsonl"
+NOTES_KEEP = 200
+NOTES_MAX_BYTES = 64 * 1024
+TEXT_MAX = 600
+PAGE = os.environ.get("HASLER_PAGE") or "http://127.0.0.1:8080"
+
+
+def now_iso() -> str:
+    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def who() -> str:
+    return (os.environ.get("SUDO_USER") or os.environ.get("USER") or getpass.getuser() or "maker")[:40]
+
+
+def trim(path: str) -> None:
+    """Keep the newest lines: 3/4 of the cap, so it isn't rewritten every time."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines(keepends=True)
+    except OSError:
+        return
+    if len(lines) <= NOTES_KEEP and sum(len(ln.encode("utf-8")) for ln in lines) <= NOTES_MAX_BYTES:
+        return
+    kept, size = [], 0
+    for line in reversed(lines):
+        n = len(line.encode("utf-8"))
+        if len(kept) >= NOTES_KEEP * 3 // 4 or size + n > NOTES_MAX_BYTES * 3 // 4:
+            break
+        kept.append(line)
+        size += n
+    kept.reverse()
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write("".join(kept))
+    os.replace(tmp, path)
+
+
+def own_like_dir(path: str) -> None:
+    """A file root wrote in pi's state directory belongs to pi (and is 0644)."""
+    try:
+        st = os.stat(os.path.dirname(path) or ".")
+        if os.geteuid() == 0:
+            os.chown(path, st.st_uid, st.st_gid)
+        os.chmod(path, 0o644)
+    except OSError:
+        pass
+
+
+def add(text: str, by: str) -> dict:
+    text = " ".join(text.split())[:TEXT_MAX]
+    if not text:
+        raise SystemExit("hasler-note: the note is empty")
+    doc = {"at": now_iso(), "by": by, "text": text}
+    path = os.path.join(STATE, NOTES)
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(doc, ensure_ascii=False) + "\n")
+    own_like_dir(path)
+    trim(path)
+    return doc
+
+
+def say_ok() -> bool:
+    """The green bloom and OK on the lamp, through the radio's own page."""
+    body = json.dumps({"reply": "ok"}).encode()
+    req = urllib.request.Request(PAGE + "/api/lamp/preview", data=body, method="POST",
+                                 headers={"Content-Type": "application/json", "Origin": PAGE})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return 200 <= r.status < 300
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+def listing() -> int:
+    path = os.path.join(STATE, NOTES)
+    try:
+        lines = open(path, encoding="utf-8").read().splitlines()
+    except OSError:
+        print("no notes yet")
+        return 0
+    for line in lines:
+        try:
+            d = json.loads(line)
+            print(f"{d.get('at', '?')}  {d.get('by', '?')}: {d.get('text', '')}")
+        except ValueError:
+            continue
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="hasler-note", description=__doc__.split("\n")[0])
+    ap.add_argument("text", nargs="?", help="the note, in plain words (parts and settings, never people)")
+    ap.add_argument("--ok", action="store_true", help="the lamp plays the green bloom and OK as well")
+    ap.add_argument("--by", default=None, help="who (default: the login that ran this)")
+    ap.add_argument("--list", action="store_true", help="print the notes on this radio")
+    args = ap.parse_args(argv)
+    if args.list:
+        return listing()
+    if not args.text:
+        ap.error("a note is needed (or --list)")
+    doc = add(args.text, args.by or who())
+    print(f"noted at {doc['at']}: {doc['text']}")
+    if args.ok:
+        print("lamp: OK" if say_ok() else "lamp: the radio's page didn't answer (is haslerd running?)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

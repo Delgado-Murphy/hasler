@@ -427,6 +427,8 @@ SETUP_MAP: tuple[tuple[str, str], ...] = (
     ("config/yt-dlp-update.service", "integration/systemd/yt-dlp-update.service"),
     ("config/yt-dlp-update.timer", "integration/systemd/yt-dlp-update.timer"),
     ("config/hasler-wifi-rescue.service", "integration/systemd/hasler-wifi-rescue.service"),
+    ("config/hasler-help-rescue.service", "integration/systemd/hasler-help-rescue.service"),
+    ("config/hasler-help-resume.service", "integration/systemd/hasler-help-resume.service"),
     ("config/configtxt/hasler.block", "integration/configtxt/hasler.block"),
     ("scripts/hasler-audio-mono", "integration/sbin/hasler-audio-mono"),
     ("scripts/hasler-ytdlp-update", "integration/sbin/hasler-ytdlp-update"),
@@ -514,7 +516,10 @@ def fetch_release(base: str, channel: str, out: Path, root_pubs: list[str], now:
 # --- settings ----------------------------------------------------------------------------
 
 DEFAULTS = {"channel": "stable", "update_mode": "auto", "variant": "hasler-hm-hat", "user": "",
-            "moode": "yes", "panel_optional": "no", "update_url": "", "starter": "eclectic"}
+            "moode": "yes", "panel_optional": "no", "update_url": "", "starter": "eclectic",
+            # Support (docs/using.md "When something is wrong"): who built the radio
+            # and how to reach them; the opt-in daily check-in and where it goes.
+            "makers_contact": "", "checkin": "no", "checkin_url": ""}
 
 
 def read_settings(path: Path) -> dict:
@@ -540,6 +545,14 @@ def read_settings(path: Path) -> dict:
 def validate(s: dict) -> dict:
     if s["channel"] not in CHANNELS:
         raise InstallError(f"channel must be stable or bench, not {s['channel']!r}")
+    if s["checkin"].lower() not in ("yes", "no", "true", "false", "1", "0", "on", "off"):
+        raise InstallError("checkin must be yes or no")
+    s["checkin"] = "yes" if s["checkin"].lower() in ("yes", "true", "1", "on") else "no"
+    if s["checkin_url"] and not re.fullmatch(r"https://\S+", s["checkin_url"]):
+        raise InstallError("checkin_url must be an https:// URL")
+    s["makers_contact"] = " ".join(s["makers_contact"].split())[:120]
+    if any(c in s["makers_contact"] for c in "\"'#\n"):
+        raise InstallError("makers_contact is an email or a phone number, plain")
     if s["update_mode"] not in ("auto", "ask", "off"):
         raise InstallError(f"update_mode must be auto, ask or off, not {s['update_mode']!r}")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", s["variant"]):
@@ -569,14 +582,90 @@ def box_yaml(s: dict, box_id: str | None = None) -> str:
         f"update_mode: {s['update_mode']}",
         f"starter: {s['starter']}",
         f"box_id: {box_id or uuid.uuid4()}",
-        "checkin: false",
+        f"checkin: {'true' if s['checkin'] == 'yes' else 'false'}",
         "metered: false",
         # 001 moves an old rsync'd checkout; a new radio has none.
         "migrations: [001_from_rsync_tree]",
     ]
     if s["update_url"]:
         lines.append(f"update_url: {s['update_url']}   # makers: a local channel; remove for the public one")
+    if s["checkin_url"]:
+        lines.append(f"checkin_url: {s['checkin_url']}")
+    if s["makers_contact"]:
+        # Who built the radio and how to reach them: the key page's Help from the makers.
+        lines += ["makers:", f"  contact: {s['makers_contact']}"]
     return "\n".join(lines) + "\n"
+
+
+# --- a paired spare card: the radio's memory, as of today --------------------------------------
+
+MEMORY_DIR = BOOT_FW / "hasler-memory"       # on the new card's boot partition, next to hasler.txt
+MEMORY_ETC = ("box.yaml", "variant.d", "trust")
+MEMORY_STATE = ("settings.json", "keys.yaml", "stations.json")   # never secrets/
+
+
+def memory_export(out: Path) -> dict:
+    """On a running radio (root): copy /etc/hasler (box.yaml with this radio's
+    box_id, the calibration overlay, the trust) and the non-secret state
+    (settings.json: the volume ceiling and all the page's settings; keys.yaml;
+    stations.json) into ``out/etc`` and ``out/state``. Never ``secrets/``
+    (tokens, cookies): the new card signs in again. docs/new-install.md
+    "A paired spare card"."""
+    etc, state = Path("/etc/hasler"), Path("/var/lib/haslerd")
+    copied = []
+    (out / "etc").mkdir(parents=True, exist_ok=True)
+    (out / "state").mkdir(parents=True, exist_ok=True)
+    for name in MEMORY_ETC:
+        src = etc / name
+        if src.is_dir():
+            shutil.copytree(src, out / "etc" / name, dirs_exist_ok=True)
+            copied.append(f"etc/{name}/")
+        elif src.is_file():
+            shutil.copyfile(src, out / "etc" / name)
+            copied.append(f"etc/{name}")
+    for name in MEMORY_STATE:
+        src = state / name
+        if src.is_file():
+            shutil.copyfile(src, out / "state" / name)
+            copied.append(f"state/{name}")
+    stamp = time.strftime("%Y-%m-%d %H:%M")
+    (out / "README.txt").write_text(
+        f"This Hasler's memory, as of {stamp}: its box.yaml (same box_id), calibration, trust,\n"
+        "settings, keys and stations. No passwords, tokens or accounts: the new card signs in again.\n"
+        "To use it: copy this whole folder, as hasler-memory, to the top of the bootfs drive of a card\n"
+        "made with docs/new-install.md, next to hasler.txt. The install puts it in place.\n")
+    for p in out.rglob("*"):
+        try:
+            os.chmod(p, 0o755 if p.is_dir() else 0o644)
+        except OSError:
+            pass
+    return {"out": str(out), "copied": copied, "at": stamp}
+
+
+def memory_restore(src: Path, user: str, say_it=None) -> list[str]:
+    """Lay the memory of ``src`` (memory_export's folder) down on this radio:
+    /etc/hasler first (so the install keeps the box_id and the calibration),
+    then the state files, owned by the daemon's user. Secrets are never in the
+    folder, and never looked for."""
+    say_it = say_it or say
+    done = []
+    etc, state = Path("/etc/hasler"), Path("/var/lib/haslerd")
+    for name in MEMORY_ETC:
+        s = src / "etc" / name
+        if s.is_dir():
+            shutil.copytree(s, etc / name, dirs_exist_ok=True)
+            done.append(f"etc/{name}/")
+        elif s.is_file():
+            etc.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(s, etc / name)
+            done.append(f"etc/{name}")
+    for name in MEMORY_STATE:
+        s = src / "state" / name
+        if s.is_file():
+            write_owned(state / name, s.read_text(encoding="utf-8"), user)
+            done.append(f"state/{name}")
+    say_it("the radio's memory restored from " + str(src) + ": " + (", ".join(done) if done else "nothing found"))
+    return done
 
 
 # --- the box steps (root, on the Pi) ---------------------------------------------------------
@@ -668,6 +757,13 @@ def step_setup(s: dict, args) -> dict:
     run(["bash", str(setup / "scripts/bootstrap.sh"), "--user", user], env=env)
     run(["bash", str(setup / "scripts/ota-bootstrap.sh"), "--user", user, "--trust", str(got["trust"])], env=env)
     box = Path("/etc/hasler/box.yaml")
+    # A paired spare card (--from DIR, or hasler-memory/ next to hasler.txt):
+    # the old card's box.yaml (same box_id), calibration, trust and settings
+    # come first, so the box.yaml below is only written for a radio without one.
+    memory = Path(args.memory) if getattr(args, "memory", None) else (MEMORY_DIR if MEMORY_DIR.is_dir() else None)
+    if memory is not None and not mark("memory-restored").exists():
+        memory_restore(memory, user)
+        mark("memory-restored").touch()
     if not box.exists():
         write_owned(box, box_yaml(s), user)
         say(f"wrote {box} (channel {s['channel']}, update_mode {s['update_mode']})")
@@ -849,6 +945,16 @@ def fetch_cmd(args) -> int:
     return 0
 
 
+def memory_cmd(args) -> int:
+    """``hasler-install memory DIR`` on a running radio: the paired spare's folder."""
+    if os.geteuid() != 0:
+        raise SystemExit("hasler-install memory: run as root (sudo)")
+    doc = memory_export(Path(args.out))
+    print(json.dumps(doc, indent=2))
+    say(f"the radio's memory is in {doc['out']}: copy it as hasler-memory onto the new card's bootfs")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="hasler-install", description=__doc__.split("\n")[0])
     ap.add_argument("--base", default=BASE, help="release site (default: the public channel)")
@@ -865,13 +971,18 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--panel-optional", action="store_true")
     i.add_argument("--no-moode", action="store_true")
     i.add_argument("--yes", "-y", action="store_true")
+    i.add_argument("--from", dest="memory", metavar="DIR",
+                   help="a paired spare: lay down DIR (hasler-install memory DIR from the old card) first")
     sub.add_parser("resume")
     sub.add_parser("hook")
     sub.add_parser("status")
+    m = sub.add_parser("memory", help="copy this radio's memory (no secrets) into DIR, for a paired spare card")
+    m.add_argument("out")
     args = ap.parse_args(argv)
     args.root_pubs = [Path(p).read_text().strip() for p in args.root_pub] if args.root_pub else [ROOT_PUB]
     try:
-        return {"fetch": fetch_cmd, "install": install, "resume": resume, "hook": hook, "status": status}[args.cmd](args)
+        return {"fetch": fetch_cmd, "install": install, "resume": resume, "hook": hook, "status": status,
+                "memory": memory_cmd}[args.cmd](args)
     except NotYet as e:
         say(f"not yet: {e} (tries again)")
         return EX_LATER

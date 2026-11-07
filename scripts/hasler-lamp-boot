@@ -99,6 +99,18 @@ GAMMA = 2.2
 FADE_S = 2.0                      # a slow, visible fade up (the owner likes it slow)
 FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU
 WAIT_CHIPS_S = 10.0               # udev may still be loading pwm-gpio
+# haslerd never took the LED (a crash loop, a dead card): after this long the
+# breath becomes the light language's SOS in red (docs/lamp.md "Signals":
+# 150 ms units, 80 % marks, then 7 s at a 10 % glow) - the lamp can still say
+# "call a maker" when haslerd can't (docs/lamp.md "Boot and shutdown").
+SOS_AFTER_S = 600.0
+SOS_UNIT_S = 0.15
+SOS_MARK, SOS_GLOW, SOS_REST_S = 0.80, 0.10, 7.0
+# ... --- ... as (level, units): dot 1, dash 3, gaps 1 inside a letter, 3 between.
+SOS_STEPS = [(SOS_MARK, 1), (SOS_GLOW, 1), (SOS_MARK, 1), (SOS_GLOW, 1), (SOS_MARK, 1), (SOS_GLOW, 3),
+             (SOS_MARK, 3), (SOS_GLOW, 1), (SOS_MARK, 3), (SOS_GLOW, 1), (SOS_MARK, 3), (SOS_GLOW, 3),
+             (SOS_MARK, 1), (SOS_GLOW, 1), (SOS_MARK, 1), (SOS_GLOW, 1), (SOS_MARK, 1)]
+SOS_CYCLE_S = sum(n for _, n in SOS_STEPS) * SOS_UNIT_S + SOS_REST_S
 CONTINUE_S = 1.0                  # a handover: from the LED's frame into the breath
 HANDOVER_FRESH_S = 60.0           # an older note is a leftover, not a handover
 
@@ -253,6 +265,17 @@ def level_at(t: float) -> float:
         x = t / FADE_S
         return PEAK * x * x * (3 - 2 * x)       # smoothstep 0 -> peak
     return breath_at((t - FADE_S) / BREATH_S, FLOOR, PEAK)
+
+
+def sos_level(t: float) -> float:
+    """The SOS's perceptual red level ``t`` seconds into it (repeats every SOS_CYCLE_S)."""
+    t = t % SOS_CYCLE_S
+    for level, units in SOS_STEPS:
+        span = units * SOS_UNIT_S
+        if t < span:
+            return level
+        t -= span
+    return SOS_GLOW                              # the rest between repeats
 
 
 def continue_at(t: float, start: float, look: dict) -> float:
@@ -507,6 +530,7 @@ def main() -> int:
     nxt = t0
     takeover = note("takeover")
     p = start
+    sos = False
     while running:
         if have_dir and os.path.exists(takeover):
             log("haslerd takes over")
@@ -514,7 +538,17 @@ def main() -> int:
         t = time.monotonic() - t0
         if args.seconds and t >= args.seconds:
             break
-        if player is not None:
+        if t >= SOS_AFTER_S:
+            # Ten minutes and haslerd never asked for the LED: say so in red.
+            if not sos:
+                sos = True
+                log(f"no takeover after {SOS_AFTER_S:.0f} s: SOS (something needs a maker)")
+                if have_dir:
+                    save_state({**state, "colour": "red", "sos": True})
+            p = sos_level(t - SOS_AFTER_S)
+            lin = p ** GAMMA
+            duties = [ch.set(lin if i == 0 else 0.0) for i, ch in enumerate(channels)]
+        elif player is not None:
             rgb = player.at(t)
             p = max(rgb) ** (1.0 / GAMMA)
             duties = [ch.set(d) for ch, d in zip(channels, rgb)]

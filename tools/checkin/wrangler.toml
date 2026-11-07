@@ -1,0 +1,16 @@
+# The makers' check-in endpoint (worker.js): one Worker, one KV namespace.
+# README.md has the steps; nothing here is deployed by the repo.
+name = "hasler-checkin"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# `wrangler kv namespace create CHECKINS` prints the id to put here.
+[[kv_namespaces]]
+binding = "CHECKINS"
+id = "replace-with-the-namespace-id"
+
+# Optional. Set as secrets instead of here (`wrangler secret put CHECKIN_TOKEN`,
+# `wrangler secret put DASHBOARD_KEY`); listed so the names are in one place.
+# [vars]
+# CHECKIN_TOKEN = ""
+# DASHBOARD_KEY = ""

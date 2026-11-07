@@ -165,6 +165,37 @@ Until the signed installer is published (see [Open points](#open-points)),
 take `scripts/hasler-install` from a tagged checkout of this repository
 instead, and check that it pins the root key below.
 
+### The support lines in hasler.txt
+
+Three settings for after the install, all optional: `makers_contact =
+hola@…` (an email or a phone; the key page names you under Help from the
+makers and "Tell the makers" writes the mail), `checkin_url = https://…`
+(where the owner's opt-in daily check-in would go, [tools/checkin](../tools/checkin/README.md);
+without it nothing can be sent) and `checkin = no` (leave it: the switch is
+the owner's, on the key page under Updates). They become `makers:`,
+`checkin_url:` and `checkin:` in `/etc/hasler/box.yaml`.
+
+### A paired spare card
+
+A blank card made with this page is a *new radio*: it loses the knob
+calibration, the lamp's calibration, the volume ceiling, the keys and the
+accounts. A **paired spare** keeps all but the accounts:
+
+```sh
+# on the finished radio
+sudo hasler-install memory /tmp/memory      # box.yaml (same box_id), variant.d, trust,
+                                            # settings.json, keys.yaml, stations.json; never secrets/
+```
+
+Copy `/tmp/memory` to your computer, then onto the new card's **bootfs**
+drive as a folder called `hasler-memory`, next to `hasler.txt` (or run
+`hasler-install install --from DIR` over SSH). The install lays the memory
+down before anything else, so the spare has the same `box_id`, calibration
+and ceiling, and the owner only signs in to Spotify and YouTube Music again.
+It is "the radio's memory, as of today": make it again after a calibration or
+a new set of keys if you can. Put it in the envelope with the welcome card
+([build guide](build-guide.md#support-what-the-owner-can-send-you-and-what-you-leave-behind)).
+
 ### Trust: the root key
 
 The installer has one key built in, the **Hasler root key**, and trusts nothing

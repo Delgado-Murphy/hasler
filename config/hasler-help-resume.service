@@ -1,0 +1,22 @@
+# Shipped in every release (integration/systemd); haslerd.service pulls it in
+# at boot (Wants=), so no `systemctl enable` is needed. docs/remote-help.md.
+#
+# The owner's 24-hour yes to remote help survives a restart; the session does
+# not (nothing of the tailnet is on the SD card). While the yes is unexpired
+# (/var/lib/hasler-help/consent.json, written by `hasler-help start`), this
+# starts help again for the time left: a NEW login link, which a maker must
+# approve again, and no new key press. `hasler-help stop` and expiry remove
+# the file, so this does nothing after a finished session.
+[Unit]
+Description=Hasler: start remote help again after a restart, within the owner's 24-hour yes
+ConditionPathExists=/var/lib/hasler-help/consent.json
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/hasler-help resume
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

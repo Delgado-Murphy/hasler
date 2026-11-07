@@ -32,6 +32,13 @@ No panel board (``AbsentDigital``): nobody can press, so requests are refused
 with a clear message - security beats convenience. ``web.allow_unconfirmed:
 true`` in box.yaml (the bench) confirms every request at once and lets the
 actions run without a token.
+
+One exception, because the fault that most needs a maker must not block the
+way to the maker: when the key board is dead but the knobs still answer (the
+pots sit on the ADS1115, not the MCP23017; variant.Panel polls them alone
+then), a **knob movement** counts as the hand on the radio for ``help`` only
+(``KNOB_ACTIONS``): the request answers ``by_knob: true`` and the page says
+"turn the volume knob a little". Nothing else is confirmed by a knob.
 """
 
 from __future__ import annotations
@@ -60,9 +67,15 @@ KEEP_S = 300.0           # forget finished requests after this
 # Panel controls that are keys, and the events that are a hand on one.
 KEY_KINDS = ("momentary", "interlocked_bank")
 PRESS_EVENTS = ("tap", "hold", "select")
+# With the key board dead and the knobs alive, a pot's ``change`` is the hand
+# on the radio - for these actions only (letting the makers in to fix it).
+KNOB_KINDS = ("pot",)
+KNOB_ACTIONS = ("help",)
 
-ABSENT_MESSAGE = ("The radio's keys aren't connected, so it can't confirm this with a key press. "
-                  "Fix the panel board, or set web.allow_unconfirmed in box.yaml on a bench radio.")
+# What the owner reads (the page shows it); the box.yaml hint is for the journal.
+ABSENT_MESSAGE = ("The radio's keys aren't connected, so nobody can press one to say yes. "
+                  "The makers need to look at the panel board.")
+ABSENT_LOG = "no panel board to confirm with (fix the panel board, or set web.allow_unconfirmed in box.yaml on a bench radio)"
 
 
 class ConfirmError(Exception):
@@ -138,6 +151,15 @@ class ConfirmBroker:
     def _key_ids(self) -> set[str]:
         return {c.id for c in getattr(self.panel, "controls", ()) if getattr(c, "kind", None) in KEY_KINDS}
 
+    def _knob_ids(self) -> set[str]:
+        return {c.id for c in getattr(self.panel, "controls", ()) if getattr(c, "kind", None) in KNOB_KINDS}
+
+    @property
+    def knobs_answer(self) -> bool:
+        """The key board is dead but the knobs are read (variant.Panel.knobs_answer)."""
+        return (self.panel is not None and getattr(self.panel, "absent", False)
+                and bool(getattr(self.panel, "knobs_answer", False)) and bool(self._knob_ids()))
+
     # -- web side ------------------------------------------------------------
 
     def request(self, action: Any, args: Any = None) -> dict:
@@ -146,7 +168,9 @@ class ConfirmBroker:
         args = _clean_args(args)
         unconfirmed = self.allow_unconfirmed and action not in ALWAYS_PRESS
         has_keys = self.panel is not None and not getattr(self.panel, "absent", False) and bool(self._key_ids())
-        if not (unconfirmed or has_keys):
+        by_knob = not has_keys and action in KNOB_ACTIONS and self.knobs_answer
+        if not (unconfirmed or has_keys or by_knob):
+            log.warning("confirm %s refused: %s", action, ABSENT_LOG)
             raise ConfirmUnavailable(ABSENT_MESSAGE)
         now = self.clock()
         token = secrets.token_urlsafe(18)
@@ -161,11 +185,12 @@ class ConfirmBroker:
                 req.state, req.confirmed_at, req.by = "confirmed", now, "allow_unconfirmed"
             self._requests[token] = req
         log.info("confirm requested: %s %s%s", action, args,
-                 " (allowed unconfirmed)" if unconfirmed else " - waiting for a key press")
+                 " (allowed unconfirmed)" if unconfirmed else
+                 " - waiting for a knob movement (the keys are dead)" if by_knob else " - waiting for a key press")
         if not unconfirmed:
             self._ask()
         return {"token": token, "state": req.state, "action": action,
-                "expires_in": int(CONFIRM_S), "unconfirmed": unconfirmed}
+                "expires_in": int(CONFIRM_S), "unconfirmed": unconfirmed, "by_knob": by_knob}
 
     def poll(self, token: str) -> dict | None:
         with self._lock:
@@ -227,13 +252,25 @@ class ConfirmBroker:
             waiting = [r for r in self._requests.values() if r.state == "pending"]
             if not waiting:
                 return events
-            keys = self._key_ids()
+            # With the board absent no key event can be real: only a knob (for help) counts then.
+            keys = self._key_ids() if not getattr(self.panel, "absent", False) else set()
+            knobs = self._knob_ids() if self.knobs_answer else set()
             for i, event in enumerate(events):
-                if getattr(event, "control", None) in keys and getattr(event, "kind", None) in PRESS_EVENTS:
+                control, kind = getattr(event, "control", None), getattr(event, "kind", None)
+                if control in keys and kind in PRESS_EVENTS:
                     req = max(waiting, key=lambda r: r.asked)
                     req.state, req.confirmed_at, req.by = "confirmed", now, event.control
                     log.info("confirm: %s pressed - %s %s confirmed", event.control, req.action, req.args)
                     rest = events[:i] + events[i + 1:]
+                    break
+                if control in knobs and kind == "change":
+                    answered = [r for r in waiting if r.action in KNOB_ACTIONS]
+                    if not answered:
+                        continue
+                    req = max(answered, key=lambda r: r.asked)
+                    req.state, req.confirmed_at, req.by = "confirmed", now, event.control
+                    log.info("confirm: %s turned - %s %s confirmed (the keys are dead)", event.control, req.action, req.args)
+                    rest = events     # the knob still does its job: the event stays
                     break
             else:
                 return events

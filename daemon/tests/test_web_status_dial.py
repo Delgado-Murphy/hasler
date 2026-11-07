@@ -120,9 +120,11 @@ class TestHaslerHm:
         assert st["phone"] == {"device": "", "title": "So What", "artist": "Miles Davis", "source": "spotify"}
 
     def test_our_own_spotify_preset_is_not_a_phone(self, hm):
-        hm.tap("k4")                                  # Today's Top Hits, on go-librespot
+        # The starter sets put no Spotify playlist on a key out of the box (1.5.0),
+        # so one of ours plays from the page: still the radio's own, never a phone.
+        hm.app.play({"name": "Today's Top Hits", "source": "spotify", "uri": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"})
         st = hm.status()
-        assert (st["played_from"], st["phone"], st["source"]) == ("key", None, "spotify")
+        assert (st["played_from"], st["phone"], st["source"]) == ("page", None, "spotify")
 
     def test_pu_parked_on_bluetooth_waits_for_a_phone(self, hm):
         hm.tap("k1")

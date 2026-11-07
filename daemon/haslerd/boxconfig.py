@@ -48,8 +48,13 @@ SCHEMA = 1   # of box.yaml and the overlay files; bumped with a migration
 # updates at night, scripts/hasler-os-update) | off. starter: the starter set
 # on the keys out of the box (config/presets/<starter>.yaml; haslerd/presets.py),
 # eclectic when absent; the key page's own choice (settings.json) wins over it.
-BOX_KEYS = ("schema", "variant", "channel", "update_mode", "box_id", "checkin", "metered", "migrations", "update_url",
-            "os_updates", "starter")
+# checkin: true = the opt-in daily check-in (docs/ota.md §5; update/hasler_update/
+# checkin.py sends it after the daily check, to checkin_url, with checkin_token
+# as a header when set); off when absent. makers: {contact: "hola@…"} - who built
+# the radio and how to reach them, shown under Help from the makers and used by
+# "Tell the makers" (web/report.py); written by hasler-install from hasler.txt.
+BOX_KEYS = ("schema", "variant", "channel", "update_mode", "box_id", "checkin", "checkin_url", "checkin_token",
+            "metered", "migrations", "update_url", "os_updates", "starter", "makers")
 # The haslerd settings box.yaml may override (code defaults otherwise).
 HASLERD_KEYS = ("moode", "web", "connectivity", "home_assistant", "state_file", "keys_file")
 
@@ -290,6 +295,14 @@ def load_box_config(paths: Paths) -> dict:
 def haslerd_settings(box: dict) -> dict:
     """The haslerd override blocks of a box.yaml (code defaults fill the rest)."""
     return {k: copy.deepcopy(v) for k, v in box.items() if k not in BOX_KEYS}
+
+
+def makers_contact(box: dict) -> str:
+    """``makers.contact`` of a box.yaml (an email or a phone number), "" when
+    the makers left none. Never the key's other fields."""
+    makers = box.get("makers") if isinstance(box, dict) else None
+    contact = makers.get("contact") if isinstance(makers, dict) else None
+    return " ".join(str(contact).split())[:120] if contact else ""
 
 
 def read_overlay(paths: Paths, variant: str) -> dict:

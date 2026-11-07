@@ -490,7 +490,10 @@ Tap the gear. Each row opens its own page, and says under its name what it
 holds right now. Anything that needs you (an update ready, a Spotify code
 waiting, a key whose Home Assistant target has gone, a Wi-Fi not set up) is
 listed first, under **Needs attention**; while that list has something in it,
-the gear on the front page carries a small amber dot.
+the gear on the front page carries a small amber dot. Above the rows,
+**Something's wrong?** opens a page where the radio checks itself and says
+what it found, in plain words, with **Tell the makers** at the bottom (see
+[When something is wrong](#when-something-is-wrong)).
 
 | Row | What you find there |
 |---|---|
@@ -500,9 +503,11 @@ the gear on the front page carries a small amber dot.
 | **Music accounts** | **Spotify**: the radio's own account, the one Spotify keys play from (**Sign in**, **Change account**, **Sign out**; the page gives a code for spotify.com/pair). **YouTube Music**: your account (sign in for your Liked songs and private playlists; it takes a computer and a few technical steps, which the makers can do for you over remote help), **Hide explicit songs**, and whether the YouTube Music helper is working. |
 | **Rooms** | **This room**: the **room name** (with **Remove**) and the radio's address, **Use the room name on phones**, and **Identify this radio** (its lamp taps HI in Morse, in green). **Several rooms**: **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. **The other Haslers**, each with **Identify** (the page says when that radio has no lamp, or needs a software update first). |
 | **Pilot lamp** | **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). **At night**: when the lamp dims (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. **What the lamp means**: **Now** (what the lamp says right now, in words), the full list folded away, each colour with its rhythm and **Show me** (it plays on the radio's lamp), and **Show me everything**. **Geek mode** and its callsign (off to start). Lamp colours are set by the makers. |
-| **This radio** | **Wi-Fi** and the setup network. **Software**: Updates (with **This Wi-Fi is a phone hotspot or capped**). **How the radio is**: in plain words, its Wi-Fi and signal, whether the internet answers, how warm it is inside, the memory card's free space, how it was last switched off (and how often the power was cut this month), how long it has been running, whether the player and the sound card answer, and the last update - with **Restart the radio** (a press on the radio confirms it). **Home Assistant**. [Help from the makers](#help-from-the-makers). Folded at the very bottom: the other addresses allowed to change this radio. |
+| **This radio** | **Wi-Fi** and the setup network. **Software**: Updates (with **This Wi-Fi is a phone hotspot or capped** and **Tell the makers how the radio is**, the once-a-day check-in, off to start). **How the radio is**: in plain words, its Wi-Fi and signal, whether the internet answers, how warm it is inside, the memory card's free space, how it was last switched off (and how often the power was cut this month), how long it has been running, whether the player and the sound card answer, and the last update - with **Restart the radio** (a press on the radio confirms it). **From the makers**: a note the makers left after a repair, with the date; **Seen** folds it away. **Home Assistant**. [Help from the makers](#help-from-the-makers), with **Tell the makers** and the makers' address. Folded at the very bottom: the other addresses allowed to change this radio. |
 
-The version number is at the bottom of Settings.
+The version number is at the bottom of Settings, under the cabinet's name,
+and after it the radio's short id (four letters and digits, like `ab12`):
+the name the makers know this radio by. Read both out if you phone them.
 
 **How changes are kept.** Every page says, under its title, how its changes
 are kept. A single switch, slider or choice works at once, and a small
@@ -567,13 +572,39 @@ can help with the first connection; the steps are in the
 
 ## Help from the makers
 
-If something is wrong and the person who built your radio wants to look at
-it from afar: **Settings → This radio → Help from the makers** (at the
-bottom) → **Let the makers help (24 h)**, then press a key on the radio. The
-page shows a link: send it to the makers, and nobody else. Once they approve
-it, the page says when a maker is connected. Help ends by itself after 24
-hours, when you press **Stop**, or when the radio restarts. What they can see
-and do: [Remote help](remote-help.md).
+**Tell the makers** first, if you can write: **Settings → Something's wrong?
+→ Tell the makers** (also under This radio → Help from the makers). The radio
+puts together what the makers usually ask first: the version, what the lamp
+says, what's playing, and the last few things that went wrong inside. Nothing
+private: no passwords, no accounts, no phone names; untick **Include my Wi-Fi
+name** if you'd rather not say it. Add a line about what you noticed, then
+**Share…** (WhatsApp, Mail, a message) or **Copy**. If the makers left their
+address on the radio, the page names them and **Email the makers** writes the
+mail for you. Send it to them, and nobody else. If you only phone, the top of
+Something's wrong? shows **Say this to the makers**: six lines to read out.
+
+If the person who built your radio then wants to look at it from afar:
+**Settings → This radio → Help from the makers** (at the bottom) → **Let the
+makers help (24 h)**, then press a key on the radio. The page shows a link:
+send it to the makers, and nobody else. Once they approve it, the page says
+when a maker is connected. Help ends by itself after 24 hours, or when you
+press **Stop**. The link itself works for one hour; if nobody has come by
+then, nothing is lost: press Start again when the makers say they're ready
+(abroad, tell them when you'll press it). If the radio restarts during those
+24 hours, your yes still stands: the page shows a new link under *The radio
+restarted; send the makers this link again*, with no second key press. The
+radio has to be on the internet for any of this; the page says so when it
+isn't, and a report by message still works. What the makers can see and do:
+[Remote help](remote-help.md).
+
+If the radio's keys are dead (the lamp taps SOS for *the keys aren't
+answering*), no key can say yes, but the volume knob can: the page asks you
+to turn it a little instead. If nothing on the radio can be touched at all,
+there is a file on the memory card for it, like the one for Wi-Fi: a plain
+text file called **hasler-help.txt** on the **bootfs** drive with the one
+line `start`. The radio reads it at the next start, deletes it, starts help,
+and writes the link to **hasler-help-result.txt** next to it (delete that
+file once the link is sent; it stops working after an hour anyway).
 
 ## Wi-Fi
 
@@ -665,6 +696,16 @@ Good to know:
 - **This Wi-Fi is a phone hotspot or capped**: switch it on under Updates and
   the radio never downloads anything in the background; it still tells you when
   there is an update, and downloads it when you press **Check now**.
+- **Tell the makers how the radio is**: off to start. Switched on, the radio
+  sends the makers a few lines once a day, after it has looked for updates:
+  the version, whether everything answers, and what went wrong inside (a
+  fault, a rollback, how often the power was cut). No names, no addresses,
+  nothing about what you listen to; **See what it sends** shows exactly
+  today's lines. The page says when it was last sent ("Sent: today 04:12 ·
+  the makers see this radio as ab12") or that it couldn't send today. The
+  makers never see where the radio is, only that one like it needs a look.
+- When the page says *No fresh update information for a while*, the radio
+  keeps working as it is; only new versions wait.
 
 **Update channel.** Radios follow **Stable**: each version is tried on the
 makers' own radio first. The other channel, **Test versions** (*Bench*), is
@@ -697,6 +738,15 @@ What changed in each version: the
 
 ## When something is wrong
 
+**Start with the page: Settings → Something's wrong?** The radio checks
+itself and says what it found, in plain words: what the lamp means right now,
+six lines to read out if you phone the makers, then a card for each thing
+that is wrong (the memory card is full, the keys aren't answering, no
+internet, the station stopped, an update didn't work here, the power was
+cut…) with one thing to try. When everything answers, it says so. **Tell the
+makers** at the bottom puts a report together to send by message (see
+[Help from the makers](#help-from-the-makers)).
+
 **There is no sound.**
 
 1. Look at the lamp. Ember means asleep: press a key or turn the tone knob on.
@@ -705,14 +755,28 @@ What changed in each version: the
 4. A red glow of the lamp means the music didn't start. Try another key. If one key
    never works, choose new music for it in **Edit keys**.
 
-**The key page doesn't open.**
+**The key page doesn't open.** The lamp tells the three cases apart:
 
-- Check that your phone is on the same Wi-Fi as the radio (not mobile data,
-  not a guest network).
-- Wait a minute after the radio starts.
-- Try the radio's IP address instead of `hasler.local`.
-- If the lamp taps out amber Morse (CQ), the radio isn't on your Wi-Fi: see
+- **The lamp is fine and music plays, but the page doesn't open:** your
+  phone is on another network. Check it is on the same Wi-Fi as the radio
+  (not mobile data, not a guest network; a router with "client isolation"
+  keeps phones apart too). Try `http://hasler.local/` without the `:8080`:
+  that is the player's own page, and if it opens, the radio is on the
+  network and only the key page is the problem. Try the radio's IP address
+  instead of `hasler.local`, and wait a minute after the radio starts.
+- **The lamp breathes amber and never settles, no music, no page:** the
+  radio's software didn't start. Unplug it, wait ten seconds, plug it in. If
+  it happens again, tell the makers (after ten minutes of this the lamp taps
+  SOS, so you don't have to count); a report can't be made from the page
+  then, so phone or write, with the lamp and the version.
+- **The lamp taps out amber Morse (CQ):** the radio isn't on your Wi-Fi: see
   [Wi-Fi](#wi-fi).
+
+**Dark after plugging in?** Use the charger and cable that came with it (any
+65 W USB-C charger that gives 20 V works; phone chargers often don't).
+Unplug, wait ten seconds, plug in: the lamp should breathe amber within five
+seconds. Still dark? Call a maker - it's the power board or the memory card.
+Nothing inside is dangerous, but don't open it.
 
 **The lamp flashes red twice every few seconds.** The radio has no internet.
 Check your router. Bluetooth from a phone still works.
@@ -761,9 +825,27 @@ on **Use the room name on phones** (see [One name per room](#one-name-per-room))
 
 **Nothing helps.** Shut the radio down (tone knob off for 5 seconds), wait
 until the lamp is dark, unplug it for 10 seconds and plug it in again. If the
-problem stays, tell the person who built your radio. What the lamp shows, and
-the version number at the bottom of Settings, help them a lot. They may ask
-you to [let them help](#help-from-the-makers) from afar.
+problem stays, tell the person who built your radio: **Settings → Something's
+wrong? → Tell the makers** sends them what they need. What the lamp shows,
+and the version number and short id at the bottom of Settings, help them a
+lot. They may ask you to [let them help](#help-from-the-makers) from afar.
+
+**If the radio has to come back.** Send the makers a report first (Settings →
+Something's wrong? → Tell the makers). Pack the charger and its cable with
+it; leave the memory card in. Your stations, settings and accounts stay on
+the radio; if you'd rather sign out of Spotify and YouTube Music and forget
+your phones first, Settings → Music accounts and Settings → Phones are the
+places, and the makers can put the keys back from your report. The makers
+will leave a note on the page saying what they did (This radio → From the
+makers).
+
+**If the makers can't be reached.** The radio doesn't need the makers to
+play: stations, playlists, your phone and the other rooms all work on their
+own. Without the makers, after about two weeks the Updates page says there
+is no fresh update information, and stays that way; the radio keeps the
+version it has. YouTube Music keeps mending its own helper. Remote help
+needs a maker to answer, so it won't. What you can't do without them is make
+a new memory card - which is why the radio came with a spare.
 
 ---
 

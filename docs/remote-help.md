@@ -41,9 +41,37 @@ lines; never a password, token or cookie).
    waiting for a maker*.
 
 Help ends by itself **24 hours** after you started it, or **after one
-hour** if nobody has approved the link by then. It also ends when you press
-**Stop** on the key page, or when the radio restarts (unplugging it counts).
-To give the makers another day, start it again.
+hour** if nobody has approved the link by then - nothing is lost: press
+Start again when the makers say they're ready (abroad, tell them when you'll
+press it). It also ends when you press **Stop** on the key page. To give the
+makers another day, start it again.
+
+**If the radio restarts** (a maker's fix that needs one, a power cut) within
+those 24 hours, the session is gone but your yes isn't: the radio starts help
+again by itself and the page shows a **new** link under *The radio restarted;
+send the makers this link again* - no second key press, because the press
+that mattered was within the 24 hours. A maker has to approve the new link
+like the first. Pressing Stop, or the 24 hours running out, ends that too.
+
+**If the radio's keys are dead** (the lamp taps SOS for *the keys aren't
+answering*), nobody can press one, but the volume knob still works: the page
+asks you to *turn the volume knob a little* instead. **If nothing on the
+radio can be touched**, the memory card is the last way in, as for Wi-Fi: a
+plain text file called `hasler-help.txt` on the **bootfs** drive with the one
+line `start`. At the next start the radio reads it, deletes it, starts help
+and writes the link to `hasler-help-result.txt` next to it; delete that file
+once the link is sent. Having the card in your hands is the consent.
+
+**Before any of this, write.** **Settings → Something's wrong? → Tell the
+makers** puts together what the makers ask first (the version, what the lamp
+says, what plays, the last few things that went wrong inside; never a
+password, an account or a phone's name) to send by message, and the makers
+read it when they're awake. A radio with no internet can't be helped from
+afar, and the page says so; a report by message still works.
+
+**Afterwards**, the page says how long a maker was on and how it ended
+(*A maker was on for 40 minutes; help ended at 18:02 when you pressed
+Stop*), and a note the maker left is under **This radio → From the makers**.
 
 ### The link is like a key
 
@@ -162,7 +190,24 @@ a radio included, also waits for an admin's click under Machines.
 - Key expiry: a tagged device has key expiry switched off by Tailscale.
   That doesn't matter here, because no session outlives 24 hours and the
   node doesn't outlive the session. Nothing needs revoking afterwards.
-- Leave a short note in the radio's record of what you changed.
+- **Leave a note on the radio** of what you changed, before you go:
+
+  ```sh
+  hasler-note "Replaced the memory card and put your keys back. The SOS is gone."
+  hasler-note --ok "Calibrated the volume knob"     # the lamp blooms green and taps OK too
+  hasler-note --list
+  ```
+
+  It goes to `/var/lib/haslerd/maker-notes.jsonl` (as pi or root; capped
+  like the stream events) and shows on the key page under **This radio →
+  From the makers**, newest first, with the date; the owner's **Seen** folds
+  it away and it stays readable there. A note names parts and settings, never
+  people. The hand-over keeps the notes: they are about the hardware.
+- If your fix needs a restart, do it: the session ends, but the owner's
+  24-hour yes doesn't - the radio starts help again at boot
+  (`hasler-help-resume.service`) with a **new** link the owner's page shows
+  under *The radio restarted; send the makers this link again*. Ask them to
+  send it; approve it like the first.
 
 ### Things to avoid
 
@@ -180,8 +225,10 @@ Pieces:
 | Piece | What it does |
 | --- | --- |
 | `scripts/bootstrap.sh` | Installs `tailscale` from Tailscale's apt repo for Debian trixie (`pkgs.tailscale.com`, `signed-by` keyring). `tailscaled.service` is masked across the install, so it never starts, then left **disabled** (not masked). |
-| `/usr/local/sbin/hasler-help` (`scripts/hasler-help`) | The root helper: `start HOSTNAME`, `status`, `stop [why]`. Allowed to haslerd (user pi) by `config/sudoers/haslerd`; it checks its own arguments. |
-| `web/help_api.py` | `/api/help` for the key page; start needs a press on the radio (`web/confirm.py`, action `help`). |
+| `/usr/local/sbin/hasler-help` (`scripts/hasler-help`) | The root helper: `start HOSTNAME`, `status`, `stop [why]`, `resume` (at boot, from the owner's unexpired yes), `rescue` (from `hasler-help.txt` on the card), `watch` (a minute counter). Allowed to haslerd (user pi) by `config/sudoers/haslerd`; it checks its own arguments. |
+| `config/hasler-help-resume.service`, `config/hasler-help-rescue.service` + `scripts/hasler-help-rescue` | Run at boot only when their file is there: `/var/lib/hasler-help/consent.json` (the owner's yes) and `/boot/firmware/hasler-help.txt` (the card file). Pulled in by `haslerd.service` (`Wants=`). |
+| `web/help_api.py` | `/api/help` for the key page; start needs a press on the radio (`web/confirm.py`, action `help`) - or, with the key board dead and the knobs alive, a turn of a knob (`by_knob`). |
+| `scripts/hasler-note`, `web/notes_api.py` | The makers' notes on the radio and `/api/notes` for "From the makers". |
 
 `hasler-help start hasler-kitchen-ab12`:
 
@@ -207,10 +254,19 @@ while the radio waits for approval.
 `hasler-help stop` runs `tailscale logout` (an ephemeral node is removed
 from the tailnet), stops the transient units and timers, disables
 `tailscaled.service` should anything have enabled it, removes
-`/run/hasler-help`, and records why in `/run/hasler-help.last.json`. A
-reboot loses the transient units and `/run`, so it ends help too: nothing
-resumes after a restart, on purpose. A haslerd restart changes nothing,
-because the session lives in systemd and `/run`, not in haslerd.
+`/run/hasler-help`, and records why - and how long a maker was on
+(`maker_seconds`, counted every minute by `hasler-help-watch.timer` →
+`hasler-help watch`, which prints nothing, so the link never reaches the
+journal) - in `/run/hasler-help.last.json`. A reboot loses the transient
+units and `/run`, so it ends the session too: **the session never survives a
+restart; the owner's 24-hour yes does.** `start` also writes
+`/var/lib/hasler-help/consent.json` (root, 0600: `started_at`, `expires_at`,
+`hostname` - no key material). At boot `hasler-help-resume.service` runs
+`hasler-help resume`: while that file is unexpired, `start` runs again for
+the time left, which makes a new login link a maker must approve again
+(`resumed: true` in the status; the page says so). `stop` (any reason) and
+expiry delete the file. A haslerd restart changes nothing, because the
+session lives in systemd and `/run`, not in haslerd.
 
 The lamp doesn't change while help is on. The page shows it.
 
@@ -230,13 +286,18 @@ GET  /api/help
    "network": "Delgado & Murphy's help network",
    "tailnet": "delgado-murphy.org.github", "expected_tailnet": null,
    "ssh": "pi@100.x.y.z", "page": "http://100.x.y.z:8080/",
+   "resumed": false,                                        # true: started again at boot (a new link)
    "last": {"at": …, "why": "stopped|expired|unapproved|wrong-tailnet|failed",
-            "text": "The 24 hours were up."} | null,         # only when off
+            "text": "The 24 hours were up.", "maker_seconds": 2400,
+            "words": "A maker was on for 40 minutes; help ended at 18:02 when the 24 hours were up."} | null,   # only when off
    "error": null}
 
-POST /api/confirm/request {"action": "help"}  -> {"token": …}  (then a key press)
+POST /api/confirm/request {"action": "help"}  -> {"token": …, "by_knob": false}  (then a key press;
+                                                 by_knob true: a turn of a knob, the keys being dead)
 POST /api/help/start      {"confirm": token}  -> {"ok": true, ...the GET doc}
 POST /api/help/stop       {}                  -> {"ok": true, ...}
+GET  /api/report?note=…&wifi=1|0              -> {"text": "…", "json": {…}}   # "Tell the makers" (web/report.py)
+GET  /api/notes · POST /api/notes/seen {"at"} -> the makers' notes (web/notes_api.py)
 ```
 
 `available` is false when Tailscale or the helper isn't installed.
@@ -246,7 +307,9 @@ in haslerd.yaml says otherwise (`""` switches the check off). A radio that
 joins any other tailnet ends help at once (`last.why` = `wrong-tailnet`). It is an extra guard, not
 what decides the tailnet: the approving maker decides that. Errors:
 403 `confirm_required` (no confirmed press), 409 `confirm_unavailable` (no
-panel to press), 503 the helper failed (its message in `error`). The page
+panel to press and no knob either: "The radio's keys aren't connected, so
+nobody can press one to say yes. The makers need to look at the panel
+board."), 503 the helper failed (its message in `error`). The page
 polls `GET /api/help` every few seconds while it is open; the status is
 cached for two seconds.
 

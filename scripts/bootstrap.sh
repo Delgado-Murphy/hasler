@@ -175,6 +175,18 @@ if put "$REPO/scripts/hasler-wifi-rescue" /usr/local/sbin/hasler-wifi-rescue 075
   fi
   if (( SYSTEMD )); then run systemctl enable --quiet hasler-wifi-rescue.service || true; fi
 fi
+# Remote help from the SD card (hasler-help.txt: the last resort when no key
+# or knob can say yes) and the resume of a session after a restart, within the
+# owner's 24-hour yes (docs/remote-help.md). Both units only run when their
+# file is there.
+if put "$REPO/scripts/hasler-help-rescue" /usr/local/sbin/hasler-help-rescue 0755 || [[ -x /usr/local/sbin/hasler-help-rescue ]]; then
+  for u in hasler-help-rescue.service hasler-help-resume.service; do
+    put "$REPO/config/$u" "/etc/systemd/system/$u" 0644 && (( SYSTEMD )) && run systemctl daemon-reload
+    if (( SYSTEMD )); then run systemctl enable --quiet "$u" || true; fi
+  done
+fi
+# A maker's note on the radio ("From the makers" on the key page), as pi or root.
+put "$REPO/scripts/hasler-note" /usr/local/bin/hasler-note 0755 || true
 
 # --- moOde ---------------------------------------------------------------------------
 # haslerd writes "YT · ..." playlist covers to moOde's root-owned covers dir.

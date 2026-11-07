@@ -5,4 +5,8 @@ update_mode: auto
 starter: eclectic
 box_id: 00000000-0000-4000-8000-000000000000
 checkin: false
+# checkin_url: https://hasler-checkin.example.workers.dev/v1/checkin   # the makers' endpoint (tools/checkin)
+# checkin_token: a-shared-word                                         # only if the Worker asks for one
 metered: false
+# makers:
+#   contact: hola@example.org    # who built the radio: shown under Help from the makers

@@ -8,7 +8,8 @@
 # Accepting a Bluetooth pairing request while the owner's pairing window is
 # open (hasler-bt-accept, player/btaccept.py). Remote help, after a press on
 # the radio (hasler-help start|status|stop: Tailscale for 24 h, web/help_api.py;
-# it checks its own arguments). Restarting MPD when it has stopped answering
+# it checks its own arguments; its resume, rescue and watch run as root from
+# systemd, never through sudo). Restarting MPD when it has stopped answering
 # with its process still there (player/watchdog.py MpdRecovery, rate-limited;
 # mpd.service's own watchdog drop-in normally gets there first). "Restart the
 # radio" on the key page's This radio, after a press on the radio (web/server.py
