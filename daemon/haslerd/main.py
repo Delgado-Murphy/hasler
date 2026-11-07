@@ -1104,6 +1104,10 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
         # POST /api/fake/phone: a page test's phone taking the speaker (web/fake_api.py).
         from .web.fake_api import FakeApi
         app.extra_routes.append(FakeApi(app))
+        # A fake radio's install mark lives in its state dir (a page test writes
+        # it to make the radio "new": /api/info installed_at); none without one.
+        state_dir = Path(state.path).parent if state.path is not None else None
+        app.install_done_file = state_dir / "install-done" if state_dir is not None else Path("/nonexistent/install-done")
     # Background: YTM presets resolve their opening track now, not on first
     # press. After the web overlay, so it warms the keys as the owner set them.
     player.prefetch(list(actions.presets.values()))

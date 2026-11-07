@@ -213,6 +213,9 @@ button{cursor:pointer}
 .remote.offline .bank{opacity:.35;filter:saturate(.3)}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
 .hint-line{margin:0;color:var(--muted);font:12px/16px var(--sans);text-align:center}
+/* the front page's quiet lines: a new radio ("Make it yours"), setup mode */
+.front-note{max-width:36ch;margin-top:-6px;color:var(--text2)}
+.front-note a{color:var(--brass);font-weight:600;text-decoration:underline 1px;text-underline-offset:3px}
 /* the pilot lamp's meanings: a small swatch per rhythm (colour + motion) */
 .lm-sw{flex:0 0 auto;width:14px;height:14px;border-radius:50%;background:var(--lm,#ffa733);box-shadow:0 0 8px var(--lm,#ffa733);margin-right:12px}
 .lm-sw[data-c="amber"]{--lm:#ffa733}.lm-sw[data-c="ember"]{--lm:#c2410c}.lm-sw[data-c="blue"]{--lm:#6d8cff}
@@ -973,6 +976,26 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .attn{border-color:rgba(233,179,92,.45);background:linear-gradient(180deg,#2A1D10,#21160D)}
 .attn .set-row .li-title{color:#F3CF8C}
 .attn-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px rgba(255,178,56,.6)}
+/* Make it yours: the quieter sibling of Needs attention. Open rows carry a ring (the two core ones a filled dot),
+   the row's title is the link, Skip sits beside it; done and skipped rows fold into one line at the bottom. */
+.yours-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.yours-count{padding-right:4px;color:var(--muted);font:12px/16px var(--sans);white-space:nowrap}
+.yours-lede{padding:0 4px}
+.yours-row{padding-right:10px}
+.yours-go{flex:1;min-width:0;display:flex;align-items:center;gap:12px;align-self:stretch;margin:-12px 0 -12px -16px;padding:12px 0 12px 16px;color:inherit;text-decoration:none;background:none;border:0;font:inherit;text-align:left;cursor:pointer}
+.yours-go:focus-visible{outline-offset:-3px}
+.yours-dot{flex:none;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--brass)}
+.yours-dot.core{background:var(--amber);border-color:var(--amber);box-shadow:0 0 8px rgba(255,178,56,.6)}
+.yours-done{display:flex;align-items:center;gap:12px;min-height:48px;padding:10px 14px 10px 16px;border-top:1px solid var(--line);color:var(--muted);font-size:13px;line-height:18px}
+.yours-tick{flex:none;color:#8FCF9F;font-weight:700}
+.yours-foot{display:flex;flex-wrap:wrap;align-items:center;gap:0 6px;padding:0 4px;color:var(--muted);font-size:13px;line-height:18px}
+.yours-foot .link{padding-left:0}
+.yours-fin{margin:0;padding:4px 4px 0;color:var(--cream);font:italic 600 17px/22px var(--serif)}
+/* Maker tools → Handover: one line per thing, marked ✓ (fine), ! (needs you, and a link into the fix) or · */
+.ho-row{min-height:52px;padding-top:8px;padding-bottom:8px}
+.ho-row .li-title{font-size:14px}
+.ho-mark{flex:none;width:18px;text-align:center;font:700 14px/18px var(--mono);color:var(--muted)}
+.ho-mark.ok{color:#8FCF9F}.ho-mark.bad{color:var(--amber)}
 /* the same dot on the front page's gear while Settings has something that needs attention */
 .gear-dot{position:absolute;right:6px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px var(--ground),0 0 8px rgba(255,178,56,.6)}
 #pageTitle:focus{outline:none}
@@ -1088,6 +1111,17 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
 .keycard.kc-strip .kc-sec p{font-size:7pt}
 .keycard.kc-strip .kc-foot{padding-top:1mm}
 .keycard.kc-a6 .kc-body,.keycard.kc-a6 .kc-more{display:contents}
+/* the welcome card: two A6 sides on one A5 sheet, to fold (or cut) on the dashed line */
+.keycard.kc-welcome{width:210mm;height:148mm;flex-direction:row;padding:0;gap:0}
+.wc-side{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:2.4mm;padding:7mm 8mm 5mm;overflow:hidden}
+.wc-front{border-right:.5pt dashed #B8A888}
+.wc-big{margin:1mm 0 0;font:italic 600 28pt/1.1 var(--serif);color:var(--ink)}
+.wc-side .kc-sec p{font-size:8.5pt;line-height:1.35}
+.wc-cq .kc-pic{min-width:0;margin:0 1mm 0 0;vertical-align:middle}
+.wc-pw{font:600 9pt/1 var(--mono);letter-spacing:.04em}
+.wc-back .kc-lamp{padding-top:0;border-top:0}
+.wc-steps{display:flex;gap:3mm;font-size:8.5pt}
+.wc-steps b{font:700 11pt/1 var(--serif);color:var(--accent);margin-right:1mm}
 @media print{
   html,body{background:#fff !important;min-height:0}
   .app[data-view="print"]{max-width:none;margin:0;padding:0 !important;display:block}
@@ -1188,6 +1222,8 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
 
     <div class="foot">
       <p class="hint-line" id="hintLine">Tap a key to play · hold for its second job</p>
+      <p class="hint-line front-note" id="newLine" hidden></p>
+      <p class="hint-line front-note" id="setupLine" hidden></p>
       <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
     </div>
   </section>
@@ -2076,7 +2112,7 @@ function renderRemote(){
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
   $('nextBtn').disabled = !canNext;
   $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
-  paintTone(); paintCabinet(); paintRooms(); paintSleep(); paintLampNow();
+  paintTone(); paintCabinet(); paintRooms(); paintSleep(); paintLampNow(); paintFrontNotes();
 }
 function paintTone(){
   const t = status && status.tone, row = $('tone');
@@ -5489,7 +5525,7 @@ const SET_STATIC = {
 function soundSummary(){
   if (!settings) return SET_STATIC.sound;
   const lim = settings.volume_limit, fl = settings.volume_floor, bits = [];
-  if (lim != null) bits.push('Ceiling ' + lim);
+  if (lim != null) bits.push('Ceiling ' + lim + (settings.volume_limit_set === false ? ' · not set yet' : ''));
   if (fl != null) bits.push('quietest step ' + fl);
   const tk = fx && fx.knobs && fx.knobs.find(k => k.assignable);
   if (tk && fxEffect(tk.effect)) bits.push(fxName(tk).toLowerCase() + ' knob: ' + fxSayWhat(tk));
@@ -5694,6 +5730,171 @@ function loadSetHome(){
   if (makerOn() && !lchk.data && !lchk.loading) lchkLoad().then(again);   // the Maker tools row: "Lamp never checked"
 }
 
+/* ---- Make it yours: the owner's first choices, from what the radio knows (a checklist, not a wizard) ----
+   A row is done when the radio says so (a ceiling saved, the keys changed, the room named…), never ticked
+   by hand; the optional ones carry Skip. Skipped and hidden live in settings.json (made_mine), so every
+   phone agrees. Needs attention keeps its meaning: a thing is listed once, and never here if it is there. */
+const yoursUi = {asked:false, infoAsked:false, wasOpen:null, finaleUntil:0};
+let radioInfo = null;       // GET /api/info: installed_at (how new the radio is), and what else it says of itself
+async function loadInfo(){
+  try { const r = await api('GET', '/api/info'); if (r.ok && r.json) radioInfo = r.json; } catch (_) {}
+}
+const madeMine = () => Object.assign({skipped:[], hidden_at:null}, (settings && settings.made_mine) || {});
+const yoursSkipped = id => madeMine().skipped.includes(id);
+const yoursHidden = () => !!madeMine().hidden_at;
+// Days since hasler-install finished; null when the radio can't say (a hand-built one, a laptop).
+const radioAgeDays = () => { const t = radioInfo && Date.parse(radioInfo.installed_at || ''); return t ? (Date.now() - t) / 864e5 : null; };
+const NUM_WORDS = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+const numWord = n => NUM_WORDS[n] || String(n);
+// "Your keys · 2 of 6": the numbered keys that no longer play what the set in force put there; the set's
+// name when it was chosen from the page and left as it is.
+function yoursKeysText(){
+  const set = (cfg.starters || []).find(s => s.id === cfg.starter), keys = cfg.keys.filter(k => k.id !== 'pu');
+  if (set && cfg.factory) return set.title;
+  const mine = keys.filter(k => {
+    if (verbOf(k.tap) !== 'preset') return true;
+    const p = presetIn(cfg, k.tap.n), s = set && set.keys.find(x => x.n === k.tap.n);
+    return !p || !s || p.name !== s.name || p.source !== s.source;
+  });
+  return 'Your keys · ' + mine.length + ' of ' + keys.length;
+}
+// The rows in the order of the first evening: the two that matter first (core), then the optional ones.
+// Each: id, title, the line while open, the line once done, word (its name in the Done line); null rows
+// are things this radio can't offer (no Bluetooth, no YouTube Music) or that Needs attention already lists.
+function yoursRows(){
+  if (!settings || !cfg || !Array.isArray(cfg.keys)) return null;
+  const attn = new Set(setAttention().map(a => a.id)), rows = [];
+  const r = settings.room || {}, lp = lampPrefs();
+  const keysDone = cfg.factory === false || cfg.starter_from === 'page';
+  const nKeys = cfg.keys.filter(k => k.id !== 'pu').length;
+  rows.push({id:'ceiling', core:true, title:'Set how loud it may go', open:'The 1964 speaker has limits. Set the ceiling by ear, before the first loud evening.',
+    done: !!settings.volume_limit_set, after:'Loudest ' + settings.volume_limit, href:'#settings/sound/volume', word:'how loud'});
+  rows.push({id:'keys', core:true, title:'Put your music on the keys', open:'The ' + numWord(nKeys) + ' keys still play the makers’ test set. Choose your stations and playlists.',
+    done: keysDone, after: yoursKeysText(), run: startFromSet, word:'your keys'});
+  rows.push({id:'room', title:'Name the room', open:'Kitchen, Study, Hall… It shows on this page, on phones and in the rooms list.',
+    done: !!r.custom, after: r.name, href:'#settings/rooms/name', word:'the room’s name'});
+  if (lp.present){
+    const night = settings.night || 'sun', loc = settings.location;
+    rows.push({id:'place', skip:true, title:'Tell it where it stands', open:'So the lamp knows when the sun sets and goes gentle at night.',
+      done: night !== 'sun' || settings.location_source === 'owner',
+      after: night === 'off' ? 'Never dims' : night !== 'sun' ? 'Dims ' + night.replace('-', ' to ') : (loc && loc.name ? loc.name + ' · ' : '') + 'dims by the sun',
+      href:'#settings/lamp/night', word:'where it stands'});
+  }
+  if (btDoc && Array.isArray(btDoc.devices) && btDoc.available !== false){
+    const bk = btKeyName(), key = bk && bk !== 'its key' ? bk : 'PU';
+    rows.push({id:'pair', skip:true, title:'Pair a phone', open:'Hold ' + key + ' on the radio until the lamp breathes blue, then choose Hasler on your phone.',
+      done: btDoc.devices.length > 0, after: nameAnd(btDoc.devices.map(d => d.name || 'a phone')), href:'#settings/phones/bt', word:'a phone'});
+  }
+  const sp = spotifyAcct();
+  if (sp && !attn.has('attn-spotify'))
+    rows.push({id:'spotify', skip:true, title:'Sign in to Spotify', open:'For Spotify on a key you need Premium. Guests on your Wi-Fi can already play to the radio from their own app.',
+      done: !!sp.signed_in, after:'Signed in as ' + (sp.user || 'a Spotify account'), href:'#settings/accounts/spotify', word:'Spotify'});
+  if (ytm.available && !attn.has('attn-ytm'))
+    rows.push({id:'ytm', skip:true, title:'Sign in to YouTube Music', open:'Only for your Liked songs and private playlists. Public playlists work without it.',
+      done: !!ytm.signed_in, after:'Signed in', href:'#settings/accounts/ytm', word:'YouTube Music'});
+  if (haState && !haState.unsupported && !attn.has('attn-ha') && !attn.has('attn-halost'))
+    rows.push({id:'ha', skip:true, title:'Connect Home Assistant', open:'If you have it: a held key can run a scene or set the lights.',
+      done: !!haState.connected, after:'Connected', href:'#settings/radio/ha', word:'Home Assistant'});
+  // The card can't be known as printed: a Skip-only row, once the keys are the owner's.
+  if (keysDone) rows.push({id:'print', skip:true, title:'Print a card for the radio', open:'What each key does and what the lamp says, to keep by it.', done:false, href:'#print', word:'the card'});
+  return rows;
+}
+const yoursOpen = rows => rows.filter(r => !r.done && !yoursSkipped(r.id));
+// What the rows need beyond what the Settings home already asks for: /api/info and the paired phones.
+function yoursLoad(){
+  if (yoursUi.asked) return;
+  yoursUi.asked = true;
+  const again = () => { if (onPage('home', 'radio', 'maker')) rerender(); };
+  if (!radioInfo) loadInfo().then(again);
+  if (!btDoc) loadBt().then(again);
+}
+function yoursRow(r){
+  const dot = h('span', {class:'yours-dot' + (r.core ? ' core' : ''), 'aria-hidden':'true'});
+  const txt = h('span', {class:'li-txt'}, h('span', {class:'li-title'}, r.title), h('span', {class:'li-sub'}, r.open));
+  const main = r.href ? h('a', {class:'yours-go', id:'yours-' + r.id, href: r.href}, dot, txt)
+    : h('button', {type:'button', class:'yours-go', id:'yours-' + r.id, onclick: e => r.run(e.currentTarget)}, dot, txt);
+  return h('div', {class:'set-row yours-row', 'data-row': r.id}, main,
+    r.skip ? h('button', {type:'button', class:'li-act quiet', id:'skip-' + r.id, 'aria-label':'Skip: ' + r.title, onclick: () => yoursSkip(r.id)}, 'Skip') : null,
+    h('span', {class:'chev', 'aria-hidden':'true'}, IC.chev()));
+}
+function setHomeYours(panel){
+  yoursLoad();
+  if (yoursHidden()) return;
+  const rows = yoursRows(); if (!rows) return;      // the section appears once the settings and the keys have loaded
+  const open = yoursOpen(rows), done = rows.filter(r => r.done), skipped = rows.filter(r => !r.done && yoursSkipped(r.id));
+  const sec = h('section', {class:'grp-sec yours', id:'sec-yours', 'aria-labelledby':'yoursH', tabindex:'-1'});
+  if (!open.length){
+    // Everything done or skipped while this page watched: "That's it" for a moment, and the lamp's small OK.
+    if (yoursUi.wasOpen && !yoursUi.finaleUntil){
+      yoursUi.finaleUntil = Date.now() + 8000; yoursOk();
+      setTimeout(() => { if (onPage('home')) rerender(); }, 8300);
+    }
+    if (Date.now() < yoursUi.finaleUntil){
+      sec.append(h('h3', {class:'mono grp-lbl', id:'yoursH'}, 'Make it yours'), h('p', {class:'yours-fin', id:'yoursFin'}, 'That’s it. It’s yours.'));
+      panel.append(sec);
+    }
+    return;
+  }
+  yoursUi.wasOpen = true;
+  sec.append(h('div', {class:'yours-head'}, h('h3', {class:'mono grp-lbl', id:'yoursH'}, 'Make it yours'),
+    h('span', {class:'yours-count', id:'yoursCount'}, open.length + ' of ' + rows.length + ' to go')));
+  if (!done.length && !skipped.length) sec.append(h('p', {class:'hint yours-lede', id:'yoursLede'},
+    'The radio works as it is. These are the choices that make it yours — a few minutes, in any order. The first one protects the old speaker.'));
+  const list = h('div', {class:'set-list', id:'yoursList'}, open.map(yoursRow));
+  if (done.length || skipped.length) list.append(h('div', {class:'yours-done', id:'yoursDone', title: done.map(r => r.title + ': ' + r.after).join('\n') || null}, h('span', {class:'yours-tick', 'aria-hidden':'true'}, '✓'),
+    h('span', null, (done.length ? 'Done · ' + nameAnd(done.map(r => r.word)) : 'Skipped · ' + nameAnd(skipped.map(r => r.word)))
+      + (done.length && skipped.length ? ' · ' + nameAnd(skipped.map(r => r.word)) + ' skipped' : ''))));
+  sec.append(list, h('div', {class:'yours-foot'}, h('button', {type:'button', class:'link quiet', id:'yoursHide', onclick: yoursHide}, 'Hide this'), h('span', null, '— it stays under This radio.')));
+  panel.append(sec);
+}
+// Skip and Hide are the list's only writes (PUT /api/settings made_mine); from another address the
+// refusal offers Allow like any other change, and the rows stay links.
+async function yoursPut(change, again){
+  try {
+    const r = await api('PUT', '/api/settings', {made_mine: change});
+    if (r.ok && r.json){ settings = Object.assign(settings || {}, r.json); if (view === 'settings') rerender(); return true; }
+    failToast(r, 'The radio didn’t take that', again);
+  } catch (_) { toast(NET_ERR, true); }
+  return false;
+}
+function yoursSkip(id){
+  const run = async () => { if (await yoursPut({skipped: madeMine().skipped.filter(x => x !== id).concat(id)}, run)){ const s = $('sec-yours'); if (s) s.focus({preventScroll:true}); } };
+  run();
+}
+function yoursHide(){
+  const run = async () => { if (await yoursPut({hidden_at: new Date().toISOString()}, run)) toast('Make it yours is now under This radio', {undo: () => yoursPut({hidden_at:null})}); };
+  run();
+}
+const yoursOk = () => api('POST', '/api/lamp/ok', {}).catch(() => {});
+// Hidden, the list lives on as one row under This radio; tapping it puts the list back on Settings.
+function yoursRadioGroup(){
+  if (!yoursHidden()) return null;
+  const rows = yoursRows(), open = rows ? yoursOpen(rows).length : null;
+  return setGroup('yours', 'Make it yours', h('div', {class:'set-list'},
+    setRow('yours', 'Make it yours', open == null ? 'Checking…' : (open ? open + ' to go' : 'All done') + ' · tap to put the list back on Settings', '#settings', null,
+      {onclick: e => { e.preventDefault(); yoursPut({hidden_at:null}).then(ok => { if (ok) go('settings'); }); }})));
+}
+SET_HOME.splice(SET_HOME.indexOf(setHomeAttention) + 1, 0, setHomeYours);   // below Needs attention
+/* ---- the front page's two quiet lines: a new radio ("Make it yours"), and setup mode ---- */
+// The first shows while a core row (the ceiling, the keys) is open, the list isn't hidden and the radio is
+// under a week old (/api/info installed_at); the second whenever the lamp says setup (the hotspot is up).
+function paintFrontNotes(){
+  const nl = $('newLine'), sl = $('setupLine'); if (!nl || !sl) return;
+  const setup = !!(status && status.lamp === 'setup');
+  if (sl.hidden === setup){
+    sl.hidden = !setup; sl.textContent = '';
+    if (setup) sl.append('Not on your Wi-Fi yet. ', h('a', {href:'/wifi', id:'setupLink'}, 'Set it up'), ' — this page only works from the Hasler network until then, or wait: it tries again by itself.');
+  }
+  if (!radioInfo && !yoursUi.infoAsked){ yoursUi.infoAsked = true; loadInfo().then(() => { if (view === 'remote') paintFrontNotes(); }); }
+  const age = radioAgeDays();
+  const rows = age != null && age < 7 && !setup && !yoursHidden() ? yoursRows() : null;
+  const core = rows ? rows.filter(r => r.core && !r.done).map(r => r.id) : [];
+  const tail = !core.length ? '' : core.length === 2 ? 'two things to do first.' : core[0] === 'keys' ? 'put your music on the keys.' : 'set how loud it may go.';
+  if (nl.dataset.tail === tail) return;
+  nl.dataset.tail = tail; nl.hidden = !tail; nl.textContent = '';
+  if (tail) nl.append('New radio? ', h('a', {href:'#settings', id:'newLineLink'}, 'Make it yours'), ' — ' + tail);
+}
+
 function renderSettings(){
   const panel = $('panel'); panel.textContent = '';
   const key = curPage() || 'home', pg = SET_PAGE[key] || SET_PAGE.home;
@@ -5785,6 +5986,13 @@ function radioConfirm({action, args, title, sub}){ return pressToConfirm(action,
 const limitRange = () => { const r = settings && settings.volume_limit_range; return Array.isArray(r) && r.length === 2 ? [+r[0], +r[1]] : [30, 100]; };
 const limitPct = v => { const [lo, hi] = limitRange(); return ((v - lo) / ((hi - lo) || 1) * 100) + '%'; };
 const limitHintText = () => { const hi = limitRange()[1]; return 'Protects the 1964 speaker — the knob stops here' + (hi < 100 ? ' · the maker set the top at ' + hi : ''); };
+// Nobody has set the ceiling yet (volume_limit_set): the recipe, with this cabinet's volume-up key.
+const limitUnset = () => !!(settings && settings.volume_limit_set === false);
+function limitUnsetText(){
+  const k = cfg && Array.isArray(cfg.keys) ? cfg.keys.find(x => verbOf(x.hold) === 'volume_up') : null;
+  return 'Not set yet — the radio is on its factory ceiling. Play something dense, hold ' + (k ? keyLabel(k).replace(/^Key /, 'key ') : 'the volume-up key')
+    + ' until it stops rising, and move this up in steps of 5. At the first rattle from the cone, go back two.';
+}
 const volText = v => v + ' of 100';
 function renderSound(panel){
   const lim = settings && settings.volume_limit != null ? +settings.volume_limit : (status && status.volume_limit != null ? +status.volume_limit : null);
@@ -5805,6 +6013,7 @@ function renderSound(panel){
         h('span', {class:'li-val', id:'limitVal', 'aria-hidden':'true', style:'padding-top:2px'}, lim ?? '—')),
       range,
       h('p', {class:'note-bad', id:'limitWarn', hidden: !(lim >= 95)}, 'Above 95 the old speaker can rattle and distort. Go gently.'),
+      h('p', {class:'hint', id:'limitUnset', hidden: !limitUnset()}, limitUnsetText()),
       h('p', {class:'err', id:'limitErr', role:'alert'})),
     floorItem(),
     mono && mono.available ? h('div', {class:'li col', style:'gap:4px'},
@@ -6280,6 +6489,7 @@ function radioHaGroup(){
 }
 function renderRadio(panel){
   panel.append(radioWifiGroup());
+  const yg = yoursRadioGroup(); if (yg) panel.append(yg);   // "Make it yours", once hidden from the Settings home
   panel.append(radioSoftwareGroup());
   panel.append(howTheRadioIs());
   panel.append(radioHaGroup());
@@ -6571,6 +6781,7 @@ async function helpShare(){
 /* ---- 7 · Maker tools (hidden until the version is tapped seven times) ---- */
 function renderMaker(panel){
   panel.append(h('p', {class:'hint', style:'margin:0;padding:0 4px'}, 'For the person who built the radio. Owners can leave this alone.'));
+  panel.append(handoverGroup());
   panel.append(setGroup('colours', 'Lamp colours', h('div', {class:'list'}, lampCheck(),
     h('details', {class:'how lc-adv', id:'lcAdv', open: lcal.open, ontoggle: e => { lcal.open = e.target.open; }},
       h('summary', null, 'Advanced: every colour by hand'), lampColours()))));
@@ -6666,6 +6877,97 @@ function makerSummary(){
   const base = 'Lamp colours, knob curves, the player, diagnostics';
   const d = lchk.data, s = d && d.saved;
   return d && !(s && (s.calibrated || s.min_duty)) ? 'Lamp never checked on this radio · ' + base : base;
+}
+
+/* ---- Maker tools → Handover: is this radio ready to leave the bench? (docs/new-install.md §4) ----
+   One line per thing, from documents the page already reads: ✓ fine, ! needs you (the line opens where it
+   is fixed), · neither. Copy handover note gives the same lines as plain text for the maker's records. */
+const hoUi = {asked:false};
+const MODE_WORD = {auto:'Automatic', ask:'Asks first', off:'Off'};
+function handoverLoad(){
+  if (hoUi.asked) return;
+  hoUi.asked = true;
+  const again = () => { if (onPage('maker')) rerender(); };
+  if (!btDoc) loadBt().then(again);
+  if (!setupNet) loadSetupNet().then(again);
+  if (!hosts) loadHosts().then(again);
+  if (!help) loadHelp().then(again);
+  if (!castDoc) loadSources().then(again);
+  if (!radioInfo) loadInfo().then(again);
+}
+function handoverRows(){
+  const rows = [], row = (mark, label, value, href, act) => rows.push({mark, label, value, href, act});
+  const ok = (...a) => row('ok', ...a), bad = (...a) => row('bad', ...a), dot = (...a) => row('dot', ...a);
+  const s = software;
+  if (!s) dot('Software', 'Checking…');
+  else if (s.missing) bad('Software', 'updates not set up on this radio', '#settings/radio/updates', 'Look');
+  else if (s.err) bad('Software', 'couldn’t check', '#settings/radio/updates', 'Look');
+  else (s.channel === 'stable' && s.update_mode === 'auto' ? ok : bad)('Software',
+    (s.version || swVer() || '?') + ' · ' + chName(s.channel || 'stable') + ' · ' + (MODE_WORD[s.update_mode] || s.update_mode || '?'), '#settings/radio/updates', 'Change');
+  const hl = setUi.diag && setUi.diag.health;
+  if (!hl) dot('Health', 'Checking…'); else if (hl.ok) ok('Health', 'everything answers'); else bad('Health', hl.error ? 'couldn’t ask the radio' : 'something isn’t answering', '#settings/maker/diag', 'Look');
+  if (!settings) dot('Volume ceiling', 'Checking…');
+  else if (settings.volume_limit_set) ok('Volume ceiling', String(settings.volume_limit));
+  else bad('Volume ceiling', 'not set (factory ' + settings.volume_limit + ')', '#settings/sound/volume', 'Set it');
+  const kn = knobs && knobs.knobs;
+  if (!kn) dot('Knobs', knobs && knobs.missing ? 'no knob page on this radio' : 'Checking…');
+  else { const cal = kn.filter(k => k.source === 'box');
+    (cal.length === kn.length ? ok : dot)('Knobs', cal.length === kn.length ? 'calibrated' : cal.length ? nameAnd(cal.map(k => k.label || k.id)) + ' calibrated · the rest standard' : 'standard (as shipped)', '#settings/sound/knobs', 'Calibrate'); }
+  const lc = lchk.data, sv = lc && lc.saved, place = settings && settings.location_source === 'owner' && settings.location ? settings.location.name : '';
+  if (!lampPrefs().present) dot('Lamp', 'none on this radio');
+  else if (!lc) dot('Lamp', 'Checking…');
+  else if (sv && (sv.calibrated || sv.min_duty)) ok('Lamp', 'checked' + (place ? ' · ' + place : ' · no place chosen yet'), '#settings/lamp/night', place ? '' : 'Place');
+  else bad('Lamp', 'never checked on this radio', '#settings/maker/colours', 'Check it');
+  const w = settings && settings.wifi;
+  if (!w) dot('Wi-Fi', 'Checking…'); else if (w.hotspot) bad('Wi-Fi', 'setup mode — not on a network', '/wifi', 'Set up'); else if (w.ssid) dot('Wi-Fi', 'on ' + w.ssid + ' — the owner’s network?', '/wifi', 'Change'); else ok('Wi-Fi', 'wired');
+  const sn = setupNet;
+  if (!sn) dot('Setup network', 'Checking…');
+  else if (!sn.ssid) dot('Setup network', 'none');
+  else if (sn.password_set && !sn.password) bad('Setup network', sn.ssid + ' · password set in moOde — write it down from there', '#settings/radio/wifi', 'Look');
+  else ok('Setup network', sn.ssid + ' · ' + (sn.password_set ? sn.password : 'open, no password'), '#print/welcome', 'Print');
+  if (btDoc && Array.isArray(btDoc.devices) && btDoc.available !== false){
+    const ds = btDoc.devices;
+    if (ds.length) bad('Bluetooth', ds.length === 1 ? 'your phone “' + (ds[0].name || 'a phone') + '” is paired' : ds.length + ' phones are paired', '#settings/phones/bt', 'Forget');
+    else ok('Bluetooth', 'no phones paired');
+  } else dot('Bluetooth', btDoc && btDoc.available === false ? 'none on this radio' : 'Checking…');
+  const sp = spotifyAcct();
+  if (!castDoc) dot('Spotify', 'Checking…'); else if (!sp) dot('Spotify', 'not on this radio'); else if (sp.signed_in) bad('Spotify', 'signed in as ' + (sp.user || 'an account'), '#settings/accounts/spotify', 'Sign out'); else ok('Spotify', 'signed out');
+  if (ytm.available === null) dot('YouTube Music', 'Checking…'); else if (!ytm.available) dot('YouTube Music', 'not on this radio'); else if (ytm.signed_in) bad('YouTube Music', 'signed in' + (ytm.name ? ' as ' + ytm.name : ''), '#settings/accounts/ytm', 'Sign out'); else ok('YouTube Music', 'signed out');
+  if (!hosts) dot('Other addresses', 'Checking…'); else if (hosts.missing || hosts.err) dot('Other addresses', '—');
+  else { const saved = hosts.saved || []; if (saved.length) bad('Other addresses', nameAnd(saved.map(x => x.host)), '#settings/radio/hosts', 'Remove'); else ok('Other addresses', 'none'); }
+  if (!help) dot('Remote help', 'Checking…'); else if (help.missing || !help.available) dot('Remote help', 'not on this radio'); else if (helpOn()) bad('Remote help', 'on — ' + (help.status_text || help.state), '#settings/radio/help', 'Stop'); else ok('Remote help', 'off');
+  if (!cfg) dot('Keys', 'Checking…');
+  else { const set = (cfg.starters || []).find(x => x.id === cfg.starter);
+    if (cfg.factory) ok('Keys', 'factory set' + (set ? ' · ' + set.title : ''), '#edit', 'Edit'); else bad('Keys', 'changed from the factory set — the owner’s, or yours?', '#edit/reset', 'Reset'); }
+  return rows;
+}
+const hoId = s => s.toLowerCase().replace(/[^a-z]+/g, '-');
+function handoverGroup(){
+  handoverLoad();
+  const rows = handoverRows();
+  const mark = m => h('span', {class:'ho-mark ' + m, 'aria-hidden':'true'}, m === 'ok' ? '✓' : m === 'bad' ? '!' : '·');
+  const said = m => h('span', {class:'sr'}, m === 'ok' ? 'Fine: ' : m === 'bad' ? 'Needs you: ' : '');
+  const line = r => {
+    const txt = h('span', {class:'li-txt'}, h('span', {class:'li-title'}, said(r.mark), r.label), h('span', {class:'li-sub'}, r.value));
+    return r.href ? h('a', {class:'set-row ho-row', id:'ho-' + hoId(r.label), 'data-mark': r.mark, href: r.href}, mark(r.mark), txt,
+        r.act ? h('span', {class:'li-act', 'aria-hidden':'true'}, r.act) : null, h('span', {class:'chev', 'aria-hidden':'true'}, IC.chev()))
+      : h('div', {class:'set-row ho-row', id:'ho-' + hoId(r.label), 'data-mark': r.mark}, mark(r.mark), txt);
+  };
+  const bad = rows.filter(r => r.mark === 'bad').length;
+  return setGroup('handover', 'Handover', h('div', {class:'set-list', id:'hoList'}, rows.map(line)),
+    h('p', {class:'hint', id:'hoNote', style:'padding:0 4px'}, bad ? bad + (bad === 1 ? ' thing' : ' things') + ' to see to before the radio leaves the bench. Each line opens where it is fixed.'
+      : 'Ready to hand over. Print the welcome card and leave it with the radio.'),
+    h('div', {class:'acts', style:'padding:0 4px'},
+      h('button', {type:'button', class:'btn small primary', id:'hoCard', onclick: () => go('print/welcome')}, 'Print welcome card'),
+      h('button', {type:'button', class:'btn small', id:'hoCopy', onclick: () => copyHandover(rows)}, 'Copy handover note')));
+}
+// The same lines as plain text, with the date, for the maker's records (the Details box when the clipboard won't take it).
+async function copyHandover(rows){
+  const room = roomNow();
+  const text = ['Hasler' + (room ? ' · ' + room : '') + ' · handover · ' + new Date().toLocaleDateString(), '']
+    .concat(rows.map(r => (r.mark === 'bad' ? '! ' : r.mark === 'ok' ? 'ok ' : '- ') + r.label + ': ' + r.value)).join('\n') + '\n';
+  try { await navigator.clipboard.writeText(text); toast('Handover note copied'); }
+  catch (_) { setUi.bundle = text; rerender(); const p = $('diagRaw'); if (p){ p.closest('details').open = true; const s = getSelection(), rg = document.createRange(); rg.selectNodeContents(p); s.removeAllRanges(); s.addRange(rg); } toast('Selected — copy it from there'); }
 }
 
 /* the registry: the order is the order of the list. Each page: title, summary (the row's second
@@ -7545,6 +7847,7 @@ function paintLimit(){
   el.value = String(v); el.disabled = false; el.style.setProperty('--pct', limitPct(v)); el.setAttribute('aria-valuetext', volText(v));
   $('limitVal').textContent = v; $('limitWarn').hidden = v < 95;
   const hint = $('limitHint'); if (hint) hint.textContent = limitHintText();
+  const unset = $('limitUnset'); if (unset) unset.hidden = !limitUnset();   // the first save settles it
 }
 async function rereadSound(){
   try { const r = await api('GET', '/api/settings'); if (r.ok && r.json){ settings = Object.assign(settings || {}, r.json); paintLimit(); paintFloor(); } } catch (_) {}
@@ -10094,7 +10397,7 @@ function printLink(){
   return h('div', {class:'print-link'}, h('a', {class:'link quiet', href:'#print', id:'printLink'}, 'Print a key card'));
 }
 let cardSize = 'a6';
-try { if (localStorage.getItem('hasler.card') === 'strip') cardSize = 'strip'; } catch (_) {}
+try { const c = localStorage.getItem('hasler.card'); if (c === 'strip' || c === 'welcome') cardSize = c; } catch (_) {}
 // What a key's tap or hold does, in a few words for paper ('' = nothing).
 function cardWhat(a){
   const v = verbOf(a);
@@ -10175,20 +10478,64 @@ function cardLampLegend(){
   return h('section', {class:'kc-sec kc-lamp', id:'kcLamp'}, h('h2', null, 'What the lamp says'),
     rows.map(([p, words]) => h('p', null, p, ' ', words)));
 }
+/* ---- the welcome card: A6, both sides on one A5 sheet, printed by the maker and left with the radio ----
+   Front: press 1, the key page, what to do if the lamp taps CQ (the setup network, its password when the
+   box is ticked), switching off. Back: what the lamp says, the first three of Make it yours, the makers. */
+const cardUi = {pw:false};
+function welcomeCard(){
+  const r = settings && settings.room, room = roomNow(), info = radioInfo || {};
+  const addr = ((r && r.address) || 'hasler.local') + ':8080';
+  const ip = /^\d+\.\d+\.\d+\.\d+$/.test(location.hostname) && location.hostname !== '127.0.0.1' ? location.hostname + ':8080' : '';
+  const first = cfg.keys.find(k => k.id !== 'pu');
+  const sn = setupNet || {}, ssid = sn.ssid || 'Hasler';
+  const pw = cardUi.pw && sn.password_set && sn.password ? sn.password : '';
+  const mark = () => h('span', {class:'kc-mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy');
+  const front = h('div', {class:'wc-side wc-front'},
+    h('header', {class:'kc-head'}, h('h1', {class:'kc-title'}, 'Hasler'), room ? h('span', {class:'kc-room'}, room) : null, h('span', {class:'kc-kind'}, 'Welcome')),
+    h('p', {class:'wc-big'}, 'Press ' + (first ? first.label : '1') + '.'),
+    h('section', {class:'kc-sec'}, h('h2', null, 'The key page'),
+      h('p', null, h('b', null, 'http://' + addr), ' — on the same Wi-Fi.', ip ? [' Or ', h('b', null, 'http://' + ip), '.'] : null)),
+    settings && settings.volume_limit_set ? h('section', {class:'kc-sec'}, h('h2', null, 'How loud'),
+      h('p', null, 'The makers set the volume ceiling to ', h('b', null, String(settings.volume_limit)), ' for this speaker. Settings → Sound to change it.')) : null,
+    h('section', {class:'kc-sec'}, h('h2', null, 'If the lamp taps'),
+      h('p', {class:'wc-cq'}, cardMorse('CQ', 'amber'), '(amber): join the Wi-Fi network ', h('b', null, ssid),
+        pw ? [', password ', h('b', {class:'wc-pw', id:'wcPw'}, pw)] : sn.password_set ? ', password from the makers' : null, ', and a page opens.')),
+    h('section', {class:'kc-sec'}, h('h2', null, 'Switching off'), powerLines().map(l => h('p', null, l)), h('p', null, h('b', null, 'Dark'), ' means safe to unplug.')),
+    h('footer', {class:'kc-foot'}, h('span', null, ''), mark()));
+  const back = h('div', {class:'wc-side wc-back'},
+    cardLampLegend() || h('section', {class:'kc-sec kc-lamp'}, h('h2', null, 'What the lamp says'),
+      h('p', null, 'Amber is the radio, blue a phone, green OK, red something wrong, dark safe to unplug.')),
+    h('section', {class:'kc-sec'}, h('h2', null, 'Make it yours'),
+      h('p', null, 'On the key page, under Settings — in any order:'),
+      h('p', {class:'wc-steps'}, h('span', null, h('b', null, '1'), 'how loud'), h('span', null, h('b', null, '2'), 'your keys'), h('span', null, h('b', null, '3'), 'the room’s name'))),
+    info.makers_contact ? h('section', {class:'kc-sec'}, h('h2', null, 'The makers'), h('p', null, String(info.makers_contact))) : null,
+    h('footer', {class:'kc-foot'}, h('span', null, info.short_id ? 'Radio ' + info.short_id : ''), mark()));
+  return h('article', {class:'keycard kc-welcome', id:'keyCard', 'aria-label':'Welcome card'}, front, back);
+}
 function renderPrint(){
   const panel = $('panel'); panel.textContent = '';
-  const SIZES = [{id:'a6', label:'Card · A6'}, {id:'strip', label:'Strip · under the keys'}];
+  const SIZES = [{id:'a6', label:'Card · A6'}, {id:'strip', label:'Strip · under the keys'}, {id:'welcome', label:'Welcome card'}];
+  // #print/welcome (Maker tools → Handover) opens on that card; the address then settles to #print.
+  if (route.arg && SIZES.some(z => z.id === route.arg)){ cardSize = route.arg; route.arg = null; history.replaceState(null, '', '#print'); }
+  const welcome = cardSize === 'welcome';
+  if (welcome && !setupNet) loadSetupNet().then(() => { if (view === 'print') renderPrint(); });
   const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Size'}, SIZES.map(z =>
     h('button', {type:'button', role:'radio', 'aria-checked': String(cardSize === z.id), tabindex: cardSize === z.id ? '0' : '-1', 'data-size': z.id,
       onclick: () => { cardSize = z.id; try { localStorage.setItem('hasler.card', z.id); } catch (_) {} renderPrint(); const b = panel.querySelector('[data-size="' + z.id + '"]'); if (b) b.focus(); }}, z.label)));
-  panel.append(h('div', {class:'print-tools'}, screenTop('Key card', 'edit'),
-    h('p', {class:'hint'}, 'What each key does, to keep by the radio. ' + (isDirty() ? 'It shows the keys as last saved.' : 'It shows the keys as saved now.')),
-    seg, h('div', {class:'actions'}, h('button', {type:'button', class:'btn primary', id:'printBtn', disabled: !cfg, onclick: () => window.print()}, 'Print'))));
+  const canPw = welcome && setupNet && setupNet.password_set && setupNet.password;
+  panel.append(h('div', {class:'print-tools'}, screenTop(welcome ? 'Welcome card' : 'Key card', 'edit'),
+    h('p', {class:'hint'}, welcome ? 'For the maker to print and leave with the radio: how to start, the key page, the setup network, what the lamp says. Both sides on one A5 sheet, to fold.'
+      : 'What each key does, to keep by the radio. ' + (isDirty() ? 'It shows the keys as last saved.' : 'It shows the keys as saved now.')),
+    seg,
+    canPw ? h('label', {for:'cardPw', style:'display:flex;align-items:center;gap:10px;min-height:44px;color:var(--cream);font-size:14px;cursor:pointer'},
+      h('input', {type:'checkbox', id:'cardPw', checked: cardUi.pw, onchange: e => { cardUi.pw = e.target.checked; renderPrint(); }}),
+      'Include the setup password (only someone next to the radio can use it)') : null,
+    h('div', {class:'actions'}, h('button', {type:'button', class:'btn primary', id:'printBtn', disabled: !cfg, onclick: () => window.print()}, 'Print'))));
   if (!cfg){ panel.append(h('p', {class:'loading'}, cfg === null ? 'Warming up the valves…' : 'Couldn’t load the keys.')); return; }
-  panel.append(h('div', {class:'card-sheet'}, keyCard(cardSize)));
+  panel.append(h('div', {class:'card-sheet'}, welcome ? welcomeCard() : keyCard(cardSize)));
 }
 // The paper size goes in only while the card prints, so other pages print as before.
-const PAGE_SIZE = {a6:'@page{size:105mm 148mm;margin:0}', strip:'@page{size:A4 landscape;margin:10mm}'};
+const PAGE_SIZE = {a6:'@page{size:105mm 148mm;margin:0}', strip:'@page{size:A4 landscape;margin:10mm}', welcome:'@page{size:210mm 148mm;margin:0}'};
 window.addEventListener('beforeprint', () => {
   if (view !== 'print') return;
   const st = $('cardPage') || document.head.appendChild(h('style', {id:'cardPage'}));

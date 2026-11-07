@@ -577,7 +577,7 @@ about 30 s.
 
 No screen or keyboard needed. If the radio does not find a known network for
 **90 s** after power-on, moOde starts a hotspot called **"Hasler"** and the pilot
-lamp **breathes warm white**. A phone that joins it is sent to the radio's Wi-Fi
+lamp **taps CQ in amber Morse** ("set me up"). A phone that joins it is sent to the radio's Wi-Fi
 page (or open `http://172.24.1.1:8080/wifi`). Choose the network, type the
 password, press **Connect**; the radio restarts onto it. The owner's steps are in
 [Using your Hasler](using.md#wi-fi).

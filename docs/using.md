@@ -37,12 +37,23 @@ plays.
    or playlist. Press the key of the station that is playing again, and the
    radio goes to sleep.
 4. **Open the key page.** On a phone or computer on the same Wi-Fi, open
-   **http://hasler.local:8080**. Tap the pencil (**Edit keys**) to put your
-   own stations and playlists on the keys.
-5. **Play from your phone.** In Spotify or AirPlay, choose **Hasler** as the
+   **http://hasler.local:8080**. On a new radio it says so under the keys:
+   *New radio? Make it yours.* Tap the gear: **Make it yours** lists what is
+   still yours to choose, in order. The first one protects the old speaker.
+5. **Set how loud it may go.** Settings → **Sound** → Volume ceiling. The
+   people who built the radio usually set it by ear (the number is on the
+   welcome card); if the page says *not set yet*, play something dense, hold
+   key 6 until the volume stops rising, and move the ceiling up in steps of 5.
+   At the first rattle from the cone, go back two.
+6. **Put your music on the keys.** Tap the pencil (**Edit keys**) to put your
+   own stations and playlists on the keys, or **Start from a set…** for a whole
+   set at once.
+7. **Play from your phone.** In Spotify or AirPlay, choose **Hasler** as the
    speaker. For Bluetooth, hold the **PU** key until the lamp breathes blue,
    then choose **Hasler** on your phone.
-6. **Switch it off.** Turn the **tone** knob all the way left until it clicks:
+8. **Keep a card by it.** Edit keys → **Print a key card**: what each key does
+   and what the lamp says. The makers may have left a welcome card already.
+9. **Switch it off.** Turn the **tone** knob all the way left until it clicks:
    the radio sleeps (a still, dim ember glow). Keep it clicked off for 5 seconds and
    it shuts down. When the lamp is **dark**, it is safe to unplug.
 
@@ -491,6 +502,18 @@ holds right now. Anything that needs you (an update ready, a Spotify code
 waiting, a key whose Home Assistant target has gone, a Wi-Fi not set up) is
 listed first, under **Needs attention**; while that list has something in it,
 the gear on the front page carries a small amber dot.
+
+Below it, on a radio that is still new to you, **Make it yours**: the choices
+that are yours and still untouched, read from the radio itself and listed in
+the order of the first evening: how loud it may go, your music on the keys,
+the room's name, where it stands, a phone, Spotify, YouTube Music, Home
+Assistant, a card to keep by it. Each row opens where the thing is done; it
+is done when the radio knows it is, never by ticking. The optional rows have
+**Skip**, and **Hide this** puts the whole list under This radio. When every
+row is done or skipped the list says *That's it. It's yours.*, the lamp
+blooms green and taps OK, and the list goes. For its first week, the front
+page carries one line (*New radio? Make it yours*) while the two rows that
+matter most, the ceiling and the keys, are open.
 
 | Row | What you find there |
 |---|---|
