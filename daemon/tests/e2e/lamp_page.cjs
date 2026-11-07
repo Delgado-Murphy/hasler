@@ -182,6 +182,8 @@ async function until(fn, ms, what){
 
       await check(name + ': geek mode is off by default, applies at once with Undo, and takes a callsign', async () => {
         await page.reload();
+        await until(() => page.isVisible('#more-lamp summary'), 5000, 'More options');
+        await page.click('#more-lamp summary');
         await until(() => page.isVisible('#lampGeek'), 5000, 'the geek switch');
         assert(!(await page.isChecked('#lampGeek')) && !(await page.$('#lampCall')), 'geek mode on by default');
         await page.click('label[for="lampGeek"]');
@@ -224,8 +226,7 @@ async function until(fn, ms, what){
       });
 
       await check(name + ': lamp colours line links to Maker tools only when they are on', async () => {
-        assert(/set by the makers/.test(await page.textContent('#lampMakers')), 'no makers line');
-        assert(!(await page.$('#lampMakersLink')), 'a link with Maker tools off');
+        assert(!(await page.$('#lampMakers')) && !(await page.$('#lampMakersLink')), 'a makers line with Maker tools off');
         await page.evaluate(() => localStorage.setItem('hasler.maker', '1'));
         await page.reload();
         await until(() => page.isVisible('#lampMakersLink'), 5000, 'the link with Maker tools on');

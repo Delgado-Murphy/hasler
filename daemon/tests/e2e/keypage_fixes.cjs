@@ -197,6 +197,38 @@ const activeId = page => page.evaluate(() => document.activeElement ? (document.
       await page.close();
     });
 
+    await check('every slider’s fill ends where its thumb is (the combination’s Hold for: 1 s, not 1.5)', async () => {
+      const page = await fresh('#edit/combos');
+      await page.waitForSelector('#comboAdd');
+      await page.click('#comboAdd');
+      await page.waitForSelector('#holdS');
+      const fill = sel => page.$eval(sel, el => ({v: +el.value, p: +getComputedStyle(el).getPropertyValue('--p'), lo: +el.min, hi: +el.max, dis: el.disabled}));
+      let f = await fill('#holdS');
+      assert(f.v === 1 && Math.abs(f.p - (f.v - f.lo) / (f.hi - f.lo)) < 1e-6, 'hold slider: ' + JSON.stringify(f));
+      await page.focus('#holdS'); await page.keyboard.press('ArrowRight');
+      f = await fill('#holdS');
+      assert(Math.abs(f.v - 1.1) < 1e-9 && Math.abs(f.p - (f.v - f.lo) / (f.hi - f.lo)) < 1e-6, 'after a step: ' + JSON.stringify(f));
+      await page.goto(radio.base + '/#settings/sound');
+      await page.waitForSelector('#limit');
+      for (const sel of ['#limit', '#floor']){
+        let g = null;   // the page settles once /api/settings has answered
+        await until(async () => { g = await fill(sel); return !g.dis && Math.abs(g.p - (g.v - g.lo) / ((g.hi - g.lo) || 1)) < 1e-6; }, 4000, sel + ' fill: ' + JSON.stringify(g));
+      }
+      await page.close();
+    });
+
+    await check('Back with a sheet open closes the sheet; the page under it answers', async () => {
+      const page = await fresh('#edit');
+      await page.waitForSelector('#startSet');
+      await page.click('#startSet');
+      await until(() => page.evaluate(() => !!document.querySelector('dialog[open]')), 3000, 'the sheet');
+      await page.evaluate(() => { location.hash = '#settings'; });
+      await until(() => page.evaluate(() => !document.querySelector('dialog[open]')), 3000, 'the sheet to close');
+      await page.click('#setrow-sound', {timeout: 3000});
+      await until(async () => (await page.evaluate(() => location.hash)) === '#settings/sound', 3000, 'Sound opened');
+      await page.close();
+    });
+
     await check('no console errors', async () => { assert(!errors.length, errors.join('\n     ')); });
   } finally {
     await browser.close();
