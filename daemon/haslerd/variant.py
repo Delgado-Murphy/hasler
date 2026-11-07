@@ -43,6 +43,9 @@ class Variant:
     # The box's calibration overlay (/etc/hasler/variant.d/<name>.yaml) when
     # one was laid over this descriptor - see boxconfig.load_effective_variant.
     overlay_path: Path | None = None
+    # What the cabinet is called on the web page ("Hasler HM · Bern 1964");
+    # the descriptor's ``title:``, else its variant name.
+    title: str = ""
 
     def pin_names(self) -> list[str]:
         """Every logical pin the descriptor references, in `d0..dN` order."""
@@ -84,6 +87,7 @@ def load_variant(path: str | Path) -> Variant:
         presets=data.get("presets", []),
         combos=list(data.get("combos") or []),
         path=path,
+        title=str(data.get("title") or ""),
     )
 
 

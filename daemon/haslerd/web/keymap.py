@@ -27,7 +27,7 @@ from ..actions import Actions, build_presets
 from ..boxconfig import SCHEMA as KEYS_SCHEMA, atomic_write_text
 from ..ha import behaviour
 from ..panel.combos import COMBO_HOLD_RANGE, DEFAULT_COMBO_HOLD_S, MAX_COMBOS, combo_id
-from ..panel.controls import Momentary
+from ..panel.controls import Momentary, bank_keys, bank_latching, default_label, release_key
 from ..player.base import Preset
 from ..player.sources import ytm_refs
 
@@ -93,13 +93,64 @@ class Invalid(ValueError):
 # -- reading ---------------------------------------------------------------
 
 
+def key_specs(actions: Actions) -> list[dict]:
+    """The cabinet's assignable keys, left to right: ``[{"id", "label", "latching"}]``.
+
+    Its momentary controls, and the keys of an interlocked bank (the
+    Excelsior's 1-6, PU, Tape - ids and labels from the descriptor's
+    ``keys:``). A latching bank key's ``tap`` is its selection and it has no
+    hold (a latched key can't be told from a held one). The bank's release
+    key (key 0) is fixed while the bank latches - every press of it pops the
+    latched key, which is the bank's ``clear`` - and an ordinary key on a unit
+    whose keys spring back (``latching: false``), where it comes first.
+    """
+    out: list[dict] = []
+    for c in actions.variant.controls:
+        kind = c.get("kind")
+        if kind == "momentary":
+            out.append({"id": c["id"], "label": str(c.get("label") or default_label(c["id"])), "latching": False})
+        elif kind == "interlocked_bank":
+            latching = bank_latching(c)
+            release = release_key(c)
+            if release and not latching:
+                out.append({"id": release["id"], "label": release["label"], "latching": False})
+            out.extend({**key, "latching": latching} for key in bank_keys(c))
+    return out
+
+
 def key_ids(actions: Actions) -> list[str]:
-    """The cabinet's keys, left to right: its momentary controls."""
-    return [c["id"] for c in actions.variant.controls if c.get("kind") == "momentary"]
+    """The cabinet's assignable keys, left to right (key_specs)."""
+    return [k["id"] for k in key_specs(actions)]
 
 
-def label_for(cid: str) -> str:
-    return cid[1:] if re.fullmatch(r"k\d+", cid) else cid.upper()
+def latching_ids(actions: Actions) -> set[str]:
+    """The keys that stay down when pressed: a tap (their selection), no hold."""
+    return {k["id"] for k in key_specs(actions) if k["latching"]}
+
+
+def fixed_keys(actions: Actions) -> list[dict]:
+    """Keys the page shows but doesn't offer to change: a latching bank's
+    release key (the Excelsior's key 0), ``[{"id", "label", "tap", "hold"}]``."""
+    table = actions.variant.actions
+    out = []
+    for c in actions.variant.controls:
+        if c.get("kind") == "interlocked_bank" and bank_latching(c):
+            release = release_key(c)
+            if release:
+                rid = release["id"]
+                out.append({"id": rid, "label": release["label"], "release": True,
+                            "tap": to_page(table.get(f"{rid}.tap")), "hold": to_page(table.get(f"{rid}.hold"))})
+    return out
+
+
+def label_for(cid: str, actions: Actions | None = None) -> str:
+    """A key's caption: the descriptor's label (with ``actions``), else
+    ``k3`` -> ``3``, ``pu`` -> ``PU``."""
+    if actions is not None:
+        for k in key_specs(actions):
+            if k["id"] == cid:
+                return k["label"]
+    return default_label(cid)
 
 
 def to_page(spec: dict | None) -> dict | None:
@@ -147,10 +198,11 @@ def ha_connected(ha: Any) -> bool:
 
 
 def combo_keys(actions: Actions) -> list[str]:
-    """Keys that may be half of a combination: every key of the cabinet (its
-    momentary controls). Interlocked banks, their release key and end switches
-    are never keys here."""
-    return key_ids(actions)
+    """Keys that may be half of a combination: every key of the cabinet that
+    springs back. Latching keys (an interlocked bank: pressing one releases
+    the other, so two are never down together), a latching bank's release key
+    and end switches are never keys here."""
+    return [k["id"] for k in key_specs(actions) if not k["latching"]]
 
 
 def combo_to_page(combo: dict) -> dict:
@@ -189,8 +241,10 @@ def power_doc(actions: Actions) -> list[dict]:
             ms = sw.get("off_hold_ms")
             out.append({"kind": "end_switch", "control": c.get("id"), "off": "standby", "off_held": held,
                         "held_s": round(ms / 1000, 1) if held and isinstance(ms, (int, float)) else None})
-        if c.get("kind") == "interlocked_bank" and c.get("release"):
-            rid = f"{c.get('id')}_release"
+        # Latching only: on a unit whose keys spring back key 0 is a key, on the card already.
+        release = release_key(c) if c.get("kind") == "interlocked_bank" and bank_latching(c) else None
+        if release:
+            rid = release["id"]
             if verb(f"{rid}.tap") == "standby":
                 out.append({"kind": "release_key", "control": c.get("id"), "tap": "standby",
                             "hold": verb(f"{rid}.hold")})
@@ -201,15 +255,25 @@ def layout_doc(actions: Actions) -> dict:
     """What the owner sets on the page: keys, presets, combinations."""
     table = actions.variant.actions
     keys = []
-    for cid in key_ids(actions):
+    for spec in key_specs(actions):
+        cid = spec["id"]
         keys.append({
             "id": cid,
-            "label": label_for(cid),
+            "label": spec["label"],
             "tap": to_page(table.get(f"{cid}.tap")),
-            "hold": to_page(table.get(f"{cid}.hold")),
+            # A latching key has no hold: always None, and ignored on save.
+            "hold": None if spec["latching"] else to_page(table.get(f"{cid}.hold")),
+            # True: the key stays down when pressed (an interlocked bank) -
+            # its tap is "selected", and it has no hold and no combinations.
+            "latching": spec["latching"],
         })
     return {
+        "variant": actions.variant.name,
+        # What the page calls the cabinet ("Hasler HM · Bern 1964", "Excelsior").
+        "title": actions.variant.title or actions.variant.name,
         "keys": keys,
+        # Shown, not assignable: the Excelsior's key 0 while its bank latches.
+        "fixed_keys": fixed_keys(actions),
         "presets": [preset_to_page(p) for p in sorted(actions.presets.values(), key=lambda p: p.n)],
         "combos": [combo_to_page(c) for c in actions.variant.combos or [] if isinstance(c, dict)],
     }
@@ -227,7 +291,9 @@ def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
     layout = layout_doc(actions)
     return {
         "variant": actions.variant.name,
+        "title": layout["title"],
         "keys": layout["keys"],
+        "fixed_keys": layout["fixed_keys"],
         "presets": layout["presets"],
         "verbs": VERBS,
         "sources": sources,
@@ -491,7 +557,7 @@ def combos_from_page(
         pair = frozenset(keys)
         if pair in seen:
             errors.append({"where": f"{where}.keys", "message":
-                           f"{label_for(keys[0])} + {label_for(keys[1])} is already a combination"})
+                           f"{label_for(keys[0], actions)} + {label_for(keys[1], actions)} is already a combination"})
             continue
         seen.add(pair)
         hold = item.get("hold_s", DEFAULT_COMBO_HOLD_S)
@@ -545,6 +611,7 @@ def parse_layout(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict
         specs.append(spec)
 
     known = set(key_ids(actions))
+    latching = latching_ids(actions)
     table: dict[str, dict | None] = {}
     for i, raw in enumerate(doc.get("keys") or []):
         cid = raw.get("id") if isinstance(raw, dict) else None
@@ -552,6 +619,8 @@ def parse_layout(doc: Any, actions: Actions) -> tuple[list[dict], dict[str, dict
             errors.append({"where": f"keys[{i}]", "message": f"no key called {cid!r}"})
             continue
         for event in EVENTS:
+            if event == "hold" and cid in latching:
+                continue        # no hold on a latching key: whatever was there stays
             name = f"{cid}.{event}"
             table[name] = action_from_page(
                 raw.get(event), f"keys[{i}].{event}", seen, actions.variant.actions.get(name), errors

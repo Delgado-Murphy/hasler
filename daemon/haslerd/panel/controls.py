@@ -7,7 +7,11 @@ Six kinds cover every cabinet we have or expect:
                        if set - a volume key that ramps while held).
 ``latching_toggle``    independent stay-put switch. Emits ``on`` / ``off``.
 ``interlocked_bank``   mechanically ganged keys where exactly one is down.
-                       Emits ``select`` / ``hold`` / ``clear``.
+                       Emits ``select`` / ``hold`` / ``clear``. Its ``keys:``
+                       name each position (``k1``, ``pu`` ...); with
+                       ``latching: false`` (a cabinet modified so the keys
+                       spring back) each position is built as a ``momentary``
+                       key of that id instead - see ``bank_keys``.
 ``rotary_switch``      N-position wafer switch. Emits ``position``.
 ``pot``                potentiometer on an ADC channel. Emits ``change``.
                        May carry an ``end_switch`` (a pot with a click at the
@@ -316,6 +320,56 @@ class InterlockedBank(Control):
 
     def state(self):
         return self._selected
+
+
+def bank_latching(spec: Mapping[str, Any]) -> bool:
+    """An interlocked bank's keys stay down (the default) - False for a
+    cabinet modified so they spring back like the HM's (``latching: false``,
+    usually set per radio in /etc/hasler/variant.d/<variant>.yaml)."""
+    return spec.get("latching", True) is not False
+
+
+def bank_keys(spec: Mapping[str, Any]) -> list[dict]:
+    """The keys of an interlocked bank, left to right: ``[{"id", "label"}]``.
+
+    From the descriptor's ``keys:`` - one entry per pin, a bare id
+    (``k3``, ``pu``) or ``{id, label}``. A bank without ``keys:`` names its
+    positions ``<bank>_1`` .. ``<bank>_N``. The ids are what the action table,
+    keys.yaml and the key page use: ``k3.tap`` is "key 3 selected", whether
+    the key latches or springs back.
+    """
+    cid = spec.get("id") or "bank"
+    pins = list(spec.get("pins") or [])
+    raw = list(spec.get("keys") or [])
+    out: list[dict] = []
+    for i in range(len(pins)):
+        item = raw[i] if i < len(raw) else None
+        if isinstance(item, Mapping):
+            kid, label = str(item.get("id") or f"{cid}_{i + 1}"), item.get("label")
+        elif item:
+            kid, label = str(item), None
+        else:
+            kid, label = f"{cid}_{i + 1}", str(i + 1)
+        out.append({"id": kid, "label": str(label) if label else default_label(kid)})
+    return out
+
+
+def release_key(spec: Mapping[str, Any]) -> dict | None:
+    """An interlocked bank's release key (key 0 on the Excelsior) as
+    ``{"id", "label", "pin"}``, or None when it has none."""
+    release = spec.get("release")
+    if not isinstance(release, Mapping) or not release.get("pin"):
+        return None
+    kid = str(release.get("id") or f"{spec.get('id') or 'bank'}_release")
+    return {"id": kid, "label": str(release.get("label") or default_label(kid)), "pin": release["pin"]}
+
+
+def default_label(cid: str) -> str:
+    """What a key is called when the descriptor doesn't say: ``k3`` -> ``3``,
+    ``pu`` -> ``PU``."""
+    if len(cid) > 1 and cid[0] == "k" and cid[1:].isdigit():
+        return cid[1:]
+    return cid.upper()
 
 
 class RotarySwitch(Control):
@@ -727,7 +781,17 @@ def build_controls(specs: list[dict]) -> list[Control]:
             raise ValueError(f"control of kind {kind!r} has no id")
 
         if kind == "interlocked_bank":
-            release = spec.pop("release", None)
+            release = release_key({"id": cid, **spec})
+            hold_s = spec.get("hold_ms", DEFAULT_HOLD_S * 1000) / 1000
+            if not bank_latching(spec):
+                # A modified cabinet: the keys spring back. Each is a plain
+                # momentary key (tap / hold / repeat, combinations) under its
+                # bank id, key 0 first as it sits on the panel.
+                if release:
+                    controls.append(Momentary(release["id"], pin=release["pin"], hold_s=hold_s))
+                for key, pin in zip(bank_keys({"id": cid, **spec}), spec["pins"]):
+                    controls.append(Momentary(key["id"], pin=pin, hold_s=hold_s))
+                continue
             controls.append(
                 InterlockedBank(
                     cid,
@@ -739,7 +803,7 @@ def build_controls(specs: list[dict]) -> list[Control]:
             # Key 0 on the Excelsior. It may have no contacts at all, in which
             # case Phase 0 says so and the bank's own `clear` covers it.
             if release:
-                controls.append(Momentary(f"{cid}_release", pin=release["pin"]))
+                controls.append(Momentary(release["id"], pin=release["pin"]))
             continue
 
         if kind == "pot":

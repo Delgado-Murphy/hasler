@@ -130,6 +130,24 @@ button{cursor:pointer}
   box-shadow:inset 0 3px 0 var(--amber),0 0 0 #8F7F5E,0 0 18px rgba(255,178,56,.55)}
 .key.pu.down{background:linear-gradient(180deg,#5A4430 0%,#40301F 85%,#33261A 100%);box-shadow:inset 0 3px 0 var(--amber),0 0 0 #1C130C,0 0 18px rgba(255,178,56,.45)}
 .key:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+/* Excelsior: key 0 pops the latched key - narrower, a darker cap; a bank of 8 + key 0 packs tighter */
+.key.rel{flex-grow:.72;margin-right:4px;background:linear-gradient(180deg,#E2D6BC 0%,#CDBF9F 82%,#B5A57F 100%)}
+.key.rel .key-l{color:#5A4A32}
+.bank.wide-bank{gap:4px;padding-inline:8px}
+.bank.wide-bank .key-n{font-size:20px}
+.bank.wide-bank .key-l{font-size:7.5px;line-height:10px;letter-spacing:0}
+.cab{display:flex;flex-direction:column;gap:10px;margin:12px 14px 0}
+.cab[hidden]{display:none}
+.cab .tone{margin:0}
+.cab .tone > span:first-child{min-width:4.6em}
+.cab .tone-db{min-width:12em}
+.key-n.word{font-size:15px;letter-spacing:-.01em}
+.skey.word{font-size:12px;letter-spacing:-.01em}
+.kl-n.word{font-size:10px;letter-spacing:-.01em}
+.bank.wide-bank .key-n.word{font-size:12.5px;line-height:26px}
+.cab-line{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 18px;margin:0;color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.cab-line b{color:var(--brass);font-weight:400}
+.cab-line b.on{color:var(--amber)}
 /* A key with a hold job: a short bar at the top of the cap; a red "!" when Home Assistant lacks its target. */
 .key-h{position:absolute;top:5px;left:50%;width:14px;height:3px;margin-left:-7px;border-radius:2px;background:#A8916A;pointer-events:none}
 .key.pu .key-h{background:var(--brass)}
@@ -180,7 +198,7 @@ button{cursor:pointer}
 .tone:hover .tone-tip,.tone:focus-within .tone-tip{opacity:1}
 .tone-db{min-width:5.5em;text-align:right;color:var(--brass);font-variant-numeric:tabular-nums}
 .tone-off{color:var(--muted)}
-.remote.offline .controls,.remote.offline .tone,.remote.offline .bank{opacity:.55;filter:saturate(.5);transition:opacity .3s}
+.remote.offline .controls,.remote.offline .tone,.remote.offline .bank,.remote.offline .cab{opacity:.55;filter:saturate(.5);transition:opacity .3s}
 .remote.offline .bank{opacity:.35;filter:saturate(.3)}
 .foot{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:8px}
 .hint-line{margin:0;color:var(--muted);font:12px/16px var(--sans);text-align:center}
@@ -1054,11 +1072,12 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
       <span aria-hidden="true" id="toneHi">Bright</span>
       <span class="tone-db" id="toneDb">—</span>
     </div>
+    <div class="cab" id="cab" hidden></div>
 
     <div class="rooms" id="rooms" role="region" aria-label="Rooms"></div>
 
     <div class="foot">
-      <p class="hint-line">Tap a key to play · hold for its second job</p>
+      <p class="hint-line" id="hintLine">Tap a key to play · hold for its second job</p>
       <p class="mark">Delgado <span class="amp">&amp;</span> Murphy</p>
     </div>
   </section>
@@ -1336,7 +1355,7 @@ function payload(d){
    work on it as they do on a key (slot "combo"). The radio stores the action flat. */
 const comboLim = () => Object.assign({hold_s:[0.5, 3], default_hold_s:1, max:8}, (cfg && cfg.combo_limits) || {});
 let baseCombos = {}, comboSeq = 0;
-const combosOn = () => !!(draft && Array.isArray(draft.combos));
+const combosOn = () => !!(draft && Array.isArray(draft.combos)) && comboKeyIds().length >= 2;   // latching keys can't be held together
 // "k1+k2" in key order: the radio's own name for it (Home Assistant checks report it as "k1+k2", event "combo").
 const comboPairId = keys => comboOrder(keys).join('+');
 function comboIn(c){
@@ -1457,6 +1476,7 @@ function tapName(k){
     return n ? n + (ids.length > 1 ? ' + ' + (ids.length - 1) : '') : verbShort(v);
   }
   if (v === 'none') return '—';
+  if (v === 'custom' && a.spec && a.spec.do === 'standby') return 'Off';   // the Excelsior's key 0
   if (v === 'cycle_source') return 'Source';
   if (v === 'join_group') return 'Join';
   return verbShort(v);
@@ -1484,10 +1504,11 @@ function buildBank(){
   for (const k of remoteKeys()){
     const btn = h('button', {type:'button', class:'key' + (k.id === 'pu' ? ' pu' : ''), 'data-key':k.id},
       h('span', {class:'key-h', 'aria-hidden':'true', hidden:''}),
-      h('span', {class:'key-n', 'aria-hidden':'true'}, k.label), h('span', {class:'key-l', 'aria-hidden':'true', lang:'es'}));
+      h('span', {class:'key-n' + (String(k.label).length > 2 ? ' word' : ''), 'aria-hidden':'true'}, k.label), h('span', {class:'key-l', 'aria-hidden':'true', lang:'es'}));
     bindKey(btn, k.id);
     bank.append(btn);
   }
+  cabinetKeys(bank);
   paintBank();
 }
 function holdVerb(id){ const k = cfg && cfg.keys.find(x => x.id === id); return verbOf(k && k.hold); }
@@ -1497,7 +1518,7 @@ function bindKey(btn, id){
   const start = src => {
     active = src; held = false;
     localDown.add(id); paintBank();
-    timer = setTimeout(() => {
+    if (!keyLatches(id)) timer = setTimeout(() => {   // a latching key has no hold
       held = true;
       const v = holdVerb(id), k = cfg && cfg.keys.find(x => x.id === id);
       if (navigator.vibrate) try { navigator.vibrate(15); } catch (_) {}
@@ -1578,19 +1599,20 @@ function paintBank(){
   const cur = currentKey(), pressed = new Set((status && status.pressed) || []), now = Date.now();
   for (const btn of $('bank').children){
     const id = btn.dataset.key;
+    if (btn.dataset.fixed) continue;   // key 0: cabinetKeys() paints it
     const k = remoteKeys().find(x => x.id === id) || {id, label:id};
     const name = keyName(k);
     const lbl = btn.querySelector('.key-l');
     const short = id === 'pu' && !cfg ? 'Source' : keyCap(k, name);
     if (lbl.textContent !== short) lbl.textContent = short;
     capFit(lbl, short);
-    const down = localDown.has(id) || (flashUntil[id] || 0) > now || pressed.has(id) || cur === id || (id === 'pu' && puEngaged());
+    const down = localDown.has(id) || (flashUntil[id] || 0) > now || pressed.has(id) || cur === id || (id === 'pu' && puEngaged()) || latchedKey() === id;
     btn.classList.toggle('down', down);
     const hk = cfg && cfg.keys.find(x => x.id === id), hv = verbOf(hk && hk.hold), miss = hv !== 'none' && !!missingFor(id, 'hold');
     const hm = btn.querySelector('.key-h');
     if (hm){ hm.hidden = hv === 'none'; hm.classList.toggle('miss', miss); }
     const holdTxt = hv === 'none' ? '' : '. Hold: ' + holdName(hk) + (miss ? ', missing in Home Assistant' : '');
-    btn.setAttribute('aria-label', (k.label ? (id === 'pu' ? 'PU' : 'Key ' + k.label) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : '') + holdTxt);
+    btn.setAttribute('aria-label', (k.label ? keyLabel(k) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : '') + holdTxt);
     btn.title = hv === 'none' ? '' : 'Hold: ' + holdName(hk) + (miss ? ' (missing in Home Assistant)' : '');
     btn.setAttribute('aria-pressed', String(cur === id));
   }
@@ -1874,7 +1896,7 @@ $('nextBtn').addEventListener('click', async () => {
   pollSoon();
 });
 function renderRemote(){
-  if (!$('bank').children.length || $('bank').children.length !== remoteKeys().length) buildBank();
+  if (!$('bank').children.length || $('bank').children.length !== remoteKeys().length + fixedKeys().length) buildBank();
   paintBank(); renderDial(); syncKnob();
   const sb = !!(status && status.standby);
   $('remote').classList.toggle('offline', !online);   // last-known knob and keys, dimmed
@@ -1885,7 +1907,7 @@ function renderRemote(){
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
   $('nextBtn').disabled = !canNext;
   $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
-  paintTone(); paintRooms(); paintSleep();
+  paintTone(); paintCabinet(); paintRooms(); paintSleep();
 }
 function paintTone(){
   const t = status && status.tone, row = $('tone');
@@ -1902,6 +1924,74 @@ function paintTone(){
   $('toneLo').textContent = ends[0]; $('toneHi').textContent = ends[1];
   $('toneDb').classList.toggle('tone-off', off);
   $('toneBar').setAttribute('aria-valuetext', off ? 'Tone knob switched off' : (t.label || 'Treble') + ' ' + txt);
+}
+
+/* ================= remote: the cabinet's other controls (Excelsior) ================= */
+// All from the descriptor, through /api/config and /api/status: key 0 (cfg.fixed_keys), keys that
+// latch (k.latching, status.latched), SP (status.switches), the speaker selector (status.selectors),
+// treble and bass (status.tone_knobs). The HM has none of them, and its page doesn't change.
+function fixedKeys(){ return (cfg && cfg.fixed_keys) || []; }
+function keyLatches(id){ return !!(cfg && cfg.keys.some(k => k.id === id && k.latching)); }
+function latchingBank(){ return !!(cfg && cfg.keys.some(k => k.latching)); }
+function latchedKey(){ return (status && status.latched) || null; }
+// What a press of a key is called in the key editor: a latching key is selected, not tapped.
+function tapWord(k){ return k && k.latching ? 'Select' : 'Tap'; }
+// No key steps through the sources (the Excelsior's PU plays the phone): no "Source key" wording.
+function noSourceKey(){ return !!cfg && !cfg.keys.some(k => verbOf(k.tap) === 'cycle_source' || verbOf(k.hold) === 'cycle_source'); }
+function fixedWord(k){ const s = k.tap && (k.tap.spec || k.tap); return s && (s.do === 'standby' || s.do === 'standby_toggle') ? 'Off' : ''; }
+function cabinetKeys(bank){
+  bank.classList.toggle('wide-bank', remoteKeys().length + fixedKeys().length > 8);
+  for (const k of fixedKeys().slice().reverse()){
+    const word = fixedWord(k);
+    const btn = h('button', {type:'button', class:'key rel', 'data-key':k.id, 'data-fixed':'1',
+        'aria-label':'Key ' + k.label + (word ? ', releases the key that’s down: standby' : '')},
+      h('span', {class:'key-n', 'aria-hidden':'true'}, k.label), h('span', {class:'key-l', 'aria-hidden':'true'}, word));
+    btn.addEventListener('click', () => { flashUntil[k.id] = Date.now() + 260; paintFixed(); setTimeout(paintFixed, 280); press(k.id, 'tap'); });
+    bank.prepend(btn);
+  }
+}
+function releaseWords(){
+  const f = fixedKeys()[0];
+  return f && fixedWord(f) ? ' Key ' + f.label + ' lets it up and puts the radio on standby.' : '';
+}
+function latchHint(){ return 'Pick a key to change what it plays. These keys stay down once pressed, so they have no hold.' + releaseWords().replace(' it ', ' the key '); }
+function latchNote(sheet, k){
+  sheet.append(h('p', {class:'hint', id:'latchNote'}, keyLabel(k) + ' stays down once pressed, so it has no hold.' + releaseWords()));
+}
+// The printed card's footer for keys that latch (the cabinet's own keys: pressed, not tapped).
+function latchCardHint(){ const f = fixedKeys()[0]; return 'Press a key to play' + (f && fixedWord(f) ? ' · ' + f.label + ' for standby' : ''); }
+// The cabinet's name under Settings: the descriptor's title (cfg.title).
+function modelLine(){ return ((cfg && cfg.title) || 'Hasler HM · Bern 1964') + ' · restored 2026'; }
+function paintFixed(){
+  const now = Date.now();
+  for (const btn of $('bank').querySelectorAll('[data-fixed]')) btn.classList.toggle('down', (flashUntil[btn.dataset.key] || 0) > now);
+}
+function toneKnobRow(t){
+  // Label, bar, what it does ("Darker · 40%"): the ends' words would crowd two rows on a phone.
+  const v = t.value == null ? 50 : Math.max(0, Math.min(100, t.value));
+  const txt = t.text || (t.value == null ? '—' : t.value + '%');
+  return h('div', {class:'tone', 'data-knob':t.id}, h('span', null, t.label),
+    h('div', {class:'tone-bar', role:'meter', 'aria-label':t.label, 'aria-valuemin':'0', 'aria-valuemax':'100', 'aria-valuenow':String(v), 'aria-valuetext':t.label + ' ' + txt},
+      h('span', {class:'tone-mid'}), h('span', {class:'tone-dot', style:'left:' + v + '%'})),
+    h('span', {class:'tone-db'}, txt));
+}
+function paintCabinet(){
+  paintFixed();
+  const f = fixedKeys()[0];
+  const hint = latchingBank() ? 'Tap a key to play' + (f && fixedWord(f) ? ' · ' + f.label + ' for standby' : '') : 'Tap a key to play · hold for its second job';
+  if ($('hintLine').textContent !== hint) $('hintLine').textContent = hint;
+  const box = $('cab'), st = status || {};
+  const knobs = st.tone_knobs || [], sw = st.switches || [], sel = st.selectors || [];
+  box.hidden = !(knobs.length || sw.length || sel.length);
+  if (box.hidden) return;
+  const sig = JSON.stringify([knobs, sw, sel]);
+  if (sig === box.dataset.sig) return;
+  box.dataset.sig = sig; box.textContent = '';
+  for (const t of knobs) box.append(toneKnobRow(t));
+  const bits = sw.map(s => [s.id, s.label, s.on == null ? '—' : s.on ? 'On' : 'Off', s.on === true])
+    .concat(sel.map(s => [s.id, s.label, s.text || '—', false]));
+  if (bits.length) box.append(h('p', {class:'cab-line', id:'cabLine'},
+    bits.map(([id, l, v, on]) => h('span', {'data-ctl':id}, l + ' · ', h('b', {class: on ? 'on' : null}, v)))));
 }
 
 /* ================= router ================= */
@@ -2086,7 +2176,7 @@ function renderEdit(){
   for (const k of draft.keys){
     const bad = keyErrCount(k) > 0, dirty = keyDirty(k);
     const hasHold = verbOf(k.hold) !== 'none', hMiss = hasHold && !!missingFor(k.id, 'hold');
-    strip.append(h('button', {type:'button', class:'skey' + (k.id === 'pu' ? ' pu' : ''), 'aria-current': String(k.id === ed.key),
+    strip.append(h('button', {type:'button', class:'skey' + (k.id === 'pu' ? ' pu' : '') + (String(k.label).length > 2 ? ' word' : ''), 'aria-current': String(k.id === ed.key),
         'aria-label': keyLabel(k) + (bad ? ', has a problem' : dirty ? ', unsaved' : '') + (hasHold ? '. Hold: ' + slotSummary(k, 'hold') + (hMiss ? ', missing in Home Assistant' : '') : ''),
         onclick: () => selectKey(k.id)}, k.label,
       bad ? h('span', {class:'dot', 'aria-hidden':'true'}) : dirty ? h('span', {class:'dot dirty', 'aria-hidden':'true'}) : null,
@@ -2181,12 +2271,12 @@ function keyList(){
         'aria-label': keyLabel(k) + ', ' + slot + ': ' + txt + (extra ? ', ' + extra : ''), onclick: () => selectKey(k.id, slot)},
       h('span', {class:'kl-k', 'aria-hidden':'true'}, word), h('span', {class:'kl-v', 'aria-hidden':'true'}, txt, extra ? h('span', {class:'kl-miss'}, extra) : null));
     ul.append(h('li', null,
-      h('span', {class:'kl-n' + (k.id === 'pu' ? ' pu' : ''), 'aria-hidden':'true', onclick: () => selectKey(k.id, 'tap')}, k.label),
+      h('span', {class:'kl-n' + (k.id === 'pu' ? ' pu' : '') + (String(k.label).length > 2 ? ' word' : ''), 'aria-hidden':'true', onclick: () => selectKey(k.id, 'tap')}, k.label),
       h('span', {class:'kl-txt'},
-        line('tap', 'Tap', slotSummary(k, 'tap')),
-        line('hold', 'Hold', slotSummary(k, 'hold'), hMiss ? 'Missing in Home Assistant' : ''))));
+        line('tap', tapWord(k), slotSummary(k, 'tap')),
+        k.latching ? null : line('hold', 'Hold', slotSummary(k, 'hold'), hMiss ? 'Missing in Home Assistant' : ''))));   // a latching key has no hold
   }
-  return h('div', {class:'field'}, h('p', {class:'hint'}, 'Pick a key to change what it plays, and what it does when you hold it.'), ul,
+  return h('div', {class:'field'}, h('p', {class:'hint'}, latchingBank() ? latchHint() : 'Pick a key to change what it plays, and what it does when you hold it.'), ul,
     combosOn() ? comboSection() : null,
     h('div', {class:'danger-row', id:'sec-reset'},
       h('span', {class:'li-sub'}, 'Every key back to the built-in stations. The radio asks for a key press to be sure.'),
@@ -2201,11 +2291,11 @@ function ownPreset(k){
   return p;
 }
 function keySheet(sheet, k){
-  const tapV = verbOf(k.tap), onHold = ed.slot === 'hold';
+  const tapV = verbOf(k.tap), onHold = ed.slot === 'hold' && !k.latching;
   sheet.append(h('div', {class:'sheet-head'},
     h('h2', {id:'keyTitle', tabindex:'-1'}, keyLabel(k)),
-    h('span', {class:'mono'}, onHold ? 'Hold does' : tapV === 'preset' ? 'Tap plays' : 'Tap does')));
-  sheet.append(slotSwitch(k));
+    h('span', {class:'mono'}, onHold ? 'Hold does' : k.latching ? (tapV === 'preset' ? 'Selected, plays' : 'Selected, does') : tapV === 'preset' ? 'Tap plays' : 'Tap does')));
+  if (!k.latching) sheet.append(slotSwitch(k));   // a latching key: the Select job only
   const cNote = comboNote(k); if (cNote) sheet.append(cNote);
   const kErr = errText(k.id + '._'); if (kErr) sheet.append(h('p', {class:'err', role:'alert'}, kErr));
   // The radio turned down the other half of this key: say where.
@@ -2215,6 +2305,7 @@ function keySheet(sheet, k){
   if (onHold) holdSection(sheet, k);
   else if (tapV === 'preset' && ed.pick !== 'tap') presetSection(sheet, k);
   else actionSection(sheet, k, 'tap');
+  if (k.latching) latchNote(sheet, k);
   const p = !onHold && tapV === 'preset' ? presetIn(draft, k.tap.n) : null;
   const dirty = isDirty();
   const pill = testPill(k); if (pill) sheet.append(h('div', {class:'tp-row'}, pill));
@@ -2254,7 +2345,7 @@ function presetSection(sheet, k){
       h('input', {type:'checkbox', role:'switch', id:'shuf', checked: !!p0.shuffle,
         onchange: e => { const p = ownPreset(k); p.shuffle = e.target.checked; rerender(); }})));
   } else if (p0.source === 'ytm' && (p0.uri || p0.kind)) sheet.append(h('p', {class:'hint'}, 'Endless radio — keeps adding similar songs.'));
-  sheet.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { ed.pick = 'tap'; rerender(); }}, 'Tap does something else…')));
+  sheet.append(h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { ed.pick = 'tap'; rerender(); }}, k.latching ? 'Selecting it does something else…' : 'Tap does something else…')));
 }
 function switchSource(k, src){
   const p = ownPreset(k);
@@ -2496,7 +2587,7 @@ function verbPicker(k, slot){
         const f = $(ed.ent ? 'entq' : ed.lp ? 'lpq' : 'chg-' + slot); if (f) f.focus();
       }}, h('span', {class:'radio-dot', 'aria-hidden':'true'}), h('span', null, label, desc ? h('small', null, desc) : null)));
   }
-  const box = h('div', {class:'field'}, h('label', null, slot === 'tap' ? 'A tap…' : slot === 'combo' ? 'Holding both keys…' : 'Holding the key…'), ul,
+  const box = h('div', {class:'field'}, h('label', null, slot === 'tap' ? (k.latching ? 'Selecting it…' : 'A tap…') : slot === 'combo' ? 'Holding both keys…' : 'Holding the key…'), ul,
     h('div', null, h('button', {type:'button', class:'link quiet', onclick: () => { ed.pick = null; rerender(); const f = $('chg-' + slot); if (f) f.focus(); }}, 'Cancel')));
   return box;
 }
@@ -3216,7 +3307,7 @@ function comboSection(){
     list.length ? ul : h('p', {class:'hint'}, 'None yet.'),
     h('div', null, h('button', {type:'button', class:'btn small inline', id:'comboAdd', disabled: full, 'aria-describedby': full ? 'comboFull' : null, onclick: addCombo},
       IC.plus(), 'Add a combination')),
-    full ? h('p', {class:'hint', id:'comboFull'}, list.length >= max ? 'That’s the most there can be: ' + max + '. Remove one to add another.' : 'Every pair of keys is already a combination.') : null);
+    full ? h('p', {class:'hint', id:'comboFull'}, list.length >= max ? 'That’s the most there can be: ' + max + '. Remove one to add another.' : n < 2 ? 'This radio’s keys can’t be held together.' : 'Every pair of keys is already a combination.') : null);
 }
 // On a key's own page: the combinations it's part of.
 function comboNote(k){
@@ -3455,6 +3546,7 @@ function chooseKey({title, sub, slots, defaultSlot, allowPu}){
   return new Promise(resolve => {
     const dlg = $('dlg'); dlg.textContent = '';
     let slot = defaultSlot || 'tap', result = null;
+    if (latchingBank()){ slots = false; slot = 'tap'; }   // latching keys have no hold
     const list = h('ul', {class:'keylist'});
     const paintList = () => {
       list.textContent = '';
@@ -5210,8 +5302,9 @@ function lampSummary(){
 function hasSourceKey(){
   if (srcDoc && srcDoc.missing) return false;
   const b = srcDoc && srcDoc.bound_to;
-  if (b && b.length) return true;
-  return cfg && Array.isArray(cfg.keys) ? cfg.keys.some(k => k.id === 'pu') : true;
+  if (Array.isArray(b)) return b.length > 0;
+  // Not asked yet: a key bound to "Next source" (the Excelsior's PU plays the phone instead).
+  return cfg && Array.isArray(cfg.keys) ? !noSourceKey() : true;
 }
 function keysSummary(){
   if (!hasSourceKey()) return 'Knob calibration · reset keys';
@@ -5251,7 +5344,7 @@ function renderSetHome(panel){
   panel.append(h('nav', {class:'set-list', 'aria-label':'Settings'}, rows.map(p => setRow(p.id, p.title, p.summary(), '#settings/' + p.id, setIc(SET_ICONS[p.id] || '')))));
   const v = swVer();
   panel.append(h('div', {class:'about'},
-    h('p', null, 'Hasler HM · Bern 1964 · restored 2026'),
+    h('p', null, modelLine()),
     h('button', {type:'button', class:'ver', id:'verBtn', onclick: verTap}, v ? 'Version ' + v : 'Version —'),
     h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
 }
@@ -8472,7 +8565,7 @@ function powerLines(){
       out.push([h('b', null, 'Off: '), 'turn the ' + ctlWord(w.control) + ' knob to its end until it clicks — the radio goes to standby.' +
         (w.off_held === 'shutdown' ? ' Left there ' + (w.held_s || 5) + ' s, it shuts down safely.' : '')]);
     } else if (w.kind === 'release_key'){
-      out.push([h('b', null, 'Off: '), 'press the release key — standby.' + (w.hold === 'shutdown' ? ' Hold it to shut down.' : '')]);
+      out.push([h('b', null, 'Off: '), 'press ' + (fixedKeys()[0] ? 'key ' + fixedKeys()[0].label : 'the release key') + ' — standby.' + (w.hold === 'shutdown' ? ' Hold it to shut down.' : '')]);
     }
   }
   return out;
@@ -8500,7 +8593,7 @@ function keyCard(size){
     h('header', {class:'kc-head'}, h('h1', {class:'kc-title'}, 'Hasler'), room ? h('span', {class:'kc-room'}, room) : null,
       h('span', {class:'kc-kind'}, 'The keys')),
     h('div', {class:'kc-body'}, list, more.length ? h('div', {class:'kc-more'}, more) : null),
-    h('footer', {class:'kc-foot'}, h('span', null, 'Tap a key to play · hold for its second job'),
+    h('footer', {class:'kc-foot'}, h('span', null, latchingBank() ? latchCardHint() : 'Tap a key to play · hold for its second job'),
       h('span', {class:'kc-mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
 }
 function renderPrint(){

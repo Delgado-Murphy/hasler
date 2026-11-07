@@ -734,7 +734,9 @@ Both are cheap, and both check that the "panel as data" idea really works:
    that one line**.
 2. Wiring the Excelsior should need **nothing but a new YAML file**, and its
    locking key bank should never report a false "cleared" while you change
-   stations fast. Watch `panel-probe.py` while you do it.
+   stations fast. Watch `panel-probe.py` while you do it. A unit whose keys
+   were modified to spring back needs one overlay line, not a new file
+   ([hardware.md](hardware.md#excelsior-latching-or-not)).
 
 ---
 

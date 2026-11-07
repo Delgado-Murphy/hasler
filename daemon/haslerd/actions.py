@@ -41,7 +41,7 @@ import time
 from typing import Any, Callable
 
 from .ha import behaviour
-from .panel.controls import Event
+from .panel.controls import Event, bank_keys
 from .player.base import PRESET_SOURCES, Player, Preset
 from .state import StateStore
 from .variant import Variant
@@ -88,6 +88,9 @@ RENDERERS = ("bluetooth", "airplay", "dlna")
 # power knob get nothing - the ear is the feedback. A key combination
 # (panel/combos.py, "k1+k2.combo") is a hand on two keys: one dip too.
 ACK_KINDS = ("tap", "select", "combo")
+# The value of the tap a latching key's selection becomes (Actions.dispatch):
+# the key went down and stays down - "play this", never "again" (stop / next).
+LATCHED = "latched"
 # Verbs that choose their own reply ("again" is next/stop, not a dip).
 SELF_REPLYING = ("preset", "preset_by_index", "join_group", "cycle_source", "bluetooth")
 HA_VERBS = ("ha_scene", "ha_scene_by_index", "ha_script", "ha_toggle", "ha_automation", "ha_light", "ha_service")
@@ -330,6 +333,14 @@ class Actions:
     # -- dispatch ---------------------------------------------------------
 
     def dispatch(self, event: Event) -> None:
+        if event.kind == "select" and event.value is not None:
+            # An interlocked bank's key went down: that key's own tap
+            # (k3.tap), as on a cabinet whose keys spring back. Falls through
+            # to the bank's own select (preset_by_index) when the key has none.
+            kid = self.bank_key(event.control, event.value)
+            if kid is not None and self.variant.actions.get(f"{kid}.tap"):
+                self.dispatch(Event(kid, "tap", LATCHED))
+                return
         if self.on_hand is not None:
             try:
                 self.on_hand(event)
@@ -377,6 +388,19 @@ class Actions:
             if event.kind != "change":
                 self._reply("fail")
 
+    def bank_key(self, control: str, index: Any) -> str | None:
+        """The id of interlocked bank ``control``'s key at ``index`` (0-based):
+        ``("presets", 2)`` -> ``"k3"``. None if there is no such key."""
+        for spec in self.variant.controls:
+            if spec.get("id") == control and spec.get("kind") == "interlocked_bank":
+                keys = bank_keys(spec)
+                try:
+                    i = int(index)
+                except (TypeError, ValueError):
+                    return None
+                return keys[i]["id"] if 0 <= i < len(keys) else None
+        return None
+
     def combo_spec(self, control: str) -> dict | None:
         """The action of the key combination ``k1+k2`` (either order), or None."""
         keys = set(control.split("+"))
@@ -415,7 +439,10 @@ class Actions:
 
     # -- playback ---------------------------------------------------------
 
-    def _play(self, n: int) -> None:
+    def _play(self, n: int, again: bool = True) -> None:
+        """Play preset ``n``; when it already plays, ``again`` (a tap) stops a
+        station or skips a track. ``again=False`` (a latching key selected)
+        leaves it playing."""
         preset = self.presets.get(n)
         if preset is None:
             log.warning("no preset %s in %s", n, self.variant.name)
@@ -444,6 +471,9 @@ class Actions:
             and active == current.source
             and not self._stalled(current)
         ):
+            if not again:
+                self._reply("ack")
+                return
             # An old key's contacts bounce: on the bench one press arrived as
             # two taps ~0.2 s apart, and the second stopped the station it had
             # just started. Nobody means "stop" that fast.
@@ -609,7 +639,7 @@ class Actions:
         self._reply("fail")
 
     def _preset(self, event, spec):
-        self._play(int(spec["n"]))
+        self._play(int(spec["n"]), again=getattr(event, "value", None) != LATCHED)
 
     def _preset_by_index(self, event, spec):
         # Interlocked banks report a 0-based position; presets are 1-based.
@@ -791,7 +821,8 @@ class Actions:
             group.leave("the Bluetooth key")
         bt = self.bluetooth
         again = self.bt_keys.get("again", "none") if self.bt_keys.get("enabled") else "none"
-        if bt is not None and again != "none" and self._phone_plays():
+        latched = getattr(event, "value", None) == LATCHED
+        if bt is not None and again != "none" and not latched and self._phone_plays():
             if self.clock() - self._bt_selected_at < AGAIN_GUARD_S:
                 return      # contact bounce, as for a preset key
             self._reply("next")

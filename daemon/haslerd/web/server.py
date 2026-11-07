@@ -104,7 +104,7 @@ from ..lamp import night
 from ..lamp import engine as lamp_engine
 from .. import boxconfig
 from ..panel import calibrate
-from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot
+from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot, bank_keys, bank_latching
 from ..player.base import Preset
 from ..player.glr_config import SpotifyGuests, guests_from
 from ..player.moode import SOURCE_MPD_S, treble_db
@@ -646,6 +646,7 @@ class WebApp:
             states = {}
         pressed = [cid for cid, state in states.items() if cid in keys and state is True]
         tone = states.get("tone")
+        cabinet = self._cabinet_doc(states)
         current = self.actions.player.current()
         try:
             volume = self.actions.player.get_volume()
@@ -697,7 +698,60 @@ class WebApp:
             "group": self._group_status(),
             # The sleep timer (haslerd/sleep.py): {"ends_in_s", "fading", "minutes"} or None.
             "sleep": self.sleep.status() if self.sleep is not None else None,
+            # The cabinet's other controls, from its descriptor (the Excelsior's):
+            # latched = the latching key down now ("k3"; None = none, or no latching bank);
+            # switches = [{"id", "label", "on"}] (SP); selectors = [{"id", "label",
+            # "position", "positions": [names], "text"}] (the speaker selector);
+            # tone_knobs = [{"id", "label", "value", "text", "ends", ...}] for each
+            # sound knob other than the HM's "tone" (treble, bass).
+            **cabinet,
         }
+
+    def _cabinet_doc(self, states: dict) -> dict:
+        latched = None
+        switches: list[dict] = []
+        selectors: list[dict] = []
+        knobs: list[dict] = []
+        for spec in self.actions.variant.controls:
+            cid, kind = spec.get("id"), spec.get("kind")
+            state = states.get(cid)
+            if kind == "interlocked_bank" and bank_latching(spec) and latched is None:
+                keys = bank_keys(spec)
+                if isinstance(state, int) and not isinstance(state, bool) and 0 <= state < len(keys):
+                    latched = keys[state]["id"]
+            elif kind == "latching_toggle":
+                switches.append({"id": cid, "label": str(spec.get("label") or cid.upper()),
+                                 "on": state if isinstance(state, bool) else None})
+            elif kind in ("rotary_switch", "analog_selector"):
+                n = int(spec.get("positions") or 0) or len(spec.get("labels") or [])
+                names = [str(x) for x in (spec.get("labels") or [])]
+                names += [str(i + 1) for i in range(len(names), n)]
+                pos = state if isinstance(state, int) and not isinstance(state, bool) else None
+                selectors.append({"id": cid, "label": str(spec.get("label") or cid), "position": pos,
+                                  "positions": names,
+                                  "text": names[pos] if pos is not None and 0 <= pos < len(names) else None})
+            elif kind == "pot" and cid != "tone":
+                doc = self._knob_status(cid, state, spec)
+                if doc is not None:
+                    knobs.append(doc)
+        return {"latched": latched, "switches": switches, "selectors": selectors, "tone_knobs": knobs}
+
+    def _knob_status(self, cid: str, value: Any, spec: dict) -> dict | None:
+        """A sound knob (not volume) for /api/status, None for the volume knob."""
+        verb = (self.actions.variant.actions.get(f"{cid}.change") or {}).get("do")
+        if verb == "set_volume" or (verb is None and not spec.get("effect")):
+            return None
+        number = isinstance(value, (int, float)) and not isinstance(value, bool)
+        doc: dict[str, Any] = {"id": cid, "label": str(spec.get("label") or cid.capitalize()),
+                               "value": round(value) if number else None}
+        knobs = getattr(self, "knob_functions", None)
+        if knobs is not None and knobs.assignable(cid):
+            try:
+                doc.update(knobs.describe(cid, value if number else None))
+            except Exception:
+                log.debug("%s knob description failed", cid, exc_info=True)
+        doc["label"] = str(spec.get("label") or cid.capitalize())
+        return doc
 
     def _config_rev(self) -> str | None:
         try:
@@ -786,8 +840,9 @@ class WebApp:
         """Each key's caption from the live layout: preset name, or what its tap does."""
         table = self.actions.variant.actions
         presets = self.actions.presets
+        labels = {k["id"]: k["label"] for k in keymap.key_specs(self.actions)}
         out = []
-        for cid in keymap.key_ids(self.actions):
+        for cid in labels:
             tap = keymap.to_page(table.get(f"{cid}.tap"))
             n = name = source = None
             short = ""
@@ -803,7 +858,7 @@ class WebApp:
                 name = str(tap.get("label") or "")
             else:
                 name = TAP_LABELS.get(tap["do"], tap["do"])
-            entry = {"id": cid, "label": keymap.label_for(cid), "n": n, "name": name, "source": source}
+            entry = {"id": cid, "label": labels.get(cid, cid), "n": n, "name": name, "source": source}
             if short:
                 entry["short"] = short        # the owner's own key-cap label
             out.append(entry)
@@ -861,10 +916,15 @@ class WebApp:
                 self.actions.dispatch(Event(cid, "combo"))
             return
         key, event = body.get("key"), body.get("event", "tap")
-        if key not in keymap.key_ids(self.actions):
+        fixed = {k["id"] for k in keymap.fixed_keys(self.actions)}
+        if key not in keymap.key_ids(self.actions) and key not in fixed:
             raise ValueError(f"no key called {key!r}")
         if event not in PRESS_EVENTS:
             raise ValueError("event must be \"tap\" or \"hold\"")
+        # A latching key can't be held, and key 0 held shuts the radio down:
+        # neither from a phone.
+        if event == "hold" and (key in fixed or key in keymap.latching_ids(self.actions)):
+            raise ValueError(f"key {key!r} has no hold")
         with self.lock:
             self.actions.dispatch(Event(key, event))   # logs and swallows, like the panel
 

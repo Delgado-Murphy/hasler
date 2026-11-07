@@ -6,6 +6,7 @@
 # (3V3, GND, SDA, SCL). No ADC fitted yet - the wheels are dead and volume
 # comes from the moOde UI / HA until the ADS1115 lands.
 variant: hasler-hm
+title: "Hasler HM · Bern 1964"
 
 io:
   digital:

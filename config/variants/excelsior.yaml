@@ -1,18 +1,26 @@
 # Excelsior - the second cabinet. Not yet wired; this file exists so the
 # abstraction is exercised by the tests before the hardware arrives.
 #
-# 10 keys of three different kinds (confirmed by the owner, 2026-10-12):
+# Pilot lamp, and 10 keys in one row of three different kinds (confirmed by
+# the owner with photos):
 #   0                 momentary, mechanically pops whichever key is latched
-#   1-6 + Q + Tape    latching AND interlocked - exactly one down, or none
-#                     (Tape is the key with the tape symbol; assumed in the
-#                     bank like Q - confirm by metering)
+#   1-6 + PU + Tape   latching AND interlocked - exactly one down, or none
+#                     (PU = the pickup symbol, the HM's PU; Tape = the reel)
 #   SP                independent latching toggle, does not touch the bank
-# 4 wheels: volume, treble, bass, and a 3-position speaker selector.
+# 4 wheels: volume, treble, bass, and a 3-position speaker selector
+# (both / left / right speaker).
+#
+# Some units were modified so 1-6, PU and Tape spring back like the HM's
+# keys. Say so per radio in /etc/hasler/variant.d/excelsior.yaml:
+#   controls:
+#     presets: {latching: false}
+# and restart haslerd (docs/hardware.md, "Excelsior: latching or not").
 #
 # On the Hasler HAT's J2 (2x13 keyed header, standard IDC numbering) - the
 # proposed Excelsior column of docs/hat/DESIGN.md. Contacts close to GND
 # (J2-2/24). Spare: J2-21/22 (d5/d6) and J2-25 (ADS A3).
 variant: excelsior
+title: "Excelsior"
 
 io:
   # addr pinned: the CH224A can answer at 0x22/0x23. int_gpio: INTA, accepted
@@ -23,20 +31,30 @@ io:
 controls:
   - id: presets
     kind: interlocked_bank
-    # keys 1-6 = J2-1,3,4,5,6,7 (GPB0-5), Q = J2-8 (GPB6), Tape = J2-17 (GPA1).
-    # Bank position 7 (Tape) plays preset 8. d7/d15 are output-only, unused.
+    # keys 1-6 = J2-1,3,4,5,6,7 (GPB0-5), PU = J2-8 (GPB6), Tape = J2-17 (GPA1).
+    # d7/d15 are output-only, unused.
     pins: [d8, d9, d10, d11, d12, d13, d14, d1]
-    release: {pin: d0}                      # key 0, J2-14 (GPA0)
+    # One id per pin: what the action table, keys.yaml and the key page use.
+    # k3.tap is "key 3 selected" whether the keys latch or spring back.
+    keys: [k1, k2, k3, k4, k5, k6, {id: pu, label: PU}, {id: tape, label: Tape}]
+    # true = the cabinet as built: selecting a key is its tap. A latched key
+    # can't be told apart from a held one, so these keys have no hold and no
+    # combinations. false = a modified unit whose keys spring back: each is a
+    # momentary key with tap, hold and combinations, like the HM's.
+    latching: true
+    release: {pin: d0, id: k0, label: "0"}  # key 0, J2-14 (GPA0)
     # Must exceed the mechanical changeover gap (outgoing key opens before the
     # incoming one closes) and undershoot a deliberate press of key 0.
     settle_ms: 60
 
-  - {id: sp, kind: latching_toggle, pin: d2}   # J2-18
+  - {id: sp, kind: latching_toggle, pin: d2, label: SP}   # J2-18; mutes while down
 
   - id: speaker_sel
     kind: rotary_switch
     pins: [d3, d4]                          # J2-19, J2-20
     positions: 3
+    label: Speakers
+    labels: [Both, Left, Right]             # each position's name on the web page
     # TODO(phase-0): confirm the contact pattern per detent by metering.
     map: {"10": 0, "00": 1, "01": 2}
 
@@ -48,14 +66,36 @@ controls:
   - {id: bass,   kind: pot, channel: 2, taper: log, range: [0, 26400], effect: bass}     # J2-23 -> A2
 
 actions:
-  presets.select: {do: preset_by_index}
-  presets.hold: {do: ha_scene_by_index}
+  # Per key, like the HM (the key page and keys.yaml change these). PU is the
+  # phone, today's pickup: it selects Bluetooth and calls the last phone - not
+  # the HM's "next source", which a latched key could step only once.
+  k1.tap: {do: preset, n: 1}
+  k2.tap: {do: preset, n: 2}
+  k3.tap: {do: preset, n: 3}
+  k4.tap: {do: preset, n: 4}
+  k5.tap: {do: preset, n: 5}
+  k6.tap: {do: preset, n: 6}
+  pu.tap: {do: bluetooth}
+  tape.tap: {do: preset, n: 7}
+  # Holds reach only a unit whose keys spring back (latching: false).
+  pu.hold: {do: bt_pair, seconds: 120}
+  # Key 0 pops the latched key, so the bank clears: standby. Key 0 itself is
+  # fixed on a latching unit (the page shows it, doesn't offer to change it).
   presets.clear: {do: standby}
-  presets_release.tap: {do: standby}
-  presets_release.hold: {do: shutdown}
+  k0.tap: {do: standby}
+  k0.hold: {do: shutdown}
   sp.on: {do: mute, state: true}
   sp.off: {do: mute, state: false}
   speaker_sel.position: {do: speaker_route}
   volume.change: {do: set_volume}
   treble.change: {do: set_treble}
   bass.change: {do: set_bass}
+
+presets:
+  - {n: 1, name: "Radio Swiss Classic", radio: "http://stream.srg-ssr.ch/m/rsc_de/mp3_128"}
+  - {n: 2, name: "Radio Swiss Jazz", radio: "http://stream.srg-ssr.ch/m/rsj/mp3_128"}
+  - {n: 3, name: "RNE Radio 3", radio: "https://rtvelivestream.rtve.es/rtvesec/rne/rne_r3_main.m3u8"}
+  - {n: 4, name: "Today's Top Hits", spotify: "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", shuffle: true}
+  - {n: 5, name: "Famous classical", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB"}
+  - {n: 6, name: "Classical shuffle", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB", shuffle: true}
+  - {n: 7, name: "Radio Swiss Pop", radio: "http://stream.srg-ssr.ch/m/rsp/mp3_128"}

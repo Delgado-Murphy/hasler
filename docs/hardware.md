@@ -303,6 +303,36 @@ across 3.3 V and ground:
 | A1 | volume wiper | `volume`, `channel: 1` |
 | A2, A3 | spare | |
 
+### Excelsior: latching or not
+
+The Excelsior (`config/variants/excelsior.yaml`) has ten keys in a row: **0**,
+**1–6**, **PU**, **Tape**, **SP**. As built, 1–6, PU and Tape **latch** as one
+interlocked bank: pressing one releases the one that was down, and key 0 lets
+it up. SP is an on/off switch of its own (it mutes), and the fourth wheel picks
+both / left / right speaker.
+
+What each key does is set on the key page, like the HM's, and saved in
+`keys.yaml` under the same ids (`k1`…`k6`, `pu`, `tape`). On a latching unit
+selecting a key is its tap; a latched key can't be told from a held one, so
+these keys have **no hold and no key combinations**, and key 0 is fixed:
+standby (held: shut down). The page draws the key that is down, SP and the
+speaker position.
+
+**Some units were modified so 1–6, PU and Tape spring back** like the HM's.
+Tell that radio so in `/etc/hasler/variant.d/excelsior.yaml`:
+
+```yaml
+schema: 1
+controls:
+  presets: {latching: false}
+```
+
+then `sudo systemctl restart haslerd` (a change of key kind needs a restart).
+Every key, key 0 included, then works like an HM key: tap, hold, a volume hold
+that ramps, and combinations of two keys. The key assignments in `keys.yaml`
+are kept either way; holds only take effect on a unit whose keys spring back.
+Delete the line (or the file) to go back to latching.
+
 ## Pilot lamp — RGB LED, resistors on the prototype board
 
 The prototype board's 7-wire ribbon uses only the Pi header's **odd row** (Paper
