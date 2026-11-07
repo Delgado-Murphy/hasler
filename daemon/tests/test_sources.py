@@ -440,6 +440,23 @@ def api(rig, tmp_path):
     return sources, app, actions, player, tmp_path
 
 
+class TestStatusWithAPhone:
+    def test_a_phone_playing_hides_the_last_preset(self, api):
+        # Seen on the bench (1.2.1): a phone took over from RNE Radio 3 and the
+        # page still showed the station, not the phone's song.
+        _, app, actions, player, _ = api
+        actions.dispatch(Event("k1", "tap"))
+        assert app.status()["playing"] is not None
+        player.source = "bluetooth"
+        doc = app.status()
+        assert doc["playing"] is None and doc["source"] == "bluetooth"
+
+    def test_our_own_source_still_shows_its_preset(self, api):
+        _, app, actions, player, _ = api
+        actions.dispatch(Event("k1", "tap"))
+        assert app.status()["playing"]["n"] == 1
+
+
 class TestSourcesApi:
     def test_get_lists_every_stop_cycle_first(self, api):
         sources, _, _, player, _ = api

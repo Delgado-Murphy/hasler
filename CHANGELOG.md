@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.2 - 2026-11-07
+
+- Fixed: when a phone took over (Bluetooth, AirPlay, Spotify Connect), the
+  page went on showing the last station instead of the phone's song, until
+  the radio had been in standby. While a phone has the speaker, no preset is
+  reported as playing.
+
 ## 1.2.1 - 2026-11-07
 
 - The Excelsior gets the same key page as the HM. Its keys 1-6, PU and Tape

@@ -660,6 +660,14 @@ class WebApp:
         stream = watch.status_doc() if watch is not None else {"recovering": False, "stalled_s": None}
         if watch is not None and watch.silent:
             playing = None
+        # A phone has the speaker (Bluetooth, AirPlay, Spotify Connect from a
+        # phone): the last preset isn't what's playing, the phone is - the page
+        # shows the phone's track (renderer) instead of the old station.
+        try:
+            if playing is not None and source and self.actions.phone_has_it(source):
+                playing = None
+        except Exception:
+            pass
         with mpd_patience(SOURCE_MPD_S):      # the page polls: never wait long on MPD
             track = self._track() if source == "ytm" else None
         return {
