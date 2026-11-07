@@ -189,13 +189,17 @@ def test_ensure_hotspot_applies_the_rooms_name_after_its_check(tmp_path):
     assert helper.calls[1]["password"] == helper.calls[0]["password"]   # the one ensure just chose
 
 
-def test_a_new_setup_password_is_legible_and_kept(tmp_path):
+def test_a_hand_over_goes_back_to_the_standard_setup_password(tmp_path):
     helper = Helper({"hotspot": lambda p: {"ok": True, "ssid": p["ssid"], "changed": True, "password_used": True}})
     w = wifi_with(tmp_path, helper)
     doc = w.set_hotspot_password(None)
-    assert doc["ssid"] == "Hasler" and len(doc["password"]) == 14 and doc["password"].count("-") == 2
-    assert all(c in "abcdefghjkmnpqrstuvwxyz23456789-" for c in doc["password"])
-    assert f"password={doc['password']}" in (tmp_path / "hotspot.txt").read_text()
+    assert doc == {**doc, "ssid": "Hasler", "password": "haslerhm"}
+    assert "password=haslerhm" in (tmp_path / "hotspot.txt").read_text()
+
+
+def test_make_a_new_one_is_still_random_and_legible():
+    p = Wifi.new_password()
+    assert len(p) == 14 and p.count("-") == 2 and all(c in "abcdefghjkmnpqrstuvwxyz23456789-" for c in p)
 
 
 def test_hotspot_now_asks_the_helper(tmp_path):

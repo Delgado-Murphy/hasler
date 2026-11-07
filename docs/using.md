@@ -457,7 +457,8 @@ up.
 the new network doesn't work, the radio goes back to the old one.
 
 **This radio → Wi-Fi** also shows the setup network's name and password, the
-one the radio opens when it can't find yours. Write them down.
+one the radio opens when it can't find yours. A new radio's setup password is
+**haslerhm**.
 
 To open the setup network without forgetting anything (say the router's
 password changed), give a key's hold the job **Open Wi-Fi setup now** in Edit

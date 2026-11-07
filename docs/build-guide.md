@@ -585,8 +585,9 @@ password, press **Connect**; the radio restarts onto it. The owner's steps are i
 - **The hotspot password.** moOde's import of Raspberry Pi Imager's Wi-Fi
   leaves the hotspot without one, and a hotspot without a password never
   starts. haslerd checks at every start (30 s in, `Wifi.ensure_hotspot` →
-  `hasler-wifi-join` `"hotspot"`, `"ensure"`): no password → it sets a random
-  one (`abcd-efgh-jkmn`, no 0/o/1/l) and keeps it in
+  `hasler-wifi-join` `"hotspot"`, `"ensure"`): no password → it sets the standard
+  setup password, **haslerhm** (the same on every new radio, and again after a
+  hand-over; "Make a new one" on the page makes a random one) and keeps it in
   `/var/lib/haslerd/hotspot.txt` (0600); `GET /api/wifi` returns it as
   `setup.password` - write it down for the owner. A profile without its
   address (`address1=`, see below) is regenerated. A password you chose in

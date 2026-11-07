@@ -132,7 +132,7 @@ def test_it_forgets_the_owner_and_keeps_the_cabinet(tmp_path):
     assert app.room.custom() is None
     assert "checkin" not in boxconfig.read_box_file(app.box_paths) and boxconfig.read_box_file(app.box_paths)["box_id"] == "abc"
     assert [c["action"] for c in app.wifi.helper_calls] == ["forget-all", "hotspot"]
-    assert app.wifi.helper_calls[1]["ssid"] == "Hasler" and len(app.wifi.helper_calls[1]["password"]) == 14
+    assert app.wifi.helper_calls[1]["ssid"] == "Hasler" and app.wifi.helper_calls[1]["password"] == "haslerhm"
     assert vacuum_ok.calls[-1] == ["sudo", "-n", "/usr/bin/journalctl", "--vacuum-time=1s"]
     # Shown once: the new setup network.
     assert doc["setup"]["ssid"] == "Hasler" and doc["setup"]["password"] == app.wifi.helper_calls[1]["password"]

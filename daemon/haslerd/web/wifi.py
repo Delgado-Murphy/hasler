@@ -52,6 +52,10 @@ HOTSPOT_FILE = "/var/lib/haslerd/hotspot.txt"
 JOINED_FILE = "/var/lib/haslerd/wifi-joined"
 # Hotspot passwords haslerd chooses: letters and digits nobody misreads.
 PASSWORD_ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789"
+# The setup network's password on a radio being set up (first start, and a hand-over
+# to a new owner): the same on every radio, easy to say and to print on the card
+# (owner's choice, 2026-11-07). "Make a new one" on the page still makes a random one.
+SETUP_PASSWORD = "haslerhm"
 # The setup network's name is the room's, as the casting names are: "Hasler Kitchen".
 HOTSPOT_NAME_MAX = 32
 RESERVED = ("None", "Activate Hotspot")
@@ -325,7 +329,7 @@ class Wifi:
         The helper fixes whichever is the case and nothing else; a password
         it used is kept here for the key page (``setup.password``).
         """
-        password = self.new_password()
+        password = SETUP_PASSWORD
         reply = self._helper({"action": "hotspot", "ensure": True, "password": password}, timeout=60)
         if reply.get("ok") and reply.get("password_used"):
             ssid = str(reply.get("ssid") or self.hotspot_ssid())
@@ -406,10 +410,10 @@ class Wifi:
         return reply
 
     def set_hotspot_password(self, room: str | None = None) -> dict:
-        """A new setup password (the hand-over: the old owner read the old one),
+        """A new setup password (the hand-over: back to the setup password every new radio has),
         with the network's name for ``room`` (plain "Hasler" for a new owner).
         Returns {"ssid", "password"}; raises ValueError if the helper refuses."""
-        password = self.new_password()
+        password = SETUP_PASSWORD
         want = self.hotspot_name_for(room)
         reply = self._helper({"action": "hotspot", "password": password, "ssid": want}, timeout=60)
         if not reply.get("ok"):

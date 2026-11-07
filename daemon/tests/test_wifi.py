@@ -205,7 +205,7 @@ def test_ensure_hotspot_keeps_a_password_it_chose_and_only_that(tmp_path):
     w.ensure_hotspot()
     sent = json.loads(run.calls[-1][1]["input"])
     assert sent["action"] == "hotspot" and sent["ensure"] is True
-    assert re.fullmatch(r"[a-km-np-z2-9]{4}-[a-km-np-z2-9]{4}-[a-km-np-z2-9]{4}", sent["password"])
+    assert sent["password"] == "haslerhm"                   # every new radio's setup password
     assert oct(keep.stat().st_mode & 0o777) == "0o600"
     assert f"password={sent['password']}" in keep.read_text()
     assert "s3cret" not in " ".join(run.calls[-1][0])          # on stdin, not argv

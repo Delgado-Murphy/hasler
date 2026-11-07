@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- A new radio's setup network has the password **haslerhm**, easy to say and
+  printed on the card. A hand-over goes back to it; "Make a new one" still
+  makes a random one.
+
 ## 1.7.0 - 2026-11-07
 
 Support
