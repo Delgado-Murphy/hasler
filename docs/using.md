@@ -29,8 +29,9 @@ plays.
 1. **Plug it in.** The pilot lamp (the little window on the front) breathes
    amber while the radio warms up. After about 15 seconds the music comes
    back, or the lamp settles to a dim amber: the radio is ready.
-   If the lamp **brightens twice every few seconds** instead, the radio needs
-   your Wi-Fi details first: see [Wi-Fi](#wi-fi).
+   If the lamp **taps CQ in Morse** instead (amber: long short long short,
+   long long short long — the radio amateur's "calling anyone"), the radio
+   needs your Wi-Fi details first: see [Wi-Fi](#wi-fi).
 2. **Press key 1.** Music starts. Turn the **volume** knob to taste.
 3. **Try the other keys.** Each of the six numbered keys plays its own station
    or playlist. Press the key of the station that is playing again, and the
@@ -84,7 +85,7 @@ You choose what each key plays, and what holding it does, in
 
 Hold **two keys down together** for about a second and the radio does one
 more thing. Out of the box, **keys 1 + 6 held together** open Bluetooth
-pairing for 2 minutes (the same as holding PU), and the lamp dips once, then
+pairing for 2 minutes (the same as holding PU), and the lamp flashes once, then
 breathes blue.
 
 - Press the second key soon after the first, before the first key's own hold
@@ -124,7 +125,7 @@ strong setting can sound a touch quieter; just turn the volume up.
 |---|---|
 | Turn the tone knob left until it clicks | Standby: the music stops and the lamp glows a dim ember (deep orange-red). |
 | Turn it back past the click | The radio wakes and the last music comes back (or your phone, if it was on Bluetooth). |
-| Keep it clicked off for **5 seconds** | The radio shuts down. The lamp fades, breathes slowly, then goes dark. |
+| Keep it clicked off for **5 seconds** | The radio shuts down. The lamp glows down to ember over the 5 seconds, breathes slowly while the radio shuts down, then holds a still ember to the very end and goes dark. |
 
 When the lamp is **dark**, it is safe to unplug. To start the radio again after
 a shutdown, unplug it and plug it back in with the tone knob turned on.
@@ -133,23 +134,47 @@ a shutdown, unplug it and plug it back in with the tone knob turned on.
 
 The lamp tells you what the radio is doing, like the lamp of an old valve
 radio. In short: **amber** is the radio, **blue** is a phone, **ember** is
-asleep, **dark** is safe to unplug.
+asleep (it never moves), **green** means something went well, **red** means
+something is wrong, and **dark** is safe to unplug. Green and red only ever
+flash or tap a rhythm; they never stay on.
+
+**Everyday**
 
 | The lamp shows | It means |
 |---|---|
 | **Amber, bright** | Playing music from a key. |
-| **Amber, dim** | On and ready, but quiet. Press a key. |
+| **Amber, softer** | On and ready, but quiet. Press a key. |
 | **Amber, breathing** | Starting up, loading music, or joining another room's music. Wait a moment. |
-| A quick **brighten** | The radio heard your key (you can switch this off in **Settings → Pilot lamp**). |
-| A short **sag**, twice | No, or something you asked for didn't work (for example, a station is down). Once, on a volume key: as loud (or as quiet) as it goes. |
-| **Two quick brightens, again and again** | The radio is asking you to press a key on it, to confirm something you started on the page. |
-| **Amber, two quick brightens every few seconds** | The radio needs Wi-Fi details. See [Wi-Fi](#wi-fi). |
-| One slow **swell** | Something arrived or left: a phone connected, or this radio joined or left a group. |
+| **Amber, a slow breath** | Busy: shutting down or installing an update. Leave it plugged in. |
 | **Blue** | A phone is playing through the radio (Bluetooth, AirPlay or Spotify). Dimmer when paused. |
 | **Blue, breathing** | Bluetooth pairing is open: connect your phone now. |
-| **Ember** (dim deep orange-red) | Asleep (standby). |
-| **Ember, breathing slowly** | Busy: shutting down or installing an update. Leave it plugged in. |
+| **Ember** (dim deep orange-red, still) | Asleep (standby). |
 | **Dark** | Off. Safe to unplug. |
+
+**Replies**
+
+| The lamp shows | It means |
+|---|---|
+| A quick **brighten** | The radio heard your key (you can switch this off in **Settings → Pilot lamp**). |
+| A **green bloom**, then **OK** in Morse | Done: an update installed, setup finished, a phone paired, a press on the radio confirmed. |
+| A slow **red eye** | No: something you asked for didn't work (a station is down, say). |
+| One slow **swell** | This radio joined or left a group. |
+| A short **dip**, once, on a volume key | As loud (or as quiet) as it goes. |
+
+**Needs you**
+
+| The lamp shows | It means |
+|---|---|
+| **Two quick brightens, again and again**, in the colour on show | The radio is asking you to press a key on it, to confirm something you started on the page. |
+| **CQ** in Morse, amber (– · – ·  – – · –) | Set me up: the radio needs Wi-Fi details. See [Wi-Fi](#wi-fi). |
+| **HI** in Morse, green (· · · ·  · ·) | It's me: someone pressed **Identify** for this radio. |
+
+**Problems**
+
+| The lamp shows | It means |
+|---|---|
+| **Two red pulses every 6 seconds** | No internet. Only while the radio is awake and idle, so it never nags while you listen or sleep. |
+| **SOS** in red (· · ·  – – –  · · ·) | Something needs a maker: the radio found a fault it can't fix itself (its memory card, its sound card, the key board, an update that couldn't be undone, or it is far too hot). Tell the person who built your radio. |
 
 When the colour changes, the lamp closes briefly and opens again in the new
 colour, so it never passes through muddy in-between shades.
@@ -161,11 +186,20 @@ From sunset to sunrise the lamp is dimmer and moves more slowly. To use fixed
 hours instead, or never dim, and to set the lamp's brightness (Low, Normal or
 Bright), see **Settings → Pilot lamp**.
 
-**Can't tell the colours apart?** The front page says it in words, under the
-keys: *Lamp: asleep*, *Lamp: a phone is playing*, *Lamp: busy — don't
-unplug*, *Lamp: asking you to press a key*. And **Settings → Pilot lamp**
-lists what the lamp means, each with **Show me**: the lamp on the radio plays
-it for a few seconds, so you learn it by looking.
+**Can't tell the colours apart?** **Settings → Pilot lamp** starts with what
+the lamp says right now, in words (*Now: asleep*), and lists everything it
+can say, each with its rhythm and **Show me**: the lamp on the radio plays it
+for a few seconds, so you learn it by looking. **Show me everything** plays
+them all in turn, about a minute, with a caption for each. At night, Show me
+plays the night version. The printed key card (**Edit keys → Print a key
+card**) has a small legend of the rhythms worth knowing.
+
+**Geek mode** (**Settings → Pilot lamp**, off to start) lets the lamp speak a
+little more radio: **Identify** taps your callsign (up to three letters or
+digits; the room's initial unless you choose one), it says 73 before it shuts
+down, and an update ends with a tune you may know from a film about visitors.
+Radio amateurs may also find that the last two keys of the row, held
+together for a few seconds, are worth a try.
 
 Every colour in detail: [The pilot lamp](lamp.md).
 
@@ -273,9 +307,9 @@ key. That small wait keeps them in step.
 
 **While a radio follows:**
 
-- Its lamp breathes while it joins, then shows the leader's amber. Two sags
-  of the lamp mean the leader couldn't be reached; the radio
-  is then on its own again.
+- Its lamp breathes while it joins, then shows the leader's amber. The lamp's
+  red eye means the leader couldn't be reached; the radio is then on its own
+  again.
 - **Numbered keys** change the music for the whole group: the leader plays
   the key you pressed. The playing station's key again stops the music
   everywhere. If you'd rather a key took just *this* radio out of the group to
@@ -294,8 +328,8 @@ follower, and the leader has no Spotify set up. Then the radio you pressed
 takes over: it plays the playlist on its own account, and the rest of the
 group follows it. Nobody leaves the group; the key page says, for example,
 "Kitchen is now playing for the group". If that doesn't work, your radio
-sags twice and is on its own, and the others play on. (A station
-that is simply down makes the lamp sag twice, no takeover.)
+shows the red eye and is on its own, and the others play on. (A station
+that is simply down shows the red eye, no takeover.)
 
 **After a power cut** each radio comes back on its own. One that was
 following comes back quiet (dim amber) and doesn't rejoin by itself: tick it
@@ -423,10 +457,10 @@ Tap the gear. Each row opens its own page.
 |---|---|
 | **Sound** | The **volume ceiling**, the loudest the knob can go (30 to 100; above 95 the old speaker can rattle and distort). The **quietest step**: the knob's first click. **Mono**: left and right mixed into the one speaker, so nothing is lost (on to start). **What the tone knob does**, with **Try it**. |
 | **Phones & casting** | Spotify (and **Guests on your Wi-Fi can play**), AirPlay, Bluetooth and other music apps (UPnP), each on or off. Bluetooth: what is playing and its codec, your phones, **Pair a phone**, **Reconnect to the last phone**. **Back to the radio when a phone stops**. **Use the room name on phones**. |
-| **Rooms** | **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. The **other Haslers at home**, each with **Identify**: its lamp signals, so you know which radio is which. |
-| **Pilot lamp** | **What the lamp means**, each with **Show me** (it plays on the radio's lamp). **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). When the lamp dims at night (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. Lamp colours are set by the makers. |
+| **Rooms** | **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. The **other Haslers at home**, each with **Identify**: its lamp taps HI in Morse, in green, so you know which radio is which (the page says when that radio has no lamp, or needs a software update first). |
+| **Pilot lamp** | **Now**: what the lamp says right now, in words. **What the lamp means**, grouped, each with its rhythm and **Show me** (it plays on the radio's lamp), and **Show me everything**. **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). **Geek mode** and its callsign (off to start). When the lamp dims at night (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. Lamp colours are set by the makers. |
 | **Keys & knobs** | **What the source key (PU) steps through**, and in what order. Each knob, live, with **Calibrate**: turn the knob to a few positions and the radio learns them. |
-| **This radio** | The **room name** (with **Remove**) and the radio's address. **Identify this radio**: its lamp signals for 10 seconds. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
+| **This radio** | The **room name** (with **Remove**) and the radio's address. **Identify this radio**: its lamp taps HI in Morse, in green. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
 
 The version number is at the bottom of Settings.
 
@@ -497,7 +531,7 @@ and do: [Remote help](remote-help.md).
 
 If the radio can't find a Wi-Fi network it knows:
 
-1. Plug it in and wait about 2 minutes. The lamp **brightens twice every few seconds**: the
+1. Plug it in and wait about 2 minutes. The lamp **taps CQ in Morse**, in amber: the
    radio has made its own small Wi-Fi network called **Hasler**.
 2. On your phone, join the Wi-Fi network **Hasler**. The person who built the
    radio can give you its password.
@@ -506,9 +540,9 @@ If the radio can't find a Wi-Fi network it knows:
 4. Choose your home network, type its password and press **Connect**. No key
    press is needed here: only someone next to the radio can be on **Hasler**.
 5. The radio restarts. After about a minute, put your phone back on your home
-   Wi-Fi. The music comes back by itself.
+   Wi-Fi. The lamp blooms green and taps OK; the music comes back by itself.
 
-If the lamp asks again (two quick brightens), the password was wrong: join **Hasler**
+If the lamp calls CQ again, the password was wrong: join **Hasler**
 again and try once more. (If the radio knew another network before, and that
 one is in range, it goes back to it instead.)
 
@@ -566,8 +600,9 @@ Good to know:
 - An update only installs while the radio rests: in standby, with no phone
   playing, and nothing played for 10 minutes. **Install now** starts at the
   first such moment, so put the radio to sleep after you press it.
-- While it installs (two or three minutes), the lamp **breathes ember**. Leave
-  the radio plugged in.
+- While it installs (two or three minutes), the lamp **breathes amber,
+  slowly**. Leave the radio plugged in. When the new version is in, the lamp
+  blooms green and taps OK.
 - Afterwards the radio checks itself. If something doesn't work, it goes back
   to the previous version by itself, even after a power cut, and the page says
   "Didn't work here" and why.
@@ -592,14 +627,15 @@ What changed in each version: the
 
 ## After a power cut
 
-- When the power comes back, the lamp breathes amber while the radio warms up.
-  After about 15 seconds the music you were playing comes back.
+- When the power comes back, the lamp breathes amber while the radio warms up
+  (softly, if the power comes back at night). After about 15 seconds the
+  music you were playing comes back.
 - If the power comes back **at night**, the radio stays asleep (ember) so it
   doesn't wake anyone. Press a key in the morning.
 - If the tone knob is clicked off, the radio stays asleep.
 - A radio that was following another room comes back quiet, on its own.
-- If the music can't come back (no internet, say), the lamp sags twice,
-  then dim amber. Press a key to try again.
+- If the music can't come back (no internet, say), the lamp shows its red
+  eye, then soft amber. Press a key to try again.
 
 ## When something is wrong
 
@@ -608,7 +644,7 @@ What changed in each version: the
 1. Look at the lamp. Ember means asleep: press a key or turn the tone knob on.
 2. Turn the volume knob up, and check the volume ceiling (**Settings → Sound**).
 3. Blue means a phone has the radio. Stop it on the phone, or tap a numbered key.
-4. Two sags of the lamp mean the music didn't start. Try another key. If one key
+4. The lamp's red eye means the music didn't start. Try another key. If one key
    never works, choose new music for it in **Edit keys**.
 
 **The key page doesn't open.**
@@ -617,11 +653,16 @@ What changed in each version: the
   not a guest network).
 - Wait a minute after the radio starts.
 - Try the radio's IP address instead of `hasler.local`.
-- If the lamp brightens twice every few seconds, the radio isn't on your Wi-Fi: see
+- If the lamp taps CQ in Morse, the radio isn't on your Wi-Fi: see
   [Wi-Fi](#wi-fi).
 
-**The lamp breathes red.** The radio has no internet. Check your router.
-Bluetooth from a phone still works.
+**Two red pulses every 6 seconds.** The radio has no internet (it only says so
+while it is awake and idle). Check your router. Bluetooth from a phone still
+works.
+
+**The lamp taps SOS in red.** The radio found a fault it can't fix itself.
+Shut it down, and tell the person who built your radio; the journal says
+which fault.
 
 **Stations work, but YouTube Music or Spotify don't.**
 

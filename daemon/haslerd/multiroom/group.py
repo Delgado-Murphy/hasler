@@ -676,14 +676,14 @@ class Group:
             self.joining = False
         self._changed()
         if sign:
-            self._reply("group")        # the lamp's magenta: in the house's group now
+            self._reply("group")        # the lamp swells: in the house's group now
 
     def _go_alone(self, reason: str, notify: bool, restore: bool, fail: bool = False,
                   gen: int | None = None, sign: bool = True) -> None:
         """Following -> alone. ``restore``: back to asleep if it was asleep before.
 
-        ``sign``: the lamp's magenta signature (out of the group); a failure
-        shows red pulses instead, and standby its own ember.
+        ``sign``: the lamp's swell (out of the group); a failure
+        refuses (sags) instead, and standby shows its own ember.
         """
         with self._lock:
             if self.role != "follow" or (gen is not None and gen != self._gen):
@@ -806,7 +806,7 @@ class Group:
     def leave(self, reason: str = "asked to", sign: bool = True) -> None:
         """Out of whatever group this radio is in. Never blocks.
 
-        ``sign``: the lamp's magenta signature, here as on each radio that
+        ``sign``: the lamp's swell, here as on each radio that
         leaves with it (not for standby: that shows its own ember).
         """
         role = self.role
