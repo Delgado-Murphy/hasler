@@ -1,10 +1,12 @@
 """config/variants/hasler-hm-hat.yaml: the Hasler HM on the Hasler HAT (hardware/hat).
 
-hasler-hm.yaml stays the prototype stripboard's mapping until the HAT is fitted; this file
-is the one to deploy then (point haslerd.service's --variant at it).
+The default for a new HM radio (hasler.txt, hasler-install); hasler-hm.yaml is the
+prototype stripboard's mapping. The HAT file carries only its own wiring (io,
+controls) and takes the key behaviour from hasler-hm.yaml (``extends``).
 """
 
-from conftest import VARIANTS
+import yaml
+from conftest import ROOT, VARIANTS
 
 from haslerd.variant import load_variant
 
@@ -48,3 +50,25 @@ def test_calibration_and_lamp_follow_the_stripboard_descriptor():
     assert [strip(c) for c in hat.controls] == [strip(c) for c in proto.controls]
     assert hat.io["lamp"] == proto.io["lamp"]
     assert hat.actions == proto.actions
+
+
+def test_behaviour_is_inherited_not_copied():
+    """The HAT file says `extends: hasler-hm` and carries no actions, combos or
+    presets of its own: the key behaviour cannot drift between the two files."""
+    raw = yaml.safe_load(HAT.read_text())
+    assert raw["extends"] == "hasler-hm"
+    assert not {"actions", "combos", "presets"} & set(raw)
+    hat, proto = load_variant(HAT), load_variant(VARIANTS / "hasler-hm.yaml")
+    assert hat.actions == proto.actions and hat.combos == proto.combos
+    assert hat.slots == proto.slots == 6 and hat.presets == proto.presets
+    assert hat.title == proto.title
+
+
+def test_the_hat_is_the_default_for_a_new_radio():
+    firstboot = (ROOT / "config" / "firstboot" / "hasler.txt").read_text()
+    assert "variant = hasler-hm-hat" in firstboot and "starter = eclectic" in firstboot
+    install = (ROOT / "scripts" / "hasler-install").read_text()
+    assert '"variant": "hasler-hm-hat"' in install and '"starter": "eclectic"' in install
+    assert "starter: {s['starter']}" in install
+    example = yaml.safe_load((ROOT / "config" / "box.yaml.example").read_text())
+    assert example["variant"] == "hasler-hm-hat" and example["starter"] == "eclectic"

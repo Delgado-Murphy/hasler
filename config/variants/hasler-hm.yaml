@@ -140,22 +140,18 @@ actions:
 combos:
   - {keys: [k1, k6], hold_s: 1.0, do: bt_pair, seconds: 120}
 
-# One key, one source. Each preset names exactly one of:
-#   radio:    an HTTP stream URL, played by MPD
+# The built-in stations - what the keys play out of the box - are not the
+# cabinet's to say: six keys hold music, and a starter set fills them
+# (config/presets/<pack>.yaml, haslerd/presets.py). Which set: box.yaml
+# `starter:`, or the one the owner picked on the key page ("Start from a
+# set"); eclectic when nobody chose. Each entry of a set resolves to one
+# preset naming exactly one of
+#   radio:    an HTTP stream URL, played by MPD (a `station:` id of
+#             config/stations/collection.json resolves to its URL)
 #   spotify:  a spotify:playlist:/album:/track: URI, played by go-librespot
 #   ytm:      a YouTube Music playlist (or watch) URL, queued into MPD
-# Optional `shuffle: true` (spotify/ytm). The pre-sources `url:` still works
-# and means `radio:`.
-#
-# Tapping the key that is already playing: radio -> standby, spotify/ytm ->
-# next track.
-#
-# Bench test set - one of each source, all known to play. Swap in your own.
-presets:
-  - {n: 1, name: "Radio Swiss Classic", radio: "http://stream.srg-ssr.ch/m/rsc_de/mp3_128"}
-  - {n: 2, name: "Radio Swiss Jazz", radio: "http://stream.srg-ssr.ch/m/rsj/mp3_128"}
-  # RNE Radio 3 (Spain). HLS - MPD plays it; not in moOde's station list.
-  - {n: 3, name: "RNE Radio 3", radio: "https://rtvelivestream.rtve.es/rtvesec/rne/rne_r3_main.m3u8"}
-  - {n: 4, name: "Today's Top Hits", spotify: "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", shuffle: true}
-  - {n: 5, name: "Famous classical", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB"}
-  - {n: 6, name: "Classical shuffle", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB", shuffle: true}
+# with optional `shuffle: true` (spotify/ytm). A descriptor may still list its
+# presets here instead of `slots:` (a bench file); the pre-sources `url:`
+# means `radio:`. Tapping the key that is already playing: radio -> standby,
+# spotify/ytm -> next track.
+presets: {slots: 6}

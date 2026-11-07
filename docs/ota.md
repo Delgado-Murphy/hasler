@@ -110,6 +110,18 @@ web settings < secrets. Config files carry `schema: N`. A release that changes
 a schema ships an idempotent migration (`daemon/haslerd/migrations/NNN_*.py`),
 which the updater runs on a copy of the config before the switch.
 
+**Defaults follow the release.** A key absent from `settings.json` or
+`box.yaml` means *this release's default, whatever it is this release*: the
+page never writes a value the owner didn't touch, and a seeded file would
+freeze a default we may later improve. The keys work the same way although
+`keys.yaml` holds the whole layout: the file carries `defaults_rev` and
+`shipped` (the starter set and key table the release had when the owner
+saved), and at startup every key still equal to that snapshot takes what this
+release ships - *untouched keys follow the release*; a key the owner chose is
+never touched (`web/keymap.py apply_saved`, `haslerd/presets.py`). Migration
+002 gives a pre-1.5 `keys.yaml` its snapshot and rewrites stations to
+collection ids.
+
 ### The keys of box.yaml
 
 `config/box.yaml.example` is a minimal, valid file. Keep a real one short:
@@ -122,6 +134,7 @@ reaches the radio.
 | `variant` | Which cabinet: `config/variants/<variant>.yaml` in the release. |
 | `channel` | `stable` (everyone; the default) or `bench` (the makers' test radio; may break). Anything else, the retired `beta` included, reads as `stable`. |
 | `update_mode` | `auto` (the default: patch/minor at night in standby; major or migration releases still ask, and so does any release whose major number is above the running one - from 1.0.0 on, a 2.0.1 never slips in as a "patch" before 2.0.0 was accepted), `ask`, `off`. An unknown word reads as `ask`. |
+| `starter` | The built-in stations: the starter set on the keys out of the box, `config/presets/<starter>.yaml` in the release (`eclectic` when absent; `hasler-install` writes it from `hasler.txt`). The key page's own choice (`settings.json starter`) wins over it. |
 | `box_id` | A random UUID, made once by migration 001. Places the radio in a ring (and names it in a future check-in). |
 | `checkin` | Reserved for the planned opt-in daily check-in. Nothing is sent today. |
 | `metered` | `true`: never download in the background (phone hotspot, capped plans). |

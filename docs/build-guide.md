@@ -230,10 +230,11 @@ Do these in order, with a meter. The details and the reasons are in
       you noted in Phase 1, and `card:` the Amp4 Pro's id in
       `cat /proc/asound/cards`. Then `sudo systemctl restart haslerd`.
 - [ ] Now turn on moOde's **AirPlay** renderer (Configure → Renderers).
-- [ ] *(Optional)* The shipped `presets:` in `config/variants/hasler-hm.yaml`
-      are a test set that plays (Swiss and Spanish radio, one Spotify and two
-      YouTube Music playlists). Change them here if you like; later the owner
-      changes them on the key page.
+- [ ] *(Optional)* The built-in stations are a starter set
+      (`config/presets/eclectic.yaml`: stations and YouTube Music lists, all
+      playing with no account). Pick another with `starter:` in box.yaml if
+      you like; later the owner picks one on the key page (**Start from a
+      set…**) or changes the keys one by one.
 - [ ] **Set the volume ceiling.** On the key page (`http://hasler.local:8080`),
       Settings → **Sound** → **Volume ceiling**. Start at 50. The knobs are not
       wired yet, so **hold key 6** (volume up) until the volume stops rising,

@@ -24,11 +24,12 @@ JPEG = b"\xff\xd8\xff\xe0fake-jpeg"
 
 @pytest.fixture
 def library(tmp_path):
-    """A moOde station table and logo folder holding the hasler-hm k3 preset's station."""
+    """A moOde station table and logo folder holding the hasler-hm k2 preset's station
+    (key 2 of the starter set is a station; key 3 is a YouTube Music list)."""
     variant = load_variant(VARIANTS / "hasler-hm.yaml")
     actions = Actions(variant, FakePlayer())
-    k3 = variant.actions["k3.tap"]["n"]
-    uri = actions.presets[k3].uri
+    k2 = variant.actions["k2.tap"]["n"]
+    uri = actions.presets[k2].uri
     db = tmp_path / "moode.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE cfg_radio (id INTEGER PRIMARY KEY, station TEXT, name TEXT, logo TEXT)")
@@ -76,7 +77,7 @@ class TestArt:
     def test_station_logo_from_moodes_library(self, rig):
         app, actions, _ = rig
         assert app.status()["art"] is None
-        actions.dispatch(Event("k3", "tap"))
+        actions.dispatch(Event("k2", "tap"))
         art = app.status()["art"]
         assert art.startswith("/api/art/current?k=") and len(art) == len("/api/art/current?k=") + 10
         data, ctype, etag = app.art_current()
@@ -144,7 +145,7 @@ class TestHttp:
             status, _, body = self.call(base + "/api/info")
             assert status == 200 and json.loads(body)["api"] == 1
             assert self.call(base + "/api/art/current")[0] == 404
-            actions.dispatch(Event("k3", "tap"))
+            actions.dispatch(Event("k2", "tap"))
             status, headers, body = self.call(base + "/api/art/current")
             assert status == 200 and body == JPEG and headers["Content-Type"] == "image/jpeg"
             assert headers["Cache-Control"] == "no-cache"

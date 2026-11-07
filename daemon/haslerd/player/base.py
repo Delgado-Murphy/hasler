@@ -33,6 +33,11 @@ class Preset:
     source resolves when pressed; ``uri`` is then the link it last resolved
     to, played as-is when YouTube Music can't be asked. No kind = a playlist
     link, exactly as before.
+
+    A radio preset may name a ``station`` of the shipped collection
+    (haslerd/presets.py) instead of, or beside, its link: the collection's URL
+    is then the one spelling of the stream, and ``uri`` the link it resolved
+    to (kept so the key plays on if the id is gone from a later collection).
     """
 
     n: int
@@ -44,6 +49,8 @@ class Preset:
     ref: tuple[tuple[str, str], ...] = ()
     # The owner's own label for the key cap ("" = the page shortens ``name``).
     short: str = ""
+    # The collection id this radio preset was made from ("" = a pasted link).
+    station: str = ""
 
     @property
     def ytm_ref(self) -> dict[str, str]:
@@ -66,7 +73,9 @@ class Preset:
         Strict on purpose: a preset naming two sources is a typo whose meaning
         we would otherwise have to guess, and guessing wrong means a key that
         plays the wrong thing with no screen to say why. ``url`` is the
-        pre-sources spelling of ``radio`` and stays accepted.
+        pre-sources spelling of ``radio`` and stays accepted. ``station`` (a
+        collection id) is a radio preset too, with or without its ``radio``
+        link beside it (actions.build_presets fills the link in).
         """
         if not isinstance(spec, dict):
             raise ValueError(f"preset must be a mapping, not {type(spec).__name__}")
@@ -77,6 +86,9 @@ class Preset:
         except (TypeError, ValueError):
             raise ValueError(f"preset n {spec['n']!r} is not an integer") from None
         given = [key for key in ("radio", "spotify", "ytm", "url") if spec.get(key)]
+        station = str(spec.get("station") or "").strip()
+        if station and not any(k in given for k in ("radio", "url")):
+            given.append("radio")       # a station id alone: the link comes from the collection
         if not given and spec.get("kind") and not any(spec.get(k) for k in ("radio", "spotify", "url")):
             given = ["ytm"]     # a ytm reference not yet resolved to a link (a chart, an artist)
         if not given:
@@ -97,6 +109,7 @@ class Preset:
             shuffle=bool(spec.get("shuffle", False)),
             ref=ref,
             short=str(spec.get("short") or "").strip(),
+            station=station if key in ("radio", "url") else "",
         )
 
 

@@ -45,9 +45,11 @@ SCHEMA = 1   # of box.yaml and the overlay files; bumped with a migration
 # missing or retired value such as "beta" reads as). update_mode: auto (the
 # default for new radios: patch/minor at night in standby, major/migration
 # still ask) | ask | off. os_updates: on (the default: Debian security
-# updates at night, scripts/hasler-os-update) | off.
+# updates at night, scripts/hasler-os-update) | off. starter: the starter set
+# on the keys out of the box (config/presets/<starter>.yaml; haslerd/presets.py),
+# eclectic when absent; the key page's own choice (settings.json) wins over it.
 BOX_KEYS = ("schema", "variant", "channel", "update_mode", "box_id", "checkin", "metered", "migrations", "update_url",
-            "os_updates")
+            "os_updates", "starter")
 # The haslerd settings box.yaml may override (code defaults otherwise).
 HASLERD_KEYS = ("moode", "web", "connectivity", "home_assistant", "state_file", "keys_file")
 

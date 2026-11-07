@@ -6,11 +6,12 @@
 # to three Pi GPIOs. The cabinet's 16-wire ribbon is crimped into a 26-way
 # IDC plug flush to pin 1, so wire n lands on J2 pin n (17-26 empty).
 #
-# Use this only once the HAT is fitted: `variant: hasler-hm-hat` in
-# /etc/hasler/box.yaml (or `haslerd --variant hasler-hm-hat` on a box without
-# box.yaml). Until then hasler-hm.yaml (the prototype stripboard's mapping) stays
-# live; this file on the stripboard would read the keys on the wrong pins and the
-# end switch as off (standby at boot; no shutdown, since it never reads on).
+# The default for a new HM radio: every one is built on the HAT, so
+# hasler.txt and hasler-install write `variant: hasler-hm-hat` into
+# /etc/hasler/box.yaml (`haslerd --variant hasler-hm-hat` on a box without
+# box.yaml). Only the prototype stripboard wants hasler-hm.yaml instead; this
+# file on the stripboard would read the keys on the wrong pins and the end
+# switch as off (standby at boot; no shutdown, since it never reads on).
 # The descriptor's name stays hasler-hm (same cabinet), so the box's calibration
 # overlay /etc/hasler/variant.d/hasler-hm.yaml applies to both.
 # Calibration below is the stripboard's (hasler-hm.yaml, 19 Oct): the same pots
@@ -91,50 +92,8 @@ controls:
       pin: d0              # J2-14 (GPA0)
       off_hold_ms: 5000    # held off this long -> clean shutdown
 
-# Actions bind to control ids. Nothing here knows a GPIO number.
-actions:
-  k1.tap: {do: preset, n: 1}
-  k2.tap: {do: preset, n: 2}
-  k3.tap: {do: preset, n: 3}
-  k4.tap: {do: preset, n: 4}
-  k5.tap: {do: preset, n: 5}
-  k6.tap: {do: preset, n: 6}
-  # k1-k4 hold: nothing by default. Home Assistant actions belong to the home
-  # the radio lives in - connect HA on the key page and pick its scenes there.
-  # ~2 knob units (~1.8 dB) per step: bottom to volume_limit in ~8 s of holding.
-  k5.hold: {do: volume_step, delta: -2}
-  k6.hold: {do: volume_step, delta: 2}
-  pu.tap: {do: cycle_source}
-  pu.hold: {do: bt_pair, seconds: 120}
-  power.on: {do: resume}
-  power.off: {do: standby}
-  power.off_held: {do: shutdown}
-  volume.change: {do: set_volume}
-  tone.change: {do: set_tone}
-
-# Key combinations: two keys held down together for hold_s (0.5-3 s) do one
-# more thing (haslerd/panel/combos.py). Once the second key goes down, neither
-# key's own tap or hold happens for that press - let go early and nothing does.
-# Any verb a key can do; the key page edits these (Edit keys).
-combos:
-  - {keys: [k1, k6], hold_s: 1.0, do: bt_pair, seconds: 120}
-
-# One key, one source. Each preset names exactly one of:
-#   radio:    an HTTP stream URL, played by MPD
-#   spotify:  a spotify:playlist:/album:/track: URI, played by go-librespot
-#   ytm:      a YouTube Music playlist (or watch) URL, queued into MPD
-# Optional `shuffle: true` (spotify/ytm). The pre-sources `url:` still works
-# and means `radio:`.
-#
-# Tapping the key that is already playing: radio -> standby, spotify/ytm ->
-# next track.
-#
-# Bench test set - one of each source, all known to play. Swap in your own.
-presets:
-  - {n: 1, name: "Radio Swiss Classic", radio: "http://stream.srg-ssr.ch/m/rsc_de/mp3_128"}
-  - {n: 2, name: "Radio Swiss Jazz", radio: "http://stream.srg-ssr.ch/m/rsj/mp3_128"}
-  # RNE Radio 3 (Spain). HLS - MPD plays it; not in moOde's station list.
-  - {n: 3, name: "RNE Radio 3", radio: "https://rtvelivestream.rtve.es/rtvesec/rne/rne_r3_main.m3u8"}
-  - {n: 4, name: "Today's Top Hits", spotify: "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", shuffle: true}
-  - {n: 5, name: "Famous classical", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB"}
-  - {n: 6, name: "Classical shuffle", ytm: "https://music.youtube.com/playlist?list=PL68AC80CBF3649BBB", shuffle: true}
+# What the keys do, the key combinations and how many keys hold music come
+# from hasler-hm.yaml (`extends`, haslerd/variant.py): the same cabinet, the
+# same behaviour, only the pins differ. A key named under `actions:` here
+# would win over the base's; none is, on purpose.
+extends: hasler-hm

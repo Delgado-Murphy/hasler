@@ -6,8 +6,9 @@ speaker back when a cast ends" are the owner's settings: they live in
 
     "sources": {"cycle": ["radio", "ytm", "bluetooth"], "resume_after_cast": true}
 
-- read at startup (``apply_saved``) and applied live on a PUT. Absent = today's
-behaviour (actions.SOURCE_CYCLE, no resume). Any known stop may be saved; one
+- read at startup (``apply_saved``) and applied live on a PUT. Absent = the
+release's defaults: actions.SOURCE_CYCLE, and resume on (the radio takes the
+speaker back CAST_END_GRACE_S after a cast ends). Any known stop may be saved; one
 that can't be used right now (a renderer switched off, no YouTube Music
 presets) stays in the list and is skipped by the key, with the reason shown.
 

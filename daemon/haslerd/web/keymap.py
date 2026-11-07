@@ -10,6 +10,14 @@ The page speaks a small vocabulary (``volume_up`` rather than
 place that knows the mapping. Applying is a reference swap of the presets and
 action table, so the panel loop - which never takes a lock - sees either the
 old layout or the new one, never half of each.
+
+Untouched keys follow the release. keys.yaml holds the whole layout, so it
+also carries ``defaults_rev`` (haslerd/presets.py ``layout_rev``) and
+``shipped``, the presets and key table the release shipped when the file was
+saved. At startup (``apply_saved``) a key whose saved preset or action still
+equals that snapshot takes what this release ships instead; the owner's own
+choices are untouched by construction. Combinations work the same way when
+absent from the file (the descriptor's apply), as they always have.
 """
 
 from __future__ import annotations
@@ -23,16 +31,22 @@ from typing import Any
 
 import yaml
 
+from .. import presets as starter_sets
 from ..actions import Actions, build_presets
-from ..boxconfig import SCHEMA as KEYS_SCHEMA, atomic_write_text
+from ..boxconfig import atomic_write_text
 from ..ha import behaviour
 from ..panel.combos import COMBO_HOLD_RANGE, DEFAULT_COMBO_HOLD_S, MAX_COMBOS, combo_id
 from ..panel.controls import Momentary, bank_keys, bank_latching, default_label, release_key
 from ..player.base import Preset
 from ..player.sources import ytm_refs
+from ..sleep import DEFAULT_MINUTES as SLEEP_DEFAULT_MINUTES, MAX_MINUTES as SLEEP_MAX_MINUTES
 
 log = logging.getLogger(__name__)
 
+# keys.yaml's own schema (box.yaml's is boxconfig.SCHEMA). 2 since 1.5.0:
+# presets by collection id (``station``), ``defaults_rev`` and ``shipped``
+# (migration 002). A newer file on an older release logs and reads what it can.
+KEYS_SCHEMA = 2
 EVENTS = ("tap", "hold")
 VOLUME_DELTA = 2          # knob units per step; ~1.8 dB on the Amp4 Pro
 VOLUME_REPEAT_S = 0.15    # a held volume key ramps at this rate
@@ -43,7 +57,7 @@ SHORT_MAX = 12            # the owner's own key-cap label (preset ``short``)
 VERBS: list[dict[str, Any]] = [
     {"do": "none", "label": "Nothing"},
     {"do": "preset", "label": "Play a preset", "params": ["n"]},
-    {"do": "cycle_source", "label": "Next source (order set in Settings → Sources & casting)"},
+    {"do": "cycle_source", "label": "Next source (order set in Settings → Keys & knobs)"},
     {"do": "bt_pair", "label": "Bluetooth pairing", "params": ["seconds"]},
     # Selects Bluetooth and calls the last phone; while a phone plays, again =
     # next track and this key's hold = pause/play (Settings -> Bluetooth).
@@ -51,6 +65,9 @@ VERBS: list[dict[str, Any]] = [
     {"do": "volume_up", "label": "Volume up (ramps while held)"},
     {"do": "volume_down", "label": "Volume down (ramps while held)"},
     {"do": "standby_toggle", "label": "Standby / wake"},
+    # The sleep timer (haslerd/sleep.py) from a hold or a combination; no
+    # shipped key does it - nothing on the cabinet would hint at it.
+    {"do": "sleep", "label": "Sleep timer", "params": ["minutes"]},
     # Multiroom (multiroom/group.py): follow the Hasler leading a group, else
     # the one playing; on a follower, leave the group.
     {"do": "join_group", "label": "Join the music in another room (again: leave)"},
@@ -169,6 +186,12 @@ def to_page(spec: dict | None) -> dict | None:
         return {"do": "preset", "n": int(spec["n"])}
     if verb == "bt_pair":
         return {"do": "bt_pair", "seconds": int(spec.get("seconds", 120))}
+    if verb == "sleep":
+        try:
+            minutes = int(spec.get("minutes", SLEEP_DEFAULT_MINUTES))
+        except (TypeError, ValueError):
+            minutes = SLEEP_DEFAULT_MINUTES
+        return {"do": "sleep", "minutes": minutes}
     if verb in HA_VERBS:
         return behaviour.to_page(spec)
     # Something the page has no control for (set in the descriptor by hand):
@@ -178,10 +201,13 @@ def to_page(spec: dict | None) -> dict | None:
 
 def preset_to_page(p: Preset) -> dict:
     """A preset for the page; a ytm reference adds its fields (kind, id, mode,
-    seed, country, list, title, params - player/sources/ytm_refs.py)."""
+    seed, country, list, title, params - player/sources/ytm_refs.py), a
+    collection station its ``station`` id."""
     doc = {"n": p.n, "name": p.name, "source": p.source, "uri": p.uri, "shuffle": p.shuffle, **p.ytm_ref}
     if p.short:
         doc["short"] = p.short      # the owner's own key-cap label
+    if p.station:
+        doc["station"] = p.station
     return doc
 
 
@@ -287,9 +313,14 @@ def layout_rev(layout: dict) -> str:
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 
 
-def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
+def config_doc(actions: Actions, sources: dict[str, bool], ha: Any, starter: dict | None = None) -> dict:
+    """``GET /api/config``. ``starter`` (web/server.py WebApp.starter_doc) adds
+    the starter sets: ``starter`` (the one in force), ``starter_from``,
+    ``starters`` (every set with its keys) and ``factory`` (the keys equal
+    the set in force, by content)."""
     layout = layout_doc(actions)
     return {
+        **(starter or {}),
         "variant": actions.variant.name,
         "title": layout["title"],
         "keys": layout["keys"],
@@ -470,6 +501,11 @@ def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
         return None
     name = str(raw.get("name") or "").strip() or f"Preset {n}"
     spec: dict[str, Any] = {"n": n, "name": name[:60], source: uri}
+    # A station of the collection keeps its id while the link is still the
+    # collection's; a link the owner edited is their own, id dropped.
+    station = raw.get("station")
+    if source == "radio" and isinstance(station, str) and station and starter_sets.station_url(station) == uri:
+        spec["station"] = station
     if source != "radio" and raw.get("shuffle"):
         spec["shuffle"] = True
     if short:
@@ -511,6 +547,12 @@ def action_from_page(raw: Any, where: str, preset_ns: set[int], current: dict | 
             errors.append({"where": where, "message": "pairing window: 10–600 seconds"})
             return None
         return {"do": "bt_pair", "seconds": seconds}
+    if verb == "sleep":
+        minutes = raw.get("minutes", SLEEP_DEFAULT_MINUTES)
+        if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or not 1 <= minutes <= SLEEP_MAX_MINUTES:
+            errors.append({"where": where, "message": f"sleep timer: 1–{SLEEP_MAX_MINUTES} minutes"})
+            return None
+        return {"do": "sleep", "minutes": int(minutes)}
     if verb in HA_VERBS:
         try:
             return behaviour.normalise(raw)
@@ -728,23 +770,67 @@ def tune_repeat(actions: Actions, panel: Any) -> None:
 
 _KEEP: Any = object()
 
+KEYS_HEADER = ("# Written by the haslerd web page. Delete to go back to the built-in\n"
+               "# stations (the starter set in force). `shipped` is what the release had on\n"
+               "# the keys when this was saved: a key still equal to it follows the release.\n")
 
-def save(path: Path, specs: list[dict], table: dict[str, dict | None], combos: Any = _KEEP) -> None:
+
+def save(
+    path: Path, specs: list[dict], table: dict[str, dict | None], combos: Any = _KEEP, shipped: Any = _KEEP,
+) -> None:
     """Write the overlay atomically (tmp + fsync + rename): the box is switched
     off at the wall, and a power cut mid-save must leave the old file.
 
     ``combos``: the key combinations to write; left out, the file keeps the
-    ones it had (none written = the descriptor's apply)."""
-    if combos is _KEEP:
-        saved = load_layout(path)
-        combos = saved[2] if saved is not None else None
-    # schema as boxconfig writes it, so a migration knows what it is reading.
+    ones it had (none written = the descriptor's apply). ``shipped``: the
+    (presets, key table) the release ships, written as the ``shipped``
+    snapshot with its ``defaults_rev``; left out, the file keeps its own;
+    None writes none (a test, a file with no release to follow)."""
+    if combos is _KEEP or shipped is _KEEP:
+        file = read_file(path) or {}
+        if combos is _KEEP:
+            combos = file.get("combos") if isinstance(file.get("combos"), list) else None
+        if shipped is _KEEP:
+            old = file.get("shipped")
+            shipped = ((old.get("presets") or [], old.get("actions") or {})
+                       if isinstance(old, dict) and file.get("defaults_rev") else None)
+    # schema, so a migration knows what it is reading.
     doc: dict[str, Any] = {"schema": KEYS_SCHEMA, "presets": specs, "actions": table}
     if combos is not None:
         doc["combos"] = combos
-    text = "# Written by the haslerd web page. Delete to go back to the descriptor.\n" + \
-        yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
+    if shipped is not None:
+        shipped_specs, shipped_table = shipped
+        doc["defaults_rev"] = starter_sets.layout_rev(shipped_specs, shipped_table)
+        doc["shipped"] = {"presets": list(shipped_specs), "actions": {k: v for k, v in shipped_table.items() if v}}
+    text = KEYS_HEADER + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True)
     atomic_write_text(path, text, mode=0o600)
+
+
+def read_file(path: Path | None) -> dict | None:
+    """keys.yaml as a mapping, or None when absent or unreadable (logged)."""
+    if path is None or not path.exists():
+        return None
+    try:
+        doc = yaml.safe_load(path.read_text()) or {}
+    except (OSError, yaml.YAMLError):
+        log.exception("could not read %s; using the descriptor's keys", path)
+        return None
+    return doc if isinstance(doc, dict) else {}
+
+
+def load_shipped(path: Path | None) -> tuple[str, list[dict], dict] | None:
+    """The file's ``shipped`` snapshot: (defaults_rev, presets, key table), or
+    None when the file has none (saved before 1.5.0 and not yet migrated)."""
+    doc = read_file(path)
+    if not doc:
+        return None
+    rev, shipped = doc.get("defaults_rev"), doc.get("shipped")
+    if not isinstance(rev, str) or not isinstance(shipped, dict):
+        return None
+    specs, table = shipped.get("presets"), shipped.get("actions")
+    if not isinstance(specs, list) or not isinstance(table, dict):
+        return None
+    return rev, [s for s in specs if isinstance(s, dict)], dict(table)
 
 
 def load(path: Path | None) -> tuple[list[dict], dict[str, dict | None]] | None:
@@ -764,13 +850,11 @@ def load_layout(path: Path | None) -> tuple[list[dict], dict[str, dict | None], 
     """
     if path is None or not path.exists():
         return None
-    try:
-        doc = yaml.safe_load(path.read_text()) or {}
-    except (OSError, yaml.YAMLError):
-        log.exception("could not read %s; using the descriptor's keys", path)
+    doc = read_file(path)
+    if doc is None:
         return None
-    presets, actions = (doc.get("presets"), doc.get("actions")) if isinstance(doc, dict) else (None, None)
-    if not isinstance(doc, dict) or not isinstance(presets or [], list) or not isinstance(actions or {}, dict):
+    presets, actions = doc.get("presets"), doc.get("actions")
+    if not isinstance(presets or [], list) or not isinstance(actions or {}, dict):
         log.error("%s is not a key layout ({presets: [...], actions: {...}}); using the descriptor's keys", path)
         return None
     schema = doc.get("schema", KEYS_SCHEMA)
@@ -784,8 +868,16 @@ def load_layout(path: Path | None) -> tuple[list[dict], dict[str, dict | None], 
     return list(presets or []), dict(actions or {}), combos
 
 
-def apply_saved(path: Path | None, actions: Actions, panel: Any) -> bool:
-    """At startup: lay the saved overlay over the descriptor. True if there was one."""
+def apply_saved(
+    path: Path | None, actions: Actions, panel: Any, shipped: tuple[list[dict], dict] | None = None,
+) -> bool:
+    """At startup: lay the saved overlay over the descriptor. True if there was one.
+
+    ``shipped``: the (presets, key table) this release ships for the cabinet.
+    When the file was saved against another release's (its ``defaults_rev``
+    differs), every key still equal to that snapshot takes this release's
+    (presets.follow_release), and the file is written once with the new
+    snapshot. The owner's own keys are left as they are."""
     saved = load_layout(path)
     if saved is None:
         tune_repeat(actions, panel)
@@ -793,6 +885,19 @@ def apply_saved(path: Path | None, actions: Actions, panel: Any) -> bool:
         return False
     specs, table, raw_combos = saved
     known = {f"{cid}.{e}" for cid in key_ids(actions) for e in EVENTS}
+    if shipped is not None:
+        old = load_shipped(path)
+        new_specs, new_table = shipped
+        new_table = {k: new_table.get(k) for k in known}
+        if old is not None and old[0] != starter_sets.layout_rev(new_specs, new_table):
+            specs, table, changed = starter_sets.follow_release(
+                specs, table, old[1], old[2], new_specs, new_table, known)
+            if changed:
+                log.info("%s: %d untouched key(s) follow the release", path, changed)
+            try:
+                save(path, specs, table, raw_combos, (new_specs, new_table))
+            except OSError:
+                log.warning("could not write %s after following the release", path, exc_info=True)
     combos = None
     if raw_combos is not None:
         # A hand-edited combination that doesn't check out costs that one only.

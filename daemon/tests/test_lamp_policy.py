@@ -296,8 +296,11 @@ class TestKeeper:
         assert "play_preset" not in player.verbs()
 
     def test_spotify_connect_from_a_phone_is_casting_our_preset_is_not(self, box):
+        from haslerd.player.base import Preset
         _, player, actions, _, _, _, _ = box
         assert actions.phone_has_it("spotify")          # go-librespot, no preset of ours
+        # No shipped key is Spotify any more: make key 4 one for the test.
+        actions.presets[4] = Preset(4, "Hits", "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M", "spotify")
         actions.dispatch(Event("k4", "tap"))            # the Spotify preset
         assert not actions.phone_has_it("spotify")
 

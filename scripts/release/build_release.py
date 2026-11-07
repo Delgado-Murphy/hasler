@@ -69,6 +69,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("daemon/haslerd/**", "app/haslerd/", strip="daemon/haslerd", exts=PKG_EXTS),
     Rule("daemon/pyproject.toml", "app/"),
     Rule("config/variants/*.yaml", "app/config/variants/"),
+    Rule("config/presets/*.yaml", "app/config/presets/"),
     Rule("config/catalog/*.json", "app/config/catalog/"),
     Rule("config/stations/*.json", "app/config/stations/"),
     Rule("config/haslerd.yaml.example", "app/config/"),

@@ -1,0 +1,27 @@
+# Starter set: Eclectic. The set a radio ships with when nobody chose another
+# (haslerd/presets.py DEFAULT_PACK): a little of everything, and the radio
+# showing what it can do - stations and YouTube Music lists side by side.
+#
+# Every entry names one of: `station:` (an id from config/stations/collection.json;
+# the stream URL comes from there) or `ytm:` (a YouTube Music list id as
+# config/catalog/catalog.json stores it in the item's link). `short` is the
+# key-cap label (12 characters at most); `why` is the one line the key card
+# can print. Key 7 is the Excelsior's Tape key; the HM has six.
+pack: eclectic
+title: "Eclectic"
+blurb: "A little of everything and not much talk: stations from four countries, a coffee-shop list and a lo-fi one."
+presets:
+  - {n: 1, name: "FIP", short: "FIP", station: fr-fip,
+     why: "Radio France's eclectic channel: jazz, pop, world, hardly a word spoken. The key everyone agrees on."}
+  - {n: 2, name: "Radio Swiss Jazz", short: "Swiss Jazz", station: ch-radio-swiss-jazz,
+     why: "Jazz around the clock from the cabinet's homeland, no presenters."}
+  - {n: 3, name: "Coffee Shop Blend", short: "Coffee Shop", ytm: RDCLAK5uy_nBE4bLuBHUXWZrF59ZrkPEToKt8M_I3Vc,
+     why: "A YouTube Music list for a slow morning. Tap the key again for the next song."}
+  - {n: 4, name: "Radio Nova", short: "Nova", station: fr-radio-nova,
+     why: "Paris's grand mix: hip-hop, soul, electronica and the odd surprise."}
+  - {n: 5, name: "Lofi Loft", short: "Lofi", ytm: RDCLAK5uy_kb7EBi6y3GrtJri4_ZH56Ms786DFEimbM,
+     why: "Lo-fi beats to read or cook to, from YouTube Music."}
+  - {n: 6, name: "BBC Radio 6 Music", short: "6 Music", station: gb-bbc-radio-6-music,
+     why: "The BBC's alternative music station, with presenters worth hearing."}
+  - {n: 7, name: "KEXP", short: "KEXP", station: us-kexp-90-3-seattle,
+     why: "Seattle's listener-powered station: new music and live sessions."}

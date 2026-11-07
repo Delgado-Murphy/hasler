@@ -109,11 +109,16 @@ class TestManifest:
 
 
 class TestShortLabel:
-    def test_absent_by_default_and_old_configs_stay_valid(self, rig):
+    def test_shipped_labels_and_old_configs_without_them_stay_valid(self, rig):
         app, actions = rig
-        assert all("short" not in p for p in app.config()["presets"])
-        app.save(doc_from(app))                                  # no "short" anywhere: fine
+        # The starter set gives every key a label (config/presets); a layout without any is fine too.
+        assert all(0 < len(p["short"]) <= keymap.SHORT_MAX for p in app.config()["presets"])
+        doc = doc_from(app)
+        for p in doc["presets"]:
+            del p["short"]
+        app.save(doc)                                            # no "short" anywhere: fine
         assert all(p.short == "" for p in actions.presets.values())
+        assert all("short" not in p for p in app.config()["presets"])
 
     def test_round_trip_through_save_file_and_restart(self, rig, tmp_path):
         app, actions = rig
@@ -139,6 +144,7 @@ class TestShortLabel:
         app, _ = rig
         doc = doc_from(app)
         doc["presets"][0]["short"] = "CLASSIC"
+        del doc["presets"][1]["short"]
         app.save(doc)
         keys = {k["id"]: k for k in app.status()["keys"]}
         assert keys["k1"]["short"] == "CLASSIC" and "short" not in keys["k2"]

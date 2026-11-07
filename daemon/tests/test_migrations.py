@@ -18,6 +18,7 @@ SHIPPED = ROOT / "config" / "variants" / "hasler-hm.yaml"
 EDITED_CURVE = "curve: [[30, 100], [2000, 87.5], [11000, 75], [21000, 62.5], [24000, 50], [26100, 0]]"
 
 M001 = "001_from_rsync_tree"
+M002 = "002_presets_by_id"
 
 
 @pytest.fixture
@@ -58,21 +59,22 @@ def _run(paths, legacy, unit, apply):
 
 
 def test_framework_finds_001():
-    assert M001 in migrations.available()
+    assert migrations.available() == [M001, M002]
 
 
 def test_dry_run_plans_and_writes_nothing(box):
     paths, legacy, unit = box
     before = {p: p.read_bytes() for p in paths.state.iterdir()}
-    [(mid, lines)] = _run(paths, legacy, unit, apply=False)
-    assert mid == M001
+    (mid, lines), (mid2, lines2) = _run(paths, legacy, unit, apply=False)
+    assert mid == M001 and mid2 == M002
     plan = "\n".join(lines)
     assert "would write" in plan and str(paths.box_file) in plan
     assert "controls.volume.curve" in plan
     assert "would move" in plan
+    assert "would stamp" in "\n".join(lines2)
     assert not paths.etc.exists()
     assert {p: p.read_bytes() for p in paths.state.iterdir()} == before
-    assert migrations.pending(paths) == [M001]
+    assert migrations.pending(paths) == [M001, M002]
 
 
 def test_apply_writes_box_overlay_secrets_and_schema(box):
@@ -83,7 +85,7 @@ def test_apply_writes_box_overlay_secrets_and_schema(box):
     assert doc["schema"] == 1 and doc["variant"] == "hasler-hm"
     assert doc["channel"] == "bench" and doc["update_mode"] == "auto"
     assert len(doc["box_id"]) == 36
-    assert doc["migrations"] == [M001]
+    assert doc["migrations"] == [M001, M002]
     # only what differs from the code defaults; no secrets, no default state_file
     assert doc["moode"] == {"volume_limit": 65}     # the Amp4 Pro card is the code default
     assert "web" not in doc and "state_file" not in doc and "home_assistant" not in doc
@@ -116,7 +118,8 @@ def test_apply_writes_box_overlay_secrets_and_schema(box):
     assert json.loads((paths.state / "settings.json").read_text()) == {"schema": 1, "volume_limit": 60}
     keys = (paths.state / "keys.yaml").read_text()
     assert keys.startswith("# Written by the haslerd web page.")
-    assert yaml.safe_load(keys) == {"schema": 1, "presets": [], "actions": {}}
+    doc = yaml.safe_load(keys)       # 001 stamps schema 1; 002 (test_presets.py) then takes it to 2
+    assert doc["schema"] == 2 and doc["presets"] == [] and doc["actions"] == {} and doc["defaults_rev"]
 
     assert migrations.pending(paths) == []
     assert _run(paths, legacy, unit, apply=True) == []
