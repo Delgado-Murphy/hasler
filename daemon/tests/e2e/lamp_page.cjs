@@ -236,6 +236,25 @@ async function until(fn, ms, what){
         await until(async () => /Look for the lamp/.test(await page.textContent('#toast')), 3000, 'the toast');
         await shot(page, name + '-this-radio');
       });
+
+      if (name === 'phone') await check('the key card has the lamp legend for a v2 lamp (only)', async () => {
+        await page.goto(radio.base + '/#print');
+        await until(() => page.isVisible('#keyCard'), 6000, 'the key card');
+        assert(!(await page.$('#kcLamp')), 'a v2 legend for a lamp that speaks v1');
+        await page.route('**/api/settings', async route => {
+          if (route.request().method() !== 'GET') return route.continue();
+          const res = await route.fetch(), doc = await res.json();
+          doc.lamp.looks = doc.lamp.looks.concat(['no_internet', 'fault']); doc.lamp.replies = doc.lamp.replies.concat(['ok']);
+          await route.fulfill({response: res, json: doc});
+        });
+        await page.reload();
+        await until(() => page.isVisible('#kcLamp'), 6000, 'the lamp legend');
+        const rows = await page.$$eval('#kcLamp p', ps => ps.map(p => p.textContent.trim()));
+        assert(rows.join('|') === 'set me up|it’s me|done|no|no internet|call a maker', 'legend: ' + rows.join('|'));
+        assert(await page.$$eval('#kcLamp p:first-of-type .kc-dah', d => d.length) === 5, 'CQ is not – · – ·  – – · –');
+        await shot(page, 'keycard-lamp-legend');
+        await page.unroute('**/api/settings');
+      });
       await ctx.close();
     }
     await check('no console errors', async () => assert(!errors.length, errors.join('\n     ')));
