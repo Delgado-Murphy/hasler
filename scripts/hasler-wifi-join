@@ -14,6 +14,11 @@
  *       files, so moOde's Network page shows it exactly as if entered there.
  *       Then a restart, unless "reboot": false (scripts/hasler-wifi-rescue,
  *       the boot-partition rescue, which runs before moOde's worker).
+ *       The network wlan0 is on now, chosen again (its password re-typed):
+ *       no restart. The key is stored in place (same UUID) and NetworkManager
+ *       reloads it; only a key that really changed is tried at once, and if the
+ *       network refuses it the old one goes back. -> {"same_network": true,
+ *       "changed": bool, "restarting": false} (or ok=false, "refused": true).
  *
  *   {"action": "retry", "force": false}
  *       In setup mode (moOde's hotspot): is a saved network back? ->
@@ -128,9 +133,11 @@ function schedule_reboot() {
 
 // The network just joined, for haslerd's next start (see the header). Owned
 // like the state directory (haslerd runs as pi and deletes it); never fatal.
-function mark_joined($ssid) {
+// The second line names the network it was on before ("from="): the page says
+// "New Wi-Fi" only when the two differ.
+function mark_joined($ssid, $from = '') {
 	if (!is_dir(STATE_DIR)) return;
-	if (@file_put_contents(JOINED_MARKER, $ssid . "\n") === false) return;
+	if (@file_put_contents(JOINED_MARKER, $ssid . "\nfrom=" . $from . "\n") === false) return;
 	$st = @stat(STATE_DIR);
 	if ($st) @chown(JOINED_MARKER, $st['uid']) && @chgrp(JOINED_MARKER, $st['gid']);
 	@chmod(JOINED_MARKER, 0644);
@@ -176,7 +183,10 @@ function action_join($dbh, $in) {
 	if ($security === 'auto') $security = $password === '' ? 'none' : 'wpa-psk';
 	list($psk, $pwd, $saepwd) = wpa_key($ssid, $password, $security);
 
-	$cur = $dbh->query("SELECT wlancc FROM cfg_network WHERE iface='wlan0'")->fetch(PDO::FETCH_ASSOC);
+	$cur = $dbh->query("SELECT wlancc, wlanssid, wlanuuid, wlanpwd, wlanpsk, wlansec FROM cfg_network WHERE iface='wlan0'")->fetch(PDO::FETCH_ASSOC);
+	if ($cur && (string)$cur['wlanssid'] === $ssid && wlan0_connection() === $ssid) {
+		same_network($dbh, $cur, $ssid, $psk, $pwd, $saepwd, $security);
+	}
 	$uuid = trim(file_get_contents('/proc/sys/kernel/random/uuid'));
 
 	$st = $dbh->prepare("UPDATE cfg_network SET method='dhcp', ipaddr='', netmask='', gateway='',
@@ -194,7 +204,7 @@ function action_join($dbh, $in) {
 		->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':psk' => $psk, ':sec' => $security, ':sae' => $saepwd));
 
 	cfgNetworks();
-	mark_joined($ssid);
+	mark_joined($ssid, $cur ? (string)$cur['wlanssid'] : '');
 
 	if (!$reboot) {
 		sh(array('/usr/bin/nmcli', 'connection', 'reload'));
@@ -204,6 +214,48 @@ function action_join($dbh, $in) {
 	// one); if none answers within 90 s, the hotspot comes back for another go.
 	if (!schedule_reboot()) done(false, 'saved, but could not schedule the restart - power-cycle the radio');
 	done(true);
+}
+
+// The network wlan0 is on now, chosen again (its password typed once more):
+// moOde's rows and NetworkManager's profile take the key in place - the same
+// UUID, so NetworkManager sees the same connection - and nothing restarts. A key
+// that is really new is tried at once (a moment off the network); if the
+// network refuses it, the old key goes back and the radio rejoins with it.
+function key_row($dbh, $ssid, $uuid, $psk, $pwd, $saepwd, $security) {
+	$dbh->prepare("UPDATE cfg_network SET wlanpwd=:pwd, wlanpsk=:psk, wlansec=:sec WHERE iface='wlan0'")
+		->execute(array(':pwd' => $pwd, ':psk' => $psk, ':sec' => $security));
+	$dbh->prepare("DELETE FROM cfg_ssid WHERE ssid=:ssid")->execute(array(':ssid' => $ssid));
+	$dbh->prepare("INSERT INTO cfg_ssid (ssid, uuid, psk, method, ipaddr, netmask, gateway, pridns, secdns,
+		security, saepwd) VALUES (:ssid, :uuid, :psk, 'dhcp', '', '', '', '', '', :sec, :sae)")
+		->execute(array(':ssid' => $ssid, ':uuid' => $uuid, ':psk' => $psk, ':sec' => $security, ':sae' => $saepwd));
+	cfgNetworks();
+	sh(array('/usr/bin/nmcli', 'connection', 'reload'));
+}
+
+function rejoin($ssid) {
+	$rc = sh(array('/usr/bin/nmcli', '-w', '45', 'connection', 'up', 'id', $ssid));
+	return $rc === 0 && wlan0_connection() === $ssid && wlan0_ipv4() !== '';
+}
+
+function same_network($dbh, $cur, $ssid, $psk, $pwd, $saepwd, $security) {
+	$uuid = (string)$cur['wlanuuid'] !== '' ? (string)$cur['wlanuuid'] : trim(file_get_contents('/proc/sys/kernel/random/uuid'));
+	$old = $dbh->prepare("SELECT psk, security, saepwd FROM cfg_ssid WHERE ssid=:ssid");
+	$old->execute(array(':ssid' => $ssid));
+	$old = $old->fetch(PDO::FETCH_ASSOC);
+	$changed = (string)$cur['wlanpsk'] !== $psk || (string)$cur['wlanpwd'] !== $pwd || (string)$cur['wlansec'] !== $security;
+	key_row($dbh, $ssid, $uuid, $psk, $pwd, $saepwd, $security);
+	sh(array('/usr/bin/sync'));
+	@unlink(JOINED_MARKER);               // nothing restarts: no OK to say at the next start
+	if (!$changed) done(true, '', array('same_network' => true, 'changed' => false, 'restarting' => false));
+	if (rejoin($ssid)) done(true, '', array('same_network' => true, 'changed' => true, 'restarting' => false));
+	// Refused: the key that worked goes back, and the radio rejoins with it.
+	key_row($dbh, $ssid, $uuid, (string)$cur['wlanpsk'], (string)$cur['wlanpwd'],
+		$old ? (string)$old['saepwd'] : '', (string)$cur['wlansec']);
+	sh(array('/usr/bin/sync'));
+	$back = rejoin($ssid);
+	done(false, $back ? 'the network refused that password - the radio kept the one that works'
+		: 'the network refused that password - restart the radio to rejoin with the one that worked',
+		array('same_network' => true, 'changed' => false, 'restarting' => false, 'refused' => true));
 }
 
 // --- forget ------------------------------------------------------------------------
@@ -411,7 +463,7 @@ function action_retry($dbh, $in) {
 		if ($rc === 0 && wlan0_ipv4() !== '' && wlan0_connection() === $ssid) {
 			// On a real network again. Restart, so moOde (which still thinks it
 			// is a hotspot) and everything that bound at boot start clean.
-			mark_joined($ssid);
+			mark_joined($ssid, $home);
 			schedule_reboot();
 			done(true, '', array('result' => 'joined', 'ssid' => $ssid));
 		}

@@ -301,6 +301,8 @@ class BoxState:
     casting: bool = False            # a phone renderer has the audio
     cast_paused: bool = False
     offline_s: float = 0.0           # seconds without internet: the red alert once idle and awake
+    joining: bool = False            # restarted onto a Wi-Fi just chosen, not on it yet: busy
+                                     # (then the green OK - or the HAL eye and CQ if it can't)
     loading: bool = False            # a preset was started and no sound yet
     playing: bool = False            # our own source is making sound
     source: str = "radio"            # radio | ytm | spotify | bluetooth | airplay | ...

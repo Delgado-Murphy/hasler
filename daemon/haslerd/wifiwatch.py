@@ -25,6 +25,15 @@ that can't scan as a hotspot. And once, 30 s after haslerd starts, it makes
 sure the hotspot can start at all (``Wifi.ensure_hotspot``: a password if it
 has none, its address if the profile lost it).
 
+And at boot, the case moOde's worker misses: no network at all (no address on
+Wi-Fi or the cable) and no hotspot either ``NO_WIFI_S`` after haslerd starts -
+a join that didn't take, a hotspot named after a room ("Hasler Kitchen": the
+worker's ``nmcli c up`` passes it unquoted and it never comes up). Then the
+watchdog brings the setup hotspot up itself (``Wifi.hotspot_now``), once per
+start, so the lamp says CQ and a phone can set it up - not a red alert that
+nothing will clear. Only before the radio has been on a network this start: a
+router rebooting at night is not a reason to drop into setup mode.
+
 Polled from the main loop like Connectivity; the helper call (up to a minute
 or two) runs on its own thread.
 """
@@ -45,6 +54,11 @@ BUSY_S = 60.0
 ERROR_S = 600.0
 SCAN_EVERY_S = 30.0
 ENSURE_AFTER_S = 30.0       # the hotspot check (Wifi.ensure_hotspot), once, off the boot's back
+# No network and no hotspot this long after haslerd starts (moOde's worker
+# gives up on the Wi-Fi after 90 s and should have started its hotspot by then):
+# the watchdog starts it. Watched only during the first BOOT_WINDOW_S.
+NO_WIFI_S = 120.0
+BOOT_WINDOW_S = 900.0
 
 
 class HotspotWatchdog:
@@ -54,6 +68,7 @@ class HotspotWatchdog:
         hotspot: Callable[[], bool],
         idle: Callable[[], bool] = lambda: True,
         offline: Callable[[], bool] = lambda: False,
+        linked: Callable[[], bool | None] = lambda: None,
         threaded: bool = True,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -61,6 +76,7 @@ class HotspotWatchdog:
         self._hotspot = hotspot
         self._idle = idle
         self._offline = offline
+        self._linked = linked
         self._threaded = threaded
         self._clock = clock
         self._busy = threading.Lock()
@@ -69,6 +85,9 @@ class HotspotWatchdog:
         self._step = 0
         self._next_scan = 0.0
         self._ensure_at: float | None = None
+        self._started: float | None = None
+        self._ever_linked = False            # on a network (or a hotspot) at some point this start
+        self.fallback = ""                   # the no-network hotspot: "" | "starting" | "up" | "already" | "failed"
         self.attempts = 0
         self.last: dict = {}
         self.stopped = ""                     # why it gave up for this hotspot session
@@ -76,6 +95,8 @@ class HotspotWatchdog:
     # -- main loop ----------------------------------------------------------------
 
     def poll(self, now: float) -> None:
+        if self._started is None:
+            self._started = now
         if self._ensure_at is None:
             self._ensure_at = now + ENSURE_AFTER_S
         elif self._ensure_at > 0 and now >= self._ensure_at:
@@ -91,10 +112,13 @@ class HotspotWatchdog:
                 log.info("setup mode over")
             self._since = self._next = None
             self._step, self.stopped = 0, ""
+            if self._no_network(now):
+                return
             if now >= self._next_scan and self._safe(self._offline):
                 self._next_scan = now + SCAN_EVERY_S
                 self._spawn(self._refresh)
             return
+        self._ever_linked = True
         if self._since is None:
             self._since, self._next = now, now + FIRST_S
             log.info("setup mode: will look for the saved Wi-Fi in %.0f s", FIRST_S)
@@ -104,6 +128,41 @@ class HotspotWatchdog:
         self._next = now + EVERY_S[-1]        # until the helper answers
         if not self._spawn(self._try):
             self._next = later                # (a scan still running: next poll)
+
+    def _no_network(self, now: float) -> bool:
+        """At boot, no address anywhere and no hotspot for NO_WIFI_S: bring the
+        setup hotspot up (once). True if that was started now."""
+        if self._ever_linked or self.fallback or self._started is None:
+            return False
+        try:
+            linked = self._linked()
+        except Exception:
+            linked = None
+        if linked is None:
+            return False                     # not known here: moOde's worker decides
+        if linked:
+            self._ever_linked = True
+            return False
+        if now - self._started > BOOT_WINDOW_S:
+            self._ever_linked = True         # past the boot: leave it be
+            return False
+        if now - self._started < NO_WIFI_S or not self._safe(self._offline):
+            return False
+        if not self._busy.locked():
+            log.warning("no network and no setup hotspot %.0f s after start - starting the hotspot", NO_WIFI_S)
+        self.fallback = "starting"
+        if self._spawn(self._hotspot_now):
+            return True
+        self.fallback = ""                   # the helper is busy: next poll
+        return False
+
+    def _hotspot_now(self) -> None:
+        try:
+            reply = self.wifi.hotspot_now()
+            self.fallback = str(reply.get("result") or "up")
+        except Exception as exc:
+            self.fallback = "failed"
+            log.warning("could not start the setup hotspot: %s", exc)
 
     def try_now(self, force: bool = False) -> dict:
         """The setup page's "Try my Wi-Fi again" (synchronous; the page's phone is
@@ -123,6 +182,7 @@ class HotspotWatchdog:
             "attempts": self.attempts,
             "last": dict(self.last),
             "stopped": self.stopped,
+            "fallback": self.fallback,
         }
 
     # -- internals --------------------------------------------------------------------

@@ -1,0 +1,18 @@
+[Unit]
+Description=Hasler journal on the card - the previous boot can be read after a restart or a power cut
+# docs/build-guide.md "Notes for makers" (journalctl -b -1). Shipped in every
+# release (integration/systemd/); pulled in by systemd-journal-flush.service's
+# drop-in (hasler-journal-disk.conf), so it needs no `systemctl enable`.
+# After log2ram has put /var/log in RAM, before journald moves its log from
+# /run to /var/log/journal: scripts/hasler-journal-disk binds the card's journal
+# directory there.
+DefaultDependencies=no
+After=log2ram.service systemd-remount-fs.service
+Before=systemd-journal-flush.service sysinit.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh /usr/local/sbin/hasler-journal-disk
+TimeoutStartSec=30

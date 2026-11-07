@@ -149,6 +149,9 @@ def render(page: str, status: dict[str, Any], lang: str, *, state: str = "form",
     if state == "done":
         lede_key, lede_ssid = "lede_done", saved_ssid
         chosen_ssid = saved_ssid
+    elif state == "kept":                   # the network it is on, chosen again: no restart
+        lede_key, lede_ssid = "lede_kept", saved_ssid
+        chosen_ssid = saved_ssid
     elif current and hotspot:
         lede_key, lede_ssid = "lede_retry", current
     elif current:
@@ -171,7 +174,7 @@ def render(page: str, status: dict[str, Any], lang: str, *, state: str = "form",
 
     values = {
         "lang": lang,
-        "state": "done" if state == "done" else "form",
+        "state": state if state in ("done", "kept") else "form",
         "back": back,
         "who": who_words,
         "blink": who["blink"],

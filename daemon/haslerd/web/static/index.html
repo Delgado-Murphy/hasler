@@ -1008,11 +1008,11 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .yours-foot{display:flex;flex-wrap:wrap;align-items:center;gap:0 6px;padding:0 4px;color:var(--muted);font-size:13px;line-height:18px}
 .yours-foot .link{padding-left:0}
 .yours-fin{margin:0;padding:4px 4px 0;color:var(--cream);font:italic 600 17px/22px var(--serif)}
-/* Maker tools → Handover: one line per thing, marked ✓ (fine), ! (needs you, and a link into the fix) or · */
+/* Maker tools → Handover: one line per thing, marked ✓ (fine), ! (a blocker, amber), ○ (to check, quiet) or · */
 .ho-row{min-height:52px;padding-top:8px;padding-bottom:8px}
 .ho-row .li-title{font-size:14px}
 .ho-mark{flex:none;width:18px;text-align:center;font:700 14px/18px var(--mono);color:var(--muted)}
-.ho-mark.ok{color:#8FCF9F}.ho-mark.bad{color:var(--amber)}
+.ho-mark.ok{color:#8FCF9F}.ho-mark.bad{color:var(--amber)}.ho-mark.look{color:var(--text2);font-weight:400}
 /* the front page's "Remote help is waiting" (the owner is likely here, not in Settings) */
 .front-attn{display:flex;flex-direction:column;gap:2px;margin:0 0 10px;padding:10px 14px;border:1px solid rgba(233,179,92,.45);border-radius:12px;background:linear-gradient(180deg,#2A1D10,#21160D);color:#F3CF8C;text-decoration:none;font-size:13px}
 .front-attn span{color:var(--muted);font-size:12px}
@@ -6705,7 +6705,28 @@ function setupNetRow(){
       kv('Password', pw === null ? 'None — it’s an open network' : !pw ? 'Not shown here' : pw,
         pw ? h('button', {type:'button', class:'li-act', id:'setupPwCopy', 'aria-label':'Copy the setup password',
           onclick: () => copyText(pw, 'Password copied')}, 'Copy') : null)),
-    pw === '' ? h('p', {class:'hint', style:'margin:0'}, 'It was set on the player’s own page, so the radio can’t show it.') : null);
+    pw === '' ? h('p', {class:'hint', style:'margin:0'}, 'It was set on the player’s own page, which keeps only a scrambled key, so the radio can’t show it. A new one made here is shown here and on the cards.') : null,
+    pw === '' ? h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', id:'setupPwNew', disabled: !!setupPwUi.busy,
+      onclick: newSetupPassword}, setupPwUi.busy ? 'Making one…' : 'Make a new setup password')) : null);
+}
+// POST /api/wifi/setup-password: a password the radio keeps and shows (a key press from the home network).
+const setupPwUi = {busy:false};
+async function newSetupPassword(){
+  let token = null;
+  if (!onHotspot()){
+    token = await radioConfirm({action:'wifi', args:{setup_password:true}, title:'A new setup password',
+      sub:'The radio’s setup network gets a new password it can show you. Press a key on the radio to say yes.'});
+    if (!token) return;
+  }
+  setupPwUi.busy = true; rerender();
+  try {
+    const r = await api('POST', '/api/wifi/setup-password', token ? {confirm: token} : {});
+    if (r.ok && r.json && r.json.ok){
+      setupNet = Object.assign({}, setupNet || {}, {ssid: r.json.ssid, password: r.json.password, password_set: true});
+      toast('New setup password: ' + r.json.password);
+    } else failToast(r, 'The radio couldn’t change it', newSetupPassword);
+  } catch (_) { toast(NET_ERR, true); }
+  setupPwUi.busy = false; rerender();
 }
 function updatesSummary(){
   const v = swVer();
@@ -7141,15 +7162,15 @@ async function copyText(text, msg){
   }
 }
 
-/* "Something's wrong?": a button on the Settings home above the page rows (after Needs attention and
-   anything a later page put before the rows), and its page: the lamp in words, the six lines to read out
+/* "Something's wrong?": its own small card at the bottom of the Settings home, after the page rows
+   (This radio, and Maker tools when shown) and before the footer - easy to find, not first; and its page: the lamp in words, the six lines to read out
    to the makers, what the radio found (whatIsWrong), and Tell the makers at the bottom. */
 SET_ICONS.wrong = '<circle cx="8" cy="8" r="6"/><path d="M8 4.8v3.8M8 11.4v.2"/>';
 function setHomeWrong(panel){
   panel.append(h('nav', {class:'set-list', id:'setWrong', 'aria-label':'Something’s wrong?'},
     setRow('wrong', 'Something’s wrong?', 'The radio checks itself', '#settings/wrong', setIc(SET_ICONS.wrong))));
 }
-SET_HOME.splice(SET_HOME.indexOf(setHomeRows), 0, setHomeWrong);
+SET_HOME.splice(SET_HOME.indexOf(setHomeRows) + 1, 0, setHomeWrong);
 // The lamp's motion as a rhythm word, for "The lamp right now: red, tapping SOS — something needs a maker".
 const RHYTHM_WORDS = {steady:'steady', breath:'breathing', slow:'breathing slowly', kick:'a kick', beckon:'two kicks, again and again',
   bloom:'a green bloom', eye:'a slow red eye', alert:'a double pulse every few seconds', none:'no light'};
@@ -7651,12 +7672,16 @@ function makerSummary(){
 }
 
 /* ---- Maker tools → Handover: is this radio ready to leave the bench? (docs/new-install.md §4) ----
-   One line per thing, from documents the page already reads: ✓ fine, ! needs you (the line opens where it
-   is fixed), · neither. Copy handover note gives the same lines as plain text for the maker's records. */
-const hoUi = {asked:false};
+   Folded until the maker asks (Prepare for handover): a maker's own radio in daily use has phones paired and
+   accounts signed in, and that is fine. Opened, one line per thing, from documents the page already reads:
+   ✓ fine; ! a real blocker (no network or internet, setup mode, health failing, ceiling never set, lamp never
+   checked) - amber, the line opens where it is fixed; ○ to check - fine for the maker, worth a glance before
+   it goes (phones, accounts, other addresses, keys, a bench channel); · information or still asking.
+   Copy handover note gives the same lines as plain text for the maker's records. */
+const hoUi = {asked:false, open:false};
 const MODE_WORD = {auto:'Automatic', ask:'Asks first', off:'Off'};
 function handoverLoad(){
-  if (hoUi.asked) return;
+  if (hoUi.asked || !hoUi.open) return;
   hoUi.asked = true;
   const again = () => { if (onPage('maker')) rerender(); };
   if (!btDoc) loadBt().then(again);
@@ -7668,15 +7693,17 @@ function handoverLoad(){
 }
 function handoverRows(){
   const rows = [], row = (mark, label, value, href, act) => rows.push({mark, label, value, href, act});
-  const ok = (...a) => row('ok', ...a), bad = (...a) => row('bad', ...a), dot = (...a) => row('dot', ...a);
+  const ok = (...a) => row('ok', ...a), bad = (...a) => row('bad', ...a), dot = (...a) => row('dot', ...a), look = (...a) => row('look', ...a);
   const s = software;
   if (!s) dot('Software', 'Checking…');
   else if (s.missing) bad('Software', 'updates not set up on this radio', '#settings/radio/updates', 'Look');
-  else if (s.err) bad('Software', 'couldn’t check', '#settings/radio/updates', 'Look');
-  else (s.channel === 'stable' && s.update_mode === 'auto' ? ok : bad)('Software',
-    (s.version || swVer() || '?') + ' · ' + chName(s.channel || 'stable') + ' · ' + (MODE_WORD[s.update_mode] || s.update_mode || '?'), '#settings/radio/updates', 'Change');
+  else if (s.err) look('Software', 'couldn’t check', '#settings/radio/updates', 'Look');
+  else (s.channel === 'stable' && s.update_mode === 'auto' ? ok : look)('Software',
+    (s.version || swVer() || '?') + ' · ' + chName(s.channel || 'stable') + ' · ' + (MODE_WORD[s.update_mode] || s.update_mode || '?')
+      + (s.channel && s.channel !== 'stable' ? ' — an owner’s radio usually follows Stable' : s.update_mode !== 'auto' ? ' — an owner’s radio usually updates by itself' : ''),
+    '#settings/radio/updates', 'Change');
   const hl = setUi.diag && setUi.diag.health;
-  if (!hl) dot('Health', 'Checking…'); else if (hl.ok) ok('Health', 'everything answers'); else bad('Health', hl.error ? 'couldn’t ask the radio' : 'something isn’t answering', '#settings/maker/diag', 'Look');
+  if (!hl) dot('Health', 'Checking…'); else if (hl.ok) ok('Health', 'everything answers'); else (hl.error ? look : bad)('Health', hl.error ? 'couldn’t ask the radio' : 'something isn’t answering', '#settings/maker/diag', 'Look');
   if (!settings) dot('Volume ceiling', 'Checking…');
   else if (settings.volume_limit_set) ok('Volume ceiling', String(settings.volume_limit));
   else bad('Volume ceiling', 'not set (factory ' + settings.volume_limit + ')', '#settings/sound/volume', 'Set it');
@@ -7689,54 +7716,75 @@ function handoverRows(){
   else if (!lc) dot('Lamp', 'Checking…');
   else if (sv && (sv.calibrated || sv.min_duty)) ok('Lamp', 'checked' + (place ? ' · ' + place : ' · no place chosen yet'), '#settings/lamp/night', place ? '' : 'Place');
   else bad('Lamp', 'never checked on this radio', '#settings/maker/colours', 'Check it');
-  const w = settings && settings.wifi;
-  if (!w) dot('Wi-Fi', 'Checking…'); else if (w.hotspot) bad('Wi-Fi', 'setup mode — not on a network', '/wifi', 'Set up'); else if (w.ssid) dot('Wi-Fi', 'on ' + w.ssid + ' — the owner’s network?', '/wifi', 'Change'); else ok('Wi-Fi', 'wired');
+  // Wi-Fi: on a network with internet is fine (whose network it is, the owner sorts at home: the radio asks
+  // for theirs when it can't find this one). ! only for setup mode, no network, or no internet.
+  const w = settings && settings.wifi, net = w && w.online != null ? w.online : (status ? status.online : null);
+  if (!w) dot('Wi-Fi', 'Checking…');
+  else if (w.hotspot) bad('Wi-Fi', 'setup mode — not on a network', '/wifi', 'Set up');
+  else if (net === false) bad('Wi-Fi', (w.ssid ? 'on ' + w.ssid + ' — ' : '') + 'no internet', w.ssid ? '/wifi' : '#settings/maker/diag', 'Look');
+  else if (w.ssid) ok('Wi-Fi', w.ssid + (net ? ' · online' : '') + ' — at the owner’s, it asks for their Wi-Fi if it can’t find this one', '/wifi', 'Change');
+  else ok('Wi-Fi', 'wired' + (net ? ' · online' : ''));
   const sn = setupNet;
   if (!sn) dot('Setup network', 'Checking…');
   else if (!sn.ssid) dot('Setup network', 'none');
-  else if (sn.password_set && !sn.password) bad('Setup network', sn.ssid + ' · password set in moOde — write it down from there', '#settings/radio/wifi', 'Look');
+  else if (sn.password_set && !sn.password) look('Setup network', sn.ssid + ' · password set on the player’s page, which keeps only a scrambled key — make a new one to show it here and on the card', '#settings/radio/wifi', 'New password');
   else ok('Setup network', sn.ssid + ' · ' + (sn.password_set ? sn.password : 'open, no password'), '#print/welcome', 'Print');
   if (btDoc && Array.isArray(btDoc.devices) && btDoc.available !== false){
     const ds = btDoc.devices;
-    if (ds.length) bad('Bluetooth', ds.length === 1 ? 'your phone “' + (ds[0].name || 'a phone') + '” is paired' : ds.length + ' phones are paired', '#settings/phones/bt', 'Forget');
+    if (ds.length) look('Bluetooth', ds.length === 1 ? '“' + (ds[0].name || 'a phone') + '” is paired' : ds.length + ' phones are paired', '#settings/phones/bt', 'Forget');
     else ok('Bluetooth', 'no phones paired');
   } else dot('Bluetooth', btDoc && btDoc.available === false ? 'none on this radio' : 'Checking…');
   const sp = spotifyAcct();
-  if (!castDoc) dot('Spotify', 'Checking…'); else if (!sp) dot('Spotify', 'not on this radio'); else if (sp.signed_in) bad('Spotify', 'signed in as ' + (sp.user || 'an account'), '#settings/accounts/spotify', 'Sign out'); else ok('Spotify', 'signed out');
-  if (ytm.available === null) dot('YouTube Music', 'Checking…'); else if (!ytm.available) dot('YouTube Music', 'not on this radio'); else if (ytm.signed_in) bad('YouTube Music', 'signed in' + (ytm.name ? ' as ' + ytm.name : ''), '#settings/accounts/ytm', 'Sign out'); else ok('YouTube Music', 'signed out');
+  if (!castDoc) dot('Spotify', 'Checking…'); else if (!sp) dot('Spotify', 'not on this radio'); else if (sp.signed_in) look('Spotify', 'signed in as ' + (sp.user || 'an account'), '#settings/accounts/spotify', 'Sign out'); else ok('Spotify', 'signed out');
+  if (ytm.available === null) dot('YouTube Music', 'Checking…'); else if (!ytm.available) dot('YouTube Music', 'not on this radio'); else if (ytm.signed_in) look('YouTube Music', 'signed in' + (ytm.name ? ' as ' + ytm.name : ''), '#settings/accounts/ytm', 'Sign out'); else ok('YouTube Music', 'signed out');
   if (!hosts) dot('Other addresses', 'Checking…'); else if (hosts.missing || hosts.err) dot('Other addresses', '—');
-  else { const saved = hosts.saved || []; if (saved.length) bad('Other addresses', nameAnd(saved.map(x => x.host)), '#settings/radio/hosts', 'Remove'); else ok('Other addresses', 'none'); }
-  if (!help) dot('Remote help', 'Checking…'); else if (help.missing || !help.available) dot('Remote help', 'not on this radio'); else if (helpOn()) bad('Remote help', 'on — ' + (help.status_text || help.state), '#settings/radio/help', 'Stop'); else ok('Remote help', 'off');
+  else { const saved = hosts.saved || []; if (saved.length) look('Other addresses', nameAnd(saved.map(x => x.host)), '#settings/radio/hosts', 'Remove'); else ok('Other addresses', 'none'); }
+  if (!help) dot('Remote help', 'Checking…'); else if (help.missing || !help.available) dot('Remote help', 'not on this radio'); else if (helpOn()) look('Remote help', 'on — ' + (help.status_text || help.state), '#settings/radio/help', 'Stop'); else ok('Remote help', 'off');
   if (!cfg) dot('Keys', 'Checking…');
   else { const set = (cfg.starters || []).find(x => x.id === cfg.starter);
-    if (cfg.factory) ok('Keys', 'factory set' + (set ? ' · ' + set.title : ''), '#edit', 'Edit'); else bad('Keys', 'changed from the factory set — the owner’s, or yours?', '#edit/reset', 'Reset'); }
+    if (cfg.factory) ok('Keys', 'factory set' + (set ? ' · ' + set.title : ''), '#edit', 'Edit'); else look('Keys', 'changed from the factory set — the owner’s, or yours?', '#edit/reset', 'Reset'); }
   return rows;
 }
+// The fold's foot: what is left, in the maker's words.
+function handoverNote(rows){
+  const bad = rows.filter(r => r.mark === 'bad').length, look = rows.filter(r => r.mark === 'look').length;
+  const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
+  if (bad && look) return n(bad, 'thing', 'things') + ' to fix and ' + look + ' to check before it leaves the bench. Each line opens where it is changed.';
+  if (bad) return n(bad, 'thing', 'things') + ' to fix before it leaves the bench. Each line opens where it is fixed.';
+  if (look) return look + ' to check before it leaves the bench — fine while it is your radio. Each line opens where it is changed.';
+  return 'Ready to hand over. Print the welcome card and leave it with the radio.';
+}
 const hoId = s => s.toLowerCase().replace(/[^a-z]+/g, '-');
+const HO_MARK = {ok:'✓', bad:'!', look:'○', dot:'·'};
+const HO_SAID = {ok:'Fine: ', bad:'Needs fixing: ', look:'To check: ', dot:''};
 function handoverGroup(){
+  if (!hoUi.open) return setGroup('handover', 'Handover',
+    h('div', {class:'list'}, h('div', {class:'li col', style:'gap:10px'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Getting it ready for its owner'),
+        h('span', {class:'li-sub'}, 'Before the radio leaves the bench: what to fix, what to check, and the welcome card to print. Nothing here matters while it is your own radio.')),
+      h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', id:'hoOpen', onclick: () => { hoUi.open = true; rerender(); }}, 'Prepare for handover')))));
   handoverLoad();
   const rows = handoverRows();
-  const mark = m => h('span', {class:'ho-mark ' + m, 'aria-hidden':'true'}, m === 'ok' ? '✓' : m === 'bad' ? '!' : '·');
-  const said = m => h('span', {class:'sr'}, m === 'ok' ? 'Fine: ' : m === 'bad' ? 'Needs you: ' : '');
+  const mark = m => h('span', {class:'ho-mark ' + m, 'aria-hidden':'true'}, HO_MARK[m] || '·');
+  const said = m => h('span', {class:'sr'}, HO_SAID[m] || '');
   const line = r => {
     const txt = h('span', {class:'li-txt'}, h('span', {class:'li-title'}, said(r.mark), r.label), h('span', {class:'li-sub'}, r.value));
     return r.href ? h('a', {class:'set-row ho-row', id:'ho-' + hoId(r.label), 'data-mark': r.mark, href: r.href}, mark(r.mark), txt,
         r.act ? h('span', {class:'li-act', 'aria-hidden':'true'}, r.act) : null, h('span', {class:'chev', 'aria-hidden':'true'}, IC.chev()))
       : h('div', {class:'set-row ho-row', id:'ho-' + hoId(r.label), 'data-mark': r.mark}, mark(r.mark), txt);
   };
-  const bad = rows.filter(r => r.mark === 'bad').length;
   return setGroup('handover', 'Handover', h('div', {class:'set-list', id:'hoList'}, rows.map(line)),
-    h('p', {class:'hint', id:'hoNote', style:'padding:0 4px'}, bad ? bad + (bad === 1 ? ' thing' : ' things') + ' to see to before the radio leaves the bench. Each line opens where it is fixed.'
-      : 'Ready to hand over. Print the welcome card and leave it with the radio.'),
+    h('p', {class:'hint', id:'hoNote', style:'padding:0 4px'}, handoverNote(rows)),
     h('div', {class:'acts', style:'padding:0 4px'},
       h('button', {type:'button', class:'btn small primary', id:'hoCard', onclick: () => go('print/welcome')}, 'Print welcome card'),
-      h('button', {type:'button', class:'btn small', id:'hoCopy', onclick: () => copyHandover(rows)}, 'Copy handover note')));
+      h('button', {type:'button', class:'btn small', id:'hoCopy', onclick: () => copyHandover(rows)}, 'Copy handover note'),
+      h('button', {type:'button', class:'btn small', id:'hoClose', onclick: () => { hoUi.open = false; rerender(); }}, 'Fold away')));
 }
 // The same lines as plain text, with the date, for the maker's records (the Details box when the clipboard won't take it).
 async function copyHandover(rows){
   const room = roomNow();
   const text = ['Hasler' + (room ? ' · ' + room : '') + ' · handover · ' + new Date().toLocaleDateString(), '']
-    .concat(rows.map(r => (r.mark === 'bad' ? '! ' : r.mark === 'ok' ? 'ok ' : '- ') + r.label + ': ' + r.value)).join('\n') + '\n';
+    .concat(rows.map(r => (r.mark === 'bad' ? '! ' : r.mark === 'ok' ? 'ok ' : r.mark === 'look' ? '? ' : '- ') + r.label + ': ' + r.value)).join('\n') + '\n';
   try { await navigator.clipboard.writeText(text); toast('Handover note copied'); }
   catch (_) { setUi.bundle = text; rerender(); const p = $('diagRaw'); if (p){ p.closest('details').open = true; const s = getSelection(), rg = document.createRange(); rg.selectNodeContents(p); s.removeAllRanges(); s.addRange(rg); } toast('Selected — copy it from there'); }
 }

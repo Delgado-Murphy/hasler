@@ -660,12 +660,27 @@ class WebApp:
             raise ValueError(f"{host} isn't on the list")
         return {"removed": host}
 
-    def wifi_join(self, body: Any, local_addr: str | None) -> None:
+    def wifi_join(self, body: Any, local_addr: str | None) -> dict:
+        """``POST /api/wifi``: join a network - another one restarts the radio
+        onto it; the one it is on, chosen again, only stores the password
+        (``restarting: false``, web/wifi.py Wifi.join)."""
         body = body if isinstance(body, dict) else {}
         ssid = str(body.get("ssid", ""))
         if plain_addr(local_addr) not in self.hotspot_addrs:
             self.confirm.consume(body.get("confirm"), "wifi", {"ssid": ssid})
-        self.wifi.join(ssid, str(body.get("password", "")), str(body.get("security", "auto")))
+        doc = self.wifi.join(ssid, str(body.get("password", "")), str(body.get("security", "auto")))
+        return doc if isinstance(doc, dict) else {"ssid": ssid, "restarting": True}
+
+    def wifi_setup_password(self, body: Any, local_addr: str | None) -> dict:
+        """``POST /api/wifi/setup-password``: a new setup password the radio keeps
+        and shows (one set on moOde's page can't be read back). A press on the
+        radio from the home network (confirm action ``wifi`` with
+        ``setup_password``); a phone on the setup network needs none.
+        -> {"ssid", "password"}."""
+        body = body if isinstance(body, dict) else {}
+        if plain_addr(local_addr) not in self.hotspot_addrs:
+            self.confirm.consume(body.get("confirm"), "wifi", {"setup_password": True})
+        return self.wifi.new_setup_password()
 
     def wifi_forget(self, ssid: str, body: Any, local_addr: str | None) -> dict:
         """``DELETE /api/wifi/networks/<ssid>``: forget a saved network. The
@@ -1415,7 +1430,9 @@ class WebApp:
             "volume_floor_range": list(volume_floor_range(self._volume_limit())),
             "mono": self._mono_doc(),
             **self._lamp_doc(),
-            "wifi": {"ssid": ssid},
+            # The Wi-Fi it is on, whether that is the setup hotspot, and the
+            # internet probe (net.Connectivity; None = no probe): Handover's line.
+            "wifi": {"ssid": ssid, "hotspot": self._hotspot_now(), "online": self._online()},
             "room": self.room.doc(),
             "spotify_guests": self._spotify_guests(),
             # YouTube Music: hide_explicit drops explicit songs/albums from the browser.
@@ -1436,6 +1453,17 @@ class WebApp:
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}"
                          f"{':' + str(front_doc['moode_port']) if front_doc['active'] else ''}/",
         }
+
+    def _hotspot_now(self) -> bool:
+        """Is the radio its own setup hotspot now? The probe's last answer, else
+        one bind (net.hotspot_probe) - never a process."""
+        conn = getattr(self, "connectivity", None)
+        if conn is not None and isinstance(getattr(conn, "hotspot", None), bool):
+            return conn.hotspot
+        try:
+            return bool(self.wifi._hotspot())
+        except Exception:
+            return False
 
     def _timezone(self, fresh: bool = False) -> str:
         """The system's zone, asked at most once a minute (timedatectl is a process)."""
@@ -3162,7 +3190,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 return
             lang = wifi_page.pick_lang(lang, self.headers.get("Accept-Language"))
             try:
-                wifi = {} if kw.get("state") == "done" else app.wifi.status()
+                wifi = {} if kw.get("state") in ("done", "kept") else app.wifi.status()
             except Exception:
                 log.warning("wifi status failed", exc_info=True)
                 wifi = {}
@@ -3195,7 +3223,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             error_key = None
             try:
                 body = wifi_page.join_body(form)
-                app.wifi_join(body, self._local_addr())
+                joined = app.wifi_join(body, self._local_addr())
             except wifi_page.FormError as exc:
                 error, error_key = s.get(exc.key, exc.key), exc.key
             except (ConfirmError, ConfirmUnavailable):
@@ -3203,7 +3231,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             except ValueError as exc:
                 error = s.get("err_save", "{error}").replace("{error}", str(exc))
             else:
-                self._wifi_page(lang, state="done", saved_ssid=body["ssid"])
+                kept = isinstance(joined, dict) and joined.get("restarting") is False
+                self._wifi_page(lang, state="kept" if kept else "done", saved_ssid=body["ssid"])
                 return
             self._wifi_page(lang, 400, form=form, error=error, error_key=error_key)
 
@@ -3246,10 +3275,13 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
             elif path == "/api/wifi/retry":
                 self._guard(lambda: self._json(200, app.wifi_retry(self._body())))
+            elif path == "/api/wifi/setup-password":
+                self._guard(lambda: self._json(200, {"ok": True, **app.wifi_setup_password(
+                    self._body(), self._local_addr())}))
             elif path == "/api/wifi":
                 def join() -> None:
-                    app.wifi_join(self._body(), self._local_addr())
-                    self._json(200, {"ok": True})
+                    doc = app.wifi_join(self._body(), self._local_addr())
+                    self._json(200, {"ok": True, **doc})
                 self._guard(join)
             elif path == "/api/reset":
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.confirmed_reset(self._body())}))
