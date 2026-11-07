@@ -94,6 +94,7 @@ def test_send_posts_the_stripped_report_with_the_token_and_keeps_the_number(send
     kept = json.loads((state / "support-requests.json").read_text())
     assert kept["requests"][0]["number"] == 12 and kept["requests"][0]["at"].startswith("2026-")
     assert kept["requests"][0]["title"] == "It goes quiet after a few minutes"
+    assert kept["requests"][0]["note"] == "It goes quiet after a few minutes"
     assert not any(c[1].endswith("/v1/enrol") for c in srv.calls)     # the shared word: no enrolment
     api.route("POST", "/api/support/send", {"note": "And again"})
     assert [r["number"] for r in api.doc()["requests"]] == [13, 12]
@@ -135,9 +136,11 @@ def test_replies_become_notes_from_the_makers_once(sendable):
     assert api.route("POST", "/api/support/replies", {}) == (200, {"ok": True, "added": 1})
     assert srv.calls[-2][1] == "https://ci.example/v1/replies?box_id=0f3a7b1e-1111-4222-8333-444455556666"
     assert srv.calls[-1][1:3] == ("https://ci.example/v1/replies/ack", {"box_id": "0f3a7b1e-1111-4222-8333-444455556666", "ids": [901]})
-    notes = notes_api.NotesApi(app, state).doc()
-    assert notes["unseen"] == 1
-    assert notes["notes"][0]["by"] == "makers" and notes["notes"][0]["text"] == "A new card is in the post.\nLeave it plugged in."
+    kept = notes_api.read_notes(state)
+    assert kept[0]["by"] == "makers" and kept[0]["text"] == "A new card is in the post.\nLeave it plugged in."
+    # the reply shows once, in its request's thread: "From the makers" (GET /api/notes) leaves it out
+    assert api.doc()["unseen_replies"] == 1
+    assert notes_api.NotesApi(app, state).doc() == {"notes": [], "unseen": 0}
     # the server didn't get the ack and serves it again: still one note
     srv.replies = [{"id": 901, "at": "2026-11-07T10:00:00Z", "text": "A new card is in the post.", "issue": 12}]
     assert api.pull_replies()["added"] == 0
@@ -279,6 +282,7 @@ def test_offline_the_request_waits_and_goes_when_the_radio_is_back(plain):
     assert out["sent"] == 1 and out["pending"] == []
     req = api.doc()["requests"][0]
     assert req["number"] == 12 and req["title"] == "It stopped"
+    assert req["note"] == "It stopped\nfor good", "the owner's words in full, line breaks kept, after waiting too"
     # one the owner takes back
     srv.down = True
     pid = api.send({"note": "never mind"})["pending"][0]["id"]
@@ -392,7 +396,7 @@ def test_an_edited_reply_takes_the_old_ones_place_with_its_line_breaks(sendable)
     assert api.pull_replies() == {"added": 0, "edited": 1}
     thread = api.doc()["requests"][0]["replies"]
     assert [x["text"] for x in thread] == ["Hello!! **how are you**\n\n### Hope all is good"]
-    notes = notes_api.NotesApi(app, state).doc()["notes"]
+    notes = notes_api.read_notes(state)
     assert len(notes) == 1 and notes[0]["text"].startswith("Hello!!")
     # an edit of a reply the radio never had is a reply like any other
     srv.replies = [{"id": 902, "at": "2026-11-07T11:00:00Z", "text": "Late edit", "issue": 12, "edited": True}]
@@ -426,3 +430,43 @@ def test_the_owner_writes_back_on_a_request(sendable):
     srv.down, srv.status = False, 429
     status, doc = api.route("POST", "/api/support/reply", {"number": 12, "note": "hi"})
     assert status == 429 and "tomorrow" in doc["error"]
+
+
+def test_the_owners_whole_note_is_kept_and_shown_first(sendable):
+    app, api, srv, state = sendable
+    note = "The keys stopped\nafter the storm.\n\n\nKey 3 still lights."
+    api.send({"note": note})
+    req = api.doc()["requests"][0]
+    assert req["title"] == "The keys stopped"
+    assert req["note"] == "The keys stopped\nafter the storm.\n\nKey 3 still lights."
+    # sent again onto the same issue: the first words stay
+    api._remember(12, "2026-11-07T12:00:00+01:00", True, "again", "again")
+    assert api.doc()["requests"][0]["note"].startswith("The keys stopped")
+    # a request kept by older software has no note: "" (the page falls back to the title)
+    (state / "support-requests.json").write_text(json.dumps({"schema": 1, "requests": [
+        {"number": 4, "at": "2026-10-01T10:00:00+01:00", "state": "sent", "title": "Old one"}]}))
+    old = api.doc()["requests"][0]
+    assert old["note"] == "" and old["title"] == "Old one"
+
+
+def test_the_makers_notes_leave_out_the_replies_to_a_request(sendable):
+    app, api, srv, state = sendable
+    api.send({"note": "x"})
+    srv.replies = [{"id": 901, "at": "2026-11-07T10:00:00Z", "text": "Is the cable in?", "issue": 12},
+                   {"id": "reopened:12:t", "at": "2026-11-07T11:00:00Z", "text": "The makers reopened your request #12.",
+                    "issue": 12, "state": "seen"}]
+    api.pull_replies()
+    with (state / "maker-notes.jsonl").open("a") as f:
+        f.write(json.dumps({"at": "2026-11-07T09:00:00+01:00", "by": "bill", "text": "Replaced the memory card"}) + "\n")
+        f.write(json.dumps({"at": "2026-11-07T09:30:00+01:00", "by": "makers", "text": "An old reply", "issue": 3}) + "\n")
+    notes = notes_api.NotesApi(app, state)
+    doc = notes.doc()
+    assert [n["text"] for n in doc["notes"]] == ["Replaced the memory card"] and doc["unseen"] == 1
+    assert len(notes_api.read_notes(state)) == 4, "the file keeps them all"
+    # the thread has them, the reopening marked as such
+    thread = api.doc()["requests"][0]["replies"]
+    assert [x["text"] for x in thread] == ["Is the cable in?", "The makers reopened your request #12."]
+    assert thread[1].get("reopened") is True and "reopened" not in thread[0]
+    # reading the thread (seen, all) still marks every note read, the replies with them
+    notes.seen({})
+    assert api.doc()["unseen_replies"] == 0 and notes.doc()["unseen"] == 0

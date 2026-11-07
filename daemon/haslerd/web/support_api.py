@@ -29,10 +29,12 @@ and goes by itself once the radio is online (``tick``, from the main loop, with
 a growing pause between tries); the page says "Waiting to send". The main loop
 also fetches the makers' replies every half hour while a request is open.
 
-    GET  /api/support          -> {"available", "requests": [{"number", "at", "deduped", "state", "title",
+    GET  /api/support          -> {"available", "requests": [{"number", "at", "deduped", "state", "title", "note",
                                     "replies": [{"at", "text", "state", "seen"}...oldest first], "unseen"}...newest first],
                                    "pending": [{"id", "at", "title", "error"}], "unseen_replies"}
                                state: sent | seen (the makers' "seen" label, or reopened) | done (closed);
+                               a state reply that reopened the request has "reopened": true;
+                               "note" is the owner's words in full ("" for one kept by older software: the page shows the title);
                                the thread mixes in the owner's write-backs, in time order: {"at", "text", "mine": true}
     POST /api/support/send     {"note", "wifi"} -> {"ok", "number", "at", "deduped", "requests"}
                                or {"ok", "queued": true, "pending"} when the server can't be reached;
@@ -47,7 +49,7 @@ also fetches the makers' replies every half hour while a request is open.
                                the request is "sent" again. 503 offline (nothing kept: write again), 429.
 
 The requests sent are kept in ``<state>/support-requests.json`` (number, time,
-the note's first line; the hand-over clears it and the outbox with
+the note's first line and the note itself; the hand-over clears it and the outbox with
 everything else the owner did).
 """
 
@@ -86,6 +88,7 @@ NOTES_KEEP = 200                          # as scripts/hasler-note trims it
 REQUESTS_KEPT = 20
 FOLLOWUPS_KEPT = 30                       # the owner's write-backs on one request
 FOLLOWUP_MAX = 2000
+NOTE_MAX = 4000                           # the owner's words, shown first in the request's thread
 OUTBOX_KEPT = 5
 STATES = ("sent", "seen", "done")         # a request: sent, the makers have seen it, done (the issue closed)
 MAX_BYTES = 16384                         # the server refuses more
@@ -310,7 +313,8 @@ class SupportApi:
                        for x in (r.get("followups") if isinstance(r.get("followups"), list) else [])
                        if isinstance(x, dict) and str(x.get("text") or "").strip()]
                 out.append({"number": r["number"], "at": str(r.get("at") or "")[:40], "deduped": bool(r.get("deduped")),
-                            "state": state, "title": str(r.get("title") or "")[:TITLE_MAX], "followups": fus[-FOLLOWUPS_KEPT:]})
+                            "state": state, "title": str(r.get("title") or "")[:TITLE_MAX],
+                            "note": tidy_text(r.get("note"), NOTE_MAX), "followups": fus[-FOLLOWUPS_KEPT:]})
         return out
 
     def _write(self, name: str, key: str, items: list) -> None:
@@ -321,13 +325,14 @@ class SupportApi:
     def _write_requests(self, kept: list[dict]) -> None:
         self._write(REQUESTS_FILE, "requests", kept)
 
-    def _remember(self, number: int, at: str, deduped: bool, title: str) -> list[dict]:
+    def _remember(self, number: int, at: str, deduped: bool, title: str, note: str = "") -> list[dict]:
         with self._lock:
             old = next((r for r in self.requests() if r["number"] == number), None)
             kept = [r for r in self.requests() if r["number"] != number]
             # sent again (the same issue): keep what the makers already said about it, and its first words
             kept = ([{"number": number, "at": at, "deduped": deduped, "state": old["state"] if old else "sent",
-                      "title": (old and old["title"]) or title, "followups": old["followups"] if old else []}] + kept)[:REQUESTS_KEPT]
+                      "title": (old and old["title"]) or title, "note": (old and old["note"]) or tidy_text(note, NOTE_MAX),
+                      "followups": old["followups"] if old else []}] + kept)[:REQUESTS_KEPT]
             self._write_requests(kept)
             return kept
 
@@ -386,6 +391,7 @@ class SupportApi:
                 "at": str(n.get("replied_at") or n.get("at") or "")[:40],
                 "text": tidy_text(n["text"]),
                 "state": n.get("state") if n.get("state") in STATES else None,
+                **({"reopened": True} if str(n.get("reply_id") or "").startswith("reopened:") else {}),
                 "seen": _epoch(n.get("at")) <= seen_at,
                 "_k": _epoch(n.get("at"))})       # in order by the radio's own clock, as the owner's words are
         reqs = []
@@ -458,10 +464,10 @@ class SupportApi:
             doc = self._deliver(payload)
         except Offline as exc:
             log.info("support request waits to be sent: %s", exc)
-            return {"queued": True, "pending": self._queue(payload, first_line(note))}
+            return {"queued": True, "pending": self._queue(payload, first_line(note), note)}
         at = self._now_iso()
         number, deduped = doc["number"], bool(doc.get("deduped"))
-        kept = self._remember(number, at, deduped, first_line(note))
+        kept = self._remember(number, at, deduped, first_line(note), note)
         log.info("support request sent: #%s%s", number, " (again)" if deduped else "")
         return {"number": number, "at": at, "deduped": deduped, "requests": kept}
 
@@ -508,10 +514,11 @@ class SupportApi:
                  "error": str(x.get("error") or "") or None}
                 for x in self._read(OUTBOX_FILE, "items") if isinstance(x, dict) and isinstance(x.get("payload"), dict)]
 
-    def _queue(self, payload: dict, title: str) -> list[dict]:
+    def _queue(self, payload: dict, title: str, note: str = "") -> list[dict]:
         with self._lock:
             items = [x for x in self._read(OUTBOX_FILE, "items") if isinstance(x, dict)]
-            items.append({"id": uuid.uuid4().hex[:12], "at": self._now_iso(), "title": title, "payload": payload, "error": None})
+            items.append({"id": uuid.uuid4().hex[:12], "at": self._now_iso(), "title": title, "note": tidy_text(note, NOTE_MAX),
+                          "payload": payload, "error": None})
             self._write(OUTBOX_FILE, "items", items[-OUTBOX_KEPT:])
             self._next_try, self._pause = 0.0, RETRY_FIRST_S
         return self.pending()
@@ -563,7 +570,8 @@ class SupportApi:
                 except Refused as exc:
                     item["error"] = str(exc)
                     continue
-                self._remember(doc["number"], self._now_iso(), bool(doc.get("deduped")), str(item.get("title") or ""))
+                self._remember(doc["number"], self._now_iso(), bool(doc.get("deduped")), str(item.get("title") or ""),
+                               str(item.get("note") or item["payload"].get("note") or ""))
                 items.remove(item)
                 sent += 1
                 log.info("support request sent after waiting: #%s", doc["number"])

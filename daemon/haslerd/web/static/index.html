@@ -376,6 +376,8 @@ textarea{min-height:120px;resize:vertical;font:16px/1.45 var(--sans)}
 .btn.primary:hover:not(:disabled):not([aria-disabled="true"]){filter:brightness(1.05)}
 .btn:disabled,.btn[aria-disabled="true"]{opacity:.55;cursor:default}
 .btn.small{flex:none;min-height:44px;padding:10px 18px;border-radius:10px;font-size:14px}
+.btn.small.primary{box-shadow:none}
+.btn.primary:disabled,.btn.primary[aria-disabled="true"]{box-shadow:none;opacity:.4}
 .btn.inline{flex:none}
 .save-msg{margin:-6px 0 0;font-size:13px;color:var(--muted);text-align:center}
 .save-msg.bad{color:#F07A62;font-weight:600}
@@ -1084,25 +1086,45 @@ pre.say{margin:0;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;f
 #sec-write .tell-form{padding:14px 16px 16px;border:1px solid var(--line);border-radius:14px;background:var(--sheet)}
 .req-top{justify-content:flex-start;padding:0 4px}
 .req-top .btn svg{margin-right:2px}
+/* While a request is open, a new one is the quiet way out, under the list */
+.req-more{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 4px}
 .req-just{display:flex;gap:10px;align-items:baseline;margin:0;padding:12px 14px;border:1px solid rgba(143,207,159,.35);border-radius:12px;background:rgba(143,207,159,.07);color:var(--cream);font-size:14px;line-height:20px}
 .req-just:focus{outline:none}.req-just:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .req-just b{color:var(--title);font:600 16px/20px var(--serif)}
 .req-tick{flex:none;color:#8FCF9F;font-weight:700}
 .help-v.sel{-webkit-user-select:all;user-select:all;font-family:var(--mono);letter-spacing:.02em}
-.req-card{align-items:stretch;gap:10px}
-.req-card.just{box-shadow:inset 3px 0 0 #8FCF9F}
-.req-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.req-head h4{margin:0}
-.req-state{flex:none;display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border:1px solid var(--line);border-radius:999px;color:var(--muted);font:600 12px/18px var(--sans)}
+.req-lbl{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.req-lbl .req-checked{margin:0;padding:0 4px;font-size:12px;line-height:14px}
+.req-card{align-items:stretch;gap:12px;scroll-margin-top:64px}
+.req-card.just{box-shadow:inset 2px 0 0 #8FCF9F}
+.req-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.req-head-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.req-card h4{margin:0}
+.req-head h4{flex:1;min-width:0}
+.req-topic{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}
+.req-head h4:focus{outline:none}.req-head h4:focus-visible{outline:2px solid var(--amber);outline-offset:2px;border-radius:4px}
+.req-meta{color:var(--muted);font:12px/16px var(--sans)}
+/* a Done request, folded to one row; the whole row opens it */
+.req-fold{display:flex;align-items:center;gap:10px;width:100%;min-height:44px;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.req-fold .req-head-txt{flex:1}
+.req-fold .chev{flex:none;color:var(--muted);transition:transform .15s}
+.req-fold[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.req-fold-row{flex:1;display:flex;align-items:baseline;gap:6px;min-width:0}
+.req-fold-row .req-topic{-webkit-line-clamp:1;flex:0 1 auto}
+.req-fold-when{flex:none;color:var(--muted);font:12px/16px var(--sans)}
+.req-card.folded{min-height:60px;padding-top:8px;padding-bottom:8px;justify-content:center}
+.req-state{flex:none;display:inline-flex;align-items:center;gap:6px;padding:2px 9px;border:1px solid var(--line2);border-radius:999px;color:var(--muted);font:600 12px/18px var(--sans)}
 .req-state::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
-.req-state.st-seen{color:#F3CF8C;border-color:rgba(233,179,92,.45)}
-.req-state.st-answered{color:var(--amber);border-color:rgba(255,178,56,.5)}
+.req-state.st-seen{color:var(--text2);border-color:var(--line2)}
+.req-state.st-answered{color:var(--amber);border-color:rgba(255,178,56,.5);background:rgba(255,178,56,.12)}
 .req-state.st-done{color:#8FCF9F;border-color:rgba(143,207,159,.4)}
-.req-thread{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.req-thread{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:14px}
 .req-msg{display:flex;flex-direction:column;gap:3px;padding:0 0 0 12px;border-left:2px solid var(--line);color:var(--cream);font-size:14.5px;line-height:21px;overflow-wrap:anywhere}
-.req-msg.mine{color:var(--text2)}
-.req-msg.theirs{border-left-color:var(--brass)}
-.req-msg.event{border-left-color:transparent}
+.req-msg.mine{color:var(--text2);border-left-color:var(--line2)}
+.req-msg.theirs{border-left:3px solid var(--brass);padding-left:11px}
+.req-thread .req-msg.cont{margin-top:-8px}
+.req-txt{white-space:pre-line}
+.req-msg.event{padding-left:0;border-left:0}
 .req-msg.event .req-who{gap:6px}
 .req-msg.event.st-done .req-who b{color:#8FCF9F;font-weight:700}
 .req-who{display:flex;align-items:center;gap:8px;color:var(--muted);font:12px/16px var(--sans)}
@@ -1110,7 +1132,13 @@ pre.say{margin:0;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;f
 .req-wait{margin:0}
 .req-back{display:flex;flex-direction:column;gap:8px;margin-top:2px}
 .req-back textarea{min-height:88px}
-.req-back-open{justify-content:flex-start}
+.req-back-open{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin:-6px -4px -10px 0}
+.req-back-open .hint{flex:1;min-width:0}
+.req-wait-acts{justify-content:flex-start;padding:0 4px}
+/* From the makers (This radio): the date small, the note itself in cream */
+.note-card .note-md{color:var(--cream);font-size:14.5px;line-height:21px;overflow-wrap:anywhere}
+#notesOld > summary{padding:0 16px}
+#notesOld:not(:first-child) > summary{border-top:1px solid var(--line)}
 .req-checked{padding:6px 4px 0}
 /* the makers' words, a little Markdown (mdLite) */
 .md p{margin:0}.md p + p,.md p + ul,.md p + ol,.md ul + p,.md ol + p{margin-top:8px}
@@ -1366,6 +1394,7 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
 <dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <p class="sr" id="pairSay" aria-live="polite"></p>
+<p class="sr" id="reqLive" aria-live="polite"></p>
 
 <script>
 (() => {
@@ -2384,9 +2413,14 @@ history.replaceState(null, '');
 const SET_ALIAS = {sources:'phones', multiroom:'rooms', about:'radio', knobs:'keys'};
 const SET_SEC_ALIAS = {'radio/name':'rooms/name', 'radio/ytm':'accounts/ytm', 'keys/knobs':'sound/knobs', 'updates/music':'accounts/ytm'};
 const SET_SUBS = {radio:['updates', 'ha', 'move', 'requests', 'help']};
+// A query after the page (#settings/radio/requests?n=5: open at request #5) is read once, then
+// dropped from the address so a reload or Back lands on the page itself.
+let routeQuery = null;
 function parseHash(){
-  let p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-  let fixed = false;
+  const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
+  let p = path.split('/').filter(Boolean);
+  let fixed = !!query;
+  routeQuery = query ? new URLSearchParams(query) : null;
   if (p[0] === 'ha'){ p = ['settings', 'radio', 'ha']; fixed = true; }
   if (p[0] === 'settings' && SET_ALIAS[p[1]]){ p[1] = SET_ALIAS[p[1]]; fixed = true; }
   if (p[0] === 'settings' && p[2] && SET_SEC_ALIAS[p[1] + '/' + p[2]]){ p = ['settings'].concat(SET_SEC_ALIAS[p[1] + '/' + p[2]].split('/')); fixed = true; }
@@ -6928,8 +6962,8 @@ function renderRadio(panel){
   panel.append(radioMoveGroup());
   panel.append(radioSoftwareGroup());
   panel.append(howTheRadioIs());
-  const ng = makerNotesGroup(); if (ng) panel.append(ng);   // From the makers (web/notes_api.py)
   panel.append(radioHaGroup());
+  const ng = makerNotesGroup(); if (ng) panel.append(ng);   // From the makers (web/notes_api.py), just above their help
   const hg = helpGroup(); if (hg) panel.append(hg);
   const og = hostsGroup(); if (og) panel.append(og);   // last, folded: a maker's concern more than an owner's
 }
@@ -7693,8 +7727,11 @@ function reqState(r){
   if (last && !last.state) return 'answered';
   return r && r.state === 'seen' ? 'seen' : 'sent';
 }
-// "Request #12 · Seen · 7 Nov"
-const sentWords = req => req ? 'Request #' + req.number + ' · ' + STATE_WORD[reqState(req)] + ' · ' + day(req.at) : '';
+// A request by the owner's first line ("Just the report" when they wrote nothing): "The keys stopped · Done"
+const reqTopic = r => (r && r.title) || 'Just the report';
+const sentWords = req => req ? reqTopic(req) + ' · ' + STATE_WORD[reqState(req)] : '';
+// Where a reply row lands: that request's card, opened and in view.
+const reqHref = r => '#settings/radio/requests' + (r ? '?n=' + r.number : '');
 // The makers' replies to a request, fetched into the notes (POST /api/support/replies) - at most every 10 minutes
 // (the requests page asks at once), and only once a request has gone. The radio also asks by itself every half hour.
 let repliesAt = 0;
@@ -7712,7 +7749,7 @@ function requestsRow(title){
   const sub = !support ? '' : support.unseen_replies ? 'New reply from the makers'
     : wait.length ? 'Waiting to send · ' + (wait.length === 1 ? 'one request' : wait.length + ' requests')
     : reqs.length ? sentWords(reqs[0]) : canSend() ? 'Delgado & Murphy answer here' : 'A few lines for you to send';
-  return setRow('requests', title || 'Write to the makers', sub, '#settings/radio/requests',
+  return setRow('requests', title || 'Write to the makers', sub, reqHref(support && support.unseen_replies ? reqs.find(r => r.unseen) : null),
     support && support.unseen_replies ? h('span', {class:'attn-dot', 'aria-hidden':'true'}) : null);
 }
 // Needs attention (and the gear's dot): a reply the owner hasn't read, quietly.
@@ -7720,7 +7757,7 @@ function attnReplies(){
   const n = support && support.unseen_replies; if (!n) return null;
   const req = supReqs().find(r => r.unseen);
   return {id:'attn-replies', title: n === 1 ? 'New reply from the makers' : n + ' new replies from the makers',
-    sub: req ? 'About request #' + req.number + (req.title ? ': ' + req.title : '') : 'About your request', href:'#settings/radio/requests'};
+    sub: req ? 'About request #' + req.number + (req.title ? ': ' + req.title : '') : 'About your request', href: reqHref(req)};
 }
 ATTENTION.push(attnReplies);
 async function reportText(){
@@ -7823,11 +7860,20 @@ function tellMakers(){
   if (finePointer()) $('tellNote').focus(); else { const t = $('dlgTitle'); t.tabIndex = -1; t.focus(); }
 }
 /* ---- This radio → Write to the makers (#settings/radio/requests): write here, and what was sent, with the
-   makers' answers. Nothing sent yet: the composer is the page. Otherwise New request opens it above the list.
-   Opening the page reads the replies (POST /api/notes/seen), so the dot on the gear goes. ---- */
-let reqUi = {busy:false, fresh:new Set(), composing:false, just:null, back:null, backText:{}, backBusy:false, backErr:'', checkedAt:0, timer:null};
+   makers' answers. Nothing sent yet: the composer is the page. While a request is open, "Something else?
+   New request" is the quiet way out under the list; once all are Done, New request leads again.
+   Opening the page reads the replies (POST /api/notes/seen), so the dot on the gear goes.
+   #settings/radio/requests?n=5 lands on request #5 (Needs attention, the reply row). ---- */
+let reqUi = {busy:false, fresh:new Set(), composing:false, just:null, back:null, backText:{}, backBusy:false, backErr:'',
+  checkedAt:0, timer:null, open:new Set(), target:null, polled:false};
 // Replies are asked for when the page opens, then every minute while it's in view (and when it comes back into view).
 const REQ_POLL_MS = 60000;
+const freshKey = (r, x) => r.number + ':' + x.at + ':' + String(x.text || '').length;
+// Said once, quietly, to a screen reader: a reply that came in while the page was open.
+function reqSay(text){
+  const el = $('reqLive'); if (!el) return;
+  el.textContent = ''; setTimeout(() => { el.textContent = text; }, 60);
+}
 async function loadRequests(){
   clearTimeout(reqUi.timer); reqUi.timer = null;
   await pullReplies(true);
@@ -7836,13 +7882,21 @@ async function loadRequests(){
   if (!radioInfo) loadInfo().then(() => { if (onPage('radio/requests')) rerender(); });
   reqUi.checkedAt = Date.now();
   // What was new when it arrived stays marked "New" until the owner leaves; the radio counts it read.
-  supReqs().forEach(r => (r.replies || []).forEach(x => { if (!x.seen && !x.mine) reqUi.fresh.add(r.number + ':' + x.at + ':' + x.text.length); }));
+  const arrived = [];
+  supReqs().forEach(r => (r.replies || []).forEach(x => {
+    if (x.seen || x.mine) return;
+    const k = freshKey(r, x);
+    if (!reqUi.fresh.has(k)){ reqUi.fresh.add(k); if (!arrived.includes(r.number)) arrived.push(r.number); }
+  }));
+  const say = reqUi.polled && arrived.length
+    ? (arrived.length === 1 ? 'New reply on request #' + arrived[0] + '.' : 'New replies on requests #' + arrived.join(', #') + '.') : '';
+  if (support && !support.err && !support.missing) reqUi.polled = true;
   if (support && support.unseen_replies){
     try { await api('POST', '/api/notes/seen', {}); } catch (_) {}
     await loadSupport(); notes = null;
   }
   paintGearDot();
-  if (onPage('radio/requests')){ rerender(); reqPoll(); }
+  if (onPage('radio/requests')){ rerender(); reqPoll(); if (say) reqSay(say); }
 }
 function reqPoll(){
   clearTimeout(reqUi.timer); reqUi.timer = null;
@@ -7856,6 +7910,7 @@ document.addEventListener('visibilitychange', () => {
 function leaveRequests(){
   clearTimeout(reqUi.timer); reqUi.timer = null;
   reqUi.composing = false; reqUi.just = null; reqUi.back = null; reqUi.backErr = ''; reqUi.fresh = new Set();
+  reqUi.open = new Set(); reqUi.target = null; reqUi.polled = false;
 }
 function reqSent(){
   reqUi.composing = false;
@@ -7864,6 +7919,14 @@ function reqSent(){
   reqPoll();
 }
 const checkedWords = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'Checked just now' : 'Checked ' + (m === 1 ? 'a minute' : m + ' minutes') + ' ago'; };
+// A message's time: "17:45" today, "Yesterday", else "7 Nov" (day(), in this phone's own words).
+function msgWhen(iso){
+  const t = Date.parse(iso || ''); if (!t) return '';
+  const d = new Date(t), now = new Date(), y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  if (d.toDateString() === now.toDateString()) return d.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return day(iso);
+}
 // Writing back on one request: a comment on the same issue (POST /api/support/reply).
 async function reqBackSend(n){
   const text = (reqUi.backText[n] || '').trim();
@@ -7884,12 +7947,15 @@ async function reqBackSend(n){
     rerender();
   }
 }
-function reqBack(r){
+// Write back: a quiet link at the card's right edge; on a Done request, a word on what it does.
+function reqBack(r, st){
   const n = r.number;
-  if (reqUi.back !== n) return h('div', {class:'acts req-back-open'}, h('button', {type:'button', class:'btn small', id:'reqBackOpen-' + n, onclick: () => {
-    reqUi.back = n; reqUi.backErr = ''; rerender();
-    const t = $('reqBack-' + n); if (t){ if (finePointer()) t.focus(); else t.scrollIntoView({block:'center'}); }
-  }}, 'Write back'));
+  if (reqUi.back !== n) return h('div', {class:'req-back-open'},
+    st === 'done' ? h('p', {class:'hint', id:'reqBackHint-' + n}, 'Writing back opens it again.') : null,
+    h('button', {type:'button', class:'li-act', id:'reqBackOpen-' + n, 'aria-describedby': st === 'done' ? 'reqBackHint-' + n : null, onclick: () => {
+      reqUi.back = n; reqUi.backErr = ''; rerender();
+      const t = $('reqBack-' + n); if (t){ if (finePointer()) t.focus(); else t.scrollIntoView({block:'center'}); }
+    }}, 'Write back'));
   const ta = h('textarea', {id:'reqBack-' + n, rows:'3', placeholder:'Write back…', 'aria-label':'Write back about request #' + n,
     oninput: e => { reqUi.backText[n] = e.target.value; const b = $('reqBackSend-' + n); if (b) b.disabled = !e.target.value.trim() || reqUi.backBusy; }});
   ta.value = reqUi.backText[n] || '';
@@ -7900,11 +7966,41 @@ function reqBack(r){
       h('button', {type:'button', class:'btn small primary', id:'reqBackSend-' + n, disabled: reqUi.backBusy || !(reqUi.backText[n] || '').trim(), onclick: () => reqBackSend(n)},
         reqUi.backBusy ? 'Sending…' : 'Send')));
 }
+// Order: what has something unread first, then the latest word on top.
+const reqLatest = r => Math.max(Date.parse(r.at) || 0, ...(r.replies || []).map(x => Date.parse(x.at) || 0));
+const reqUnread = r => r.unseen > 0 || (r.replies || []).some(x => !x.mine && reqUi.fresh.has(freshKey(r, x)));
+const reqOrder = reqs => reqs.slice().sort((a, b) => (reqUnread(b) - reqUnread(a)) || (reqLatest(b) - reqLatest(a)));
+// When it was marked done (the last "done" in the thread), for the folded row.
+const reqDoneAt = r => { const d = (r.replies || []).filter(x => x.state === 'done').pop(); return d ? d.at : (r.replies || []).length ? r.replies[r.replies.length - 1].at : r.at; };
+// A state change is one short line: "Marked done · 7 Nov", "Seen · 6 Nov", "Opened again · 8 Nov".
+const stateWord = x => x.state === 'done' ? 'Marked done' : x.reopened || /reopen/i.test(x.text || '') ? 'Opened again' : 'Seen';
+// Closing can carry the makers' last words ("Your request #2 is done. Glad it plays again."): those stay a message.
+const doneRest = x => x.state === 'done' ? String(x.text || '').replace(/^\s*Your request #\d+ is done\.?\s*/i, '').trim() : '';
+// The landing (?n=5): open a folded card, then bring it into view with focus on its heading.
+function reqLand(){
+  const n = reqUi.target, el = n && $('req-' + n); if (!el) return;
+  reqUi.target = null;
+  const f = $('reqFold-' + n) || $('reqT-' + n); if (!f) return;
+  if (f.tagName !== 'BUTTON') f.tabIndex = -1;
+  el.scrollIntoView({block:'start'}); f.focus({preventScroll:true});
+}
 function renderRequests(panel){
   const s = support;
+  if (routeQuery && routeQuery.get('n')){ reqUi.target = parseInt(routeQuery.get('n'), 10) || null; routeQuery = null; }
   if (!s){ panel.append(setGroup('reqs', 'Your requests', skel(2))); return; }
-  const wait = s.missing || s.err ? [] : supPending(), reqs = s.missing || s.err ? [] : supReqs();
+  // The radio didn't answer GET /api/support: one row and a way to ask again, nothing to write into.
+  if (s.err){
+    panel.append(h('section', {class:'grp-sec', id:'sec-reqs', 'aria-label':'Your requests'}, h('div', {class:'list'}, h('div', {class:'li', id:'reqErr'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Couldn’t reach the radio.')),
+      h('button', {type:'button', class:'li-act', id:'reqRetry', onclick: () => { support = null; rerender(); loadRequests(); }}, 'Try again')))));
+    return;
+  }
+  const wait = s.missing ? [] : supPending(), reqs = s.missing ? [] : reqOrder(supReqs());
   const any = reqs.length || wait.length;
+  // While something is open or waiting, a new request is the quiet way out under the list.
+  const quiet = !!wait.length || reqs.some(r => reqState(r) !== 'done');
+  if (reqUi.target && !reqs.some(r => r.number === reqUi.target)) reqUi.target = null;
+  if (reqUi.target) reqUi.open.add(reqUi.target);
   // Just sent (here or from the sheet): one line, then the request itself at the top of the list.
   const j = reqUi.just;
   if (j) panel.append(h('p', {class:'req-just', id:'reqJust', tabindex:'-1', role:'status'},
@@ -7913,52 +8009,83 @@ function renderRequests(panel){
       : h('span', null, h('b', null, 'Sent'), ' · request #' + j.number + '. They’ll answer here.')));
   const write = () => composer('req', {actsClass:'acts tell-acts', sent: reqSent,
     cancel: any ? h('button', {type:'button', class:'btn small', id:'reqCancel', onclick: () => { reqUi.composing = false; rerender(); const b = $('reqNew'); if (b) b.focus(); }}, 'Cancel') : null});
-  if (reqUi.composing && any) panel.append(setGroup('write', 'New request', write()));
-  else if (!any) panel.append(h('section', {class:'grp-sec', id:'sec-write', 'aria-label':'Write to the makers'}, write()));
-  else panel.append(h('div', {class:'acts req-top'}, h('button', {type:'button', class:'btn small primary', id:'reqNew', onclick: () => {
+  const openNew = () => {
     reqUi.composing = true; reqUi.just = null; rerender();
     const t = $('reqNote'); if (!t) return;
     if (finePointer()) t.focus(); else t.scrollIntoView({block:'center'});
-  }}, IC.plus(), 'New request')));
-  if (s.missing || s.err){
+  };
+  const newHere = () => reqUi.composing ? setGroup('write', 'New request', write())
+    : quiet ? h('div', {class:'req-more', id:'reqMore'}, h('p', {class:'hint'}, 'Something else?'),
+        h('button', {type:'button', class:'btn small', id:'reqNew', onclick: openNew}, 'New request'))
+    : h('div', {class:'acts req-top'}, h('button', {type:'button', class:'btn small primary', id:'reqNew', onclick: openNew}, IC.plus(), 'New request'));
+  if (!any) panel.append(h('section', {class:'grp-sec', id:'sec-write', 'aria-label':'Write to the makers'}, write()));
+  else if (!quiet) panel.append(newHere());
+  if (s.missing){
     panel.append(setGroup('reqs', 'Your requests', h('div', {class:'list'}, h('div', {class:'li'},
-      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, s.missing ? 'This radio can’t keep requests yet' : 'Couldn’t ask the radio'),
-        h('span', {class:'li-sub'}, s.missing ? 'An update adds this. Writing to the makers works already.' : NET_ERR)),
-      s.err ? h('button', {type:'button', class:'li-act', id:'reqRetry', onclick: () => { support = null; rerender(); loadRequests(); }}, 'Try again') : null))));
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'This radio can’t keep requests yet'),
+        h('span', {class:'li-sub'}, 'An update adds this. Writing to the makers works already.'))))));
     return;
   }
   if (wait.length) panel.append(setGroup('reqwait', 'Waiting to send', h('div', {class:'list'}, wait.map(p =>
-    h('div', {class:'li col', id:'wait-' + p.id, style:'gap:8px'},
-      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, p.title || 'A report, no words'),
-        h('span', {class:'li-sub'}, p.error ? 'Not sent: ' + p.error : 'Saved ' + day(p.at) + ' · it goes by itself once the radio is online')),
-      h('div', {class:'acts'},
-        h('button', {type:'button', class:'btn small', disabled: reqUi.busy, onclick: reqRetry}, 'Send now'),
-        h('button', {type:'button', class:'btn small', disabled: reqUi.busy, onclick: () => reqForget(p.id)}, 'Don’t send')))))));
-  if (!reqs.length) return;
-  // A change of state ("Your request #2 is done.") is one quiet line, not a message.
+    h('div', {class:'li', id:'wait-' + p.id},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, p.title || 'Just the report'),
+        h('span', {class:'li-sub'}, p.error ? 'Couldn’t reach the makers. Send now tries again.' : 'Goes by itself when the internet is back.')),
+      h('button', {type:'button', class:'li-act danger', id:'waitForget-' + p.id, disabled: reqUi.busy, onclick: () => reqForget(p.id)}, 'Don’t send')))),
+    h('div', {class:'acts req-wait-acts'}, h('button', {type:'button', class:'btn small', id:'waitSend', disabled: reqUi.busy, onclick: reqRetry}, reqUi.busy ? 'Sending…' : 'Send now'))));
+  if (!reqs.length){ if (quiet) panel.append(newHere()); return; }
   const stateLine = x => h('li', {class:'req-msg event st-' + x.state},
-    h('span', {class:'req-who'}, x.state === 'done' ? h('b', {'aria-hidden':'true'}, '✓') : null, h('span', null, String(x.text || '').replace(/\.$/, '') + ' · ' + day(x.at))));
-  const msg = (cls, who, at, text, isNew) => h('li', {class:'req-msg ' + cls},
-    h('span', {class:'req-who'}, h('span', null, who + ' · ' + day(at)), isNew ? h('span', {class:'req-new'}, 'New') : null),
-    cls === 'theirs' ? mdLite(text) : h('span', {class:'req-txt'}, text));
-  const card = r => { const st = reqState(r); return h('article', {class:'li col req-card' + (j && j.number === r.number ? ' just' : ''), id:'req-' + r.number, 'aria-labelledby':'reqT-' + r.number},
-    h('div', {class:'req-head'}, h('h4', {class:'li-title', id:'reqT-' + r.number}, 'Request #' + r.number),
-      h('span', {class:'req-state st-' + st, id:'reqState-' + r.number}, STATE_WORD[st])),
-    h('ol', {class:'req-thread', 'aria-label':'Messages'},
-      msg('mine', 'You', r.at, r.title || 'A report, no words'),
-      (r.replies || []).map(x => x.mine ? msg('mine', 'You', x.at, x.text)
-        : x.state ? stateLine(x) : msg('theirs', 'Delgado & Murphy', x.at, x.text, reqUi.fresh.has(r.number + ':' + x.at + ':' + x.text.length)))),
-    (r.replies || []).length || st === 'done' ? null : h('p', {class:'hint req-wait'}, 'No answer yet. When one comes, the gear shows a dot.'),
-    canSend() ? reqBack(r) : null); };
-  panel.append(setGroup('reqs', 'Your requests', h('div', {class:'list', id:'reqList'}, reqs.map(card)),
-    reqUi.checkedAt && canSend() ? h('p', {class:'hint req-checked', id:'reqChecked'}, checkedWords(reqUi.checkedAt)) : null));
+    h('span', {class:'req-who'}, x.state === 'done' ? h('b', {'aria-hidden':'true'}, '✓') : null, h('span', null, stateWord(x) + ' · ' + day(x.at))));
+  // The author once for back-to-back messages from the same side; the time on each.
+  const msg = (side, cont, at, text, isNew) => h('li', {class:'req-msg ' + side + (cont ? ' cont' : '')},
+    h('span', {class:'req-who'}, h('span', null, (cont ? '' : (side === 'mine' ? 'You' : 'Delgado & Murphy') + ' · ') + msgWhen(at)),
+      isNew ? h('span', {class:'req-new'}, 'New') : null),
+    side === 'theirs' ? mdLite(text) : h('span', {class:'req-txt'}, text));
+  const thread = r => {
+    const out = [];
+    let prev = null;
+    const say = (side, at, text, isNew) => { out.push(msg(side, prev === side, at, text, isNew)); prev = side; };
+    say('mine', r.at, r.note || r.title || 'Just the report');
+    (r.replies || []).forEach(x => {
+      const isNew = !x.mine && reqUi.fresh.has(freshKey(r, x));
+      if (x.mine) say('mine', x.at, x.text);
+      else if (x.state){ const rest = doneRest(x); if (rest) say('theirs', x.at, rest, isNew); out.push(stateLine(x)); prev = null; }
+      else say('theirs', x.at, x.text, isNew);
+    });
+    return out;
+  };
+  const head = (r, st) => h('span', {class:'req-head-txt'},
+    h('span', {class:'req-topic'}, reqTopic(r)), h('span', {class:'req-meta'}, '#' + r.number + ' · ' + day(r.at)));
+  const card = r => {
+    const st = reqState(r), n = r.number, done = st === 'done', open = !done || reqUi.open.has(n);
+    const fold = () => { if (reqUi.open.has(n)) reqUi.open.delete(n); else reqUi.open.add(n); rerender(); const b = $('reqFold-' + n); if (b) b.focus({preventScroll:true}); };
+    const cls = 'li col req-card' + (j && j.number === n ? ' just' : '') + (open ? '' : ' folded');
+    if (!open) return h('article', {class: cls, id:'req-' + n, 'aria-labelledby':'reqT-' + n},
+      h('h4', {class:'li-title', id:'reqT-' + n}, h('button', {type:'button', class:'req-fold', id:'reqFold-' + n, 'aria-expanded':'false', onclick: fold},
+        h('span', {class:'req-fold-row'}, h('span', {class:'req-topic'}, reqTopic(r)), h('span', {class:'req-fold-when'}, '· Done ' + day(reqDoneAt(r)))),
+        h('span', {class:'chev', 'aria-hidden':'true'}, IC.chev()))));
+    return h('article', {class: cls, id:'req-' + n, 'aria-labelledby':'reqT-' + n},
+      h('div', {class:'req-head'},
+        h('h4', {class:'li-title', id:'reqT-' + n, tabindex: done ? null : '-1'}, done
+          ? h('button', {type:'button', class:'req-fold', id:'reqFold-' + n, 'aria-expanded':'true', onclick: fold}, head(r, st), h('span', {class:'chev', 'aria-hidden':'true'}, IC.chev()))
+          : head(r, st)),
+        h('span', {class:'req-state st-' + st, id:'reqState-' + n}, STATE_WORD[st])),
+      h('ol', {class:'req-thread', 'aria-label':'Messages'}, thread(r)),
+      (r.replies || []).length || done ? null : h('p', {class:'hint req-wait'}, 'No answer yet.'),
+      canSend() ? reqBack(r, st) : null);
+  };
+  panel.append(h('section', {class:'grp-sec', id:'sec-reqs', 'aria-labelledby':'sech-reqs', tabindex:'-1'},
+    h('div', {class:'req-lbl'}, h('h3', {class:'mono grp-lbl', id:'sech-reqs'}, 'Your requests'),
+      reqUi.checkedAt && canSend() ? h('p', {class:'hint req-checked', id:'reqChecked'}, checkedWords(reqUi.checkedAt)) : null),
+    h('div', {class:'list', id:'reqList'}, reqs.map(card))));
+  if (quiet) panel.append(newHere());
+  if (reqUi.target) setTimeout(reqLand, 0);
 }
 async function reqRetry(){
   if (reqUi.busy) return; reqUi.busy = true; rerender();
   let r = null;
   try { r = await api('POST', '/api/support/retry', {}, {timeout:60000}); } catch (_) {}
   reqUi.busy = false;
-  if (r && r.ok && r.json){ toast(r.json.sent ? 'Sent to the makers' : 'Still can’t reach the makers. The radio keeps trying.', !r.json.sent); }
+  if (r && r.ok && r.json){ toast(r.json.sent ? 'Sent to the makers' : 'Couldn’t reach the makers. The radio keeps trying.', !r.json.sent); }
   else toast(NET_ERR, true);
   await loadSupport(); paintGearDot(); rerender();
 }
@@ -7971,7 +8098,8 @@ async function reqForget(id){
   await loadSupport(); rerender();
 }
 /* "From the makers": a maker's notes left on the radio (scripts/hasler-note; GET /api/notes), newest first,
-   with the date. Seen folds a note away; it stays readable under This radio. */
+   with the date. The makers' answers to a request aren't here: they're in its thread. Seen folds a note away;
+   it stays readable under This radio. */
 let notes = null;   // null = loading, {missing} = older software, {err}, or GET /api/notes
 async function loadNotes(){
   await pullReplies();   // the makers' answers to a request, if any
@@ -7982,9 +8110,10 @@ async function loadNotes(){
 function makerNotesGroup(){
   const n = notes; if (!n || n.missing || n.err || !Array.isArray(n.notes) || !n.notes.length) return null;
   const fresh = n.notes.filter(x => !x.seen), old = n.notes.filter(x => x.seen);
-  const card = x => h('div', {class:'li col note-card', 'data-at': x.at, style:'gap:8px'},
-    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'From the makers · ' + day(x.at)), h('div', {class:'li-sub'}, mdLite(x.text))),
-    !x.seen ? h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', onclick: () => noteSeen(x.at)}, 'Seen')) : null);
+  const card = x => { const md = mdLite(x.text); md.classList.add('note-md');
+    return h('div', {class:'li col note-card', 'data-at': x.at, style:'gap:6px'},
+      h('span', {class:'li-sub note-when'}, day(x.at)), md,
+      !x.seen ? h('div', {class:'acts'}, h('button', {type:'button', class:'btn small', onclick: () => noteSeen(x.at)}, 'Seen')) : null); };
   return setGroup('notes', 'From the makers', h('div', {class:'list'}, fresh.map(card),
     old.length ? h('details', {class:'how', id:'notesOld'}, h('summary', null, fresh.length ? 'Earlier notes' : 'Notes from the makers (' + old.length + ')'), old.map(card)) : null));
 }
