@@ -162,7 +162,9 @@ class SourcesApi:
                         "name": "", "running": None, "managed_by": "moode"} for t in TARGETS.values()]
         for t in targets:
             if not t["available"] and not t.get("reason"):
-                t["reason"] = "moOde isn't reachable on this radio"
+                # The owner sees this under each switch; the cause (moOde's
+                # renderers unreadable) is for the log.
+                t["reason"] = "Not running right now - try again in a minute"
         sources = getattr(self.actions.player, "sources", None)
         spotify = sources is None or "spotify" in sources
         try:
@@ -236,7 +238,7 @@ class SourcesApi:
             raise ValueError("expected {\"on\": true|false} and/or {\"name\": \"...\"}")
         renderers = self.renderers
         if renderers is None:
-            raise Unavailable("casting targets can't be switched on this radio (no moOde)")
+            raise Unavailable("These can't be switched on this radio")
         with self._renderer_lock:
             try:
                 renderers.set(target, on=change.get("on"), name=change.get("name"))
@@ -260,8 +262,9 @@ class SourcesApi:
                 log.debug("moOde's renderers unreadable", exc_info=True)
                 enabled = {}
             if not enabled:
-                raise Unavailable("moOde isn't reachable on this radio, so Bluetooth pairing "
-                                  "can't be opened - try again in a minute")
+                log.warning("Bluetooth pairing refused: moOde's renderer settings can't be read")
+                raise Unavailable("Bluetooth isn't ready right now, so a phone can't pair yet "
+                                  "- try again in a minute")
         else:
             enabled = {}   # no moOde at all (a laptop, --fake): the fake player pairs
         if enabled and not enabled.get("bluetooth"):
