@@ -333,7 +333,7 @@ class HaApi:
                     "is a different Home Assistant, so the radio left it alone.")
         if why == "no-uuid":
             where = ", ".join(i["url"] for i in instances)
-            return (f"Home Assistant isn't answering at {url}. The radio saw one at {where} - "
+            return (f"Home Assistant isn't answering at {url}. The radio saw one at {where} — "
                     "if that's yours, change the address below.")
         if why == "same-address":
             return f"Home Assistant isn't answering at {url} at the moment."
@@ -547,7 +547,7 @@ class HaApi:
             ha_config.save(self.state_dir, settings)
         except OSError as exc:
             log.error("could not save the Home Assistant connection: %s", exc)
-            save_error = "Connected, but the radio couldn't save it - it will be forgotten at restart"
+            save_error = "Connected, but the radio couldn't save it — it will be forgotten at restart"
         if current is not None and current.publish and self.client is not None and current.url != url:
             self._drop_sensor(self.client)
         self._install(settings, client)

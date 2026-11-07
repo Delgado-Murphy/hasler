@@ -218,6 +218,17 @@ def load_settings(path: Path | None) -> dict:
     return doc if isinstance(doc, dict) else {}
 
 
+def _merge_dismissed(current: Any, change: dict) -> dict:
+    """settings.json ``dismissed`` after ``change``: a value replaces, null forgets."""
+    out = dict(current) if isinstance(current, dict) else {}
+    for k, v in change.items():
+        if v is None:
+            out.pop(k, None)
+        else:
+            out[k] = v
+    return out
+
+
 def save_settings(path: Path, doc: dict) -> None:
     """Write atomically (tmp + fsync + rename), world-readable (0644), stamped
     with the config ``schema`` so a later migration knows what it reads: a
@@ -337,6 +348,7 @@ class WebApp:
         self.lamp_listeners: list[Callable[[dict], None]] = []
         # Without a settings file (no state dir) the lamp's choices live here.
         self._lamp_settings: dict = {}
+        self._dismissed_mem: dict = {}      # the page's dismissed notices when there is no settings file
         # The lamp engine (lamp/engine.LampEngine: set_palette, preview), or
         # None for a radio without one; main() sets it once the lamp is up.
         self.lamp: Any = None
@@ -1036,15 +1048,35 @@ class WebApp:
             "spotify_guests": self._spotify_guests(),
             # YouTube Music: hide_explicit drops explicit songs/albums from the browser.
             "ytm": self.ytm_settings(),
+            # Notices the page has shown once and need not show again, e.g.
+            # {"rollback": "1.4.1"}: that version's "didn't work here" was seen.
+            "dismissed": self._dismissed(),
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
 
+    # The page's dismissed notices: short names to short values (a version), null forgets one.
+    DISMISS_KEYS = ("rollback",)
+
+    def _dismissed(self) -> dict:
+        d = load_settings(self.settings_file).get("dismissed") if self.settings_file is not None else self._dismissed_mem
+        return {k: v for k, v in d.items() if k in self.DISMISS_KEYS and isinstance(v, str)} if isinstance(d, dict) else {}
+
+    @classmethod
+    def _dismissed_from(cls, body: Any) -> dict:
+        if not isinstance(body, dict) or not body or not set(body) <= set(cls.DISMISS_KEYS):
+            raise ValueError("dismissed must be {\"rollback\": \"<version>\"|null}")
+        for k, v in body.items():
+            if v is not None and not (isinstance(v, str) and 0 < len(v) <= 64):
+                raise ValueError(f"dismissed.{k} must be a short string, or null")
+        return dict(body)
+
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
         ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``,
-        ``ytm`` ({"hide_explicit": bool}), ``lamp`` ({"brightness", "key_replies"})."""
-        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm", "lamp"}
+        ``ytm`` ({"hide_explicit": bool}), ``lamp`` ({"brightness", "key_replies"}),
+        ``dismissed`` ({"rollback": "1.4.1"}: a notice the page has shown)."""
+        keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm", "lamp", "dismissed"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
@@ -1053,7 +1085,9 @@ class WebApp:
                              "{\"room\": {\"name\", \"casting_names\"}}, "
                              "{\"spotify_guests\": true|false}, "
                              "{\"ytm\": {\"hide_explicit\": true|false}}, "
-                             "{\"lamp\": {\"brightness\": \"low\"|\"normal\"|\"bright\", \"key_replies\": true|false}}")
+                             "{\"lamp\": {\"brightness\": \"low\"|\"normal\"|\"bright\", \"key_replies\": true|false}}, "
+                             "{\"dismissed\": {\"rollback\": \"<version>\"}}")
+        dismissed = self._dismissed_from(body["dismissed"]) if "dismissed" in body else None
         limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
         floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
                  if "volume_floor" in body else None)
@@ -1109,6 +1143,8 @@ class WebApp:
                     doc["spotify_guests"] = guests
                 if ytm is not None:
                     doc["ytm"] = {**(doc.get("ytm") if isinstance(doc.get("ytm"), dict) else {}), **ytm}
+                if dismissed is not None:
+                    doc["dismissed"] = _merge_dismissed(doc.get("dismissed"), dismissed)
                 doc.setdefault("schema", boxconfig.SCHEMA)
                 save_settings(self.settings_file, doc)
             else:
@@ -1121,6 +1157,8 @@ class WebApp:
                     doc["night"] = mode
                 if prefs is not None or geek is not None:
                     doc["lamp"] = lamp_api.lamp_block(doc, prefs, geek)
+                if dismissed is not None:
+                    self._dismissed_mem = _merge_dismissed(self._dismissed_mem, dismissed)
             if room is not None:
                 self.room.commit(room, body["room"])
             if guests is not None:

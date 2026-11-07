@@ -178,7 +178,7 @@ def fit_pot(points: Iterable, direction: str = "auto", noise: float | None = Non
     warnings: list[str] = []
     if span < max(MIN_END_SPAN_NOISE * noise, 100):
         return Fit(None, measured if direction == "auto" else direction, 0,
-                   [f"the two ends read {raws[0]} and {raws[-1]} - nearly the same. "
+                   [f"the two ends read {raws[0]} and {raws[-1]} — nearly the same. "
                     "Is the wiper connected? Measure both ends again."],
                    sorted([lo_end, hi_end]))
     if direction != "auto" and direction != measured:
@@ -195,7 +195,7 @@ def fit_pot(points: Iterable, direction: str = "auto", noise: float | None = Non
         warnings.append(
             "out of order: " + ", ".join(
                 f"position {pts[i][0]:g} read {pts[i][1]}" for i in redo)
-            + " - set the knob again and re-measure")
+            + " — set the knob again and re-measure")
     good = [(pts[order[i]][0], raws[i]) for i in range(len(order)) if i in keep]
     if len(good) - 2 < MIN_INTERIOR:
         return Fit(None, direction, 0, warnings, redo)

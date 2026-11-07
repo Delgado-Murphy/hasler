@@ -326,7 +326,7 @@ class YtmApi:
         except PermissionError as exc:
             raise Forbidden(str(exc)) from None
         if not done:
-            raise RuntimeError("YouTube Music didn't take that just now - try again")
+            raise RuntimeError("YouTube Music didn't take that just now — try again")
         return {"vid": vid, "rating": rating}
 
     def _playing_recently(self, vid: str) -> bool:

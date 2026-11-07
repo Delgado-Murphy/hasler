@@ -375,7 +375,7 @@ class Software:
         if avail["seq"] is None:
             raise ValueError("the update has no sequence number")
         if not avail["staged"]:
-            raise SoftwareError(f"{version} hasn't been downloaded yet - try Check now"
+            raise SoftwareError(f"{version} hasn't been downloaded yet — try Check now"
                                + (" (updates are off)" if st["update_mode"] == "off" else ""))
         approval = {"version": version, "seq": avail["seq"], "when": when, "at": _iso(self.wall())}
         self._write_approval(approval)

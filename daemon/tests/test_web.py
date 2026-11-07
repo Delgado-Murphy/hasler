@@ -791,6 +791,35 @@ class TestLampSettings:
         app.put_settings({"night": "off"})
         assert app.settings()["night"] == "off"
 
+    # The page's "Needs attention" row for a rolled-back update goes once the
+    # Updates page has shown it: {"dismissed": {"rollback": "<version>"}}.
+    def test_dismissed_notices_persist_and_merge(self, lamp_app, tmp_path):
+        assert lamp_app.settings()["dismissed"] == {}
+        doc = lamp_app.put_settings({"dismissed": {"rollback": "1.4.1"}})
+        assert doc["dismissed"] == {"rollback": "1.4.1"}
+        saved = json.loads((tmp_path / "settings.json").read_text())
+        assert saved["dismissed"] == {"rollback": "1.4.1"}
+        lamp_app.put_settings({"night": "off"})                       # other keys leave it alone
+        assert lamp_app.settings()["dismissed"] == {"rollback": "1.4.1"}
+        assert lamp_app.put_settings({"dismissed": {"rollback": None}})["dismissed"] == {}
+        assert "rollback" not in json.loads((tmp_path / "settings.json").read_text()).get("dismissed", {})
+
+    def test_dismissed_without_a_file_survives_a_lamp_change(self, rig, monkeypatch):
+        app, *_ = rig
+        monkeypatch.setattr(app.wifi, "current_ssid", lambda: "")
+        app.put_settings({"dismissed": {"rollback": "1.4.1"}})
+        app.put_settings({"night": "off"})
+        assert app.settings()["dismissed"] == {"rollback": "1.4.1"}
+
+    @pytest.mark.parametrize("body", [
+        {"dismissed": {}}, {"dismissed": {"other": "x"}}, {"dismissed": {"rollback": 3}},
+        {"dismissed": {"rollback": "v" * 65}}, {"dismissed": "1.4.1"},
+    ])
+    def test_dismissed_validation(self, lamp_app, tmp_path, body):
+        with pytest.raises(ValueError):
+            lamp_app.put_settings(body)
+        assert not (tmp_path / "settings.json").exists()
+
     @pytest.mark.parametrize("body", [
         {"location": {"lat": 91, "lon": 0}}, {"location": {"lat": 0, "lon": 181}},
         {"location": {"lat": "40", "lon": 0}}, {"location": "Madrid"},
