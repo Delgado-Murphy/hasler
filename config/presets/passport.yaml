@@ -1,0 +1,21 @@
+# Starter set: Passport (the format: dial.yaml). A trip round the world on six
+# keys: radio from where the music is from, artist radios that wander.
+pack: passport
+title: "Passport"
+group: "Go somewhere"
+blurb: "Lisbon fado, Balkan brass, Ethiopian soul, the voice of Cairo, Rio's bossa nova and Jamaica, without leaving the chair."
+presets:
+  - {n: 1, name: "FIP Monde", short: "FIP Monde", station: fr-fip-monde,
+     why: "Radio France's world channel: Africa, Brazil, Asia, the Balkans, hardly a word."}
+  - {n: 2, name: "Amália Rodrigues radio", short: "Fado", ytm: RDEME57zQmiWw8Qt3SWu3xOuWQ,
+     why: "Start with the queen of fado and drift through Lisbon: an endless radio."}
+  - {n: 3, name: "Ethio Oldies", short: "Ethiopia", station: et-ethio-oldies,
+     why: "The golden age of Ethiopian soul and jazz, Mulatu to Mahmoud Ahmed."}
+  - {n: 4, name: "Goran Bregović radio", short: "Balkan", ytm: RDEMEx6UxuUwxEogVj8P6v7x-g,
+     why: "Brass bands and wedding songs from the Balkans, without end."}
+  - {n: 5, name: "Umm Kulthum radio", short: "Umm Kulthum", station: eg-om-kalthoum-radio,
+     why: "Nothing but the Star of the East: hour-long concerts that once held the whole Arab world still."}
+  - {n: 6, name: "Bossa Nova Time", short: "Bossa Nova", ytm: RDCLAK5uy_n3QuG8R7-PdIR0VmWV_yUIPtwbDDmlMqg,
+     why: "Brazil, softly: bossa nova from the beaches of Rio. Press again to skip."}
+  - {n: 7, name: "Irie FM", short: "Irie FM", station: jm-irie-fm-107-7,
+     why: "The world's first all-reggae station, from Ocho Rios, Jamaica."}

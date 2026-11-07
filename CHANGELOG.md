@@ -2,7 +2,11 @@
 
 ## Unreleased
 
-- The Eclectic set plays RNE Radio 3 on key 3, instead of the Coffee Shop list.
+- The starter sets have new names, by taste and occasion instead of by age:
+  Turn the Dial (the one a radio comes with, RNE Radio 3 on key 3), Mixtape,
+  Level Up, Deep Cuts, After Hours, Encore, Passport, Sobremesa, Saturday
+  Morning and Night Light. A radio on an old set moves to its successor;
+  keys you changed stay yours.
 - The update channels have one name each, everywhere: **Bench** (new
   versions reach the makers' radios first, and may break) and **Stable**
   (everyone). The page's picker said "Test versions".

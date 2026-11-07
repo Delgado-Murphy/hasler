@@ -19,10 +19,18 @@ from haslerd.variant import Panel, load_variant
 from haslerd.web import keymap
 from haslerd.web.server import WebApp
 
-PACKS = ("little", "family", "teens", "indie", "eclectic", "classical", "jazz", "oldies", "espana", "world")
-GROUPS = {"little": "Little ones", "family": "Kids", "teens": "Teens & twenties", "indie": "Teens & twenties"}
+PACKS = ("dial", "mixtape", "levelup", "deepcuts", "afterhours", "encore", "passport", "sobremesa",
+         "saturday", "nightlight")
+# The sheet's headings: occasions, never ages.
+GROUPS = {"dial": "Every day", "mixtape": "Every day", "levelup": "Every day", "deepcuts": "Every day",
+          "afterhours": "For a mood", "encore": "For a mood", "passport": "Go somewhere", "sobremesa": "Go somewhere",
+          "saturday": "Family time", "nightlight": "Family time"}
+# Every old set id -> the set that took its place (1.5's pop and raices, 1.6's ten).
+OLD_IDS = {"eclectic": "dial", "classical": "encore", "jazz": "afterhours", "oldies": "mixtape",
+           "espana": "sobremesa", "world": "passport", "little": "nightlight", "family": "saturday",
+           "teens": "levelup", "indie": "deepcuts", "pop": "sobremesa", "raices": "sobremesa"}
 # Sets a child or a grandparent may be given: nothing explicit on them.
-CLEAN_PACKS = ("little", "family", "oldies")
+CLEAN_PACKS = ("nightlight", "saturday", "mixtape")
 # Catalogue sections and title words that mean "explicit lyrics likely" while
 # the catalogue carries no explicit flag of its own (it may one day: checked too).
 EXPLICIT_SECTIONS = {"hiphop", "metal"}
@@ -30,10 +38,8 @@ EXPLICIT_WORDS = ("trap", "reggaeton", "urban", "rap", "grime", "drill")
 # YouTube Music lists that are not YouTube's own editorial ones (RDCLAK.. lists,
 # OLAK.. albums, RDEM.. artist radios) can vanish with their owner. Only where
 # YouTube has no editorial alternative, and only from the official channel:
-USER_LISTS_ALLOWED = {
-    "PLiNVoBckLqLkTpzWWt38vCNb-cdJZ7mN-",   # Disney Hits España: Disney Music's own; YouTube has no castellano Disney list
-    "PL4fGSI1pDJn4jhQB4kb9M36dvVmJQPt4T",   # Top 100 Music Videos Spain: YouTube Charts' own weekly chart
-}
+# (none today: every shipped key is an editorial list, an album or an artist radio).
+USER_LISTS_ALLOWED: set[str] = set()
 
 
 @pytest.fixture(scope="module")
@@ -46,15 +52,19 @@ def starters():
 
 def test_the_ten_packs_in_page_order(starters):
     assert starters.names() == list(PACKS)
-    assert starters.default == "eclectic"
+    assert starters.default == "dial"
     doc = starters.doc()
-    assert [d["id"] for d in doc if d["default"]] == ["eclectic"]
-    # Grouped by listener, youngest first; a group's sets sit together.
+    assert [d["id"] for d in doc if d["default"]] == ["dial"]
+    # Grouped by occasion, the default's group first; a group's sets sit together.
     groups = [d["group"] for d in doc]
     assert all(groups) and groups == sorted(groups, key=groups.index)
-    assert {d["id"]: d["group"] for d in doc if d["id"] in GROUPS} == GROUPS
-    assert {d["group"] for d in doc} == {"Little ones", "Kids", "Teens & twenties", "Grown-ups"}
+    assert {d["id"]: d["group"] for d in doc} == GROUPS
+    assert list(dict.fromkeys(groups)) == ["Every day", "For a mood", "Go somewhere", "Family time"]
     assert len({d["title"] for d in doc}) == len(doc)
+    # Named by taste, not by age or by country (at most two lean Spanish: Sobremesa, and nothing else).
+    titles = " ".join(d["title"] for d in doc).lower()
+    for word in ("eclectic", "teens", "kids", "little", "grown", "oldies", "españa"):
+        assert word not in titles, word
 
 
 @pytest.mark.parametrize("name", PACKS)
@@ -93,9 +103,7 @@ def test_every_pack_shows_what_the_radio_can_do(starters, name):
     stations = presets.collection(ROOT)
     six = [e for e in starters.pack(name).entries if e["n"] <= 6]
     assert sum(1 for e in six if e.get("station")) >= 2, name
-    # Eclectic carries one YouTube Music key: the owner chose RNE Radio 3 over a
-    # second list on key 3 (2026-11-07).
-    assert sum(1 for e in six if e.get("ytm")) >= (1 if name == "eclectic" else 2), name
+    assert sum(1 for e in six if e.get("ytm")) >= 2, name
     first = six[0]
     if first.get("station"):
         genres = set(stations[first["station"]].get("genres") or []) | {stations[first["station"]]["genre"].lower()}
@@ -121,60 +129,89 @@ def test_family_packs_carry_nothing_explicit(starters, name):
 
 
 def test_a_cabinet_takes_only_its_slots():
-    assert [s["n"] for s in presets.Starters(ROOT, 6).specs("eclectic")] == [1, 2, 3, 4, 5, 6]
+    assert [s["n"] for s in presets.Starters(ROOT, 6).specs("dial")] == [1, 2, 3, 4, 5, 6]
     doc = presets.Starters(ROOT, 6).doc()
     assert [d["id"] for d in doc] == list(PACKS)
-    eclectic = next(d for d in doc if d["default"])
-    assert eclectic["id"] == "eclectic" and eclectic["group"] == "Grown-ups"
+    dial = next(d for d in doc if d["default"])
+    assert dial["id"] == "dial" and dial["group"] == "Every day" and dial["title"] == "Turn the Dial"
     assert all(len(d["keys"]) == 6 for d in doc)
-    assert eclectic["keys"][0] == {"n": 1, "name": "FIP", "short": "FIP", "source": "radio",
-                                   "why": eclectic["keys"][0]["why"]}
+    assert dial["keys"][0] == {"n": 1, "name": "FIP", "short": "FIP", "source": "radio",
+                               "why": dial["keys"][0]["why"]}
+    # Key 3 of the default is a station, not a list (the owner's choice, 2026-11-07).
+    assert dial["keys"][2]["name"] == "RNE Radio 3" and dial["keys"][2]["source"] == "radio"
     assert {k["source"] for d in doc for k in d["keys"]} == {"radio", "ytm"}
 
 
 def test_chosen_pack_page_over_box_over_default(starters, caplog):
-    assert starters.chosen("", {}) == "eclectic"
-    assert starters.chosen("jazz", {}) == "jazz" and starters.source("jazz", {}) == "box"
-    assert starters.chosen("jazz", {"starter": "teens"}) == "teens"
-    assert starters.source("jazz", {"starter": "teens"}) == "page"
-    assert starters.chosen("nope", {"starter": "nope"}) == "eclectic"      # unknown: logged, the default
+    assert starters.chosen("", {}) == "dial"
+    assert starters.chosen("afterhours", {}) == "afterhours" and starters.source("afterhours", {}) == "box"
+    assert starters.chosen("afterhours", {"starter": "levelup"}) == "levelup"
+    assert starters.source("afterhours", {"starter": "levelup"}) == "page"
+    assert starters.chosen("nope", {"starter": "nope"}) == "dial"      # unknown: logged, the default
     assert "doesn't have" in caplog.text
 
 
 def test_a_dropped_set_is_followed_to_its_successor(starters, caplog):
-    """1.5's "Pop & hits" (pop) and "Raíces" (raices) became "España": a radio
-    whose settings.json or box.yaml still names one plays España, quietly."""
-    assert set(presets.PACK_ALIASES) == {"pop", "raices"}
+    """Every set id an older release shipped (1.5's pop and raices, 1.6's ten,
+    named by age) names a set of this one: a radio whose settings.json or
+    box.yaml still says one plays its successor, quietly."""
+    assert presets.PACK_ALIASES == OLD_IDS
     assert all(new in starters.packs and old not in starters.packs for old, new in presets.PACK_ALIASES.items())
     caplog.clear()
     with caplog.at_level("INFO", logger="haslerd.presets"):
-        assert starters.chosen("", {"starter": "pop"}) == "espana"
-        assert starters.source("", {"starter": "pop"}) == "page"
-        assert starters.chosen("raices", {}) == "espana" and starters.source("raices", {}) == "box"
-    assert "which is 'espana' now" in caplog.text and "doesn't have" not in caplog.text
-    assert starters.specs("pop") == starters.specs("espana") and starters.specs("pop")[0]["name"] == "Pop español"
-    assert presets.default_specs(VARIANTS / "hasler-hm.yaml", 6, "raices") == presets.Starters(ROOT, 6).specs("espana")
+        for old, new in OLD_IDS.items():
+            assert starters.chosen("", {"starter": old}) == new and starters.source("", {"starter": old}) == "page"
+            assert starters.chosen(old, {}) == new and starters.source(old, {}) == "box"
+            assert starters.specs(old) == starters.specs(new)
+    assert "which is 'dial' now" in caplog.text and "doesn't have" not in caplog.text
+    assert starters.specs("pop")[0]["name"] == "Pop español"
+    assert presets.default_specs(VARIANTS / "hasler-hm.yaml", 6, "raices") == presets.Starters(ROOT, 6).specs("sobremesa")
     assert load_variant(VARIANTS / "hasler-hm.yaml", pack="pop").presets[1]["station"] == "es-flamenco-radio"
+    assert load_variant(VARIANTS / "hasler-hm.yaml", pack="eclectic").presets[0]["station"] == "fr-fip"
+
+
+# What 1.6's Eclectic shipped on an HM before 2026-11-07 (Coffee Shop on key 3).
+ECLECTIC_1_6 = [
+    {"n": 1, "name": "FIP", "short": "FIP", "station": "fr-fip"},
+    {"n": 2, "name": "Radio Swiss Jazz", "short": "Swiss Jazz", "station": "ch-radio-swiss-jazz"},
+    {"n": 3, "name": "Coffee Shop Blend", "short": "Coffee Shop",
+     "ytm": "https://music.youtube.com/playlist?list=RDCLAK5uy_nBE4bLuBHUXWZrF59ZrkPEToKt8M_I3Vc"},
+    {"n": 4, "name": "Shonan Beach FM", "short": "Shonan Beach", "station": "jp-shonan-beach-fm-78-9"},
+    {"n": 5, "name": "Buena Vista Social Club radio", "short": "Buena Vista",
+     "ytm": "https://music.youtube.com/watch?list=RDEMkIlmPguUoTgHzbw6yV9n_g"},
+    {"n": 6, "name": "Radio Nova", "short": "Nova", "station": "fr-radio-nova"},
+]
 
 
 def test_a_radio_on_a_dropped_set_keeps_its_own_keys_and_follows_the_rest(tmp_path):
-    """A 1.5 radio on "pop" with one key of its own: after the update the page
-    says España, the untouched keys are España's, the owner's key stays."""
-    old = {"n": 1, "name": "Cadena Dial", "station": "es-cadena-dial",
-           "radio": presets.collection(ROOT)["es-cadena-dial"]["url"]}
-    shipped = [old] + [{"n": n, "name": f"Old {n}", "radio": f"https://old.example/{n}"} for n in range(2, 7)]
-    mine = {"n": 2, "name": "My station", "radio": "http://mine.example/live"}
+    """A radio on 1.6's "eclectic" with two keys of its own: after the update
+    the page says Turn the Dial, the untouched keys are the new set's, the
+    owner's keys stay."""
+    stations = presets.collection(ROOT)
+    shipped = [dict(s, radio=stations[s["station"]]["url"]) if s.get("station") else dict(s) for s in ECLECTIC_1_6]
+    mine4 = {"n": 4, "name": "My station", "radio": "http://mine.example/live"}
+    mine6 = {"n": 6, "name": "Köln Concert", "ytm": "https://music.youtube.com/playlist?list=PLmine"}
+    saved = [shipped[0], shipped[1], shipped[2], mine4, shipped[4], mine6]
     v = load_variant(VARIANTS / "hasler-hm.yaml")
     table = {k: val for k, val in v.actions.items()}
     (tmp_path / "keys.yaml").write_text(yaml.safe_dump({
-        "schema": keymap.KEYS_SCHEMA, "presets": [old, mine] + shipped[2:], "actions": table,
+        "schema": keymap.KEYS_SCHEMA, "presets": saved, "actions": table,
         "shipped": {"presets": shipped, "actions": table}, "defaults_rev": presets.layout_rev(shipped, table)}))
-    app, actions = rig(tmp_path, settings={"starter": "pop"})
+    app, actions = rig(tmp_path, settings={"starter": "eclectic"})
     cfg = app.config()
-    assert cfg["starter"] == "espana" and cfg["starter_from"] == "page"
-    assert actions.presets[1].name == "Pop español"            # was the shipped Cadena Dial: follows
-    assert actions.presets[2].name == "My station"              # the owner's
-    assert actions.presets[6].name == "RNE Radio 3" and cfg["factory"] is False
+    assert cfg["starter"] == "dial" and cfg["starter_from"] == "page"
+    assert actions.presets[1].name == "FIP" and actions.presets[2].name == "Radio Swiss Jazz"
+    assert actions.presets[3].name == "RNE Radio 3"             # was the shipped Coffee Shop: follows
+    assert actions.presets[4].name == "My station"              # the owner's
+    assert actions.presets[5].name == "Buena Vista Social Club radio"
+    assert actions.presets[6].name == "Köln Concert"            # the owner's
+    assert cfg["factory"] is False
+    after = yaml.safe_load((tmp_path / "keys.yaml").read_text())
+    assert after["shipped"]["presets"][5]["name"] == "Classic Feel-Good Pop"
+    # And a 1.5 radio on "pop": España's successor, every key untouched.
+    (tmp_path / "pop").mkdir()
+    app, actions = rig(tmp_path / "pop", settings={"starter": "pop"})
+    assert app.config()["starter"] == "sobremesa" and actions.presets[2].name == "Flamenco Radio"
 
 
 def test_no_release_means_no_packs(tmp_path):
@@ -254,8 +291,8 @@ def test_descriptors_come_with_the_default_set(name, slots, seventh):
     assert v.presets[0]["name"] == "FIP" and v.presets[0]["station"] == "fr-fip"
     if seventh:
         assert v.presets[6]["name"] == seventh
-    jazz = load_variant(VARIANTS / f"{name}.yaml", pack="jazz")
-    assert jazz.presets[0]["name"] == "Radio Swiss Jazz"
+    jazz = load_variant(VARIANTS / f"{name}.yaml", pack="afterhours")
+    assert jazz.presets[0]["name"] == "TSF Jazz"
 
 
 def test_extends_takes_the_bases_behaviour_and_keeps_its_own_wiring(tmp_path):
@@ -309,7 +346,7 @@ class TestConfig:
     def test_reports_the_sets_and_the_factory_state(self, tmp_path):
         app, actions = rig(tmp_path)
         cfg = app.config()
-        assert cfg["starter"] == "eclectic" and cfg["starter_from"] == "default" and cfg["factory"] is True
+        assert cfg["starter"] == "dial" and cfg["starter_from"] == "default" and cfg["factory"] is True
         assert [s["id"] for s in cfg["starters"]] == list(PACKS)
         assert all(len(s["keys"]) == 6 for s in cfg["starters"])
         assert [p["name"] for p in cfg["presets"]][:2] == ["FIP", "Radio Swiss Jazz"]
@@ -320,13 +357,13 @@ class TestConfig:
         assert app.reset()["factory"] is True and actions.presets[2].name == "Radio Swiss Jazz"
 
     def test_box_yaml_and_the_page_choose_the_set(self, tmp_path):
-        app, actions = rig(tmp_path, starter_box="jazz")
+        app, actions = rig(tmp_path, starter_box="afterhours")
         cfg = app.config()
-        assert cfg["starter"] == "jazz" and cfg["starter_from"] == "box" and cfg["factory"]
-        assert actions.presets[1].name == "Radio Swiss Jazz"
-        app, actions = rig(tmp_path, starter_box="jazz", settings={"starter": "classical"})
+        assert cfg["starter"] == "afterhours" and cfg["starter_from"] == "box" and cfg["factory"]
+        assert actions.presets[1].name == "TSF Jazz"
+        app, actions = rig(tmp_path, starter_box="afterhours", settings={"starter": "encore"})
         cfg = app.config()
-        assert cfg["starter"] == "classical" and cfg["starter_from"] == "page"
+        assert cfg["starter"] == "encore" and cfg["starter_from"] == "page"
         assert actions.presets[1].name == "Radio Swiss Classic" and cfg["factory"]
 
     def test_excelsior_sets_have_seven_keys(self, tmp_path):
@@ -349,13 +386,13 @@ class TestStartFromASet:
         doc = page_doc(app)
         doc["presets"][0]["name"] = "Mine"
         app.save(doc)
-        cfg = app.set_starter({"pack": "jazz"})
-        assert cfg["starter"] == "jazz" and cfg["starter_from"] == "page" and cfg["factory"] is True
-        assert actions.presets[1].name == "Radio Swiss Jazz" and actions.presets[2].name == "TSF Jazz"
-        assert json.loads((tmp_path / "settings.json").read_text())["starter"] == "jazz"
+        cfg = app.set_starter({"pack": "afterhours"})
+        assert cfg["starter"] == "afterhours" and cfg["starter_from"] == "page" and cfg["factory"] is True
+        assert actions.presets[1].name == "TSF Jazz" and actions.presets[2].name == "Late Night Jazz"
+        assert json.loads((tmp_path / "settings.json").read_text())["starter"] == "afterhours"
         saved = yaml.safe_load((tmp_path / "keys.yaml").read_text())
         assert saved["schema"] == keymap.KEYS_SCHEMA and saved["defaults_rev"]
-        assert saved["presets"] == saved["shipped"]["presets"] and saved["presets"][0]["station"] == "ch-radio-swiss-jazz"
+        assert saved["presets"] == saved["shipped"]["presets"] and saved["presets"][0]["station"] == "fr-tsf-jazz"
         assert saved["actions"]["k5.hold"] == {"do": "volume_step", "delta": -2}
         assert saved["combos"] == [{"keys": ["k1", "k6"], "hold_s": 1.0, "do": "bt_pair", "seconds": 120}]
         # Reset now means that set.
@@ -364,11 +401,11 @@ class TestStartFromASet:
         app.save(doc)
         assert not app.config()["factory"]
         cfg = app.reset()
-        assert cfg["factory"] and cfg["starter"] == "jazz" and actions.presets[1].name == "Radio Swiss Jazz"
+        assert cfg["factory"] and cfg["starter"] == "afterhours" and actions.presets[1].name == "TSF Jazz"
         assert not (tmp_path / "keys.yaml").exists()
         # ... and after a restart too.
         app2, actions2 = rig(tmp_path, settings=json.loads((tmp_path / "settings.json").read_text()))
-        assert app2.config()["starter"] == "jazz" and actions2.presets[2].name == "TSF Jazz"
+        assert app2.config()["starter"] == "afterhours" and actions2.presets[2].name == "Late Night Jazz"
 
     def test_refuses_an_unknown_set_and_needs_the_press(self, tmp_path):
         app, _ = rig(tmp_path)
@@ -377,8 +414,8 @@ class TestStartFromASet:
         app.confirm.allow_unconfirmed = False
         from haslerd.web.confirm import ConfirmError
         with pytest.raises(ConfirmError):
-            app.set_starter({"pack": "jazz"})
-        assert app.config()["starter"] == "eclectic"
+            app.set_starter({"pack": "afterhours"})
+        assert app.config()["starter"] == "dial"
 
 
 class TestUntouchedKeysFollowTheRelease:
@@ -391,10 +428,10 @@ class TestUntouchedKeysFollowTheRelease:
         before = yaml.safe_load((tmp_path / "keys.yaml").read_text())
         assert before["defaults_rev"] and before["shipped"]["presets"][0]["name"] == "FIP"
         # The next release ships another set on the same radio (here: box.yaml says so).
-        app2, actions2 = rig(tmp_path, starter_box="classical")
+        app2, actions2 = rig(tmp_path, starter_box="encore")
         assert actions2.presets[1].name == "Radio Swiss Classic"       # followed the release
         assert actions2.presets[2].name == "My station" and actions2.presets[2].uri == "http://mine.example/live"
-        assert actions2.presets[6].name == "BBC Radio 3"
+        assert actions2.presets[6].name == "Classical Romance"
         assert actions2.variant.actions["k3.hold"] == {"do": "standby_toggle"}
         assert actions2.variant.actions["k5.hold"] == {"do": "volume_step", "delta": -2}
         after = yaml.safe_load((tmp_path / "keys.yaml").read_text())
@@ -493,7 +530,7 @@ class TestMigration002:
         migrations.run(paths, apply=True)
         v = load_variant(VARIANTS / "hasler-hm.yaml")
         starters = presets.Starters(ROOT, v.slots)
-        v.presets = starters.specs("eclectic")
+        v.presets = starters.specs("dial")
         actions = Actions(v, FakePlayer())
         app = WebApp(actions, None, paths.state / "keys.yaml", {}, ha=False, starters=starters)
         app.load_saved()

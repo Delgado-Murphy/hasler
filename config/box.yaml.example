@@ -2,7 +2,7 @@ schema: 1
 variant: hasler-hm-hat
 channel: stable
 update_mode: auto
-starter: eclectic
+starter: dial
 box_id: 00000000-0000-4000-8000-000000000000
 checkin: false
 # checkin_url: https://hasler-checkin.example.workers.dev/v1/checkin   # the makers' endpoint (tools/checkin)

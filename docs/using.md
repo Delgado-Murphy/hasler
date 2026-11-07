@@ -62,10 +62,10 @@ That's all you need. The rest is for when you want more.
 
 The radio has six numbered keys and one key marked **PU**. (The Excelsior has
 more; see [below](#the-excelsiors-keys).) The keys start with a set
-chosen to show what the radio can do; there are ten, by who's listening
-(little ones, kids, teens, indie, grown-up eclectic, classical, jazz, golden
-oldies, España, world). Pick another in [Edit keys](#edit-keys) → **Start
-from a set…**.
+chosen to show what the radio can do; there are ten, by taste and occasion
+(Turn the Dial, the one it comes with; Mixtape, Level Up, Deep Cuts, After
+Hours, Encore, Passport, Sobremesa, Saturday Morning and Night Light). Pick
+another in [Edit keys](#edit-keys) → **Start from a set…**.
 
 | You do this | What happens |
 |---|---|
@@ -81,9 +81,10 @@ A tap on any key wakes the radio. It remembers the last key you pressed, even
 after you unplug it.
 
 Out of the box the keys hold a starter set of stations and playlists. There
-are ten sets, by who's listening: little ones, kids, teens, indie, the
-eclectic one the radio comes with, classical, jazz, golden oldies, España and
-world. Choose one in **Edit keys → Start from a set…**. What PU steps through is in **Settings → Keys**.
+are ten sets, grouped by occasion: every day (Turn the Dial, the one the
+radio comes with; Mixtape; Level Up; Deep Cuts), for a mood (After Hours,
+Encore), go somewhere (Passport, Sobremesa) and family time (Saturday
+Morning, Night Light). Choose one in **Edit keys → Start from a set…**. What PU steps through is in **Settings → Keys**.
 
 **Sleep timer.** On the key page, tap the small clock beside **Standby** and
 choose 15, 30 or 60 minutes. A "Sleep · 23 min" chip shows what is left; tap

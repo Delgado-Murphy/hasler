@@ -58,7 +58,7 @@ class TestConfigDoc:
     def test_presets_listed_with_their_source(self, rig):
         app, *_ = rig
         by_n = {p["n"]: p for p in app.config()["presets"]}
-        # The eclectic starter set (config/presets/eclectic.yaml): stations by id, lists by link.
+        # The default starter set (config/presets/dial.yaml): stations by id, lists by link.
         assert by_n[2]["name"] == "Radio Swiss Jazz" and by_n[2]["source"] == "radio"
         assert by_n[2]["station"] == "ch-radio-swiss-jazz" and by_n[2]["uri"].startswith("https://")
         assert by_n[3]["source"] == "radio" and by_n[3]["station"] == "es-rne-radio-3"

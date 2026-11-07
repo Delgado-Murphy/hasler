@@ -168,8 +168,8 @@ combos:
 # cabinet's to say: six keys hold music, and a starter set fills them
 # (config/presets/<pack>.yaml, haslerd/presets.py). Which set: box.yaml
 # `starter:`, or the one the owner picked on the key page ("Start from a
-# set"); eclectic when nobody chose. Each entry of a set resolves to one
-# preset naming exactly one of
+# set"); dial (Turn the Dial) when nobody chose. Each entry of a set
+# resolves to one preset naming exactly one of
 #   radio:    an HTTP stream URL, played by MPD (a `station:` id of
 #             config/stations/collection.json resolves to its URL)
 #   spotify:  a spotify:playlist:/album:/track: URI, played by go-librespot

@@ -9178,7 +9178,7 @@ function startFromSet(opener){
     busy = false;
   };
   const list = h('ul', {class:'ss-list', 'aria-label':'Starter sets'});
-  let group = '';   // sets come grouped by listener (config/presets group:), youngest first; a heading where the group changes
+  let group = '';   // sets come grouped by occasion (config/presets group: Every day, For a mood, Go somewhere, Family time); a heading where the group changes
   for (const set of sets){
     const on = set.id === cfg.starter;
     if (set.group && set.group !== group) list.append(h('li', {class:'ss-group', role:'presentation'}, h('span', {role:'heading', 'aria-level':'3'}, set.group)));

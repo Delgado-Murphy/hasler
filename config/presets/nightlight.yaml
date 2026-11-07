@@ -1,0 +1,22 @@
+# Starter set: Night Light (the format: dial.yaml). For the smallest
+# listeners: songs by day, stories and lullabies by night; nothing on it a
+# parent has to skip.
+pack: nightlight
+title: "Night Light"
+group: "Family time"
+blurb: "Songs to clap along to while it's light, then bedtime stories and lullabies when the lamp goes on."
+presets:
+  - {n: 1, name: "Classic Children's Songs", short: "Nursery", ytm: RDCLAK5uy_kIdiH02YL21o6iOEuDqTNq6bFpzBBTjL8,
+     why: "The nursery rhymes every child knows, one after another. Press again for the next."}
+  - {n: 2, name: "Radio Pipí Cucú", short: "Pipí Cucú", station: uy-radio-pipi-cucu,
+     why: "A real radio station for children, live from Montevideo: songs and stories in Spanish."}
+  - {n: 3, name: "Children's Songs", short: "Canciones", ytm: RDCLAK5uy_lFmE-qSLpSYkAf1iI2dikJmNRNimenYH4,
+     why: "The same joy in Spanish: canciones infantiles, a second language, sung."}
+  - {n: 4, name: "Classical music for kids", short: "Classical", ytm: OLAK5uy_nYc-8SR5E0GYKwaZ0ErE-VbpxBj3jUnyY,
+     why: "Mozart, Vivaldi and friends, the bits children love first."}
+  - {n: 5, name: "Bedtime stories", short: "Stories", station: ae-fun-radio-for-kids-bedtime-stories,
+     why: "A radio station that reads bedtime stories aloud, all night. Lie down and listen."}
+  - {n: 6, name: "Calm Radio Lullaby", short: "Lullaby", station: ca-calm-radio-lullaby,
+     why: "Soft instrumental lullabies all night, no voices. The last key of the day."}
+  - {n: 7, name: "Lullabies for Babies", short: "Lullabies", ytm: RDCLAK5uy_ljjZXYOZsVqtkknNg4nai7elA6kVq0cac,
+     why: "Gentle lullabies, one after another, for the very small."}

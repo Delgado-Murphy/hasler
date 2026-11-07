@@ -1,21 +1,22 @@
-# Starter set: Kids & family, 7 to 12 (the format: eclectic.yaml). Film songs,
-# game music and pop the whole table can share; nothing explicit.
-pack: family
-title: "Kids & family"
-group: "Kids"
-blurb: "Film songs, a children's radio from London, game music from all over and the Star Wars orchestra."
+# Starter set: Saturday Morning (the format: dial.yaml). Film songs, a
+# children's radio, an orchestra and game music; nothing on it a parent has to
+# skip.
+pack: saturday
+title: "Saturday Morning"
+group: "Family time"
+blurb: "Pyjamas on: the songs from the films, a children's radio from London, a whole film orchestra and the game music they hum."
 presets:
   - {n: 1, name: "Songs From Animated Movies", short: "Film songs", ytm: RDCLAK5uy_miLWNpTeijYvQSlKHp8wU6xVGhSUSR0P0,
-     why: "The songs from the films they've watched ten times. Tap again to skip."}
+     why: "The songs from the films they've watched ten times. Press again to skip."}
   - {n: 2, name: "Fun Kids", short: "Fun Kids", station: gb-fun-kids,
      why: "The UK's radio station for children: pop, quizzes and science, in English."}
-  - {n: 3, name: "Disney en castellano", short: "Disney", ytm: PLiNVoBckLqLkTpzWWt38vCNb-cdJZ7mN-,
-     why: "The Disney songs as they sing them here, en castellano."}
+  - {n: 3, name: "21st Century Disney", short: "Disney", ytm: RDCLAK5uy_nwGVTzraBvAR-wPGHBPeqp4Qb139ns16Y,
+     why: "The Disney songs of now, every one a sing-along."}
   - {n: 4, name: "Presenting John Williams", short: "J. Williams", ytm: RDCLAK5uy_kjxxPWUb-wD3TWOOhTNx6vUljsipx_Ht0,
      why: "Star Wars, Harry Potter, Jurassic Park: a whole orchestra on one key."}
   - {n: 5, name: "Rainwave Game Music", short: "Game music", station: zz-rainwave-game,
      why: "Video-game soundtracks, voted for by listeners around the world."}
   - {n: 6, name: "Fun Family Hangout", short: "Family", ytm: RDCLAK5uy_kPR9usfd5aQ8n4rTcEv7y1VLvMm1ewig4,
      why: "Pop for the car or the kitchen that parents like too."}
-  - {n: 7, name: "Radio Swiss Pop", short: "Swiss Pop", station: ch-radio-swiss-pop,
-     why: "Pop you know, with no presenters and no ads."}
+  - {n: 7, name: "Broadway's Biggest Hits", short: "Broadway", ytm: RDCLAK5uy_nPnGWGH5heS4fkBjX2B7mJi3AZlYYzMMc,
+     why: "The show-stoppers, for the living-room musical."}

@@ -1,17 +1,19 @@
-# Starter set: Eclectic. The set a radio ships with when nobody chose another
-# (haslerd/presets.py DEFAULT_PACK): a crowd-pleaser that keeps surprising -
-# stations from four continents, YouTube Music lists and an endless artist radio.
+# Starter set: Turn the Dial. The set a radio ships with when nobody chose
+# another (haslerd/presets.py DEFAULT_PACK): a crowd-pleaser that keeps
+# surprising - live radio from three continents beside YouTube Music. Key 3 is
+# a station, not a list (the owner's choice, 2026-11-07).
 #
 # Every entry names one of: `station:` (an id from config/stations/collection.json;
 # the stream URL comes from there) or `ytm:` (a YouTube Music list id as
 # config/catalog/catalog.json stores it in the item's link). `short` is the
 # key-cap label (12 characters at most); `why` is the one line the key card
 # can print. Key 7 is the Excelsior's Tape key; the HM has six. `group` is the
-# heading the "Start from a set" sheet lists the set under.
-pack: eclectic
-title: "Eclectic"
-group: "Grown-ups"
-blurb: "A little of everything and not much talk: Paris, Switzerland, Madrid, Havana and a Japanese beach, side by side."
+# heading the "Start from a set" sheet lists the set under: an occasion, never
+# an age (Every day, For a mood, Go somewhere, Family time).
+pack: dial
+title: "Turn the Dial"
+group: "Every day"
+blurb: "Paris, Switzerland, Madrid, Havana and a beach in Japan, a key apart, with the feel-good songs everyone knows."
 presets:
   - {n: 1, name: "FIP", short: "FIP", station: fr-fip,
      why: "Radio France's eclectic channel: jazz, pop, world, hardly a word spoken. The key everyone agrees on."}
@@ -23,7 +25,7 @@ presets:
      why: "A little community station on a Japanese beach: jazz, bossa and AOR. Sunday afternoon, any day."}
   - {n: 5, name: "Buena Vista Social Club radio", short: "Buena Vista", ytm: RDEMkIlmPguUoTgHzbw6yV9n_g,
      why: "Start with Havana's old masters and let it wander: an artist radio that never runs out."}
-  - {n: 6, name: "Radio Nova", short: "Nova", station: fr-radio-nova,
-     why: "Paris's grand mix since 1981: hip-hop, soul, electronica and the odd surprise."}
+  - {n: 6, name: "Classic Feel-Good Pop", short: "Feel-Good", ytm: RDCLAK5uy_k4sXYMRc7kePx3BjjVv5z2fB1CePqvVDw,
+     why: "The songs the whole room sings along to, one after another. Press again to skip."}
   - {n: 7, name: "KEXP", short: "KEXP", station: us-kexp-90-3-seattle,
      why: "Seattle's listener-powered station: new music and live sessions."}

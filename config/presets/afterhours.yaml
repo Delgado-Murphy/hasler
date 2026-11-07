@@ -1,0 +1,21 @@
+# Starter set: After Hours (the format: dial.yaml). Jazz for the end of the
+# day: Paris, New Orleans, a spy lounge and Miles.
+pack: afterhours
+title: "After Hours"
+group: "For a mood"
+blurb: "Lights low: jazz from Paris, a live line to New Orleans, a 1960s spy lounge and Kind of Blue."
+presets:
+  - {n: 1, name: "TSF Jazz", short: "TSF Jazz", station: fr-tsf-jazz,
+     why: "Paris's jazz station: the standards, the new names, the odd live set."}
+  - {n: 2, name: "Late Night Jazz", short: "Late Night", ytm: RDCLAK5uy_n2cq0PxECLzVblC6NOorWjaCtF5NwXJT4,
+     why: "Slow, smoky, after midnight, from YouTube Music. Press again to skip."}
+  - {n: 3, name: "WWOZ New Orleans", short: "WWOZ", station: us-wwoz-90-7-new-orleans,
+     why: "Live from New Orleans: brass bands, trad jazz and R&B, the city's own station."}
+  - {n: 4, name: "Sophisticated Vocal Jazz", short: "Vocal Jazz", ytm: RDCLAK5uy_kY-qKujvKmhfzV5CJW73SBPkDuZByO8xI,
+     why: "Ella, Sarah, Nat: the great voices, one after another."}
+  - {n: 5, name: "Secret Agent", short: "Spy Lounge", station: us-somafm-secret-agent,
+     why: "The soundtrack for a stylish, mysterious evening, made for a 1960s cabinet."}
+  - {n: 6, name: "Presenting Miles Davis", short: "Miles", ytm: RDCLAK5uy_mH4-XCPltdsB93kwS0cenyhcIm6C7XNtc,
+     why: "Kind of Blue and everything around it."}
+  - {n: 7, name: "Django Reinhardt radio", short: "Django", ytm: RDEM45IwSGXIUbZbdkR_o8HioQ,
+     why: "Start with Django's guitar and keep going: an endless gypsy-jazz radio."}

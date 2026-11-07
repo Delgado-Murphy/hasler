@@ -47,7 +47,7 @@ SCHEMA = 1   # of box.yaml and the overlay files; bumped with a migration
 # still ask) | ask | off. os_updates: on (the default: Debian security
 # updates at night, scripts/hasler-os-update) | off. starter: the starter set
 # on the keys out of the box (config/presets/<starter>.yaml; haslerd/presets.py),
-# eclectic when absent; the key page's own choice (settings.json) wins over it.
+# dial when absent; the key page's own choice (settings.json) wins over it.
 # checkin: true = the opt-in daily check-in (docs/ota.md §5; update/hasler_update/
 # checkin.py sends it after the daily check, to checkin_url, with checkin_token
 # as a header when set); off when absent. makers: {contact: "hola@…"} - who built

@@ -85,7 +85,7 @@ them for moOde, so this should not happen.
 | `channel` | `stable` | `bench` (Bench: new versions first; may break) only for the makers' own radios. Stable has been live since 1.0.5 (2026-10-23). |
 | `update_mode` | `auto` (small updates at night, big ones ask) | `ask`, `off` |
 | `variant` | `hasler-hm-hat` (a Hasler HM on the Hasler HAT: every new one) | `hasler-hm` (the prototype's stripboard) \| `excelsior` (keys that spring back on a modified unit: see [hardware.md](hardware.md#excelsior-latching-or-not)) |
-| `starter` | `eclectic` (the built-in stations: the starter set on the keys) | `little`, `family`, `teens`, `indie`, `classical`, `jazz`, `oldies`, `espana`, `world` (`config/presets/`; 1.5's `pop` and `raices` mean `espana`); the owner can pick another on the key page |
+| `starter` | `dial` (Turn the Dial: the built-in stations, the starter set on the keys) | `mixtape`, `levelup`, `deepcuts`, `afterhours`, `encore`, `passport`, `sobremesa`, `saturday`, `nightlight` (`config/presets/`; an older release's set names still work: `eclectic` means `dial`, `espana` means `sobremesa` and so on); the owner can pick another on the key page |
 | `user` | `pi` | the username you gave Imager |
 | `moode` | `yes` (Hasler's audio and casting settings in moOde) | `no` |
 | `panel_optional` | `no` | `yes` on a bare Pi without the key board |
