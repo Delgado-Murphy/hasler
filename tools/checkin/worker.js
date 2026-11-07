@@ -15,7 +15,7 @@
 //                      open /dashboard?key=... . A radio not heard from is "not seen",
 //                      never "broken": the dashboard can't tell off from offline.
 //   GET  /v1/radios    the same rows as JSON (same gate as the dashboard).
-//   POST /v1/report, POST /v1/github, GET /v1/replies, POST /v1/replies/ack:
+//   POST /v1/report, POST /v1/reply, POST /v1/github, GET /v1/replies, POST /v1/replies/ack:
 //                      "Send to the makers" - an owner's report becomes an issue in the
 //                      makers' private GitHub repo, and a "/owner ..." comment comes back to
 //                      the radio. support.js has the routes; SUPPORT.md the setup.
@@ -26,7 +26,7 @@
 // Support (optional): SUPPORT (KV), GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, SUPPORT_REPO,
 // ENROL_PER_HOUR, REPORTS_ALL_PER_DAY (enrol.js; defaults 30 and 200).
 
-import { handleReport, handleGithub, handleReplies, issuesFor, repoOf } from "./support.js";
+import { handleReport, handleFollowup, handleGithub, handleReplies, issuesFor, repoOf } from "./support.js";
 import { handleEnrol, authFor } from "./enrol.js";
 
 const MAX_BODY = 2048;
@@ -186,6 +186,9 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/v1/report") {
       return handleReport(request, env, now);   // checks the radio's word itself, once it knows the radio
+    }
+    if (request.method === "POST" && url.pathname === "/v1/reply") {
+      return handleFollowup(request, env, now); // the owner writes back on a request (the same word)
     }
     if (request.method === "POST" && url.pathname === "/v1/github") {
       return handleGithub(request, env);        // GitHub signs it; the radios' token isn't GitHub's

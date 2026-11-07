@@ -1,8 +1,8 @@
 # Send to the makers: owners' requests as GitHub issues
 
-Owners don't have GitHub accounts and never need one. On every radio the
-**Tell the makers** sheet leads with **Send to the makers** ("This opens a
-request with Delgado & Murphy. You'll see their answer here."): the radio
+Owners don't have GitHub accounts and never need one. On every radio
+**Write to the makers** (a sheet, and a page under This radio) is a field and
+**Send to the makers** ("Goes to Delgado & Murphy only. They'll answer here."): the radio
 POSTs its report (the same text and JSON twin as Share/Copy,
 secrets already stripped by `daemon/haslerd/web/report.py`) and the owner's
 line to this Worker's `/v1/report`. The Worker opens an issue in a
@@ -12,16 +12,18 @@ under **From the makers**.
 ```
 radio ──POST /v1/enrol {box_id} (first send only)──▶ Worker ──▶ its own token
 radio ──POST /v1/report (X-Hasler-Token)──▶ Worker ──REST──▶ private repo: issue #12
-radio ◀─"Sent. Your request is #12."──────┘
+radio ◀─"Sent · request #12"─────────────┘
+radio ──POST /v1/reply {issue: 12, note} (the owner writes back)──▶ Worker ──▶ a comment on #12 (reopened if closed)
 maker comments "/owner A new card is in the post." on #12
 maker labels #12 "seen" … closes #12
 GitHub ──webhook issue_comment, issues (HMAC)──▶ Worker /v1/github ──▶ KV replies:<box_id>
-radio (every half hour while a request is open; when the page opens) ──GET /v1/replies──▶ note "by: makers" ──ack──▶ Worker
+radio (every half hour while a request is open; every minute while its page is open) ──GET /v1/replies──▶ note "by: makers" ──ack──▶ Worker
 ```
 
-On the radio the owner sees **Your requests** (This radio → Help from the
-makers, and Something's wrong?): each request's number, date, first line,
-state (Sent / Seen by the makers / Done) and your `/owner` replies in order.
+On the radio the owner sees **Your requests** on the Write to the makers page
+(This radio → Help from the makers, and Something's wrong?): each request as a
+thread - their words, your `/owner` replies, their write-backs, in order - with
+its state (Sent / Seen / Answered / Done) and **Write back**.
 A new reply also shows as **New reply from the makers** under Needs attention
 and as a dot on the front page's gear. A send without internet waits on the
 radio and goes by itself once it's back.
@@ -41,21 +43,28 @@ What the Worker does (`support.js`, read it - it is short):
   comment ("Sent again from the radio") to the issue it already made, and
   the radio shows the same number.
 - **Replies**: a comment with a line starting `/owner ` (anything after it,
-  to the end of the comment, up to 600 characters) is queued for that
-  issue's radio. Everything else on the issue - triage, notes between the
+  to the end of the comment, line breaks kept, up to 2000 characters) is
+  queued for that issue's radio; the page shows a little Markdown (bold,
+  italic, `code`, lists, headings, https links). Editing that comment sends
+  the new words in place of the old. Everything else on the issue - triage, notes between the
   two of you - stays private; the owner sees only `/owner` text. Closing
   with such a comment works too (GitHub sends the comment first).
 - **The issue's state** (the `issues` event) reaches the owner too, as a
-  note and on the sheet's line under the button:
+  note and on the request (a plain `/owner` reply makes it **Answered**):
 
-  | On GitHub | The owner reads | The sheet says |
+  | On GitHub | The owner reads | The page says |
   |---|---|---|
-  | (just sent) | - | Sent · request #12 · 7 Nov |
-  | label **`seen`** (once per issue, however often it's re-added) | The makers have seen your request #12. | Seen by the makers · request #12 · sent 7 Nov |
-  | **closed** | Your request #12 is done. *(+ the last `/owner` text, if the radio hadn't fetched it yet - so "close with comment" arrives as one note)* | Done · request #12 · sent 7 Nov |
-  | **reopened** | The makers reopened your request #12. | Seen by the makers · … |
+  | (just sent) | - | Request #12 · Sent · 7 Nov |
+  | label **`seen`** (once per issue, however often it's re-added) | The makers have seen your request #12. | Request #12 · Seen · 7 Nov |
+  | **closed** | Your request #12 is done. *(+ the last `/owner` text, if the radio hadn't fetched it yet - so "close with comment" arrives as one note)* | Request #12 · Done · 7 Nov |
+  | **reopened** | The makers reopened your request #12. | Request #12 · Seen · … |
 
-  Other labels, assignments and edits say nothing to the owner. A `seen`
+- **Write back**: the owner's follow-up (`POST /v1/reply`) is a comment on
+  the same issue, their lines quoted (`> `), so nothing they write can come
+  back as an `/owner` line. A closed issue opens again, quietly (no
+  "reopened" note goes back); at most 20 a day per radio.
+
+  Other labels, assignments and edits of the issue say nothing to the owner. A `seen`
   label added after closing doesn't undo "done"; reopening does.
 - **Reactions say nothing.** GitHub sends no webhook for a 👀 or 👍 on an
   issue, so the Worker can't hear them (polling every issue for reactions

@@ -2,7 +2,7 @@
 // Support on the key page (1.5.0), against the fake radio (haslerd --fake) in Chrome:
 // the "Something's wrong?" button on the Settings home and its page (the lamp in words,
 // the six lines to read out, the cards from mocked /api/status + /api/diagnostics +
-// /api/software), the Tell the makers sheet's Copy (what it asks the radio for),
+// /api/software), the Write to the makers sheet's Copy (what it asks the radio for),
 // the From the makers card's Seen, the check-in switch under Updates with See what it
 // sends, and the front page's "Remote help is waiting".
 //
@@ -115,7 +115,7 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await page.close();
     });
 
-    await check('the page: the lamp in words, the six lines to read out, the cards, Tell the makers', async () => {
+    await check('the page: the lamp in words, the six lines to read out, the cards, Write to the makers', async () => {
       const page = await ctx.newPage();
       page.on('pageerror', e => errors.push('wrong: ' + e.message));
       await trouble(page);
@@ -131,13 +131,13 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       assert(/on your Wi-Fi \(Casa\)/.test(await text(page, '#wrong-offline')), 'offline copy names the Wi-Fi');
       assert(/went back to 1\.5\.0 by itself on (6 Nov|Nov 6).*keys weren’t answering after the switch/.test(await text(page, '#wrong-rollback')), 'rollback copy: ' + await text(page, '#wrong-rollback'));
       assert(/restarted its player 2 times in the last hour/.test(await text(page, '#wrong-restarts')), 'restarts copy');
-      assert((await page.$$('#wrong-storage button:has-text("Tell the makers")')).length === 1, 'try this on the storage card');
-      assert(await page.isVisible('#tellMakers'), 'Tell the makers at the bottom');
+      assert((await page.$$('#wrong-storage button:has-text("Write to the makers")')).length === 1, 'try this on the storage card');
+      assert(await page.isVisible('#tellMakers') && (await text(page, '#tellMakers')) === 'Write to the makers', 'Write to the makers at the bottom');
       await shot(page, 'wrong-page');
       await page.close();
     });
 
-    await check('Tell the makers: the sheet, the note and the Wi-Fi tick reach the radio, Copy says so', async () => {
+    await check('Write to the makers (sending off): the sheet, the words and the Wi-Fi tick reach the radio, Copy says so', async () => {
       const page = await ctx.newPage();
       page.on('pageerror', e => errors.push('tell: ' + e.message));
       const hits = [];
@@ -146,8 +146,10 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await until(() => page.isVisible('#tellMakers'), 8000, 'the button');
       await page.click('#tellMakers');
       await until(() => page.isVisible('#tellNote'), 4000, 'the sheet');
-      assert((await text(page, '#dlgTitle')) === 'Tell the makers', 'sheet title');
-      assert(/Nothing private: no passwords, no accounts, no phone names/.test(await text(page, '#dlg')), 'the copy');
+      assert((await text(page, '#dlgTitle')) === 'Write to the makers', 'sheet title');
+      assert((await text(page, 'label[for="tellNote"]')) === 'What’s going on?', 'a visible label for the field');
+      assert(/No passwords, no accounts, no phone names/.test(await text(page, '#dlg')), 'the copy');
+      assert(!/Help from the makers|Your requests/.test(await text(page, '#dlg')), 'nothing else on the sheet: ' + await text(page, '#dlg'));
       assert(/Send it to Delgado & Murphy \(hola@example.org\), and nobody else/.test(await text(page, '#tellWho')), 'the makers are named: ' + await text(page, '#tellWho'));
       assert(!(await page.$('#tellSend:visible')), 'no Send on a radio with sending off');
       assert(await page.isChecked('#tellWifi'), 'the Wi-Fi tick is on to start');
@@ -158,13 +160,13 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await until(async () => hits.length >= 1, 4000, 'the report request');
       const q = hits[hits.length - 1].searchParams;
       assert(q.get('note') === 'It goes quiet after a few minutes' && q.get('wifi') === '0', 'query: ' + hits[hits.length - 1].search);
-      await until(async () => /copied|Couldn’t copy/.test(await text(page, '#toast')), 4000, 'a toast');
+      await until(async () => /[Cc]opied|Couldn’t copy/.test(await text(page, '#toast')), 4000, 'a toast');
       await page.click('#tellClose');
       await until(async () => !(await page.isVisible('#tellNote')), 2000, 'the sheet to close');
       await page.close();
     });
 
-    await check('Send to the makers: with the makers\' server set up, the report goes to their private list and the number shows', async () => {
+    await check('Send to the makers: the sheet is the words and Send; a refusal says what to do; sent, it closes into the request', async () => {
       const page = await ctx.newPage();
       page.on('pageerror', e => errors.push('send: ' + e.message));
       await trouble(page, null);
@@ -180,16 +182,19 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await page.route('**/api/support/replies', r => { replies++; r.fulfill({json: {ok: true, added: 0}}); });
       await page.goto(radio.base + '/#settings/wrong');
       await until(() => page.isVisible('#tellMakers'), 8000, 'the button');
-      await until(async () => /Opens a request with Delgado & Murphy/.test(await text(page, '#tellWhy')), 4000, 'the page says what Send does');
+      await until(async () => /Goes to Delgado & Murphy only; they’ll answer here/.test(await text(page, '#tellWhy')), 4000, 'the page says what Send does');
       await page.click('#tellMakers');
       await until(() => page.isVisible('#tellSend'), 4000, 'Send to the makers');
-      assert(/This opens a request with Delgado & Murphy\. You’ll see their answer here/.test(await text(page, '#tellSub')), 'what happens: ' + await text(page, '#tellSub'));
+      assert((await text(page, '#tellWho')) === 'Goes to Delgado & Murphy only. They’ll answer here.', 'one line of reassurance: ' + await text(page, '#tellWho'));
       assert(await page.getAttribute('#tellSend', 'class') === 'btn small primary', 'Send leads');
-      assert(await page.isVisible('#tellCopy') && !/primary/.test(await page.getAttribute('#tellCopy', 'class')), 'Copy stays, quieter');
-      assert(/Or send it yourself/.test(await text(page, '#tellOther')), 'the way round');
-      // what's sent: folded, the radio's own words, private and nothing more
+      assert((await page.$$('#dlg .btn.primary')).length === 1, 'one main action');
+      assert(!(await page.isVisible('#tellCopy')), 'the way round is folded away');
+      assert(await page.$eval('#tellNote', e => parseFloat(getComputedStyle(e).fontSize)) >= 16, '16 px: no zoom on a phone');
+      // what's sent: folded, the radio's own words, private and nothing more; the way round inside
       assert(!(await page.isVisible('#tellPreview')), 'folded to start');
       await page.click('#tellWhat summary');
+      assert(await page.isVisible('#tellCopy') && !/primary/.test(await page.getAttribute('#tellCopy', 'class')), 'Copy, quieter, in the fold');
+      assert(/Rather send it yourself/.test(await text(page, '#tellOther')), 'the way round');
       await until(async () => (await text(page, '#tellPreview')).startsWith('Hasler · Kitchen · radio ab12'), 4000, 'the preview');
       assert(/private list, nowhere public/.test(await text(page, '#tellPrivate')), 'honest about where: ' + await text(page, '#tellPrivate'));
       await page.fill('#tellNote', 'It goes quiet after a few minutes');
@@ -198,18 +203,20 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await page.click('#tellSend');
       await until(() => page.isVisible('#tellSendErr'), 4000, 'the refusal');
       assert(/Share or Copy/.test(await text(page, '#tellSendErr')), 'says what to do instead');
+      await page.click('#tellWhat summary');      // folded again: the way round still shows, under the words
+      assert(await page.isVisible('#tellAlt') && await page.isVisible('#tellCopy'), 'the way round, in view after a refusal');
       refuse = false;
       await page.click('#tellSend');
-      await until(async () => sendBody != null && sendBody.note && page.isVisible('#tellDone'), 4000, 'the send request');
+      await until(async () => sendBody != null && sendBody.note && !(await page.isVisible('#dlg')), 4000, 'the sheet to close');
       assert(sendBody.note === 'It goes quiet after a few minutes' && sendBody.wifi === true, 'body ' + JSON.stringify(sendBody));
-      await until(async () => /Sent\. Your request is #12\./.test(await text(page, '#tellDoneTitle')), 4000, 'the request number');
-      assert(await page.isVisible('#tellSeeReqs') && !(await page.isVisible('#tellNote')), 'the confirmation, and the way to the requests');
-      await page.click('#tellClose');
-      // the makers closed it: the sheet says so next time
+      await until(() => page.isVisible('#reqJust'), 6000, 'the request, on Write to the makers');
+      assert(/#settings\/radio\/requests$/.test(page.url()), 'url: ' + page.url());
+      assert(/Sent · request #12\. They’ll answer here\./.test(await text(page, '#reqJust')), 'one line: ' + await text(page, '#reqJust'));
+      assert(await page.isVisible('#req-12.just'), 'the request itself, marked');
+      // the makers closed it: Something's wrong? says so
       sup.requests = [{number: 12, at: '2026-11-07T18:00:00+01:00', deduped: false, state: 'done'}];
-      await page.click('#tellMakers');
-      await until(async () => /^Done · request #12 · sent (7 Nov|Nov 7)/.test(await text(page, '#tellSent')), 4000, 'the done state: ' + await text(page, '#tellSent'));
-      await page.click('#tellClose');
+      await page.goto(radio.base + '/#settings/wrong');
+      await until(async () => /Request #12 · Done · (7 Nov|Nov 7)/.test(await text(page, '#wrongReqs')), 6000, 'the done state: ' + await text(page, '#wrongReqs'));
       // with a request sent, opening This radio asks the radio for the makers' replies
       await page.goto(radio.base + '/#settings/radio');
       await until(async () => replies >= 1, 8000, 'the replies fetch');
@@ -291,6 +298,8 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       assert(/The radio restarted — send the makers the help link again/.test(await text(page, '#frontAttn')), 'resumed title: ' + await text(page, '#frontAttn'));
       assert(/No internet right now/.test(await text(page, '#frontAttn')), 'no internet: ' + await text(page, '#frontAttn'));
       await page.goto(radio.base + '/#settings/radio');
+      await until(async () => /Waiting · send them the link/.test(await text(page, '#setrow-help')), 8000, 'the row says so: ' + await text(page, '#setrow-help'));
+      await page.click('#setrow-help');
       await until(() => page.isVisible('#helpUrl'), 8000, 'the waiting card');
       assert(/The radio restarted; send the makers this link again/.test(await text(page, '#helpList')), 'the waiting title');
       assert(/press Start again when they say they’re ready/.test(await text(page, '#helpWaitNote')), 'what to do after the hour');

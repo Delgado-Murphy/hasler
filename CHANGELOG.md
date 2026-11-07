@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Write to the makers**: with nothing sent, the page is where you write; each request is a thread with
+  Sent · Seen · Answered · Done, our replies (with line breaks and simple formatting), and **Write back**.
+
+For makers
+- Worker: `/owner` replies keep their line breaks and edits; `POST /v1/reply` comments on the owner's issue.
+
 ## 1.6.3 - 2026-11-07
 
 - Ten new starter sets, by taste and occasion: Turn the Dial (the one a radio

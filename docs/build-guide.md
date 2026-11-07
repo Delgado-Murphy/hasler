@@ -722,7 +722,7 @@ press each time and ends by itself after 24 hours.
 
 Put your address on the radio at install (`makers_contact = hola@…` in
 `hasler.txt`, or `makers: {contact: …}` in `box.yaml`): the key page then
-names you under Help from the makers, **Tell the makers** writes the mail,
+names you under Help from the makers, **Write to the makers** writes the mail,
 and the welcome card can print it. Without it the page says "the people who
 built your radio".
 
@@ -734,7 +734,7 @@ off; Wi-Fi, internet). If they can't find the page, ask in this order: *Is
 the lamp moving? What colour? Is it tapping? Open Settings and read me the
 two lines under the cabinet's name* (the version and the short id, the same
 four letters as the tail of the radio's tailnet name). Then, if you need to
-look: *Settings → Something's wrong? → Tell the makers*, or remote help.
+look: *Settings → Something's wrong? → Write to the makers*, or remote help.
 
 **On the bench, the order of looking** (each survives a power cut unless
 said otherwise): the owner's report; `hasler-boot-report`; `hasler-update

@@ -28,12 +28,12 @@ lines; never a password, token or cookie).
 
 ### What it does
 
-Prefer to write first? **Tell the makers** sends them a report and their answer
-comes back to the radio, under **Your requests** ([Help from the makers](using.md#help-from-the-makers);
+Prefer to write first? **Write to the makers** sends them your words and the
+radio's report; their answer comes back to the same page ([Help from the makers](using.md#help-from-the-makers);
 how the makers answer: [tools/checkin/SUPPORT.md](../tools/checkin/SUPPORT.md)).
 
-1. On the key page: **Settings → This radio → Help from the makers** (at the
-   bottom), then **Let the makers help (24 h)**.
+1. On the key page: **Settings → This radio → Let them look from afar** (under
+   Help from the makers, at the bottom), then **Let the makers help (24 h)**.
 2. The lamp brightens twice, again and again: press any key on the radio within 30 seconds. That
    press is how the radio knows it is you and not someone else on your Wi-Fi.
 3. After a few seconds the page shows a link: **Send this link to the makers**

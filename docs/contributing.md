@@ -172,7 +172,7 @@ publishing are the maintainers' job.
 - **Makers and developers:** open an issue in this repository (bug report or
   idea). Search first; say which version and which cabinet.
 - **Owners** don't need GitHub: on the key page, **Settings → Something's
-  wrong? → Tell the makers** ([Using your Hasler](using.md#help-from-the-makers)).
+  wrong? → Write to the makers** ([Using your Hasler](using.md#help-from-the-makers)).
 - **A security problem:** not in an issue. See [SECURITY.md](../SECURITY.md).
 
 ## Why not a Volumio plugin?

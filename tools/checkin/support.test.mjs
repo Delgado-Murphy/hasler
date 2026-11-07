@@ -4,7 +4,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
 import worker from "./worker.js";
-import { validateReport, labelsFor, titleFor, bodyFor, ownerReply, signatureOk, PER_DAY } from "./support.js";
+import { validateReport, labelsFor, titleFor, bodyFor, ownerReply, signatureOk, PER_DAY, FOLLOWUPS_PER_DAY } from "./support.js";
 
 class FakeKV {
   constructor() { this.m = new Map(); this.ttl = new Map(); }
@@ -63,7 +63,7 @@ test("validate, labels, title and body", () => {
   assert.equal(titleFor(report({ note: "" })), "ab12 · red, tapping SOS — something needs a maker");
   const body = bodyFor(report());
   assert.ok(body.includes("```text\nHasler · Kitchen") && body.includes("'''sneaky'''") && body.includes(`<!-- hasler-box: ${BOX} -->`));
-  assert.equal(ownerReply("thanks\n/owner  We'll post a new card on Monday.\nBest, B"), "We'll post a new card on Monday. Best, B");
+  assert.equal(ownerReply("thanks\n/owner  We'll post a new card on Monday.\nBest, B"), "We'll post a new card on Monday.\nBest, B");
   assert.equal(ownerReply("/ownerx no"), null);
   assert.equal(ownerReply("just us talking"), null);
 });
@@ -196,4 +196,57 @@ test("the issue's state reaches the radio: seen once, done (folding a reply not 
   assert.equal((await hook(e, issues("closed", { repository: { full_name: "Delgado-Murphy/hasler" } }), { event: "issues" })).status, 204);
   assert.equal((await hook(e, issues("closed"), { event: "issues", secret: "nope" })).status, 401);
   assert.equal((await get()).length, 3);
+});
+
+test("a /owner reply keeps its line breaks (capped); editing it queues the new words under the same id", async () => {
+  assert.equal(ownerReply("/owner Hello!! **how are you**\n\n\n### Hope all is good\r\n- one  \n- two"), "Hello!! **how are you**\n\n### Hope all is good\n- one\n- two");
+  assert.equal(ownerReply("/owner " + "x".repeat(3000)).length, 2000);
+  const e = env();
+  await send(e, report());
+  await hook(e, comment(12, "/owner First go"));
+  const get = async () => (await (await worker.fetch(new Request(`https://x/v1/replies?box_id=${BOX}`, { headers: { "x-hasler-token": "word" } }), e)).json()).replies;
+  const first = (await get())[0];
+  assert.equal((await hook(e, comment(12, "/owner Second go,\nbetter", { action: "edited" }))).status, 200);
+  const q = await get();
+  assert.deepEqual(q.map(r => [r.id, r.text, !!r.edited]), [[first.id, "Second go,\nbetter", true]]);
+  assert.equal((await hook(e, comment(12, "no longer for the owner", { action: "edited" }))).status, 204);
+  assert.equal((await hook(e, comment(12, "/owner gone", { action: "deleted" }))).status, 204);
+});
+
+test("POST /v1/reply: the owner writes back on their own request; quoted, rate-limited, reopens quietly", async () => {
+  const e = env();
+  await send(e, report());                           // issue 12 is BOX's
+  const reply = (doc, token = "word") => worker.fetch(new Request("https://x/v1/reply", { method: "POST", body: JSON.stringify(doc),
+    headers: { "content-type": "application/json", "x-hasler-token": token } }), e);
+  let closed = true;
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (init.method === "GET" && String(url).endsWith("/issues/12")) { calls.push({ url: String(url), method: "GET" }); return new Response(JSON.stringify({ number: 12, state: closed ? "closed" : "open" }), { status: 200 }); }
+    if (init.method === "PATCH") { closed = false; }
+    return inner(url, init);
+  };
+  try {
+    const res = await reply({ schema: 1, box_id: BOX, issue: 12, note: "Pushed it in.\n/owner sneaky\nStill quiet." });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, number: 12, reopened: true });
+    const posted = calls.find(c => c.url.endsWith("/issues/12/comments"));
+    assert.equal(posted.body.body, "**The owner wrote back** from the radio:\n\n> Pushed it in.\n> /owner sneaky\n> Still quiet.");
+    assert.ok(!/^\/owner/m.test(posted.body.body), "no line of it can come back as a reply");
+    assert.deepEqual(calls.find(c => c.method === "PATCH").body, { state: "open" });
+    // the reopen it caused says nothing to the radio
+    const issues = { action: "reopened", repository: { full_name: "Delgado-Murphy/hasler-support" }, issue: { number: 12, body: "", updated_at: "2026-11-08T10:00:00Z" }, sender: { type: "User" } };
+    assert.equal((await hook(e, issues, { event: "issues" })).status, 204);
+    assert.equal(e.SUPPORT.m.has(`replies:${BOX}`), false);
+    // open already: no PATCH
+    const n = calls.length;
+    assert.deepEqual(await (await reply({ schema: 1, box_id: BOX, issue: 12, note: "And another thing" })).json(), { ok: true, number: 12, reopened: false });
+    assert.ok(!calls.slice(n).some(c => c.method === "PATCH"));
+    // not this radio's, a bad word, nothing to say
+    assert.equal((await reply({ schema: 1, box_id: "another-radio", issue: 12, note: "hi" })).status, 404);
+    assert.equal((await reply({ schema: 1, box_id: BOX, issue: 99, note: "hi" })).status, 404);
+    assert.equal((await reply({ schema: 1, box_id: BOX, issue: 12, note: "hi" }, "wrong")).status, 403);
+    assert.equal((await reply({ schema: 1, box_id: BOX, issue: 12, note: "  \n " })).status, 400);
+    for (let i = 2; i < FOLLOWUPS_PER_DAY; i++) assert.equal((await reply({ schema: 1, box_id: BOX, issue: 12, note: `n ${i}` })).status, 200);
+    assert.equal((await reply({ schema: 1, box_id: BOX, issue: 12, note: "one more" })).status, 429);
+  } finally { globalThis.fetch = inner; }
 });

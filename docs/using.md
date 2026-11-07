@@ -614,31 +614,31 @@ back**.
 Restart the radio**. If that doesn't help: tone knob off for 5 seconds, wait
 for dark, unplug for 10 seconds, plug in.
 
-**Still not right?** [Tell the makers](#help-from-the-makers).
+**Still not right?** [Write to the makers](#help-from-the-makers).
 
 ## Help from the makers
 
-**Tell the makers:** **Settings → Something's wrong? → Tell the makers**. Add
-a line about what you noticed and press **Send to the makers**. That opens a
-request with Delgado & Murphy and gives you its number. You need no account.
+**Write to the makers:** **Settings → This radio → Write to the makers** (or
+**Something's wrong? → Write to the makers**). Say what's going on and press
+**Send to the makers**. It goes to Delgado & Murphy only, with a number; you
+need no account.
 
-- **What goes:** what they usually ask first: the version, what the lamp says,
-  what's playing, what went wrong inside. **What's sent** on the sheet shows
+- **What goes:** your words and what they usually ask first (the version,
+  the lamp, what's playing, what went wrong inside). **What's sent** shows
   every line. Nothing private. Untick **Include my Wi-Fi name** if you like.
-  It goes to their private list, nowhere public.
-- **Their answer** comes back to the radio. Look under **This radio → Help
-  from the makers → Your requests**: each request with its number, date, your
-  first line, and their replies in order. It says **Sent**, **Seen by the
-  makers** or **Done**. A new reply also shows under **Needs attention**, and
-  the gear on the front page gets a dot.
-- **No internet?** The radio keeps the request and sends it by itself when
-  it's back. **Your requests** says **Waiting to send**, with **Send now**.
-- **Rather send it yourself?** **Share…**, **Copy** or **Email** are under the
-  button. If you only phone, read out the six lines under **Say this to the
-  makers**.
+- **Their answer** comes back to the same page: each request is a short
+  conversation, marked **Sent**, **Seen**, **Answered** or **Done**. A new
+  reply also shows under **Needs attention**, and the gear gets a dot.
+  **Write back** answers them on the same request; **New request** starts
+  another.
+- **No internet?** The radio keeps it and sends it by itself when it's back
+  (**Waiting to send**, with **Send now**).
+- **Rather send it yourself?** **Share…**, **Copy** or **Email** are under
+  **What's sent**. If you only phone, read out the six lines under **Say this
+  to the makers**.
 
-**Let them look from afar.** **Settings → This radio → Help from the makers →
-Let the makers help (24 h)**, then press a key on the radio. Send the link the
+**Let them look from afar.** **Settings → This radio → Let them look from
+afar → Let the makers help (24 h)**, then press a key on the radio. Send the link the
 page shows to the makers, and nobody else. Help ends after 24 hours, or when
 you press **Stop**. The link works for an hour; if nobody came, press Start
 again later. If the radio restarts meanwhile, the page shows a new link to
@@ -652,7 +652,7 @@ If nothing on the radio can be touched, put a plain text file called
 The link appears in **hasler-help-result.txt** next to it; delete that file
 once the link is sent.
 
-**If the radio has to come back.** Send a report first. Pack the charger and
+**If the radio has to come back.** Write to the makers first. Pack the charger and
 cable; leave the memory card in. Your stations and accounts stay on the
 radio (sign out in Settings first, if you'd rather). Afterwards the makers
 leave a note under **This radio → From the makers**.
