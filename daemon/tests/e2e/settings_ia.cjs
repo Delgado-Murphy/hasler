@@ -84,7 +84,7 @@ const SW = {ok: true, installed: true, version: '1.4.0', channel: 'stable', upda
       assert(rs.map(r => r.id).join() === 'sound,keys,phones,accounts,rooms,lamp,radio', 'rows: ' + rs.map(r => r.id).join());
       assert(rs.map(r => r.title).join('|') === 'Sound|Keys|Phones|Music accounts|Rooms|Pilot lamp|This radio', 'titles: ' + rs.map(r => r.title).join('|'));
       const by = Object.fromEntries(rs.map(r => [r.id, r.sub]));
-      assert(/^Ceiling 70 · quietest step 28/.test(by.sound), 'Sound: ' + by.sound);
+      assert(/^Ceiling 70 · not set yet · quietest step 28/.test(by.sound), 'Sound: ' + by.sound);   // nobody set the ceiling on a fresh radio
       assert(/^1 .+ · 2 /.test(by.keys), 'Keys: ' + by.keys);
       assert(by.keys.length <= 70, 'Keys summary too long: ' + by.keys);
       assert(/Spotify isn’t on this radio|YouTube Music isn’t on this radio/.test(by.accounts), 'Accounts: ' + by.accounts);

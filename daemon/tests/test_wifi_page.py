@@ -80,6 +80,37 @@ def test_no_networks_picks_other():
     assert 'id="netother" checked' in html and "found no networks" in html
 
 
+# The first page a new owner reads: it describes the lamp as it is (light language v2),
+# welcomes them, and says what comes after the Wi-Fi.
+def test_the_legend_is_the_real_lamp_and_the_copy_welcomes():
+    table = wifi_page.strings(PAGE)
+    for lang in ("en", "es"):
+        s = table[lang]
+        assert "CQ" in s["lamp_cq"] and "CQ" in s["lamp_fail"] and 'class="pic green"' in s["lamp_busy"]
+        assert not any("white" in v.lower() or "blanco" in v.lower() for v in s.values()), lang
+        assert "Look again" in s["note_hotspot"] or "Busca otra vez" in s["note_hotspot"]
+        assert "{n}" not in s["press"] and s["press_wait"]
+    en = table["en"]
+    assert en["lede_first"].startswith("Welcome.") and "key page" in en["lede_first"]
+    assert "power cut" in en["lede_retry"] and "by itself" in en["lede_retry"]
+    assert "Make it yours" in en["next_2"]
+    assert "set me up" in en["lamp_cq"] and "mistyped password" in en["lamp_fail"]
+    # The CQ pictogram is drawn in the page itself, dits and dahs like the printed key card's.
+    html = wifi_page.render(PAGE, {"hotspot": True, "current": "", "networks": NETS}, "en")
+    assert html.count('<i class="dah"></i>') >= 5 and "warm white" not in html.lower()
+    assert "looks again every 20 seconds" in html and 'href="/wifi">Look again</a>' in html
+
+
+# A mistake is said next to the field it concerns, the other slots stay empty.
+@pytest.mark.parametrize("key, slot", [("err_short", "errpw"), ("err_long", "errpw"), ("err_name", "errother"),
+                                       ("err_choose", "errnet"), ("err_save", "err"), (None, "err")])
+def test_the_error_sits_by_its_field(key, slot):
+    html = wifi_page.render(PAGE, {"hotspot": True, "current": "", "networks": NETS}, "en", error="Oops <x>", error_key=key)
+    filled = re.findall(r'<p class="err(?: near)?" id="(\w+)" role="alert">Oops &lt;x&gt;</p>', html)
+    assert filled == [slot], filled
+    assert len(re.findall(r'<p class="err(?: near)?" id="\w+" role="alert"></p>', html)) == 3
+
+
 @pytest.mark.parametrize("form, body", [
     ({"net": "wpa-psk:Ca:sa", "password": "12345678"}, {"ssid": "Ca:sa", "password": "12345678", "security": "wpa-psk"}),
     ({"net": "none:Bar", "password": "ignored"}, {"ssid": "Bar", "password": "", "security": "none"}),
@@ -128,7 +159,10 @@ def test_form_mistake_keeps_the_choice_not_the_password(hotspot):
     status, page = post_form(hp, {"net": "wpa-psk:Casa", "password": "short"})
     assert status == 400 and joined == []
     assert "at least 8 characters" in page and 'value="wpa-psk:Casa" data-sec="wpa-psk" checked' in page
-    assert "short" not in re.sub(r"<script.*?</script>", "", page, flags=re.S).replace("shortly", "")
+    assert 'id="errpw" role="alert">Wi-Fi passwords are at least 8 characters.</p>' in page   # by the password field
+    assert "short" not in re.sub(r"<script.*?</script>", "", page, flags=re.S).replace("shortly", "").replace("long-short", "")
+    status, page = post_form(hp, {"net": "other", "other_ssid": " "})
+    assert status == 400 and 'id="errother" role="alert">Type the network’s name.</p>' in page
 
 
 def test_form_helper_error_is_shown(hotspot):

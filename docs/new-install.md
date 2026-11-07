@@ -115,21 +115,71 @@ while the radio starts, as it always will.
 
 If the key page doesn't open after 30 minutes, see [If it goes wrong](#if-it-goes-wrong).
 
-## 4. After the install: what still needs you
+## 4. After the install: what still needs a person
 
-The install sets up everything a release can. A few things belong to a person
-and an account, so the radio can't do them alone:
+The install sets up everything a release can. What is left belongs to a person:
+some of it to the maker on the bench, the rest to the owner, who is guided
+through it by the key page itself.
+
+### Before handing over (the maker, on the bench)
+
+**Settings → Maker tools → Handover** (tap the version number seven times to
+show Maker tools) is this list, read live from the radio: a ✓ for each thing
+that is right, a `!` that opens where it is fixed, **Copy handover note** for
+your records, **Print welcome card** for the owner.
+
+1. `hasler-install` done: **Settings → This radio → Updates** shows a version,
+   channel **Stable**, mode **Automatic** (`hasler.txt` sets both).
+2. **Volume ceiling**, set by ear with key 6 held and something dense playing
+   ([build guide, Phase 3a](build-guide.md#phase-3a--keys-drive-the-music)).
+   This is the maker's job: judging the cone's first rattle needs the bench and
+   an ear that knows the speaker. Write the number down. After a new SD card
+   it must be done again (it lives in `settings.json`); until someone sets it,
+   Sound says **not set yet** and the owner is asked to.
+3. Knob calibration if a knob feels off (**Sound → If a knob feels off →
+   Calibrate**); the lamp checked by eye (**Maker tools → Lamp check**); mono on.
+4. **Where it stands**: the city, under **Pilot lamp → At night**, if you know
+   where the radio is going. Otherwise leave it: the owner's list asks.
+5. **Room name** if the owner told you; otherwise leave it for the list.
+6. The home Wi-Fi, if the owner gave it to you (then the owner never meets the
+   setup network). Otherwise make sure the setup network works: unplug the
+   router or carry the radio out of range, see the lamp tap CQ, join **Hasler**
+   on a phone, see the page open.
+7. **The setup network's password**: read it on the page, **This radio → Setup
+   network → Show** (never with `curl`). Or set your own in moOde → Network →
+   Access Point; the page then says "Not shown here", so write it down from
+   moOde. Either way it goes on the welcome card.
+8. Clean up what is yours: **Forget** your Bluetooth phones (Phones), **Sign
+   out** of your Spotify and YouTube Music (Music accounts), remove your laptop
+   from **Other addresses** (This radio, folded at the bottom), stop remote
+   help. **Reset keys to defaults**, or **Start from a set…** with the set the
+   owner asked for, and play every key once.
+9. Print the **welcome card** (Handover → Print welcome card, or Edit keys →
+   Print a key card → Welcome card; tick *Include the setup password*) and the
+   key card. The welcome card carries the key page's address, the setup
+   network, what the lamp says, and the first three things to do.
+10. Tell the owner how to reach you, and how [Help from the makers](using.md#help-from-the-makers)
+    works.
+
+### After handing over (the owner, guided by Make it yours)
+
+On a new radio the key page's Settings opens with **Make it yours**: the
+choices that are still untouched, read from the radio itself, in the order
+of the first evening. Nothing is ticked by hand; a row is done when the radio
+knows it is (a ceiling saved, the keys changed, the room named). The optional
+rows have **Skip**; the whole list can be hidden and lives on under This radio.
 
 | What | Where | Why it needs you |
 |---|---|---|
-| **Volume ceiling** - do this first | key page → Settings → **Sound** → Volume ceiling | protects the 1964 speaker; set by ear ([build guide, Phase 3a](build-guide.md#phase-3a--keys-drive-the-music)) |
+| **Volume ceiling** - check it | key page → Settings → **Sound** → Volume ceiling | the makers set it to a number on the card; lower it if the room is small. The row says *not set yet* if nobody did |
 | **Your stations and playlists** | key page → **Edit keys** (**Start from a set…** for a whole set at once) | the built-in stations are a starter set, not the owner's taste |
+| **Room name** | key page → Settings → Rooms → This room | yours to choose; shown on the page, on phones, in the rooms list |
+| **Where it stands** (the lamp at night) | key page → Settings → Pilot lamp → At night | so the lamp dims by the sun where you live |
+| **A phone** (Bluetooth) | hold **PU** on the radio until the lamp breathes blue | your phone |
 | **Spotify** (Premium) | key page → Settings → Music accounts → Spotify → **Sign in**, then enter the code at spotify.com/pair ([Using your Hasler](using.md#playing-from-your-phone)) | your Spotify account |
 | **YouTube Music** private playlists, Liked songs | key page → Settings → Music accounts → YouTube Music → **Sign in** | your Google sign-in; public playlists need nothing |
 | **Home Assistant** (optional) | key page → Settings → This radio → Home Assistant → paste a token | a token from your HA ([build guide, Phase 5](build-guide.md#phase-5--home-assistant)) |
-| **Knob calibration** (if the knobs feel off) | key page → Settings → Sound → If a knob feels off → **Calibrate** | turning the real knobs |
-| **Room name** (two or more Haslers) | key page → Settings → Rooms → This room | yours to choose |
-| **Hotspot password** | `curl -s hasler.local:8080/api/wifi` → `setup.password` | the setup hotspot "Hasler" gets a random one on the first start; write it down for the owner, or choose your own in moOde → Network → Access Point ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)) |
+| **A card by the radio** | key page → Edit keys → **Print a key card** | what each key does and what the lamp says |
 
 Spotify casting from a phone (*Hasler* in the Spotify app's device list),
 AirPlay, Bluetooth and UPnP work without any of this.

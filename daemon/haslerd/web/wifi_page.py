@@ -22,6 +22,10 @@ from urllib.parse import parse_qs
 LANGS = ("en", "es")
 SECURITIES = ("auto", "none", "wpa-psk", "sae")
 HOTSPOT_SSID = "Hasler"
+# A mistake is said next to the field it concerns: the page's error slots by the
+# form mistake's key (FormError); anything else goes under the button.
+ERROR_SLOTS = {"err_choose": "error_net", "err_name": "error_other", "err_short": "error_pw", "err_long": "error_pw"}
+ALL_SLOTS = ("error", "error_net", "error_other", "error_pw")
 
 _STRINGS = re.compile(r'<script type="application/json" id="strings">(.*?)</script>', re.S)
 _SLOT = re.compile(r"\{\{(=?)(\w+)\}\}")
@@ -105,9 +109,10 @@ def _bars(signal: int, label: str) -> str:
 
 
 def render(page: str, status: dict[str, Any], lang: str, *, state: str = "form", error: str = "",
-           form: dict[str, str] | None = None, saved_ssid: str = "") -> str:
+           form: dict[str, str] | None = None, saved_ssid: str = "", error_key: str | None = None) -> str:
     """The page for this phone. ``status`` is Wifi.status(); ``form`` the fields
-    sent back after a mistake (the choice is kept, the password never is)."""
+    sent back after a mistake (the choice is kept, the password never is);
+    ``error_key`` the mistake's name, so it is said by the field it concerns."""
     table = strings(page)
     s = {**table.get("en", {}), **table.get(lang, {})}
     form = form or {}
@@ -165,7 +170,8 @@ def render(page: str, status: dict[str, Any], lang: str, *, state: str = "form",
         "other_ssid": escape(form.get("other_ssid", "")),
         "note_key": note_key,
         "note": s.get(note_key, ""),
-        "error": escape(error),
+        **{slot: "" for slot in ALL_SLOTS},
+        ERROR_SLOTS.get(error_key or "", "error"): escape(error),
         "langs": langs,
         **{f"sec_{k}": (" selected" if security == v else "")
            for k, v in (("auto", "auto"), ("wpa", "wpa-psk"), ("sae", "sae"), ("none", "none"))},
