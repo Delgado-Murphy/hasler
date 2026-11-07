@@ -178,6 +178,7 @@ class FakeYTMusic:
     calls: list = []
     fail: set = set()
     coffee = COFFEE
+    timed = None        # get_lyrics(timestamps=True) answers this when set (synced-lyrics tests)
 
     def __init__(self, auth=None, language=None, **kwargs):
         self.auth = auth
@@ -260,6 +261,8 @@ class FakeYTMusic:
 
     def get_lyrics(self, browse_id, timestamps=False):
         self._rec("get_lyrics", browse_id)
+        if timestamps and FakeYTMusic.timed is not None:
+            return FakeYTMusic.timed
         return {"lyrics": "Hola, ladrón de paz\r\n...", "source": "Source: Musixmatch", "hasTimestamps": False}
 
     def rate_song(self, video_id, rating="INDIFFERENT"):
@@ -282,6 +285,7 @@ def fake_api() -> types.SimpleNamespace:
     FakeYTMusic.calls = []
     FakeYTMusic.fail = set()
     FakeYTMusic.coffee = COFFEE
+    FakeYTMusic.timed = None
     return types.SimpleNamespace(YTMusic=FakeYTMusic, setup=lambda **kw: "{}")
 
 

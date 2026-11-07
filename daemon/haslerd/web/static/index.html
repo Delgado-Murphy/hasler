@@ -652,6 +652,44 @@ dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);max-height:min(88dvh,760
 .ytn-lyrics{max-height:min(46vh,420px);overflow:auto;overscroll-behavior:contain;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--sheet)}
 .ytn-text{margin:0;white-space:pre-wrap;color:var(--cream);font:15px/1.55 var(--sans)}
 .ytn-src{margin:10px 0 0;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+/* Lyrics: a scrolling sheet and a quiet foot (Synced / Plain, the source, the timing nudge).
+   Synced: the line being sung in the lamp's amber, sung lines dimmed, the next ones cream,
+   the line kept in the middle of the box. Fraunces, as the dial's name. */
+.ytn-lyrics.has-foot{max-height:none;overflow:hidden;padding:0}
+.lyr-plain{max-height:min(46vh,420px);overflow:auto;overscroll-behavior:contain;padding:12px 14px}
+.lyr-plain:focus-visible,.lyr-box:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.lyr-wrap{position:relative}
+.lyr-box{position:relative;height:min(46vh,400px);overflow:auto;overscroll-behavior:contain;padding:0 16px;scrollbar-width:thin;
+  -webkit-mask-image:linear-gradient(transparent 0,#000 16%,#000 84%,transparent 100%);mask-image:linear-gradient(transparent 0,#000 16%,#000 84%,transparent 100%)}
+.lyr-pad{height:42%}
+.lyr-lines{list-style:none;margin:0;padding:0}
+.lyl{margin:0;padding:5px 0;color:#CDBF9F;font:600 19px/1.32 var(--serif);letter-spacing:.005em;text-wrap:pretty;
+  transition:color .32s ease,text-shadow .32s ease}
+.lyl.past{color:#8C785B}
+.lyl.now{position:relative;color:var(--amber);text-shadow:0 0 18px rgba(255,178,56,.32)}
+/* Not by colour alone: a short amber rule in the margin, like the dial's needle. */
+.lyl.now::before{content:"";position:absolute;left:-11px;top:9px;bottom:9px;width:3px;border-radius:2px;background:var(--amber)}
+.lyl.gap{color:#6E5A40;letter-spacing:.3em}
+.lyl.now.gap{color:var(--amber)}
+.lyl.now .w{color:#CDBF9F;text-shadow:none}
+.lyl.now .w.sung{color:var(--amber);text-shadow:0 0 18px rgba(255,178,56,.32)}
+.lyl.now .w.cur{background:linear-gradient(90deg,var(--amber) var(--p,0%),#CDBF9F var(--p,0%));-webkit-background-clip:text;background-clip:text;color:transparent}
+@media (min-width:960px){ .lyl{font-size:21px} }
+.lyr-back{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);min-height:36px;padding:0 14px;border:1px solid rgba(255,178,56,.55);border-radius:18px;
+  background:rgba(31,20,13,.94);color:var(--title);font:12px/1 var(--sans);letter-spacing:.02em;white-space:nowrap;cursor:pointer}
+.lyr-back::before{content:"";position:absolute;inset:-5px -2px}
+.lyr-back:hover{background:#2A1B10}
+.lyr-back:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.lyr-foot{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 4px 0 14px;border-top:1px solid var(--line)}
+.lyr-foot .ytn-src{margin:0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lyr-tag{display:inline-flex;align-items:center;gap:6px;flex:none;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.lyr-tag.on{color:var(--amber)}
+.lyr-tag.on::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px rgba(255,178,56,.7)}
+.lyr-nudge{display:flex;flex:none}
+.lyr-nudge button{min-width:44px;height:44px;padding:0 8px;border:0;background:none;color:var(--text2);font:12px/1 var(--sans);cursor:pointer;border-radius:8px}
+.lyr-nudge button:hover{color:var(--title);background:rgba(255,233,194,.05)}
+.lyr-nudge button:focus-visible{outline:2px solid var(--amber);outline-offset:-4px}
+@media (prefers-reduced-motion:reduce){ .lyl{transition:none} }
 
 /* ---------- settings / HA ---------- */
 .card-box{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line2);border-radius:14px;background:linear-gradient(180deg,#26190F 0%,#211610 100%)}
@@ -4597,14 +4635,159 @@ function paintYtmNow(){
     h('button', {type:'button', class:'sa-btn', id:'ytnMore', title:'More', 'aria-label':'More for ' + song, 'aria-haspopup':'dialog',
       onclick: e => ytSheet(ytNowItem(t), {mode:'browse', now:true}, e.currentTarget)}, icon('<circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/>', 16, 16, '0 0 16 16')));
   if (ytNow.lyrOpen){
-    const dr = h('div', {class:'ytn-lyrics', id:'ytnLyrics', role:'region', 'aria-label':'Lyrics for ' + song, tabindex:'0'});
+    const ready = ytNow.lyrFor === t.vid && !ytNow.lyrBusy, doc = ready ? ytNow.lyr : null;
+    const synced = !!(doc && doc.synced && Array.isArray(doc.lines) && doc.lines.length);
+    const plain = !!(doc && !synced && doc.lyrics);
+    const dr = h('div', {class:'ytn-lyrics' + (synced || plain ? ' has-foot' : ''), id:'ytnLyrics', role:'region', 'aria-label':'Lyrics for ' + song,
+      tabindex: synced || plain ? null : '0'});
     if (ytNow.lyrFor !== t.vid && !ytNow.lyrBusy) ytLyrics(t.vid);
-    if (ytNow.lyrFor !== t.vid || ytNow.lyrBusy) dr.append(h('p', {class:'stat'}, 'Finding the lyrics…'));
-    else if (ytNow.lyr && ytNow.lyr.lyrics) dr.append(h('p', {class:'ytn-text'}, ytNow.lyr.lyrics.replace(/\r\n?/g, '\n')), ytNow.lyr.source ? h('p', {class:'ytn-src'}, ytNow.lyr.source) : null);
-    else dr.append(h('p', {class:'stat'}, ytNow.lyr && ytNow.lyr.err ? ytNow.lyr.err : 'No lyrics for this song.'));
+    if (!ready) dr.append(h('p', {class:'stat'}, 'Finding the lyrics…'));
+    else if (synced) lyrBuild(dr, doc, song);
+    else if (plain) dr.append(h('div', {class:'lyr-plain', tabindex:'0', 'aria-label':'Lyrics text'}, h('p', {class:'ytn-text'}, doc.lyrics.replace(/\r\n?/g, '\n'))),
+      lyrFoot(doc, false));
+    else dr.append(h('p', {class:'stat'}, doc && doc.err ? doc.err : 'No lyrics for this song.'));
     box.append(dr);
   }
   if (had){ const f = $(had); if (f) f.focus({preventScroll:true}); }
+  lyrKick();
+}
+
+/* -- synced lyrics: the line being sung, from /api/status "position" --
+   The radio says where MPD is (elapsed_s, play/pause) about once a second; the page
+   runs that clock on with requestAnimationFrame between polls. Each poll is taken as
+   sampled half-way through its round trip, and nudged 30% toward (MPD's elapsed
+   steps by ~46 ms on the radio: a hard snap each poll would jitter); more than 0.75 s
+   off, a new song, or play/pause snaps it (a seek, a skip, a key pressed again).
+   offset_ms (settings ytm.lyrics_offset_ms) is the output buffer between MPD and the
+   speaker, less a short lead: a line lights a moment before it is heard. */
+const LS = {vid:'', base:0, t0:0, playing:false, at:0, off:250, idx:-1, word:-1, snap:true, raf:0,
+  manualUntil:0, manualTimer:null, saving:null, autoAt:0};
+const LYR_JUMP_S = 0.75, LYR_PULL = 0.3, LYR_MANUAL_MS = 5000, LYR_NUDGE_MS = 100;
+const lyrClock = now => LS.base + (LS.playing ? (now - LS.t0) / 1000 : 0);
+function lyrFeed(st, sent, got){
+  const p = st && st.position, t = st && st.track;
+  if (!p || !t || !t.vid || !isFinite(p.elapsed_s)){ if (LS.playing){ LS.base = lyrClock(got); LS.t0 = got; LS.playing = false; } return; }
+  const fresh = t.vid !== LS.vid;
+  if (!fresh && p.at && p.at < LS.at) return;            // an older answer overtaken by a newer one
+  if (typeof p.offset_ms === 'number' && !LS.saving) LS.off = p.offset_ms;
+  const mid = (sent + got) / 2, obs = p.elapsed_s, playing = p.state === 'play';
+  const pred = lyrClock(mid), off = Math.abs(pred - obs);
+  // A slow answer (a weak phone signal) only corrects a jump: its timing is too loose to fine-tune.
+  if (!fresh && playing === LS.playing && off <= LYR_JUMP_S && got - sent > 900) return;
+  if (fresh || playing !== LS.playing || off > LYR_JUMP_S){ LS.base = obs; LS.snap = true; }
+  else LS.base = pred + LYR_PULL * (obs - pred);
+  if (fresh){ LS.idx = -1; LS.word = -1; }
+  LS.vid = t.vid; LS.t0 = mid; LS.playing = playing; LS.at = p.at || LS.at;
+  lyrKick();
+}
+function lyrOn(){
+  const d = ytNow.lyr;
+  return !!(ytNow.lyrOpen && d && d.synced && ytNow.lyrFor === LS.vid && $('ytnSync') && !document.hidden);
+}
+function lyrKick(){ if (!LS.raf && lyrOn()) LS.raf = requestAnimationFrame(lyrFrame); }
+function lyrFrame(now){
+  LS.raf = 0;
+  if (!lyrOn()) return;
+  lyrPaint(now);
+  if (LS.playing) LS.raf = requestAnimationFrame(lyrFrame);
+}
+// The last line whose time has come (-1 before the first).
+function lyrIndex(lines, pos){
+  let lo = 0, hi = lines.length - 1, at = -1;
+  while (lo <= hi){ const m = (lo + hi) >> 1; if (lines[m].t <= pos){ at = m; lo = m + 1; } else hi = m - 1; }
+  return at;
+}
+function lyrPaint(now){
+  const box = $('ytnSync'), lines = ytNow.lyr.lines; if (!box) return;
+  const pos = lyrClock(now) - LS.off / 1000;
+  let i = lyrIndex(lines, pos);
+  // A small step back (a poll's correction at a line's edge) doesn't flicker the line back.
+  if (!LS.snap && i < LS.idx && LS.idx >= 0 && pos > lines[LS.idx].t - 0.35) i = LS.idx;
+  const els = box.querySelectorAll('.lyl');
+  if (i !== LS.idx || LS.snap){
+    els.forEach((el, n) => {
+      el.classList.toggle('past', n < i); el.classList.toggle('now', n === i);
+      if (n === i) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
+      if (n !== i) el.querySelectorAll('.w').forEach(w => { w.classList.remove('sung', 'cur'); w.style.removeProperty('--p'); });
+    });
+    const jumped = LS.snap;
+    LS.idx = i; LS.word = -1; LS.snap = false;
+    lyrScroll(box, els[i] || null, jumped);
+  }
+  const ln = lines[i], el = els[i];
+  if (ln && ln.words && el){
+    const ws = el.querySelectorAll('.w');
+    let k = -1; for (let n = 0; n < ln.words.length; n++){ if (ln.words[n].t <= pos) k = n; else break; }
+    if (k !== LS.word){ ws.forEach((w, n) => { w.classList.toggle('sung', n < k); w.classList.toggle('cur', n === k); }); LS.word = k; }
+    if (k >= 0 && ws[k]){
+      const end = k + 1 < ln.words.length ? ln.words[k + 1].t : (lines[i + 1] ? Math.min(lines[i + 1].t, ln.words[k].t + 1.5) : ln.words[k].t + 1.5);
+      const p = Math.max(0, Math.min(1, (pos - ln.words[k].t) / Math.max(0.05, end - ln.words[k].t)));
+      ws[k].style.setProperty('--p', (p * 100).toFixed(1) + '%');
+    }
+  }
+}
+function lyrScroll(box, el, jumped){
+  if (Date.now() < LS.manualUntil) return;
+  const top = el ? el.offsetTop - (box.clientHeight - el.offsetHeight) / 2 : 0;
+  LS.autoAt = Date.now();
+  box.scrollTo({top: Math.max(0, top), behavior: reduced.matches || jumped ? 'auto' : 'smooth'});
+}
+// The owner scrolls by hand: the box stops following for a few seconds, and says how to come back.
+function lyrManual(){
+  LS.manualUntil = Date.now() + LYR_MANUAL_MS;
+  const chip = $('lyrBack'); if (chip) chip.hidden = false;
+  clearTimeout(LS.manualTimer);
+  LS.manualTimer = setTimeout(lyrResume, LYR_MANUAL_MS + 30);
+}
+function lyrResume(){
+  clearTimeout(LS.manualTimer); LS.manualUntil = 0;
+  const chip = $('lyrBack');
+  if (chip){ const back = document.activeElement === chip; chip.hidden = true; if (back){ const b = $('ytnSync'); if (b) b.focus({preventScroll:true}); } }
+  const box = $('ytnSync'); if (box && LS.idx >= 0) lyrScroll(box, box.querySelectorAll('.lyl')[LS.idx], false);
+}
+function lyrBuild(dr, doc, song){
+  const ol = h('ol', {class:'lyr-lines'});
+  for (const ln of doc.lines){
+    const gap = !String(ln.text || '').trim();
+    ol.append(h('li', {class:'lyl' + (gap ? ' gap' : '')}, gap ? h('span', {'aria-hidden':'true'}, '♪ ♪') :
+      ln.words && ln.words.length ? ln.words.map(w => h('span', {class:'w'}, w.w)) : ln.text));
+  }
+  const box = h('div', {class:'lyr-box', id:'ytnSync', tabindex:'0', 'aria-label':'Lyrics, following the song'},
+    h('div', {class:'lyr-pad', 'aria-hidden':'true'}), ol, h('div', {class:'lyr-pad', 'aria-hidden':'true'}));
+  const keys = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+  box.addEventListener('wheel', lyrManual, {passive:true});
+  box.addEventListener('touchmove', lyrManual, {passive:true});
+  box.addEventListener('keydown', e => { if (keys.has(e.key)) lyrManual(); });
+  box.addEventListener('pointerdown', e => { if (e.target === box && e.pointerType === 'mouse') lyrManual(); });   // the scrollbar
+  const chip = h('button', {type:'button', class:'lyr-back', id:'lyrBack', hidden:true, onclick: lyrResume}, 'Back to the song');
+  dr.append(h('div', {class:'lyr-wrap'}, box, chip), lyrFoot(doc, true));
+  LS.idx = -1; LS.word = -1; LS.snap = true; LS.manualUntil = 0;
+}
+function lyrFoot(doc, synced){
+  const src = doc.source ? String(doc.source).replace(/^Source:\s*/i, '') : '';
+  return h('div', {class:'lyr-foot' + (synced ? '' : ' plain')},
+    h('span', {class:'lyr-tag' + (synced ? ' on' : ''), title: synced ? 'The line being sung lights up' : 'No timing for these lyrics'}, synced ? 'Synced' : 'Plain'),
+    h('p', {class:'ytn-src'}, src ? 'Source: ' + src : ''),
+    synced ? h('div', {class:'lyr-nudge', role:'group', 'aria-label':'Lyrics timing'},
+      h('button', {type:'button', title:'Light each line a little sooner', 'aria-label':'Lyrics earlier', onclick: () => lyrNudge(-LYR_NUDGE_MS)}, 'Earlier'),
+      h('button', {type:'button', title:'Light each line a little later', 'aria-label':'Lyrics later', onclick: () => lyrNudge(LYR_NUDGE_MS)}, 'Later')) : null);
+}
+// Earlier / Later: 0.1 s at a time, at once on screen, saved on the radio for every phone.
+let lyrSaveTimer = null;
+function lyrNudge(ms){
+  LS.off = Math.max(-3000, Math.min(3000, LS.off + ms));
+  LS.saving = LS.off; LS.snap = true;
+  if (!LS.playing){ const b = $('ytnSync'); if (b) lyrPaint(performance.now()); }
+  clearTimeout(lyrSaveTimer);
+  lyrSaveTimer = setTimeout(async () => {
+    const want = LS.off;
+    try {
+      const r = await api('PUT', '/api/settings', {ytm:{lyrics_offset_ms:want}});
+      if (!(r.ok && r.json && r.json.ok !== false)) toast('The radio didn’t keep that timing. Try again.', true);
+      else if (settings) settings.ytm = Object.assign({}, settings.ytm, {lyrics_offset_ms:want});
+    } catch (_) { toast(NET_ERR, true); }
+    if (LS.saving === want) LS.saving = null;
+  }, 600);
 }
 async function ytLyrics(vid){
   ytNow.lyrBusy = true; ytNow.lyrFor = vid;
@@ -11129,8 +11312,9 @@ let pollTimer = null, polling = false, lastOk = Date.now(), graceUntil = 0;
 async function poll(){
   if (polling) return; polling = true;
   try {
+    const sent = performance.now();
     const r = await api('GET', '/api/status', undefined, {timeout:4000, retry:0});
-    if (r.ok && r.json){ status = r.json; online = true; failStreak = 0; lastOk = Date.now(); } else missed();
+    if (r.ok && r.json){ status = r.json; online = true; failStreak = 0; lastOk = Date.now(); lyrFeed(status, sent, performance.now()); } else missed();
     // The keys changed elsewhere (another phone, Home Assistant): show them, unless this page has unsaved ones.
     if (r.ok && r.json && r.json.config_rev && cfg && cfg.rev && r.json.config_rev !== cfg.rev && !saving && !isDirty()) refreshConfig();
   } catch (_) { missed(); }

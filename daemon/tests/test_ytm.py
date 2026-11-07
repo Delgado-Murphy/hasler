@@ -683,7 +683,15 @@ def test_now_playing_names_our_current_track(mpd, runner):
         src.play(Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm"))
         mpd.file = src.prefix + IDS[1]
         assert src.now_playing() == {"title": "Song b", "artist": "Band", "album": "LP",
-                                     "thumb": f"https://t/{IDS[1]}", "explicit": False, "videoId": IDS[1]}
+                                     "thumb": f"https://t/{IDS[1]}", "explicit": False, "videoId": IDS[1],
+                                     "position": None}         # this fake MPD names no elapsed
+        # Where MPD is in the song, asked on the same visit (synced lyrics).
+        plain_status = mpd.status
+        mpd.status = lambda: {**plain_status(), "state": "play", "elapsed": "42.517", "duration": "196.0"}
+        pos = src.now_playing()["position"]
+        assert pos["elapsed_s"] == 42.517 and pos["duration_s"] == 196.0 and pos["state"] == "play"
+        assert abs(pos["at"] - time.time()) < 5
+        mpd.status = plain_status
         mpd.file = src.prefix + "zzzzzzzzzzz"                   # ours, but never named
         assert src.now_playing() is None
         mpd.file = "http://radio.example/stream"

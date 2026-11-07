@@ -23,8 +23,9 @@ Presets are ``{"source": "ytm", "kind", …ref fields, "uri", "shuffle", "name"}
 when ytmusicapi is down.
 
 Caching: in memory per kind of answer (search 10 min LRU 200, suggestions
-10 min, a mood page / charts 6 h, the country list 7 d, an artist / album /
-lyrics 1 d, home 30 min, library 5 min). Moods and charts are also kept on the
+10 min, a mood page / charts 6 h, the country list 7 d, an artist / album
+1 d, home 30 min, library 5 min; lyrics 30 d and on the card, see ``lyrics``).
+Moods and charts are also kept on the
 card (``<state>/ytm-cache/browse``): after a boot the browser opens from there
 at once, however old, and refreshes behind the page's back. A failed call
 never empties a cache: the last good answer stays, and with none the answer
@@ -47,6 +48,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlparse
 
+from .lyrics import Lrclib, timed_from_ytm, track_facts
 from .ytm_refs import (
     CHANNEL_ID, LIKED, LIST_ID, MPRE_ID, OLAK_ID, PLAYLIST, SONG_RADIO, VIDEO_ID, WATCH_LIST,
     chart_list, link_for, norm, strip_vl,
@@ -64,11 +66,14 @@ DAY = 24 * HOUR
 TTL = {
     "search": 10 * MIN, "suggest": 10 * MIN, "moods": DAY, "mood": 6 * HOUR,
     "charts": 6 * HOUR, "countries": 7 * DAY, "artist": DAY, "album": DAY, "album_id": 7 * DAY,
-    "home": 30 * MIN, "library": 5 * MIN, "related": 6 * HOUR, "lyrics": DAY,
+    "home": 30 * MIN, "library": 5 * MIN, "related": 6 * HOUR,
 }
 SIZE = {"search": 200, "suggest": 200, "mood": 100, "charts": 80, "artist": 100, "album": 100,
         "related": 100, "lyrics": 100}
 DISK = ("moods", "mood", "charts", "countries")
+LYRICS_TTL = 30 * DAY           # lyrics don't change: a whole answer is kept this long
+LYRICS_RETRY_S = 10 * MIN       # an answer LRCLIB couldn't be asked about: again after this
+LYRICS_DISK_MAX = 300           # songs' lyrics kept on the card (a few kB each)
 
 SEARCH_TYPES = {
     "all": (None,),
@@ -85,12 +90,19 @@ ART_SIZE = "=w226-h226-l90-rj"
 DEFAULT_COUNTRY = "ES"
 
 
+def _lyrics_doc(doc: dict) -> dict:
+    """The page's lyrics answer, without the cache's bookkeeping."""
+    return {"lyrics": doc.get("lyrics"), "source": str(doc.get("source") or ""),
+            "synced": bool(doc.get("synced") and doc.get("lines")), "lines": doc.get("lines") or None}
+
+
 class YtmBrowse:
     """The browser over a ``YtmCatalog`` (its ``_call``, lock and sign-in)."""
 
     def __init__(self, catalog: Any, cache_dir: str | Path | None = None,
-                 clock: Callable[[], float] = time.time) -> None:
+                 clock: Callable[[], float] = time.time, lrclib: Any = None) -> None:
         self.catalog = catalog
+        self.lrclib = lrclib if lrclib is not None else Lrclib()
         self.cache_dir = Path(cache_dir) if cache_dir is not None else None
         self.clock = clock
         self._lock = threading.Lock()
@@ -472,22 +484,95 @@ class YtmBrowse:
         return _shelves(self._cached("related", vid, fetch, []))
 
     def lyrics(self, vid: str) -> dict:
+        """The song's lyrics, timed when anyone has the times (player/sources/lyrics.py).
+
+        ``{"lyrics", "source", "synced", "lines"}``: YouTube Music's timed
+        lines first, then LRCLIB's, then plain text. A whole answer is kept
+        LYRICS_TTL in memory and on the card (``ytm-cache/browse/lyrics-<vid>.json``,
+        the newest LYRICS_DISK_MAX), so a song heard before has its lyrics
+        offline; one LRCLIB couldn't be asked about is asked again after LYRICS_RETRY_S.
+        """
         if not VIDEO_ID.match(vid or ""):
             raise ValueError("not a video id")
+        now = self.clock()
+        with self._lock:
+            hit = self._caches["lyrics"].get(vid)
+            if hit is not None:
+                self._caches["lyrics"].move_to_end(vid)
+        if hit is None:
+            hit = self._disk_load("lyrics", vid)
+            if hit is not None and isinstance(hit[1], dict):
+                hit = (hit[0], {**hit[1], "_whole": True})
+                self._put("lyrics", vid, hit[0], hit[1], save=False)
+            else:
+                hit = None
+        if hit is not None:
+            ttl = LYRICS_TTL if hit[1].get("_whole", True) else LYRICS_RETRY_S
+            if now - hit[0] < ttl:
+                return _lyrics_doc(hit[1])
+        got = self._fetch_lyrics(vid)
+        if got is None:
+            return _lyrics_doc(hit[1] if hit is not None else {})
+        doc, whole = got
+        self._put("lyrics", vid, now, {**doc, "_whole": whole}, save=False)
+        if whole:
+            self._disk_save("lyrics", vid, now, doc)
+            self._disk_prune("lyrics", LYRICS_DISK_MAX)
+        return _lyrics_doc(doc)
 
-        def fetch() -> dict | None:
-            def both(c: Any) -> Any:
-                watch = c.get_watch_playlist(videoId=vid, limit=1) or {}
-                bid = watch.get("lyrics")
-                return c.get_lyrics(bid) if bid else {}
-            raw = self._call("lyrics", both)
-            if not isinstance(raw, dict):
-                return None
-            text = raw.get("lyrics")
-            return {"lyrics": text if isinstance(text, str) and text.strip() else None,
-                    "source": str(raw.get("source") or "")}
+    def _fetch_lyrics(self, vid: str) -> tuple[dict, bool] | None:
+        """(doc, whole), or None when YouTube Music couldn't be asked at all.
+        ``whole`` is False when LRCLIB was needed and couldn't be reached."""
+        def both(c: Any) -> Any:
+            watch = c.get_watch_playlist(videoId=vid, limit=1) or {}
+            bid = watch.get("lyrics")
+            raw: Any = {}
+            if bid:
+                try:
+                    raw = c.get_lyrics(bid, timestamps=True)
+                except TypeError:           # an older ytmusicapi: plain only
+                    raw = c.get_lyrics(bid)
+                except Exception as exc:    # the mobile client's answer broke: plain will do
+                    log.info("timed lyrics failed (%s): asking for plain ones", type(exc).__name__)
+                    raw = c.get_lyrics(bid)
+            return {"watch": watch, "raw": raw or {}}
 
-        return self._cached("lyrics", vid, fetch, {"lyrics": None, "source": ""})
+        got = self._call("lyrics", both)
+        if not isinstance(got, dict):
+            return None
+        raw = got["raw"] if isinstance(got["raw"], dict) else {}
+        source = str(raw.get("source") or "")
+        lines, plain = timed_from_ytm(raw)
+        if lines:
+            return {"lyrics": plain, "source": source, "synced": True, "lines": lines}, True
+        # No times from YouTube: LRCLIB, outside the catalogue's lock.
+        whole, found = True, None
+        try:
+            found = self.lrclib.get(**track_facts(got["watch"]))
+        except OSError as exc:
+            log.info("LRCLIB not reachable: %s", exc)
+            whole = False
+        except Exception:
+            log.warning("LRCLIB lookup failed", exc_info=True)
+            whole = False
+        if found and found.get("synced"):
+            return found, whole
+        if plain:
+            return {"lyrics": plain, "source": source, "synced": False, "lines": None}, whole
+        if found:
+            return found, whole
+        return {"lyrics": None, "source": "", "synced": False, "lines": None}, whole
+
+    def _disk_prune(self, ns: str, keep: int) -> None:
+        """Keep the newest ``keep`` of ``ns``'s files on the card."""
+        if self.cache_dir is None:
+            return
+        try:
+            files = sorted(self.cache_dir.glob(f"{ns}-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+            for old in files[keep:]:
+                old.unlink(missing_ok=True)
+        except OSError:
+            log.debug("could not prune %s", self.cache_dir, exc_info=True)
 
     # -- preset references (ytm.py, at press time) -----------------------
 

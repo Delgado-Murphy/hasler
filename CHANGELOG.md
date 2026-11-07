@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Lyrics follow the song: the line being sung lights up amber (Synced), from
+  YouTube Music or LRCLIB; plain lyrics as before when nobody has the timing.
+
 ## 1.6.3 - 2026-11-07
 
 - Ten new starter sets, by taste and occasion: Turn the Dial (the one a radio

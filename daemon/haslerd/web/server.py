@@ -173,6 +173,14 @@ SETTINGS_FILE = "settings.json"
 VOLUME_LIMIT_RANGE = (30, 100)   # below 30 the knob is barely audible; 100 = no ceiling
 VOLUME_FLOOR_GAP = 10            # the floor stays this far under the ceiling: the knob keeps a sweep
 VOLUME_GUESS = 40.0              # a relative nudge with no reading starts here, as volume_step does
+# Synced lyrics: how far behind MPD's ``elapsed`` the page shows a line (ms;
+# settings ytm.lyrics_offset_ms, nudged from the lyrics panel). Bench note
+# 2026-11-07, hasler.local: MPD's elapsed is what has gone *into* ALSA, and
+# the output's hardware buffer is 16384 frames at 44.1 kHz = 372 ms (period
+# 2048 = 46 ms, which is also elapsed's step jitter). A line lit ~120 ms before
+# it is heard reads as "on time", so 372 - 120 ≈ 250. Calibrate by ear per amp.
+LYRICS_OFFSET_MS = 250
+LYRICS_OFFSET_MAX_MS = 3000
 KNOB_ID = re.compile(r"^/api/knobs/([A-Za-z0-9_.-]{1,64})/(sample|fit|calibration)$")
 HYSTERESIS_MAX = 5000
 # GET /api/keys/state ("Check this pair" on the key page polls it every 200 ms
@@ -984,7 +992,9 @@ class WebApp:
             played_from = None
         parked = self.actions.cycle_position
         with mpd_patience(SOURCE_MPD_S):      # the page polls: never wait long on MPD
-            track = self._track() if source == "ytm" else None
+            extra: dict = {}
+            track = self._track(extra) if source == "ytm" else None
+        position = self._position(extra.get("position")) if track else None
         return {
             "pressed": pressed,
             "playing": playing,
@@ -1023,6 +1033,11 @@ class WebApp:
             "renderer": renderer,
             # The YouTube Music track playing, named: {title, artist, album, thumb} or None.
             "track": track,
+            # Where MPD is in that song, for the synced lyrics: {"elapsed_s",
+            # "duration_s", "state": "play"|"pause", "at": this radio's clock
+            # (epoch s) when MPD was asked, "offset_ms": settings
+            # ytm.lyrics_offset_ms} or None. The page runs the clock on between polls.
+            "position": position,
             # The picture for what plays (station logo / track thumbnail), served by
             # the radio itself; ``k`` changes with the picture. None = nothing to show.
             "art": None if self.actions.standby else self.art.url_for(source, playing, track),
@@ -1493,7 +1508,7 @@ class WebApp:
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
         ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``,
-        ``ytm`` ({"hide_explicit": bool}), ``lamp`` ({"brightness", "key_replies"}),
+        ``ytm`` ({"hide_explicit": bool, "lyrics_offset_ms": int}), ``lamp`` ({"brightness", "key_replies"}),
         ``dismissed`` ({"rollback": "1.4.1"}: a notice the page has shown),
         ``timezone`` ("Europe/Madrid": the system clock's zone, web/clock.py),
         ``made_mine`` ({"skipped": [...], "hidden_at": time|null}: "Make it yours")."""
@@ -1536,9 +1551,13 @@ class WebApp:
         if "spotify_guests" in body and not isinstance(guests, bool):
             raise ValueError("spotify_guests must be true or false")
         ytm = body.get("ytm")
-        if "ytm" in body and not (isinstance(ytm, dict) and set(ytm) <= {"hide_explicit"}
-                                  and isinstance(ytm.get("hide_explicit", False), bool)):
-            raise ValueError("ytm must be {\"hide_explicit\": true|false}")
+        off = ytm.get("lyrics_offset_ms", 0) if isinstance(ytm, dict) else 0
+        if "ytm" in body and not (isinstance(ytm, dict) and set(ytm) <= {"hide_explicit", "lyrics_offset_ms"}
+                                  and isinstance(ytm.get("hide_explicit", False), bool)
+                                  and isinstance(off, int) and not isinstance(off, bool)
+                                  and abs(off) <= LYRICS_OFFSET_MAX_MS):
+            raise ValueError("ytm must be {\"hide_explicit\": true|false, "
+                             f"\"lyrics_offset_ms\": -{LYRICS_OFFSET_MAX_MS}..{LYRICS_OFFSET_MAX_MS}}}")
         zone = clock_mod.timezone_from(body["timezone"]) if "timezone" in body else None
         if zone is not None and zone != self._timezone():
             clock_mod.set_timezone(zone)       # the root helper; ValueError with its reason
@@ -1621,9 +1640,11 @@ class WebApp:
             log.info("output set to %s from the web page", "mono" if mono else "stereo")
         if guests is not None:
             log.info("Spotify for guests %s from the web page", "on" if guests else "off")
-        if ytm is not None:
+        if ytm is not None and "hide_explicit" in ytm:
             log.info("YouTube Music explicit results %s from the web page",
                      "hidden" if self.ytm_settings()["hide_explicit"] else "shown with a badge")
+        if ytm is not None and "lyrics_offset_ms" in ytm:
+            log.info("lyrics offset set to %+d ms from the web page", ytm["lyrics_offset_ms"])
         return self.settings(host)
 
     def lamp_settings(self) -> dict:
@@ -2451,7 +2472,15 @@ class WebApp:
                 return answer
         return None
 
-    def _track(self) -> dict | None:
+    def _position(self, pos: Any) -> dict | None:
+        """The song's position for /api/status, with the owner's lyrics offset."""
+        if not isinstance(pos, dict) or pos.get("elapsed_s") is None:
+            return None
+        return {**pos, "offset_ms": self.ytm_settings()["lyrics_offset_ms"]}
+
+    def _track(self, extra: dict | None = None) -> dict | None:
+        """The YouTube Music track for the page; ``extra`` (a dict) also gets
+        the song's ``position`` from the same visit to MPD."""
         now_playing = getattr(self.ytm, "now_playing", None)
         if not callable(now_playing):
             return None
@@ -2462,6 +2491,8 @@ class WebApp:
             return None
         if not info:
             return None
+        if extra is not None:
+            extra["position"] = info.get("position")
         track: dict[str, Any] = {k: str(info.get(k) or "") for k in ("title", "artist", "album", "thumb")}
         vid = str(info.get("videoId") or "")
         # For the page's Like and Start radio buttons: which song, its cover
@@ -2587,10 +2618,14 @@ class WebApp:
         return self.ytm_api.library(section)
 
     def ytm_settings(self) -> dict:
-        """``{"hide_explicit": bool}`` - settings.json ``ytm`` (default: badges only)."""
+        """``{"hide_explicit": bool, "lyrics_offset_ms": int}`` - settings.json
+        ``ytm`` (default: badges only; LYRICS_OFFSET_MS)."""
         doc = load_settings(self.settings_file).get("ytm") if self.settings_file is not None else self._ytm_prefs
         doc = doc if isinstance(doc, dict) else {}
-        return {"hide_explicit": doc.get("hide_explicit") is True}
+        off = doc.get("lyrics_offset_ms")
+        ok = isinstance(off, int) and not isinstance(off, bool) and abs(off) <= LYRICS_OFFSET_MAX_MS
+        return {"hide_explicit": doc.get("hide_explicit") is True,
+                "lyrics_offset_ms": off if ok else LYRICS_OFFSET_MS}
 
     def _ytm_resolved(self, preset: Preset, link: str) -> None:
         """A ytm preset reference resolved to a new link (player/sources/ytm.py):
