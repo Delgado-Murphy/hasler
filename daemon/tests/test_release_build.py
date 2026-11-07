@@ -105,6 +105,8 @@ def test_only_allowlisted_paths_ship(built):
         assert Path(p).name not in ("haslerd.yaml", "keys.yaml", "settings.json", "state.json")
     assert "app/haslerd/main.py" in files
     assert "app/haslerd/web/static/index.html" in files
+    for icon in ("icon-192.png", "icon-512.png", "apple-touch-icon.png", "favicon-32.png"):
+        assert f"app/haslerd/web/static/icons/{icon}" in files     # the home-screen icons ship
     assert "app/config/variants/hasler-hm.yaml" in files
     assert "app/config/haslerd.yaml.example" in files
     assert not any(p.startswith(("docs/", "app/docs")) for p in files)
