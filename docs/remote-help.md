@@ -22,7 +22,7 @@ press on the radio to start, and it ends on its own.
 
 1. On the key page: **Settings → This radio → Help from the makers** (at the
    bottom), then **Let the makers help (24 h)**.
-2. The lamp dips twice: press any key on the radio within 30 seconds. That
+2. The lamp brightens twice, again and again: press any key on the radio within 30 seconds. That
    press is how the radio knows it is you and not someone else on your Wi-Fi.
 3. After a few seconds the page shows a link: **Send this link to the makers**
    (copy it, or share it by message or email).

@@ -7,12 +7,12 @@ stops itself when haslerd asks for the LED (/run/hasler-lamp/takeover, below)
 and haslerd.service's ExecStartPost stops it anyway (SIGTERM) for a haslerd
 too old to ask.
 
-What it shows: a slow 2 s fade from dark up to a clearly visible amber, then a breath between 25 % and 60 %
-(perceptual), 3 s period, raised cosine. Perceptual -> linear with gamma 2.2,
-then the amber balance R 1.0 / G 0.15 / B 0. We cannot read the tone knob yet
-(that needs I2C and the panel), so it is always amber; haslerd corrects to
-ember within a second or two of starting if the knob is off. haslerd's own
-warm-up carries this very breath on (main.py LampKeeper.take_over).
+What it shows: a slow 2 s fade from dark up to a clearly visible amber, then
+the light language's busy breath, 22 % -> 70 % (perceptual), 2.8 s period,
+raised cosine. Perceptual -> linear with gamma 2.2, then the amber balance R
+1.0 / G 0.15 / B 0. Starting is busy whatever the tone knob says (v2: asleep
+never moves), so it is always amber. haslerd's own warm-up carries this very
+breath on (main.py LampKeeper.take_over).
 
 Between two haslerds (a restart, a crash, an update; lamp/handover.py) it
 breathes too: haslerd.service's ExecStopPost runs ``hasler-lamp-boot
@@ -20,8 +20,8 @@ breathes too: haslerd.service's ExecStopPost runs ``hasler-lamp-boot
 and starts this service again unless the box is shutting down (then haslerd
 left a steady ember for the halt hook). Started with a fresh note, it
 continues from whatever the LED shows - no fade from dark, no jump - into the
-amber breath, or the deep slow ember breath (12-50 %, 6 s, pure red: busy,
-don't unplug - the engine's slow tempo) while an update is installed.
+amber breath - also while an update is installed (busy, don't unplug: the
+note's mode is still called "ember" for old haslerds, but busy is amber now).
 
 Hardware (docs/hardware.md "Pilot lamp"): common-anode RGB LED on 3.3 V, red
 GPIO17, green GPIO22, blue GPIO27, GPIO LOW = lit. Each pin is its own
@@ -95,11 +95,10 @@ HANDOVER_FRESH_S = 60.0           # an older note is a leftover, not a handover
 # The breaths, perceptual (docs/lamp.md; lamp/policy.py's names in brackets).
 LOOKS = {
     # 0.10/0.35 read as 'off' on this LED (bench, 20 Oct)
-    "amber": {"floor": 0.25, "peak": 0.60, "period_s": 3.0, "balance": (1.0, 0.15, 0.0)},
-    # [SHUTTING_DOWN / UPDATING]: busy, don't unplug - the engine's deep slow
-    # breath (12 % -> 50 %, 6 s), so it never passes for asleep. Pure red, as
-    # the engine draws ember.
-    "ember": {"floor": 0.12, "peak": 0.50, "period_s": 6.0, "balance": (1.0, 0.0, 0.0)},
+    "amber": {"floor": 0.22, "peak": 0.70, "period_s": 2.8, "balance": (1.0, 0.15, 0.0)},
+    # [SHUTTING_DOWN / UPDATING]: busy, don't unplug - the same amber breath
+    # (v2: busy is never ember; the mode keeps its old name in the note).
+    "ember": {"floor": 0.22, "peak": 0.70, "period_s": 2.8, "balance": (1.0, 0.15, 0.0)},
 }
 FLOOR, PEAK = LOOKS["amber"]["floor"], LOOKS["amber"]["peak"]
 BREATH_S = LOOKS["amber"]["period_s"]
@@ -421,7 +420,7 @@ def main() -> int:
         log(f"handover ({mode}): breathing on from {start:.2f}")
 
     t0 = time.monotonic()
-    state = {"colour": mode or "amber", "t0_monotonic": t0,
+    state = {"colour": "amber", "t0_monotonic": t0,          # busy is amber, whatever the mode
              "fade_s": CONTINUE_S if mode else FADE_S, "floor": look["floor"],
              "peak": look["peak"], "period_s": look["period_s"], "pid": os.getpid()}
     if have_dir:

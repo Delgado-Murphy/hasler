@@ -5590,7 +5590,8 @@ const LAMP_MEANS = [
 ];
 // /api/status "lamp" in words, for the front page: "Lamp: asleep".
 const LAMP_WORDS = {playing:'playing', ready:'ready', asleep:'asleep', phone:'a phone is playing', busy:'busy — don’t unplug',
-  asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone', offline:'no internet', off:'off — safe to unplug'};
+  asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone', offline:'no internet', off:'off — safe to unplug',
+  no_internet:'no internet', fault:'needs its maker'};
 const lampLook = {showing:null, until:0, timer:null, busy:false};
 const lampPrefs = () => Object.assign({brightness:'normal', key_replies:true, present:false, show_s:5, identify_s:10}, (settings && settings.lamp) || {});
 function lampMeanings(panel){
@@ -7894,7 +7895,7 @@ function pressToConfirm(action, args, title, sub){
     dlg.append(h('h2', {id:'dlgTitle'}, title || 'Confirm on the radio'), sub ? h('p', {class:'sub'}, sub) : '',
       h('div', {class:'cf'}, ring, h('div', {class:'cf-txt'},
         h('span', {class:'li-title'}, 'Press any key on the radio'),
-        h('span', {class:'li-sub'}, 'The pilot lamp dips twice while it waits. That press only confirms — it won’t change the station.'))),
+        h('span', {class:'li-sub'}, 'The pilot lamp brightens twice, again and again, while it waits. That press only confirms — it won’t change the station.'))),
       h('div', {style:'display:flex;justify-content:flex-end;margin-top:14px'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
     dlg.onclose = () => {
       if (dlg.open) return;

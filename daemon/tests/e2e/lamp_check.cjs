@@ -30,7 +30,7 @@ const EXPECT = {
   balance: {red: 1, green: 1.25, blue: 0.6667},
   palette: {amber: {day: [1, 0.185, 0], night: [1, 0.155, 0]}, ember: [1, 0.06, 0], blue: [0.05, 0, 1]},
   level_gain: {amber: 1, ember: 1, blue: 1.6818},
-  levels: {ember_day: 0.275, ember_night: 0.12},
+  levels: {ember_day: 0.25, ember_night: 0.144},
 };
 const OVERLAY = 'schema: 1\nio:\n  lamp:\n    frequency_hz: 600\n    palette:\n      white: [1.0, 0.3, 0.05]\n';
 
@@ -161,11 +161,11 @@ function near(a, b, path = ''){
     await check('step 4, standby glow: brighter/dimmer, one answer from the keyboard', async () => {
       assert((await step(page)).includes('Step 4 of 6') && (await q(page)).includes('by day'), await q(page));
       await page.focus('#lchkAns-up');
-      await page.keyboard.press('1');                // Too dim: 0.22 x 1.25 = 0.275
-      assert((await page.textContent('#lchk')).includes('28 % brightness'), 'level after the key');
+      await page.keyboard.press('1');                // Too dim: 0.20 x 1.25 = 0.25
+      assert((await page.textContent('#lchk')).includes('25 % brightness'), 'level after the key');
       await pick(page, 'ok');
       assert((await q(page)).includes('at night'), await q(page));
-      await pick(page, 'down'); await pick(page, 'ok');                       // 0.15 / 1.25 = 0.12
+      await pick(page, 'down'); await pick(page, 'ok');                       // 0.18 / 1.25 = 0.144
     });
 
     await check('step 5, blue: brightness match against amber, then the tint', async () => {

@@ -71,7 +71,7 @@ async function until(fn, ms, what){
     await check('api: preview takes a look or a reply, refuses nonsense', async () => {
       let r = await send('POST', '/api/lamp/preview', {look: 'phone'});
       let j = await r.json();
-      assert(r.ok && j.showing && j.look === 'phone' && j.expires_s === 5, 'look: ' + JSON.stringify(j));
+      assert(r.ok && j.showing && j.look === 'phone' && j.expires_s === 8, 'look: ' + JSON.stringify(j));
       r = await send('POST', '/api/lamp/preview', {reply: 'no'}); j = await r.json();
       assert(r.ok && j.reply === 'no', 'reply: ' + JSON.stringify(j));
       r = await send('POST', '/api/lamp/preview', {look: 'disco'});

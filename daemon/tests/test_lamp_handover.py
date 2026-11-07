@@ -403,7 +403,7 @@ class TestBootScript:
         assert levels[0] < 0.01 and levels == sorted(levels)
         assert (tmp_path / "pwm" / "pwmchip0" / "pwm0" / "period").read_text().strip() == "2500000"
         state = json.loads((tmp_path / "run" / "boot").read_text())
-        assert state["released"] is True and (state["floor"], state["peak"]) == (0.25, 0.60)
+        assert state["released"] is True and (state["floor"], state["peak"]) == (0.22, 0.70)
 
     def test_a_handover_breathes_on_from_the_leds_frame(self, tmp_path):
         root = lit_sysfs(tmp_path, period=2500000, duties=(int(0.3 * 2500000), 0, 0))
@@ -418,15 +418,15 @@ class TestBootScript:
         assert (root / "pwmchip0" / "pwm0" / "period").read_text().strip() == "2500000"   # kept
         assert not (tmp_path / "run" / "handover").exists()
 
-    def test_an_update_handover_is_the_pure_red_ember_breath(self, tmp_path):
+    def test_an_update_handover_is_the_amber_busy_breath(self, tmp_path):
         root = lit_sysfs(tmp_path, duties=(60000, 0, 0))
         (tmp_path / "run").mkdir()
         (tmp_path / "run" / "handover").write_text(json.dumps({"mode": "ember", "at": time.time()}))
         res = run_boot(tmp_path, "--print", "--seconds", "1.2")
         levels = frames(res.stdout)
-        assert 0.11 <= levels[-1] <= 0.51         # the deep slow busy breath, 12-50 %
-        assert duty(root, 1) == 0 and duty(root, 2) == 0
-        assert json.loads((tmp_path / "run" / "boot").read_text())["colour"] == "ember"
+        assert 0.21 <= levels[-1] <= 0.71         # the busy breath, 22-70 %, amber (v2: never ember)
+        assert duty(root, 1) > 0 and duty(root, 2) == 0
+        assert json.loads((tmp_path / "run" / "boot").read_text())["colour"] == "amber"
 
     def test_a_stale_note_is_not_a_handover(self, tmp_path):
         (tmp_path / "run").mkdir()

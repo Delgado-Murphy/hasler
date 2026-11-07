@@ -68,9 +68,9 @@ class TestSetPalette:
 
     def test_unknown_names_old_colours_and_off_are_ignored_values_clamped(self):
         lamp, _ = make()
-        lamp.set_palette({"chartreuse": [0, 1, 0], "off": [1, 1, 1], "red": [1, 0, 0],
+        lamp.set_palette({"chartreuse": [0, 1, 0], "off": [1, 1, 1], "magenta": [1, 0, 1],
                           "amber_pale": [1, 1, 1], "amber": [2.0, -1.0, float("nan")]})
-        assert set(lamp.palette) == {"amber", "ember", "blue"}
+        assert set(lamp.palette) == {"amber", "ember", "blue", "green", "red", "gold"}
         assert lamp.palette["amber"] == (1.0, 0.0, 0.0)
 
     def test_day_and_night_overrides(self):
@@ -189,7 +189,7 @@ class TestPaletteApi:
         doc = app.lamp_palette()
         assert set(doc["defaults"]) == set(eng.DEFAULT_PALETTE) - {"off"}
         assert doc["saved"] == {} and doc["effective"] == doc["defaults"]
-        assert doc["levels"] == {"full": 1.0, "night": 0.35, "ember": 0.22}
+        assert doc["levels"] == {"full": 1.0, "night": 0.35, "ember": eng.EMBER_LEVEL}
         assert doc["lamp"] is True and doc["preview_s"] == eng.PREVIEW_S
 
     def test_names_follow_the_engine(self, app):
@@ -298,7 +298,7 @@ class TestHttp:
         assert status == 200 and doc["ok"] and doc["saved"] == {"ember": [1.0, 0.08, 0.0]}
         status, doc = self.call(url + "/api/lamp/preview", "POST", {"rgb": [1, 0.08, 0], "level": "ember"})
         assert status == 200 and doc["showing"] and doc["expires_s"] == eng.PREVIEW_S
-        assert app.lamp.previews[-1] == ([1.0, 0.08, 0.0], 0.22)
+        assert app.lamp.previews[-1] == ([1.0, 0.08, 0.0], eng.EMBER_LEVEL)
         status, doc = self.call(url + "/api/lamp/palette", "DELETE", {})
         assert status == 200 and doc["saved"] == {}
 

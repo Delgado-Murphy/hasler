@@ -26,113 +26,96 @@ def look(**kw):
 
 
 class TestPriority:
-    def test_1_shutting_down_beats_everything(self):
-        assert look(shutting_down=True, hotspot=True, casting=True, standby=True) == policy.SHUTTING_DOWN
-        assert policy.SHUTTING_DOWN.colour == "ember" and policy.SHUTTING_DOWN.motion == "breath"
-
-    def test_1_installing_an_update_is_the_ember_breath_never_solid(self):
-        # Installs happen in standby: busy, don't unplug - not "asleep".
-        assert look(updating=True, standby=True) == policy.UPDATING == policy.SHUTTING_DOWN
-        assert look(updating=True, hotspot=True, casting=True, playing=True) == policy.UPDATING
-        assert policy.UPDATING.motion == "breath" and policy.UPDATING.colour == "ember"
-
-    def test_only_the_three_colours_are_ever_looks(self):
-        flags = ("standby", "shutting_down", "updating", "hotspot", "pairing", "casting",
-                 "cast_paused", "loading", "playing", "panel_missing", "confirming")
-        for i in range(1 << len(flags)):
-            on = {f: bool(i >> k & 1) for k, f in enumerate(flags)}
-            for group in ("", "joining", "following"):
-                state = replace(IDLE, **on, group=group, group_playing=True, offline_s=120.0)
-                assert look_for(state)[0].colour in ("amber", "ember", "blue", "off")
-
-    def test_3_hotspot_beats_a_phone_and_standby(self):
-        assert look(hotspot=True, casting=True, standby=True) == policy.HOTSPOT
-        # Setup has its own rhythm: an amber long-short beckon, 1 s rest (~3 s a cycle).
-        assert (policy.HOTSPOT.colour, policy.HOTSPOT.motion, policy.HOTSPOT.rhythm,
-                policy.HOTSPOT.period_s) == ("amber", "beckon", "long-short", 1.0)
+    """The light language v2's state map (docs/lamp.md "State map")."""
 
     def test_halted_is_dark(self):
-        assert look(halted=True, shutting_down=True) == policy.Look()
+        assert look(halted=True, shutting_down=True, fault=True) == policy.Look()
 
-    def test_a_confirm_request_beckons_in_the_colour_on_show(self):
+    def test_1_a_fault_is_sos_even_in_standby(self):
+        assert look(fault=True, standby=True, shutting_down=True, hotspot=True) == policy.FAULT
+        assert look(panel_missing=True) == policy.FAULT
+        assert (policy.FAULT.colour, policy.FAULT.motion) == ("red", "pattern")
+
+    def test_2_busy_is_the_amber_breath_never_ember(self):
+        for kw in ({"shutting_down": True}, {"updating": True, "standby": True}, {"boot": "daemon"},
+                   {"boot": "early", "standby": True}, {"loading": True}, {"group": "joining"}):
+            got = look(**kw, hotspot=True)
+            assert got == policy.BUSY, kw
+        assert (policy.BUSY.colour, policy.BUSY.motion) == ("amber", "breath")
+        assert policy.SHUTTING_DOWN == policy.UPDATING == policy.LOADING == policy.BUSY
+
+    def test_the_breath_is_22_to_70_in_2_8s_night_18_to_35(self):
+        b = policy.BUSY
+        assert (b.level, b.floor, b.period_s, b.night, b.night_floor) == (0.70, 0.22, 2.8, 0.35, 0.18)
+
+    def test_3_setup_is_cq_and_beats_confirm_a_phone_and_standby(self):
+        assert look(hotspot=True, confirming=True, casting=True, standby=True) == policy.SETUP
+        assert (policy.SETUP.colour, policy.SETUP.motion) == ("amber", "pattern")
+
+    def test_4_a_confirm_request_beckons(self):
         got = look(confirming=True)
         assert got.motion == "beckon" and got.colour == "amber" and got.period_s == 2.2
-        assert got.level == policy.READY.level
-        # Playing beckons on the ready level: room for the kicks to show.
         assert look(confirming=True, playing=True).level == policy.READY.level
-        assert look(confirming=True, playing=True).night == policy.READY.night
-        assert look(confirming=True).rhythm == "pair"
         assert look(confirming=True, casting=True).colour == "blue"
-        assert look(confirming=True, standby=True).colour == "ember"
-        assert look(confirming=True, hotspot=True).period_s == 2.2     # beats setup
-        assert look(confirming=True, shutting_down=True) == policy.SHUTTING_DOWN
+        assert look(confirming=True, standby=True).colour == "amber"      # asleep never moves
+        assert look(confirming=True, shutting_down=True) == policy.BUSY
 
-    def test_4_a_phone_beats_standby(self):
+    def test_5_no_internet_is_the_red_alert_only_when_awake_and_idle(self):
+        assert look(offline_s=120.0) == policy.NO_INTERNET
+        assert look(offline_s=30.0) == policy.READY
+        for kw in ({"playing": True}, {"casting": True}, {"standby": True}, {"pairing": True},
+                   {"group": "following", "group_playing": True}):
+            assert look(offline_s=600.0, **kw) != policy.NO_INTERNET, kw
+        assert policy.offline_shows(replace(IDLE, offline_s=600))
+        assert not policy.offline_shows(replace(IDLE, offline_s=600, loading=True))
+
+    def test_6_pairing_is_the_blue_breath(self):
+        assert look(pairing=True, casting=True) == policy.PAIRING
+        assert (policy.PAIRING.colour, policy.PAIRING.motion) == ("blue", "breath")
+
+    def test_7_casting_is_moon_blue_55_and_20_paused(self):
         assert look(casting=True, standby=True) == policy.CASTING
-
-    def test_4_casting_is_moon_blue_55_and_an_18_glow_paused(self):
-        assert look(casting=True) == policy.CASTING
         assert (policy.CASTING.level, policy.CASTING.night) == (0.55, 0.30)
-        assert look(casting=True, cast_paused=True).level == 0.18
-        assert look_for(replace(IDLE, casting=True))[1] == policy.STANDARD
+        assert look(casting=True, cast_paused=True).level == 0.20
 
-    def test_4_a_phone_beats_offline(self):
-        assert look(casting=True, offline_s=600, source="airplay") == policy.CASTING
-
-    def test_5_standby_is_ember_and_never_red(self):
-        assert look(standby=True, offline_s=600, panel_missing=True) == policy.STANDBY
-        assert (policy.STANDBY.colour, policy.STANDBY.level, policy.STANDBY.night) == ("ember", 0.22, 0.15)
+    def test_8_standby_is_ember_still(self):
+        assert look(standby=True) == policy.STANDBY
+        assert (policy.STANDBY.colour, policy.STANDBY.level, policy.STANDBY.night) == ("ember", 0.20, 0.18)
         assert policy.STANDBY.motion == "solid"
 
-    def test_6_boot_warm_up_beats_pairing_loading_and_offline(self):
-        for stage in ("daemon", "network"):
-            got = look(boot=stage, pairing=True, loading=True, offline_s=600)
-            assert got == policy.BOOT[stage] and got.colour == "amber"
-        assert policy.BOOT["network"].floor > policy.BOOT["daemon"].floor > policy.BOOT["early"].floor
-
-    def test_6_boot_with_the_knob_off_is_an_ember_breath_then_solid_ember(self):
-        assert look(boot="daemon", standby=True) == policy.BOOT_STANDBY
-        assert policy.BOOT_STANDBY.colour == "ember"
-        assert look(boot="done", standby=True) == policy.STANDBY
-
-    def test_7_pairing_beats_loading(self):
-        assert look(pairing=True, loading=True) == policy.PAIRING
-        assert policy.PAIRING.colour == "blue" and policy.PAIRING.motion == "breath"
-
-    def test_pairing_to_casting_is_the_standard_transition(self):
-        assert look_for(replace(IDLE, pairing=True, casting=True)) == (policy.CASTING, policy.STANDARD)
-
-    def test_8_loading_is_the_standard_amber_breath(self):
-        assert look(loading=True, offline_s=600) == policy.LOADING
-        assert policy.LOADING.colour == "amber" and policy.LOADING.period_s == 3.0
-        assert policy.LOADING.floor == pytest.approx(0.45 * policy.LOADING.level)
-
-    def test_busy_breaths_are_the_slow_tempo(self):
-        # Twice as slow as the standard breath, and deep: 12 % -> 50 % (night 30 %).
-        assert policy.SHUTTING_DOWN.period_s == 6.0 == 2 * policy.LOADING.period_s
-        assert (policy.SHUTTING_DOWN.level, policy.SHUTTING_DOWN.night) == (0.50, 0.30)
-        assert policy.SHUTTING_DOWN.floor == pytest.approx(0.12)
-
-    def test_9_offline_and_a_missing_panel_are_no_idle_states(self):
-        assert look(offline_s=600) == policy.READY
-        assert look(panel_missing=True) == policy.READY
-        assert look(offline_s=600, playing=True) == policy.playing_look("radio")
-        assert not policy.offline_shows(replace(IDLE, offline_s=600))
-
-    def test_10_playing_is_80_and_ready_is_30(self):
+    def test_9_playing_is_80_and_ready_is_45(self):
         assert look_for(replace(IDLE, playing=True)) == (policy.PLAYING, policy.STANDARD)
         assert (policy.PLAYING.level, policy.PLAYING.night) == (0.80, 0.35)
-        assert look() == policy.READY and (policy.READY.level, policy.READY.night) == (0.30, 0.22)
+        assert look() == policy.READY and (policy.READY.level, policy.READY.night) == (0.45, 0.30)
 
     def test_playlists_are_amber_too(self):
         for source in ("radio", "ytm", "spotify"):
-            assert look(playing=True, source=source).colour == "amber"
+            assert look(playing=True, source=source) == policy.PLAYING      # the filament, no tint
 
     def test_the_sleep_timer_glows_down_over_20s(self):
         got, fade = look_for(replace(IDLE, playing=True, sleeping=True))
         assert (got.colour, got.level, got.night, fade) == ("amber", 0.25, 0.25, 20.0)
-        got, _ = look_for(replace(IDLE, sleeping=True))
-        assert (got.level, got.night) == (0.25, 0.22)
+
+    def test_every_look_is_a_palette_colour(self):
+        flags = ("standby", "shutting_down", "updating", "hotspot", "pairing", "casting",
+                 "cast_paused", "loading", "playing", "fault", "confirming")
+        for i in range(1 << len(flags)):
+            on = {f: bool(i >> k & 1) for k, f in enumerate(flags)}
+            for group in ("", "joining", "following"):
+                state = replace(IDLE, **on, group=group, group_playing=True, offline_s=120.0)
+                assert look_for(state)[0].colour in ("amber", "gold", "ember", "blue", "red", "off")
+
+    def test_an_update_ok_is_a_one_shot_event(self):
+        assert policy.events_for(None, replace(IDLE, update_ok=True)) == ["update_ok"]
+        assert policy.events_for(replace(IDLE, update_ok=True), replace(IDLE, update_ok=True)) == []
+        assert policy.events_for(IDLE, IDLE) == []
+
+    def test_v2_box_state_flags(self):
+        # setup / offline are fields the keeper may set (hotspot / offline_s still work).
+        assert look(setup=True) == policy.SETUP
+        assert look(offline=True) == policy.NO_INTERNET
+        assert policy.meaning_for(replace(IDLE, setup=True)) == "setup"
+        assert policy.meaning_for(replace(IDLE, offline=True)) == "no_internet"
 
 
 class TestMeaning:
@@ -144,13 +127,15 @@ class TestMeaning:
         ({"casting": True, "standby": True}, "phone"),
         ({"shutting_down": True, "casting": True}, "busy"),
         ({"updating": True}, "busy"),
-        ({"confirming": True, "hotspot": True}, "asking"),
+        ({"confirming": True}, "asking"),
+        ({"confirming": True, "hotspot": True}, "setup"),
         ({"hotspot": True, "casting": True}, "setup"),
         ({"boot": "daemon"}, "starting"),
         ({"loading": True}, "starting"),
         ({"pairing": True}, "pairing"),
-        ({"offline_s": 120.0}, "offline"),
+        ({"offline_s": 120.0}, "no_internet"),
         ({"offline_s": 120.0, "playing": True}, "playing"),
+        ({"fault": True, "standby": True}, "fault"),
         ({"halted": True}, "off"),
     ])
     def test_meaning_follows_the_priority(self, kw, meaning):
@@ -252,13 +237,13 @@ class TestKeeper:
             clock.t += 1.0
         assert last(driver) == policy.CASTING
 
-    def test_radio_offline_stays_ready(self, box):
+    def test_radio_offline_idle_shows_the_red_alert(self, box):
         clock, _, _, driver, net, keeper, _ = box
         net.online = False
         keeper.tick(clock())
         clock.t += 120
         keeper.tick(clock())
-        assert last(driver) == policy.READY
+        assert last(driver) == policy.NO_INTERNET
 
     def test_a_phone_wakes_standby_without_resuming(self, box):
         clock, player, actions, driver, _, keeper, _ = box
@@ -496,9 +481,11 @@ class TestKeeper:
         player.source = "bluetooth"
         clock.t += 2.1
         keeper.tick(clock())
-        assert driver.shows[-1] == (policy.CASTING, policy.STANDARD)
-        actions.end_pairing()
+        actions.end_pairing()           # what the main loop does when the phone connects
         assert not actions.pairing
+        clock.t += 1.0
+        keeper.tick(clock())
+        assert driver.shows[-1] == (policy.CASTING, policy.STANDARD)
 
 
 class TestBoot:

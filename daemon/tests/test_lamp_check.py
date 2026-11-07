@@ -244,7 +244,7 @@ class TestGet:
 
     def test_looks_come_from_the_policy(self, app):
         looks = {lk["id"]: lk for lk in app.lamp_calibration()["looks"]}
-        assert looks["standby"]["colour"] == "ember" and looks["standby"]["level"] == 0.22
+        assert looks["standby"]["colour"] == "ember" and looks["standby"]["level"] == eng.EMBER_LEVEL
         assert looks["pairing"]["motion"] == "breath" and looks["pairing"]["period_s"] == pytest.approx(eng.BREATH_PERIOD)
         assert {"playing", "casting", "offline"} <= set(looks)
 

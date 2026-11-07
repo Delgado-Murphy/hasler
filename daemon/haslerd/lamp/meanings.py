@@ -26,11 +26,13 @@ from typing import Any
 from .contract import BoxState
 
 # Looks the owner can ask to see, in the order the page lists them.
-LOOKS: tuple[str, ...] = ("playing", "ready", "asleep", "phone", "busy", "asking", "setup")
-# One-off replies the owner can ask to see.
-REPLIES: tuple[str, ...] = ("heard", "no")
-# Everything /api/status "lamp" can say.
-STATUS: tuple[str, ...] = LOOKS + ("starting", "pairing", "offline", "off")
+LOOKS: tuple[str, ...] = ("playing", "ready", "asleep", "phone", "busy", "asking", "setup",
+                          "no_internet", "fault", "pairing", "starting")
+# One-off replies the owner can ask to see: heard (kick), no (the HAL eye),
+# ok (green bloom and OK), hello (identify: HI).
+REPLIES: tuple[str, ...] = ("heard", "no", "ok", "hello")
+# Everything /api/status "lamp" can say ("offline" is no longer said).
+STATUS: tuple[str, ...] = LOOKS + ("offline", "off")
 
 # How long "Show me" plays a look on the real lamp (seconds): long enough for
 # two of setup's 3 s cycles and a whole 6 s busy breath.
@@ -47,13 +49,19 @@ FALLBACK_LOOK: dict[str, tuple[str, float]] = {
     "ready": ("amber", 0.35),
     "asleep": ("ember", 0.22),
     "phone": ("blue", 0.80),
-    "busy": ("ember", 0.35),
-    "setup": ("white", 0.60),
+    "busy": ("amber", 0.50),
+    "setup": ("amber", 0.60),
+    "no_internet": ("red", 0.50),
+    "fault": ("red", 0.60),
+    "pairing": ("blue", 0.50),
+    "starting": ("amber", 0.50),
 }
 FALLBACK_REPLY: dict[str, str] = {
     "heard": "ack",
     "no": "fail",
     "asking": "ha",          # the confirm broker's "press a key" double dip
+    "ok": "ack",
+    "hello": "ack",
 }
 
 # Replies that answer a key press: dropped when key replies are off and the
@@ -78,9 +86,11 @@ def meaning_of(state: BoxState, policy: Any = None) -> str:
             pass
     if state.halted:
         return "off"
+    if getattr(state, "fault", False) or state.panel_missing:
+        return "fault"
     if state.shutting_down or state.updating:
         return "busy"
-    if state.hotspot:
+    if state.hotspot or getattr(state, "setup", False):
         return "setup"
     if state.casting:
         return "phone"
