@@ -3476,7 +3476,7 @@ function chooseKey({title, sub, slots, defaultSlot, allowPu}){
     }
     paintList();
     dlg.append(list, h('div', {style:'display:flex;justify-content:flex-end;margin-top:8px'}, h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Cancel')));
-    dlg.onclose = () => resolve(result);
+    dlg.onclose = () => { if (dlg.open) return; resolve(result); };
     dlg.onclick = e => { if (e.target === dlg) dlg.close(); };
     dlg.showModal();
   });
@@ -7043,6 +7043,7 @@ function offerHost(host, done){
       h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Not now'),
       h('button', {type:'button', class:'btn small primary', id:'hostAllow', onclick: () => { go = true; dlg.close(); }}, 'Allow this address')));
   dlg.onclose = async () => {
+    if (dlg.open) return;          // a late close event from the dialog before this one
     dlg.onclose = null;
     if (!go){ hostUi.declined = true; done(false); return; }
     const token = await pressToConfirm('hostname', null, 'Allow ' + host, 'Then changes made here will reach the radio.');
@@ -7127,6 +7128,7 @@ function pressToConfirm(action, args, title, sub){
         h('span', {class:'li-sub'}, 'The pilot lamp dips twice while it waits. That press only confirms — it won’t change the station.'))),
       h('div', {style:'display:flex;justify-content:flex-end;margin-top:14px'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
     dlg.onclose = () => {
+      if (dlg.open) return;
       done = true; clearTimeout(timer);
       if (!result) api('DELETE', '/api/confirm/' + encodeURIComponent(j.token)).catch(() => {});
       resolve(result);
@@ -7941,7 +7943,7 @@ function openWizard(k){
   const dlg = $('dlg');
   dlg.onclick = null;   // no backdrop dismiss: the owner is turning a knob with the other hand
   dlg.oncancel = e => { if (!wizLeave()) e.preventDefault(); };
-  dlg.onclose = () => { wiz = null; dlg.oncancel = null; dlg.onclose = null; if (view === 'settings') rerender(); };
+  dlg.onclose = () => { if (dlg.open) return; wiz = null; dlg.oncancel = null; dlg.onclose = null; if (view === 'settings') rerender(); };
   renderWiz();
   if (!dlg.open) dlg.showModal();
   knobPoll(true);
