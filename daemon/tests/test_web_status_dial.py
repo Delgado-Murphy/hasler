@@ -10,7 +10,7 @@ from conftest import VARIANTS
 
 from haslerd.actions import CAST_END_GRACE_S, Actions
 from haslerd.panel.controls import Event
-from haslerd.player.base import FakePlayer
+from haslerd.player.base import FakePlayer, Preset
 from haslerd.variant import Panel, load_variant
 from haslerd.web.server import WebApp
 
@@ -120,7 +120,10 @@ class TestHaslerHm:
         assert st["phone"] == {"device": "", "title": "So What", "artist": "Miles Davis", "source": "spotify"}
 
     def test_our_own_spotify_preset_is_not_a_phone(self, hm):
-        hm.tap("k4")                                  # Today's Top Hits, on go-librespot
+        # The shipped starter sets carry no Spotify key (a new radio is signed out), so put one on key 4.
+        hm.actions.presets[4] = Preset.from_spec({"n": 4, "name": "Today's Top Hits",
+                                                  "spotify": "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"})
+        hm.tap("k4")                                  # on go-librespot, the radio's own account
         st = hm.status()
         assert (st["played_from"], st["phone"], st["source"]) == ("key", None, "spotify")
 

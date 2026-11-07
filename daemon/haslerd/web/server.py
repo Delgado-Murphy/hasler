@@ -49,7 +49,8 @@ The owner's lamp (Settings -> Pilot lamp, web/lamp_api.py, lamp/meanings.py):
 the lamp's meanings on the real lamp for ~5 s ("Show me"; ``{"look": null}``
 ends it); ``POST /api/lamp/identify {"seconds": 1..60}`` (default 10) makes
 the lamp say "this radio", and with ``"peer": id`` asks another Hasler
-(multiroom) to. ``PUT /api/settings {"lamp": {"brightness":
+(multiroom) to; ``POST /api/lamp/ok {}`` plays the small OK once (the green
+bloom and Morse OK, as after setup: "Make it yours" is done). ``PUT /api/settings {"lamp": {"brightness":
 "low"|"normal"|"bright", "key_replies": bool}}`` persists to settings.json
 ``lamp`` and the listeners apply it at once. ``/api/status`` ``lamp`` is the
 meaning showing now (lamp/meanings.STATUS), or None without a lamp.
@@ -203,6 +204,9 @@ EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "
 # What a phone on AirPlay plays: moOde's aplmeta.py writes shairport-sync's
 # metadata here as {"title", "artist", "album", ...}.
 APLMETA_FILE = Path("/var/local/www/aplmeta.json")
+# hasler-install's last mark: when it finished (an ISO time), for /api/info "installed_at".
+INSTALL_DONE = Path("/var/lib/hasler-install/done")
+_ISO_UTC = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
 # The PU cycle's stops where a phone does the playing (actions.cycle_position).
 PHONE_STOPS = ("bluetooth", "airplay", "dlna", "spotify")
 
@@ -247,6 +251,41 @@ def _merge_dismissed(current: Any, change: dict) -> dict:
             out.pop(k, None)
         else:
             out[k] = v
+    return out
+
+
+# "Make it yours" (the Settings home's checklist): what the owner skipped, and
+# when they hid the list. settings.json ``made_mine``, the same on every phone.
+MADE_MINE_MAX = 16
+_MADE_MINE_NAME = re.compile(r"[a-z][a-z0-9_]{0,31}")
+
+
+def _made_mine_doc(raw: Any) -> dict:
+    """The saved block as the page reads it: {"skipped": [names], "hidden_at": time|None}."""
+    d = raw if isinstance(raw, dict) else {}
+    names = d.get("skipped")
+    hidden = d.get("hidden_at")
+    return {"skipped": [n for n in names if isinstance(n, str)] if isinstance(names, list) else [],
+            "hidden_at": hidden if isinstance(hidden, str) else None}
+
+
+def _made_mine_from(body: Any) -> dict:
+    """Validate ``PUT /api/settings {"made_mine": ...}``: a whole ``skipped``
+    list (short names), and/or ``hidden_at`` (a time, or null to show the list again)."""
+    if not isinstance(body, dict) or not body or not set(body) <= {"skipped", "hidden_at"}:
+        raise ValueError("made_mine must be {\"skipped\": [names], \"hidden_at\": \"<time>\"|null}")
+    out: dict = {}
+    if "skipped" in body:
+        names = body["skipped"]
+        if (not isinstance(names, list) or len(names) > MADE_MINE_MAX
+                or not all(isinstance(n, str) and _MADE_MINE_NAME.fullmatch(n) for n in names)):
+            raise ValueError(f"made_mine.skipped must be a list of up to {MADE_MINE_MAX} short names")
+        out["skipped"] = list(dict.fromkeys(names))
+    if "hidden_at" in body:
+        at = body["hidden_at"]
+        if at is not None and not (isinstance(at, str) and 0 < len(at) <= 40):
+            raise ValueError("made_mine.hidden_at must be a short time string, or null")
+        out["hidden_at"] = at
     return out
 
 
@@ -398,6 +437,9 @@ class WebApp:
         # Without a settings file (no state dir) the lamp's choices live here.
         self._lamp_settings: dict = {}
         self._dismissed_mem: dict = {}      # the page's dismissed notices when there is no settings file
+        self._made_mine_mem: dict = {}      # "Make it yours" (skipped, hidden) when there is no settings file
+        # When hasler-install finished (/api/info "installed_at"); main.py points a --fake radio at its state dir.
+        self.install_done_file: Path = INSTALL_DONE
         # The lamp engine (lamp/engine.LampEngine: set_palette, preview), or
         # None for a radio without one; main() sets it once the lamp is up.
         self.lamp: Any = None
@@ -1148,6 +1190,8 @@ class WebApp:
         and for other Haslers (``multiroom``: {enabled, role, leader, members,
         playing, source, since} - multiroom/group.py ``info_doc``)."""
         doc = integration.info(self.actions.variant.name, self._release_version(), self.machine_id_file)
+        # When hasler-install finished: the page nags a new radio only for its first week.
+        doc["installed_at"] = self._installed_at()
         group = self.group
         try:
             doc["name"] = self.room.name()
@@ -1160,6 +1204,21 @@ class WebApp:
         except Exception:
             log.debug("multiroom info failed", exc_info=True)
         return doc
+
+    def _installed_at(self) -> str | None:
+        """When hasler-install finished: its ``done`` mark (an ISO time; the file's
+        age for an older mark), or None on a radio that was never installed that way."""
+        path = self.install_done_file
+        try:
+            text = path.read_text().strip()
+        except OSError:
+            return None
+        if _ISO_UTC.fullmatch(text):
+            return text
+        try:
+            return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(path.stat().st_mtime))
+        except OSError:
+            return None
 
     def art_current(self) -> tuple[bytes, str, str] | None:
         """``GET /api/art/current``: (bytes, content type, etag), or None."""
@@ -1344,6 +1403,9 @@ class WebApp:
             "wifi_joined": self._wifi_joined(),
             # The time zone and the zones the page lists (web/clock.py).
             "clock": clock_mod.doc(self._timezone()),
+            # "Make it yours" (the Settings home): the rows the owner skipped, and
+            # when they hid the list ({"skipped": [...], "hidden_at": time|null}).
+            "made_mine": self._made_mine(),
             "version": f"haslerd {__version__}",
             "moode_url": f"http://{_host_only(host) or socket.gethostname() + '.local'}/",
         }
@@ -1397,14 +1459,19 @@ class WebApp:
                 raise ValueError(f"dismissed.{k} must be a short string, or null")
         return dict(body)
 
+    def _made_mine(self) -> dict:
+        raw = load_settings(self.settings_file).get("made_mine") if self.settings_file is not None else self._made_mine_mem
+        return _made_mine_doc(raw)
+
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
         ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``,
         ``ytm`` ({"hide_explicit": bool}), ``lamp`` ({"brightness", "key_replies"}),
         ``dismissed`` ({"rollback": "1.4.1"}: a notice the page has shown),
-        ``timezone`` ("Europe/Madrid": the system clock's zone, web/clock.py)."""
+        ``timezone`` ("Europe/Madrid": the system clock's zone, web/clock.py),
+        ``made_mine`` ({"skipped": [...], "hidden_at": time|null}: "Make it yours")."""
         keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm", "lamp",
-                "dismissed", "timezone"}
+                "dismissed", "timezone", "made_mine"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
@@ -1414,8 +1481,10 @@ class WebApp:
                              "{\"spotify_guests\": true|false}, "
                              "{\"ytm\": {\"hide_explicit\": true|false}}, "
                              "{\"lamp\": {\"brightness\": \"low\"|\"normal\"|\"bright\", \"key_replies\": true|false}}, "
-                             "{\"dismissed\": {\"rollback\": \"<version>\"}}")
+                             "{\"dismissed\": {\"rollback\": \"<version>\"}}, "
+                             "{\"made_mine\": {\"skipped\": [names], \"hidden_at\": \"<time>\"|null}}")
         dismissed = self._dismissed_from(body["dismissed"]) if "dismissed" in body else None
+        made_mine = _made_mine_from(body["made_mine"]) if "made_mine" in body else None
         limit = volume_limit_from(body["volume_limit"], self._volume_cap()) if "volume_limit" in body else None
         floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
                  if "volume_floor" in body else None)
@@ -1477,6 +1546,8 @@ class WebApp:
                     doc["ytm"] = {**(doc.get("ytm") if isinstance(doc.get("ytm"), dict) else {}), **ytm}
                 if dismissed is not None:
                     doc["dismissed"] = _merge_dismissed(doc.get("dismissed"), dismissed)
+                if made_mine is not None:
+                    doc["made_mine"] = _merge_dismissed(doc.get("made_mine"), made_mine)
                 doc.setdefault("schema", boxconfig.SCHEMA)
                 save_settings(self.settings_file, doc)
             else:
@@ -1491,6 +1562,8 @@ class WebApp:
                     doc["lamp"] = lamp_api.lamp_block(doc, prefs, geek)
                 if dismissed is not None:
                     self._dismissed_mem = _merge_dismissed(self._dismissed_mem, dismissed)
+                if made_mine is not None:
+                    self._made_mine_mem = _merge_dismissed(self._made_mine_mem, made_mine)
             if room is not None:
                 self.room.commit(room, body["room"])
             if guests is not None:
@@ -1640,6 +1713,16 @@ class WebApp:
             preview(rgb, level)
         return {"lamp": lamp is not None, "showing": rgb is not None and lamp is not None,
                 "expires_s": lamp_engine.PREVIEW_S if rgb is not None else 0}
+
+    def lamp_ok(self) -> dict:
+        """``POST /api/lamp/ok {}``: the small OK once - the green bloom and Morse
+        OK the lamp plays after setup (main.LampKeeper.celebrate) - when "Make it
+        yours" is done. Nothing happens on a radio without a lamp keeper."""
+        celebrate = getattr(self.lamp_keeper, "celebrate", None)
+        if callable(celebrate):
+            celebrate()
+            log.info("lamp: the small OK from the web page (Make it yours done)")
+        return {"lamp": callable(celebrate)}
 
     def lamp_egg(self, body: Any = None) -> dict:
         """``POST /api/lamp/egg {}``: the hidden surprise, in geek mode only (the
@@ -3046,11 +3129,12 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             lang = wifi_page.pick_lang(form.get("lang"), self.headers.get("Accept-Language"))
             strings = wifi_page.strings((STATIC / "wifi.html").read_text("utf-8"))
             s = {**strings.get("en", {}), **strings.get(lang, {})}
+            error_key = None
             try:
                 body = wifi_page.join_body(form)
                 app.wifi_join(body, self._local_addr())
             except wifi_page.FormError as exc:
-                error = s.get(exc.key, exc.key)
+                error, error_key = s.get(exc.key, exc.key), exc.key
             except (ConfirmError, ConfirmUnavailable):
                 error = s.get("err_confirm_js", "")
             except ValueError as exc:
@@ -3058,7 +3142,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
             else:
                 self._wifi_page(lang, state="done", saved_ssid=body["ssid"])
                 return
-            self._wifi_page(lang, 400, form=form, error=error)
+            self._wifi_page(lang, 400, form=form, error=error, error_key=error_key)
 
         def do_POST(self) -> None:
             if urlparse(self.path).path == "/wifi":
@@ -3088,6 +3172,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, **app.lamp_identify(self._body())}))
             elif path == "/api/lamp/egg":
                 self._guard(lambda: self._json(200, {"ok": True, **app.lamp_egg(self._body())}))
+            elif path == "/api/lamp/ok":
+                self._guard(lambda: self._json(200, {"ok": True, **app.lamp_ok()}))
             elif path == "/api/lamp/palette":       # as PUT, for clients that only POST
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
             elif path == "/api/lamp/calibration":   # as PUT, for clients that only POST
