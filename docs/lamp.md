@@ -231,6 +231,36 @@ io:
 (`playing`, `ready`, `asleep`, `phone`, `busy`, `asking`, `setup`,
 `starting`, `pairing`, `offline`).
 
+## For the owner: the page
+
+Settings → **Pilot lamp** speaks in meanings, not colours
+(`daemon/haslerd/lamp/meanings.py`), so it survives a change of palette:
+
+| Meaning | Kind | Show me plays |
+|---|---|---|
+| Playing · Ready · Asleep · A phone is playing · Busy - don't unplug · Asking you to press a key on the radio · Set me up | look (`playing`, `ready`, `asleep`, `phone`, `busy`, `asking`, `setup`) | that look for 5 s |
+| I heard you (a key press) · No / something failed | reply (`heard`, `no`) | that reply once |
+
+- **Show me**: `POST /api/lamp/preview {"look": name}` or `{"reply": name}`
+  (`{"look": null}` ends it). The engine's `preview_look(name, seconds)` /
+  `preview_reply(name)` draw it; an engine without them shows a still colour
+  from its palette, or its old reply (`ack`, `fail`, `ha`). The raw
+  `{"rgb", "level"}` preview stays for Maker tools.
+- **Brightness** low / normal / bright and **key replies** on / off:
+  `PUT /api/settings {"lamp": {"brightness", "key_replies"}}`, kept in
+  settings.json `lamp` and handed to the engine at start and on every change
+  (`set_brightness`, `set_key_replies`). Without those, the LampKeeper scales
+  each Look itself (never the ember: asleep must not look dark) and drops the
+  key-press replies (`ack`, `next`, `nudge`).
+- **Identify**: `POST /api/lamp/identify {"seconds": 1..60}` (10 by default)
+  calls the engine's `identify(seconds)` (fallback: warm white for that
+  long). `{"peer": id}` asks another Hasler at home (multiroom) to do it, on
+  its own `/api/lamp/identify`.
+- **In words**: `/api/status` `lamp` is the meaning showing now (the looks
+  above, plus `starting`, `pairing`, `offline`; `asking` while the page waits
+  for a key press; null without a lamp). The front page shows it as
+  *Lamp: asleep*, for owners who can't tell the colours apart.
+
 ## How it is built
 
 - The lamp has its **own thread**: it sleeps while steady and renders at 50 Hz

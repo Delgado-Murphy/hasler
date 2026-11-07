@@ -159,6 +159,12 @@ From sunset to sunrise the lamp is dimmer and moves more slowly, and it
 doesn't show the "no internet" red. To use fixed hours instead, or never dim,
 see **Settings → Pilot lamp**.
 
+**Can't tell the colours apart?** The front page says it in words, under the
+keys: *Lamp: asleep*, *Lamp: a phone is playing*, *Lamp: busy — don't
+unplug*, *Lamp: asking you to press a key*. And **Settings → Pilot lamp**
+lists what the lamp means, each with **Show me**: the lamp on the radio plays
+it for a few seconds, so you learn it by looking.
+
 Every colour in detail: [The pilot lamp](lamp.md).
 
 ## Playing from your phone
@@ -415,10 +421,10 @@ Tap the gear. Each row opens its own page.
 |---|---|
 | **Sound** | The **volume ceiling**, the loudest the knob can go (30 to 100; above 95 the old speaker can rattle and distort). The **quietest step**: the knob's first click. **Mono**: left and right mixed into the one speaker, so nothing is lost (on to start). **What the tone knob does**, with **Try it**. |
 | **Phones & casting** | Spotify (and **Guests on your Wi-Fi can play**), AirPlay, Bluetooth and other music apps (UPnP), each on or off. Bluetooth: what is playing and its codec, your phones, **Pair a phone**, **Reconnect to the last phone**. **Back to the radio when a phone stops**. **Use the room name on phones**. |
-| **Rooms** | **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. |
-| **Pilot lamp** | When the lamp dims at night (*by the sun*, *fixed hours* or *never*), and **where the radio stands**, so it knows when the sun sets. |
+| **Rooms** | **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. The **other Haslers at home**, each with **Identify**: its lamp signals, so you know which radio is which. |
+| **Pilot lamp** | **What the lamp means**, each with **Show me** (it plays on the radio's lamp). **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). When the lamp dims at night (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. Lamp colours are set by the makers. |
 | **Keys & knobs** | **What the source key (PU) steps through**, and in what order. Each knob, live, with **Calibrate**: turn the knob to a few positions and the radio learns them. |
-| **This radio** | The **room name** (with **Remove**) and the radio's address. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
+| **This radio** | The **room name** (with **Remove**) and the radio's address. **Identify this radio**: its lamp signals for 10 seconds. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
 
 The version number is at the bottom of Settings.
 
