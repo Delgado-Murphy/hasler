@@ -294,7 +294,7 @@ The Amp4 Pro is stereo; the Hasler is mono.
 ## 6. Pot calibration — Phase 3b, once the ADS1115 is fitted
 
 **The easy way** (once the radio runs signed releases, build guide Phase 4b): key page →
-Settings → **Keys & knobs** → **Calibrate**. A short guide asks you to turn each knob to a
+Settings → **Sound** → **If a knob feels off** → **Calibrate**. A short guide asks you to turn each knob to a
 few positions and saves the curve on this radio (`/etc/hasler/variant.d/hasler-hm.yaml`,
 kept across updates).
 

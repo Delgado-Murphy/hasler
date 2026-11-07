@@ -79,7 +79,7 @@ you stop it, but it doesn't wake the radio again.
 
 You choose what each key plays, and what holding it does, in
 [Edit keys](#edit-keys). What **PU** steps through, and in what order, is in
-**Settings → Keys & knobs**.
+**Settings → Keys**.
 
 #### Key combinations
 
@@ -113,7 +113,7 @@ bass, less treble), right is brighter, the middle is flat. You can give it a
 different job in **Settings → Sound → What the tone knob does**: treble, bass,
 loudness (fuller sound when quiet), presence (voices forward), *1960s radio*
 (the old radio's voice, blended in as you turn), stereo width, or nothing.
-**Try it** plays your choice for 30 seconds before you save it.
+A choice applies at once, with **Undo**: turn the knob to hear it.
 
 Whatever the tone knob does, it never makes the old speaker work harder: when
 it lifts part of the sound, the radio turns everything else down a little. A
@@ -195,7 +195,7 @@ The radio is also a speaker for your phone. On the network it is called
   switch off **Guests on your Wi-Fi can play**. A guest never replaces the
   radio's own account: when they stop, the keys play from it again.
 - **The radio's own Spotify account** (the one Spotify keys play from):
-  **Settings → Phones & casting → Spotify Connect** says *Signed in as
+  **Settings → Music accounts → Spotify** says *Signed in as
   jd······fe*. To sign in or change it, tap **Sign in** (or **Change account**)
   and press any key on the radio to confirm. The page shows a code: on your
   phone or computer go to **spotify.com/pair**, sign in with a Premium account
@@ -219,12 +219,12 @@ after about 20 seconds, unless you chose something else on the radio in the
 meantime, or the phone had woken it from standby (then it stays quiet). To
 switch this off: **Back to the radio when a phone stops**.
 
-All of this is in **Settings → Phones & casting**: each way of playing on or
-off, your Bluetooth phones, and the names phones see.
+All of this is in **Settings → Phones**: each way of playing on or off, your
+Bluetooth phones, and what phones call the radio.
 
 ### Bluetooth
 
-- **Your phones.** **Settings → Phones & casting → Bluetooth** lists the paired
+- **Your phones.** **Settings → Phones → Your phones** lists the paired
   phones: which one is connected, its battery (if the phone tells), and when
   it was last used. **Connect**, **Disconnect**, or **Forget** (pair it again
   later with **Pair a phone**).
@@ -237,8 +237,8 @@ off, your Bluetooth phones, and the names phones see.
   radio went to sleep on Bluetooth, waking it goes back to Bluetooth and calls
   the phone, instead of playing a station. Both are switches under
   **Reconnect to the last phone** (*When I switch to Bluetooth* and *When the
-  radio wakes up*), in **Settings → Phones & casting → Bluetooth**. Both are
-  on to start.
+  radio wakes up*), in **Settings → Phones → Your phones**. Both are on to
+  start.
 - **Phone volume is the radio's volume.** While a phone plays over Bluetooth,
   its volume buttons turn the radio up and down (in the knob's safe range) and
   its slider follows the knob and keys; after a change on the phone, the next
@@ -258,9 +258,9 @@ off, your Bluetooth phones, and the names phones see.
 
 ### One name per room
 
-If you have more than one Hasler, give each a room name (**Settings → This
-radio**) and switch on **Use the room name on phones** (**Settings → Phones &
-casting**). Phones then show *Hasler Kitchen*, *Hasler Study* and so on,
+If you have more than one Hasler, give each a room name and switch on **Use
+the room name on phones**, both in **Settings → Rooms → This room**
+(**Settings → Phones** shows the result). Phones then show *Hasler Kitchen*, *Hasler Study* and so on,
 instead of several *Hasler*s. Renaming takes a minute or two (the page shows
 each step), and Spotify on the radio stops for a moment while it takes the
 new name. Switch it off to go back to plain *Hasler*.
@@ -327,7 +327,7 @@ computer on the **same Wi-Fi** as the radio:
 
 (If that doesn't open, try the radio's IP address from your router, with
 `:8080` at the end. A second Hasler on the same network gets
-`hasler-2.local` by itself; **Settings → This radio** shows each radio's
+`hasler-2.local` by itself; **Settings → Rooms** shows each radio's
 address.)
 
 ### The front screen
@@ -432,23 +432,36 @@ how long to hold them and what they do, and **Try it** to hear it.
 
 ### Settings
 
-Tap the gear. Each row opens its own page.
+Tap the gear. Each row opens its own page, and says under its name what it
+holds right now. Anything that needs you (an update ready, a Spotify code
+waiting, a key whose Home Assistant target has gone, a Wi-Fi not set up) is
+listed first, under **Needs attention**; while that list has something in it,
+the gear on the front page carries a small amber dot.
 
 | Row | What you find there |
 |---|---|
-| **Sound** | The **volume ceiling**, the loudest the knob can go (30 to 100; above 95 the old speaker can rattle and distort). The **quietest step**: the knob's first click. **Mono**: left and right mixed into the one speaker, so nothing is lost (on to start). **What the tone knob does**, with **Try it**. |
-| **Phones & casting** | Spotify (and **Guests on your Wi-Fi can play**), AirPlay, Bluetooth and other music apps (UPnP), each on or off. Bluetooth: what is playing and its codec, your phones, **Pair a phone**, **Reconnect to the last phone**. **Back to the radio when a phone stops**. **Use the room name on phones**. |
-| **Rooms** | **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. The **other Haslers at home**, each with **Identify**: its lamp taps HI in Morse, in green, so you know which radio is which (the page says when that radio has no lamp, or needs a software update first). |
-| **Pilot lamp** | **Now**: what the lamp says right now, in words. **What the lamp means**, grouped, each with its rhythm and **Show me** (it plays on the radio's lamp), and **Show me everything**. **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). **Geek mode** and its callsign (off to start). When the lamp dims at night (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. Lamp colours are set by the makers. |
-| **Keys & knobs** | **What the source key (PU) steps through**, and in what order. Each knob, live, with **Calibrate**: turn the knob to a few positions and the radio learns them. |
-| **This radio** | The **room name** (with **Remove**) and the radio's address. **Identify this radio**: its lamp taps HI in Morse, in green. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
+| **Sound** | The **volume ceiling**, the loudest the knob can go (30 to 100; above 95 the old speaker can rattle and distort). The **quietest step**: the knob's first click. **Mono**: left and right mixed into the one speaker, so nothing is lost (on to start). **What the tone knob does**. At the bottom, **If a knob feels off**: each knob, live, with **Calibrate** (turn the knob to a few positions and the radio learns them). |
+| **Keys** | **What the keys play** points to Edit keys (stations, playlists, what holding a key does, key combinations). **What the source key (PU) steps through**, and in what order. **Starting over**: Reset keys to defaults. |
+| **Phones** | **Play from a phone**: Spotify (and **Guests on your Wi-Fi can play**), AirPlay, Bluetooth and other music apps (UPnP), each on or off. **Your phones**: what is playing over Bluetooth and its codec, the paired phones, **Pair a phone**, **Reconnect to the last phone**, **Phone volume controls the radio**. **Back to the radio when a phone stops**. **What phones call the radio**: the one name every phone sees (a different name for one service is tucked underneath). |
+| **Music accounts** | **Spotify**: the radio's own account, the one Spotify keys play from (**Sign in**, **Change account**, **Sign out**; the page gives a code for spotify.com/pair). **YouTube Music**: your account (sign in for your Liked songs and private playlists; it takes a computer and a few technical steps, which the makers can do for you over remote help), **Hide explicit songs**, and whether the YouTube Music helper is working. |
+| **Rooms** | **This room**: the **room name** (with **Remove**) and the radio's address, **Use the room name on phones**, and **Identify this radio** (its lamp taps HI in Morse, in green). **Several rooms**: **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. **The other Haslers**, each with **Identify** (the page says when that radio has no lamp, or needs a software update first). |
+| **Pilot lamp** | **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). **At night**: when the lamp dims (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. **What the lamp means**: **Now** (what the lamp says right now, in words), the full list folded away, each colour with its rhythm and **Show me** (it plays on the radio's lamp), and **Show me everything**. **Geek mode** and its callsign (off to start). Lamp colours are set by the makers. |
+| **This radio** | **Wi-Fi** and the setup network. **Software**: Updates. **Home Assistant**. [Help from the makers](#help-from-the-makers). Folded at the very bottom: the other addresses allowed to change this radio. |
 
 The version number is at the bottom of Settings.
 
-**How changes are kept.** A single switch or slider works at once, and a small
-**Undo** appears for a few seconds in case you didn't mean it. Where you fill
-in several things, a bar shows **Not saved** with **Cancel** and **Save**;
-nothing changes until you press **Save**.
+**How changes are kept.** Every page says, under its title, how its changes
+are kept. A single switch, slider or choice works at once, and a small
+**Undo** appears for a few seconds in case you didn't mean it; the Undo for a
+slider names the old value too. Where you type something (a room name, a name
+for phones, where the radio stands), a bar shows **Not saved** with **Cancel**
+and **Save**; nothing changes until you press **Save**, and leaving the page
+asks first. Connecting Home Assistant and signing in to YouTube Music are
+forms with their own button. A few things ask for a key press on the radio
+(the next section). When the radio says no to a change, the reason appears
+next to the control and the control goes back to how it was; a question that
+needs a yes (forget a phone, disconnect Home Assistant, sign out) opens as a
+sheet on the page, never as a browser box.
 
 **Maker tools.** There is one more page, for the person who built the radio:
 lamp colours, knob curves, the player underneath (moOde) and diagnostics. It
@@ -647,17 +660,17 @@ isn't answering). Tell them.
 **Stations work, but YouTube Music or Spotify don't.**
 
 - YouTube Music: if you signed in, the sign-in may have expired after some
-  months. Sign in again in **Settings → This radio → YouTube Music**.
+  months. Sign in again in **Settings → Music accounts → YouTube Music**.
   When YouTube changes something, the radio fetches a newer YouTube Music
-  helper by itself, usually within hours; **Settings → This radio → Updates →
-  Music services** says whether it is working.
+  helper by itself, usually within hours; the same page says whether it is
+  working, and Settings lists it under **Needs attention** while it isn't.
 - Spotify on a key needs the radio signed in to a Premium account: see
-  **Settings → Phones & casting → Spotify Connect**. If it says *Signed in*
+  **Settings → Music accounts → Spotify**. If it says *Signed in*
   but keys still don't play (the password was changed, or the radio was
   removed in Spotify's account page), tap **Change account** and sign in again.
 
 **My phone won't connect over Bluetooth.** Check that Bluetooth is on in
-**Settings → Phones & casting**. If the phone is listed but won't connect,
+**Settings → Phones**. If the phone is listed but won't connect,
 **Forget** it there, then hold **PU** and pair it again.
 
 **Another Hasler is missing from "Also play on…".** Switch on **Play in
@@ -669,7 +682,7 @@ list again.
 on **Use the room name on phones** (see [One name per room](#one-name-per-room)).
 
 **A knob feels wrong** (the volume jumps, or doesn't reach the top). Use
-**Settings → Keys & knobs → Calibrate**.
+**Settings → Sound → If a knob feels off → Calibrate**.
 
 **An update made something worse.** **Settings → This radio → Updates**, then
 **Go back** next to the previous version.

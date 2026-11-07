@@ -123,11 +123,11 @@ and an account, so the radio can't do them alone:
 |---|---|---|
 | **Volume ceiling** - do this first | key page → Settings → **Sound** → Volume ceiling | protects the 1964 speaker; set by ear ([build guide, Phase 3a](build-guide.md#phase-3a--keys-drive-the-music)) |
 | **Your stations and playlists** | key page → **Edit keys** | the shipped keys are a test set |
-| **Spotify** (Premium) | key page → Settings → Phones & casting → Spotify Connect → **Sign in**, then enter the code at spotify.com/pair ([Using your Hasler](using.md#playing-from-your-phone)) | your Spotify account |
-| **YouTube Music** private playlists, Liked songs | key page → Settings → This radio → YouTube Music → **Sign in** | your Google sign-in; public playlists need nothing |
+| **Spotify** (Premium) | key page → Settings → Music accounts → Spotify → **Sign in**, then enter the code at spotify.com/pair ([Using your Hasler](using.md#playing-from-your-phone)) | your Spotify account |
+| **YouTube Music** private playlists, Liked songs | key page → Settings → Music accounts → YouTube Music → **Sign in** | your Google sign-in; public playlists need nothing |
 | **Home Assistant** (optional) | key page → Settings → This radio → Home Assistant → paste a token | a token from your HA ([build guide, Phase 5](build-guide.md#phase-5--home-assistant)) |
-| **Knob calibration** (if the knobs feel off) | key page → Settings → Keys & knobs → **Calibrate** | turning the real knobs |
-| **Room name** (two or more Haslers) | key page → Settings → This radio | yours to choose |
+| **Knob calibration** (if the knobs feel off) | key page → Settings → Sound → If a knob feels off → **Calibrate** | turning the real knobs |
+| **Room name** (two or more Haslers) | key page → Settings → Rooms → This room | yours to choose |
 | **Hotspot password** | `curl -s hasler.local:8080/api/wifi` → `setup.password` | the setup hotspot "Hasler" gets a random one on the first start; write it down for the owner, or choose your own in moOde → Network → Access Point ([build guide](build-guide.md#moving-the-radio-to-a-new-wi-fi-network)) |
 
 Spotify casting from a phone (*Hasler* in the Spotify app's device list),
