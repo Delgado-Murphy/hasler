@@ -2,8 +2,8 @@
 // GitHub repo, and a maker's "/owner ..." comment on it comes back to the radio as a note.
 // SUPPORT.md has the setup. Owners never need a GitHub account; nothing here touches a public repo.
 //
-//   POST /v1/report          a radio's report (daemon/haslerd/web/support_api.py), same X-Hasler-Token
-//                            as the check-in: {schema: 1, box_id, short_id, note, text, json}, at most
+//   POST /v1/report          a radio's report (daemon/haslerd/web/support_api.py), X-Hasler-Token the
+//                            shared word or the radio's own (enrol.js): {schema: 1, box_id, short_id, note, text, json}, at most
 //                            16 KB. At most PER_DAY a day per box_id (429 after). The same box_id with
 //                            the same note within DEDUP_S is a comment on the issue it made, not a new
 //                            one. Answers {ok, number, deduped}. The IP is never read or stored.
@@ -12,7 +12,7 @@
 //                            starts "/owner " is queued for that issue's radio; so are the issue's
 //                            states: closed ("done", folding in a /owner reply not yet fetched),
 //                            reopened, and the label "seen" (once). Those replies carry state: seen|done.
-//   GET  /v1/replies?box_id= the radio's queued replies (token-gated): {replies: [{id, at, text, issue}]}
+//   GET  /v1/replies?box_id= the radio's queued replies (the shared word or that radio's own token): {replies: [{id, at, text, issue}]}
 //   POST /v1/replies/ack     {box_id, ids: [...]}: the radio kept them; they leave the queue.
 //
 // Bindings: SUPPORT (KV, its own namespace so the dashboard's list stays radios only).
@@ -22,6 +22,10 @@
 // KV keys (SUPPORT): rate:<box>:<day> (a count, 2 days), last:<box> (the last note's hash and
 // issue, DEDUP_S), issue:<n> (which radio, kept), issues:<box> (its last few issue numbers, for the
 // dashboard), replies:<box> (the queue, at most MAX_REPLIES), said:seen:<n> ("seen" said once).
+// Who may report for, or read the replies of, a radio: enrol.js authFor (the shared CHECKIN_TOKEN, or
+// that radio's own token from POST /v1/enrol).
+
+import { authFor, fleetCap } from "./enrol.js";
 
 export const MAX_REPORT = 16384;
 export const PER_DAY = 5;
@@ -125,11 +129,15 @@ export async function handleReport(request, env, now) {
   const v = validateReport(await request.text());
   if (v.error) return json({ ok: false, error: v.error }, 400);
   const { doc, id } = v;
+  const auth = await authFor(request, env, id);
+  if (!auth.ok) return json({ ok: false, error: "this radio isn't known here" }, 403);
   const day = new Date(now).toISOString().slice(0, 10);
   const rateKey = `rate:${id}:${day}`;
   const count = Number(await env.SUPPORT.get(rateKey)) || 0;
   if (count >= PER_DAY) return json({ ok: false, error: `at most ${PER_DAY} requests a day`, limit: PER_DAY }, 429);
   await env.SUPPORT.put(rateKey, String(count + 1), { expirationTtl: 2 * 86400 });
+  const full = await fleetCap(env, auth.kind, now);
+  if (full) return full;
 
   const repo = repoOf(env);
   const noteHash = await sha256(oneLine(doc.note));
@@ -263,12 +271,14 @@ export async function handleReplies(request, env, url) {
   if (request.method === "GET") {
     const box = url.searchParams.get("box_id") || "";
     if (!BOX_RE.test(box)) return json({ error: "box_id must be a short plain string" }, 400);
+    if (!(await authFor(request, env, box)).ok) return json({ error: "no" }, 403);
     return json({ replies: (await env.SUPPORT.get(`replies:${box}`, "json")) || [] });
   }
   let doc;
   try { doc = JSON.parse(await request.text()); } catch (_) { return json({ error: "not JSON" }, 400); }
   const box = doc && doc.box_id;
   if (typeof box !== "string" || !BOX_RE.test(box) || !Array.isArray(doc.ids)) return json({ error: "box_id and ids" }, 400);
+  if (!(await authFor(request, env, box)).ok) return json({ error: "no" }, 403);
   const queue = (await env.SUPPORT.get(`replies:${box}`, "json")) || [];
   const left = queue.filter(r => !doc.ids.includes(r.id));
   if (left.length) await env.SUPPORT.put(`replies:${box}`, JSON.stringify(left));

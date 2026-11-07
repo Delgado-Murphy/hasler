@@ -6,8 +6,10 @@
 //   POST /v1/checkin   a radio's daily check-in (update/hasler_update/checkin.py):
 //                      a JSON object of at most 2 KB with a string box_id. Stored as
 //                      box_id -> {payload, last_seen}. The IP is never read, never
-//                      stored, never logged. Anything else is 400; a bad or missing
-//                      X-Hasler-Token is 403 when CHECKIN_TOKEN is set. Answers 204.
+//                      stored, never logged. Anything else is 400; X-Hasler-Token must
+//                      be CHECKIN_TOKEN or the radio's own (enrol.js) when either is
+//                      set up, else 403. Answers 204.
+//   POST /v1/enrol     a radio asks for its own token, once (enrol.js).
 //   GET  /dashboard    one HTML table for the makers, sorted "needs a look first".
 //                      Put it behind Cloudflare Access, or set DASHBOARD_KEY and
 //                      open /dashboard?key=... . A radio not heard from is "not seen",
@@ -21,9 +23,11 @@
 // Bindings (wrangler.toml): CHECKINS (KV). Vars/secrets: CHECKIN_TOKEN (optional,
 // the shared word radios send in X-Hasler-Token; box.yaml checkin_token),
 // DASHBOARD_KEY (optional, the dashboard's ?key=). README.md has the steps.
-// Support (optional): SUPPORT (KV), GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, SUPPORT_REPO.
+// Support (optional): SUPPORT (KV), GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET, SUPPORT_REPO,
+// ENROL_PER_HOUR, REPORTS_ALL_PER_DAY (enrol.js; defaults 30 and 200).
 
 import { handleReport, handleGithub, handleReplies, issuesFor, repoOf } from "./support.js";
+import { handleEnrol, authFor } from "./enrol.js";
 
 const MAX_BODY = 2048;
 const MAX_ID = 64;
@@ -158,12 +162,12 @@ export default {
     const url = new URL(request.url);
     const now = Date.now();
     if (request.method === "POST" && url.pathname === "/v1/checkin") {
-      if (!tokenOk(request, env)) return new Response("no", { status: 403 });
       const length = Number(request.headers.get("content-length") || 0);
       if (length > MAX_BODY) return new Response("too large", { status: 413 });
       const text = await request.text();
       const v = validate(text);
       if (v.error) return new Response(v.error, { status: 400 });
+      if (!(await authFor(request, env, v.id)).ok) return new Response("no", { status: 403 });   // the shared word, or the radio's own
       // Stored: the payload and when. Not stored, not read: the IP, the headers.
       await env.CHECKINS.put(v.id, JSON.stringify({ payload: v.doc, last_seen: new Date(now).toISOString() }));
       return new Response(null, { status: 204 });
@@ -177,19 +181,20 @@ export default {
       }
       return new Response(renderDashboard(rows, now, env.SUPPORT ? repoOf(env) : ""), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
     }
+    if (request.method === "POST" && url.pathname === "/v1/enrol") {
+      return handleEnrol(request, env, now);    // a radio asks for its own token (enrol.js)
+    }
     if (request.method === "POST" && url.pathname === "/v1/report") {
-      if (!tokenOk(request, env)) return new Response("no", { status: 403 });
-      return handleReport(request, env, now);
+      return handleReport(request, env, now);   // checks the radio's word itself, once it knows the radio
     }
     if (request.method === "POST" && url.pathname === "/v1/github") {
       return handleGithub(request, env);        // GitHub signs it; the radios' token isn't GitHub's
     }
     if ((request.method === "GET" && url.pathname === "/v1/replies") || (request.method === "POST" && url.pathname === "/v1/replies/ack")) {
-      if (!tokenOk(request, env)) return new Response("no", { status: 403 });
       return handleReplies(request, env, url);
     }
     if (request.method === "GET" && url.pathname === "/") {
-      return new Response("hasler check-in: POST /v1/checkin\n", { headers: { "content-type": "text/plain" } });
+      return new Response("hasler check-in: POST /v1/checkin, /v1/enrol, /v1/report\n", { headers: { "content-type": "text/plain" } });
     }
     return new Response("not found", { status: 404 });
   },

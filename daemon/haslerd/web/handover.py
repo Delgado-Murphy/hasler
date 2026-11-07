@@ -45,7 +45,7 @@ KEEP_SETTINGS = ("schema", "volume_limit", "volume_floor", "mono")
 # Files in the state directory that go. Nothing else there is touched.
 STATE_FILES = ("stations.json", "reports.jsonl", "state.json", "ha-instance.json", "bluetooth.json",
                "allowed-hosts.json", "keys.yaml", KEYS_BAK, "wifi-joined", "hotspot.txt",
-               "support-requests.json")
+               "support-requests.json", "support-outbox.json")
 # ... and in secrets/ (or beside the state on a box from before it).
 SECRET_FILES = ("ha.json", "ytm-browser.json", "ytm-cookies.txt")
 # box.yaml keys that are the owner's, not the cabinet's.

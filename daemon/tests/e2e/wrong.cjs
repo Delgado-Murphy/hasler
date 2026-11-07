@@ -149,6 +149,7 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       assert((await text(page, '#dlgTitle')) === 'Tell the makers', 'sheet title');
       assert(/Nothing private: no passwords, no accounts, no phone names/.test(await text(page, '#dlg')), 'the copy');
       assert(/Send it to Delgado & Murphy \(hola@example.org\), and nobody else/.test(await text(page, '#tellWho')), 'the makers are named: ' + await text(page, '#tellWho'));
+      assert(!(await page.$('#tellSend:visible')), 'no Send on a radio with sending off');
       assert(await page.isChecked('#tellWifi'), 'the Wi-Fi tick is on to start');
       assert(await page.isVisible('#tellMail'), 'an email contact gets Email the makers');
       await page.fill('#tellNote', 'It goes quiet after a few minutes');
@@ -179,19 +180,30 @@ const REPORT_TEXT = 'Hasler · Kitchen · radio ab12 · Hasler HM (hasler-hm)\nV
       await page.route('**/api/support/replies', r => { replies++; r.fulfill({json: {ok: true, added: 0}}); });
       await page.goto(radio.base + '/#settings/wrong');
       await until(() => page.isVisible('#tellMakers'), 8000, 'the button');
+      await until(async () => /Opens a request with Delgado & Murphy/.test(await text(page, '#tellWhy')), 4000, 'the page says what Send does');
       await page.click('#tellMakers');
       await until(() => page.isVisible('#tellSend'), 4000, 'Send to the makers');
-      assert(/private support list, nowhere public/.test(await text(page, '#tellWho')), 'honest about where: ' + await text(page, '#tellWho'));
-      assert(await page.isVisible('#tellCopy'), 'Copy stays');
+      assert(/This opens a request with Delgado & Murphy\. You’ll see their answer here/.test(await text(page, '#tellSub')), 'what happens: ' + await text(page, '#tellSub'));
+      assert(await page.getAttribute('#tellSend', 'class') === 'btn small primary', 'Send leads');
+      assert(await page.isVisible('#tellCopy') && !/primary/.test(await page.getAttribute('#tellCopy', 'class')), 'Copy stays, quieter');
+      assert(/Or send it yourself/.test(await text(page, '#tellOther')), 'the way round');
+      // what's sent: folded, the radio's own words, private and nothing more
+      assert(!(await page.isVisible('#tellPreview')), 'folded to start');
+      await page.click('#tellWhat summary');
+      await until(async () => (await text(page, '#tellPreview')).startsWith('Hasler · Kitchen · radio ab12'), 4000, 'the preview');
+      assert(/private list, nowhere public/.test(await text(page, '#tellPrivate')), 'honest about where: ' + await text(page, '#tellPrivate'));
       await page.fill('#tellNote', 'It goes quiet after a few minutes');
-      await page.click('#tellSend');
-      await until(async () => sendBody != null, 4000, 'the send request');
-      assert(sendBody.note === 'It goes quiet after a few minutes' && sendBody.wifi === true, 'body ' + JSON.stringify(sendBody));
-      await until(async () => /Sent · request #12 · (7 Nov|Nov 7)/.test(await text(page, '#tellSent')), 4000, 'the request number');
+      // refused first: plain words, the sheet stays
       refuse = true;
       await page.click('#tellSend');
       await until(() => page.isVisible('#tellSendErr'), 4000, 'the refusal');
       assert(/Share or Copy/.test(await text(page, '#tellSendErr')), 'says what to do instead');
+      refuse = false;
+      await page.click('#tellSend');
+      await until(async () => sendBody != null && sendBody.note && page.isVisible('#tellDone'), 4000, 'the send request');
+      assert(sendBody.note === 'It goes quiet after a few minutes' && sendBody.wifi === true, 'body ' + JSON.stringify(sendBody));
+      await until(async () => /Sent\. Your request is #12\./.test(await text(page, '#tellDoneTitle')), 4000, 'the request number');
+      assert(await page.isVisible('#tellSeeReqs') && !(await page.isVisible('#tellNote')), 'the confirmation, and the way to the requests');
       await page.click('#tellClose');
       // the makers closed it: the sheet says so next time
       sup.requests = [{number: 12, at: '2026-11-07T18:00:00+01:00', deduped: false, state: 'done'}];

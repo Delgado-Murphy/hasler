@@ -447,6 +447,9 @@ up.
 **Settings → This radio → Wi-Fi → Change**, then press a key on the radio. If
 the new network doesn't work, the radio goes back to the old one.
 
+**This radio → Wi-Fi** also shows the setup network's name and password, the
+one the radio opens when it can't find yours. Write them down.
+
 To open the setup network without forgetting anything (say the router's
 password changed), give a key's hold the job **Open Wi-Fi setup now** in Edit
 keys.
@@ -613,15 +616,24 @@ for dark, unplug for 10 seconds, plug in.
 
 ## Help from the makers
 
-**Tell the makers:** **Settings → Something's wrong? → Tell the makers**. The
-radio puts together what they usually ask: the version, what the lamp says,
-what's playing, what went wrong inside. Nothing private (untick **Include my
-Wi-Fi name** if you like). Add a line, then **Share…** or **Copy**, or
-**Email the makers**. If you only phone, read out the six lines under **Say
-this to the makers**. Where the makers have set it up, **Send to the makers**
-sends it straight to their private support list (you need no account), and
-their answer comes back under **This radio → From the makers**; the sheet says
-whether they have seen it and when it is done.
+**Tell the makers:** **Settings → Something's wrong? → Tell the makers**. Add
+a line about what you noticed and press **Send to the makers**. That opens a
+request with Delgado & Murphy and gives you its number. You need no account.
+
+- **What goes:** what they usually ask first: the version, what the lamp says,
+  what's playing, what went wrong inside. **What's sent** on the sheet shows
+  every line. Nothing private. Untick **Include my Wi-Fi name** if you like.
+  It goes to their private list, nowhere public.
+- **Their answer** comes back to the radio. Look under **This radio → Help
+  from the makers → Your requests**: each request with its number, date, your
+  first line, and their replies in order. It says **Sent**, **Seen by the
+  makers** or **Done**. A new reply also shows under **Needs attention**, and
+  the gear on the front page gets a dot.
+- **No internet?** The radio keeps the request and sends it by itself when
+  it's back. **Your requests** says **Waiting to send**, with **Send now**.
+- **Rather send it yourself?** **Share…**, **Copy** or **Email** are under the
+  button. If you only phone, read out the six lines under **Say this to the
+  makers**.
 
 **Let them look from afar.** **Settings → This radio → Help from the makers →
 Let the makers help (24 h)**, then press a key on the radio. Send the link the

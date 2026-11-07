@@ -374,10 +374,15 @@ leaves is marked bad, so auto mode won't reinstall it.
   away costs nothing: the POST fails quietly. The hand-over switches the
   check-in off; the new owner says yes themselves.
 - **Owner requests** ("Send to the makers", the owner's press, not the
-  check-in's switch; it needs only the `checkin_url`): the Tell the makers
-  sheet POSTs the report (text + JSON twin, secrets stripped by
-  `web/report.py`) and the owner's line to the same Worker's `/v1/report`
-  with the same token (`haslerd/web/support_api.py`). The Worker files it as
+  check-in's switch; on by default: the makers' Worker is the release's
+  `checkin_url` unless box.yaml names another, `""` switches it off): the
+  Tell the makers sheet POSTs the report (text + JSON twin, secrets stripped
+  by `web/report.py`) and the owner's line to the Worker's `/v1/report`
+  (`haslerd/web/support_api.py`) with box.yaml's shared `checkin_token`, or
+  else the radio's own token, enrolled once at its first send
+  (`POST /v1/enrol`, kept in `/var/lib/haslerd/secrets/support.json`;
+  [SUPPORT.md](../tools/checkin/SUPPORT.md#how-a-radio-gets-its-line)).
+  Offline, it waits in `<state>/support-outbox.json` and goes once the radio is online. The Worker files it as
   an issue in the makers' private GitHub repo (`Delgado-Murphy/hasler-support`;
   labels `owner-report`, `fault:<reason>`, `version:<v>`, `model:<variant>`),
   at most five a day per radio, the same note within ten minutes a comment

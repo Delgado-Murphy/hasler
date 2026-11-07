@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- **Tell the makers** opens a request: **Send to the makers** is the main
+  button on every radio, with nothing for the maker to set up. The sheet says
+  what happens, shows exactly what's sent (folded), and confirms with the
+  request number. **Your requests** (This radio → Help from the makers, and
+  Something's wrong?) lists each request with its state and the makers'
+  replies; a new reply shows under Needs attention and as a dot on the gear.
+  Without internet the request waits on the radio and goes by itself.
+- The setup network's password shows on This radio, and the printed key card
+  and welcome card carry it unless you untick it.
+
+For makers
+- Each radio enrols its own token with the support Worker at its first send
+  (`POST /v1/enrol`); the shared `checkin_token` keeps working. The release
+  default `checkin_url` is the Worker's root; box.yaml may give the root or
+  `…/v1/checkin` (both work for Send and the daily check-in), `""` switches
+  both off. Deploy the Worker (`tools/checkin`, new `enrol.js`).
+
 ## 1.6.1 - 2026-11-07
 
 - A radio coming from an older version (Stable 1.1.4) keeps its keys and can

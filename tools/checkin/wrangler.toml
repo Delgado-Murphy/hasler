@@ -24,3 +24,7 @@ id = "7dd7e157753c4a648d8e3522fc554525"
 
 [vars]
 SUPPORT_REPO = "Delgado-Murphy/hasler-support"
+# Each radio's own word (enrol.js): at most this many new radios an hour, and reports made with
+# radios' own words across all radios a day. Defaults when left out: 30 and 200.
+# ENROL_PER_HOUR = "30"
+# REPORTS_ALL_PER_DAY = "200"

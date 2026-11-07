@@ -44,18 +44,23 @@ changes.
 
 ## On a radio
 
-Two lines in `/etc/hasler/box.yaml` (the maker's; `hasler-install` writes
-`checkin_url` from `checkin_url = …` in `hasler.txt`):
+Nothing to set: every release points at `https://hasler-checkin.delgado-murphy.workers.dev`
+(the root; the radio derives `/v1/checkin`, `/v1/report`, `/v1/replies`,
+`/v1/enrol`). A radio without a shared word enrols its own at the owner's
+first **Send to the makers** ([SUPPORT.md](SUPPORT.md#how-a-radio-gets-its-line))
+and the daily check-in uses it too. To point a radio elsewhere, or keep using
+the shared word, `/etc/hasler/box.yaml` (`hasler-install` writes `checkin_url`
+from `checkin_url = …` in `hasler.txt`):
 
 ```yaml
-checkin_url: https://hasler-checkin.<account>.workers.dev/v1/checkin
-checkin_token: <the word>        # only with CHECKIN_TOKEN set on the Worker
+checkin_url: https://hasler-checkin.<account>.workers.dev   # or …/v1/checkin; "" = nowhere
+checkin_token: <the word>        # the makers' own radios, with CHECKIN_TOKEN set on the Worker
 ```
 
 The switch itself is the owner's: **Settings → This radio → Updates → Tell
 the makers how the radio is** (box.yaml `checkin: true`), with **See what it
 sends** showing today's payload verbatim. Nothing is sent while it is off,
-and nothing is ever sent without a `checkin_url`. The radio sends once a
+and nothing with `checkin_url: ""`. The radio sends once a
 day after its update check, skips it on a metered connection, and shows
 "Couldn't send today" on the page if the Worker is unreachable; a failed
 send is never retried in a hurry.
