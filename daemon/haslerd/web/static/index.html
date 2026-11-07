@@ -1674,6 +1674,13 @@ function paintTone(){
 
 /* ================= router ================= */
 let route = {view:'remote', arg:null, arg2:null}, prevHash = location.hash;
+// Each history entry carries its place (hidx), so a page change that is called off can
+// step back to where it was and every entry stays: a second Back asks again instead of
+// leaving the app. replaceState elsewhere passes null: the place is kept.
+let hIdx = history.state && typeof history.state.hidx === 'number' ? history.state.hidx : 0, routeHold = null;
+const replaceRaw = history.replaceState.bind(history);
+history.replaceState = (st, title, url) => replaceRaw(st == null ? {hidx: hIdx} : st, title, url);
+history.replaceState(null, '');
 // Settings: #settings (the list), #settings/<page>[/<section>], two sub-pages under This radio.
 // Old addresses still work and are rewritten in place.
 const SET_ALIAS = {sources:'phones', multiroom:'rooms', about:'radio', knobs:'keys'};
@@ -1695,18 +1702,66 @@ function pageKey(r){
 const curPage = () => pageKey(route);
 const onPage = (...keys) => view === 'settings' && keys.includes(curPage());
 function go(hash){ if (location.hash.replace(/^#/, '') === hash) onRoute(); else location.hash = hash; }
-function onRoute(){
-  const next = parseHash();
-  if (route.view === 'edit' && next.view !== 'edit' && isDirty()){
-    if (!confirm('Leave without saving your key changes?')){ history.replaceState(null, '', prevHash || '#edit'); return; }
-    errs = {}; hints = {}; general = []; adopt(cfg);
+/* ---------- leaving unsaved changes behind ---------- */
+// One question wherever unsaved work would be left (Done, Back, another page):
+// resolves 'save', 'discard' or 'keep'. With #dlg already open (the key chooser, a
+// key press being waited for) nothing opens on top of it: the answer is 'keep'.
+function askLeave(what){
+  return new Promise(resolve => {
+    const dlg = $('dlg');
+    if (dlg.open){ resolve('keep'); return; }
+    dlg.textContent = '';
+    let answer = 'keep';
+    const pick = a => () => { answer = a; dlg.close(); };
+    dlg.append(h('h2', {id:'dlgTitle'}, 'Save your changes?'),
+      h('p', {class:'sub'}, what ? 'Not saved yet: ' + what + '.' : 'Some changes here aren’t saved yet.'),
+      h('div', {style:'display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;margin-top:14px'},
+        h('button', {type:'button', class:'btn small', id:'leaveKeep', onclick: pick('keep')}, 'Keep editing'),
+        h('button', {type:'button', class:'btn small', id:'leaveDiscard', onclick: pick('discard')}, 'Discard'),
+        h('button', {type:'button', class:'btn small primary', id:'leaveSave', onclick: pick('save')}, 'Save and close')));
+    // A close event that comes late, from whatever #dlg showed before, finds it open again: not this one's.
+    dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; resolve(answer); };
+    dlg.onclick = null;
+    dlg.showModal();
+  });
+}
+// "Key 2 and PU": what Edit keys holds unsaved, for that question.
+const keysWhat = () => nameAnd(draft.keys.filter(keyDirty).map(keyLabel).concat((draft.combos || []).filter(comboDirty).map(comboName)));
+const dropKeyChanges = () => { errs = {}; hints = {}; general = []; ed.combo = null; adopt(cfg); };
+// The address changed (Back, a link) away from unsaved work: step back to where the page
+// was, ask, then go on with the same step - or stay. page = the Settings page left, or
+// null for Edit keys. landed = the entry's place, null for a new one.
+function holdRoute(landed, page){
+  const target = location.hash, delta = landed == null ? null : landed - hIdx;
+  let back = Promise.resolve();
+  if (delta !== 0){
+    back = new Promise(res => {
+      const done = () => { if (routeHold === hold) routeHold = null; res(); };
+      const hold = routeHold = {hash: prevHash, done};
+      setTimeout(done, 1000);       // in case the browser never says it got there
+    });
+    if (delta == null) history.back(); else history.go(-delta);
   }
+  Promise.all([askLeave(page ? (page.what ? page.what() : '') : keysWhat()), back]).then(async ([a]) => {
+    if (a === 'keep') return;
+    if (a === 'save'){
+      if (page){ await page.save(); if (page.dirty()) return; }
+      else { await save(); if (isDirty()) return; }
+    } else if (page){ if (page.discard) page.discard(); }
+    else dropKeyChanges();
+    if (delta == null) location.hash = target; else if (delta) history.go(delta); else onRoute();
+  });
+}
+function onRoute(){
+  const st = history.state, landed = st && typeof st.hidx === 'number' ? st.hidx : null;
+  // Arrived back where the page was after a called-off step: nothing changes.
+  if (routeHold && location.hash === routeHold.hash){ routeHold.done(); return; }
+  const next = parseHash();
   const fromKey = curPage(), toKey = pageKey(next);
   const leaving = fromKey && fromKey !== toKey ? SET_PAGE[fromKey] : null;
-  if (leaving && leaving.dirty && leaving.dirty()){
-    if (!confirm('Leave without saving? Your changes on this page will be lost.')){ history.replaceState(null, '', prevHash || '#settings'); return; }
-    if (leaving.discard) leaving.discard();
-  }
+  if (route.view === 'edit' && next.view !== 'edit' && isDirty()){ holdRoute(landed, null); return; }
+  if (leaving && leaving.dirty && leaving.dirty()){ holdRoute(landed, leaving); return; }
+  hIdx = landed == null ? hIdx + 1 : landed; replaceRaw({hidx: hIdx}, '');
   if (leaving && leaving.leave) leaving.leave();
   if (toastUndo && (fromKey || toKey) && fromKey !== toKey) hideToast();   // an Undo belongs to the page it was made on
   const changed = next.view !== route.view, pageChanged = changed || fromKey !== toKey;
@@ -1810,9 +1865,13 @@ function selectKey(id){
   renderEdit();
   const t = $('keyTitle'); if (t) t.focus({preventScroll:true});
 }
-function done(){
-  if (isDirty() && !confirm('Discard the changes you haven’t saved?')) return;
-  errs = {}; hints = {}; general = []; ed.combo = null; adopt(cfg);
+async function done(){
+  if (isDirty()){
+    const a = await askLeave(keysWhat());
+    if (a === 'keep') return;
+    if (a === 'save'){ await save(); if (isDirty()) return; }
+  }
+  dropKeyChanges();
   go('');
 }
 function slotSummary(k, s){
@@ -2536,22 +2595,94 @@ async function testPreset(p){
 // reply got lost for has landed.
 const cfgSig = c => JSON.stringify(payload({keys: clone(c.keys || []), presets: clone(c.presets || []),
   combos: Array.isArray(c.combos) ? c.combos.map(x => comboIn(clone(x))) : null}));
+/* ---------- two phones at once ----------
+   Another phone (or Browse, or Home Assistant) changed the keys after this page read
+   them: the radio refuses the save (409) and sends the keys it has now. Start from
+   those and put back only what this page changed since it read them - a key's tap or
+   hold with the music it plays, or a combination - so neither side undoes the other. */
+// A preset as it plays, without its number (numbers differ from phone to phone).
+const presetSig = p => p ? JSON.stringify(Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(),
+  shuffle: p.source === 'radio' || isRadioUri(p.uri) || ytmEndless(p) ? false : !!p.shuffle}, ytmRef(p))) : null;
+function slotSig(d, k, s){
+  const a = k ? normAct(k[s]) : null;
+  if (!a || a.do !== 'preset') return JSON.stringify(a);
+  return JSON.stringify([Object.assign({}, a, {n: undefined}), presetSig(presetIn(d, a.n))]);
+}
+// This page's action for slot s of key k in the rebuilt draft, its preset brought along:
+// same number when the radio has that preset as it is or nothing else plays it, else a new one.
+function placeAct(a, mine, k, s){
+  if (!a || a.do !== 'preset') return a ? clone(a) : null;
+  const p = presetIn(mine, a.n);
+  if (!p) return clone(a);
+  let n = a.n;
+  const at = draft.presets.findIndex(x => x.n === n);
+  const self = k[s] && k[s].do === 'preset' && k[s].n === n ? 1 : 0;
+  if (at >= 0 && presetSig(draft.presets[at]) !== presetSig(p)){
+    if (refCount(draft, n) - self > 0){ n = nextFreeN(draft); draft.presets.push(Object.assign(clone(p), {n})); }
+    else draft.presets[at] = Object.assign(clone(p), {n});
+  } else if (at < 0) draft.presets.push(Object.assign(clone(p), {n}));
+  return Object.assign(clone(a), {n});
+}
+// Rebuild the draft on the radio's keys (fresh) with this page's changes on top.
+// Returns the names of what was changed on both sides (this page's change wins).
+function mergeOnto(fresh){
+  const base = JSON.parse(baseline), mine = payload(draft), theirs = JSON.parse(cfgSig(fresh));
+  const unready = (draft.combos || []).filter(c => !comboReady(c));
+  const both = [], find = (d, id) => d.keys.find(x => x.id === id);
+  adopt(fresh);
+  for (const k of draft.keys){
+    const m = find(mine, k.id), b = find(base, k.id), t = find(theirs, k.id);
+    if (!m) continue;          // a key this page never had
+    for (const s of ['tap', 'hold']){
+      const ms = slotSig(mine, m, s), bs = b ? slotSig(base, b, s) : null, ts = slotSig(theirs, t, s);
+      if (ms === bs || ms === ts) continue;      // not changed here, or the radio has it already
+      if (bs !== ts && !both.includes(keyLabel(k))) both.push(keyLabel(k));
+      k[s] = placeAct(m[s], mine, k, s);
+    }
+  }
+  if (Array.isArray(mine.combos) && Array.isArray(draft.combos)){
+    const byId = d => Object.fromEntries((d.combos || []).map(c => [comboPairId(c.keys || []), JSON.stringify(c)]));
+    const mc = byId(mine), bc = byId(base), tc = byId(theirs);
+    for (const id of new Set([...Object.keys(mc), ...Object.keys(bc)])){
+      const mv = mc[id] || null, bv = bc[id] || null, tv = tc[id] || null;
+      if (mv === bv || mv === tv) continue;
+      const i = draft.combos.findIndex(c => c.id === id);
+      if (bv !== tv) both.push(comboName(i >= 0 ? draft.combos[i] : comboIn(JSON.parse(mv || bv))));
+      if (i >= 0) draft.combos.splice(i, 1);
+      if (mv) draft.combos.push(comboIn(JSON.parse(mv)));
+    }
+    // One still being made (no second key or no action yet) was never sent: it stays.
+    for (const c of unready) if (!draft.combos.some(x => x.id === c.id)) draft.combos.push(c);
+  }
+  return both;
+}
+const bothWords = names => nameAnd(names) + (names.length > 1 ? ' were' : ' was') + ' also changed on another phone — yours '
+  + (names.length > 1 ? 'are' : 'is') + ' saved.';
 async function save(){
   if (saving || !isDirty()) return;
   saving = true; saveMsg = {text:'Saving…', bad:false}; rerender();
-  const body = payload(draft); lastSent = body;
   const cbWas = !ed.key && ed.combo ? comboById(ed.combo) : null;
   const label = cbWas ? comboName(cbWas) : ed.key ? keyLabel(draft.keys.find(k => k.id === ed.key)) : 'Keys';
-  let focusAfter = null, r = null;
+  let focusAfter = null, r = null, body = null, both = [];
   const still = () => { if (saving){ saveMsg = {text:'Still trying…', bad:false}; if (view === 'edit') rerender(); } };
   const slow = setTimeout(still, 4000);
-  try { r = await api('PUT', '/api/config', body, {onRetry: still}); }
-  catch (_) {
-    // The answer may be what got lost: if the radio has these keys already, it saved.
-    try {
-      const g = await api('GET', '/api/config');
-      if (g.ok && g.json && Array.isArray(g.json.keys) && cfgSig(g.json) === JSON.stringify(body)) r = {ok:true, status:200, json:{ok:true, config:g.json}};
-    } catch (_) {}
+  for (let round = 0; ; round++){
+    body = payload(draft); lastSent = body; r = null;
+    // "rev": the keys this page started from. Changed since, the radio answers 409.
+    const rev = cfg && cfg.rev;
+    try { r = await api('PUT', '/api/config', rev ? Object.assign({rev}, body) : body, {onRetry: still}); }
+    catch (_) {
+      // The answer may be what got lost: if the radio has these keys already, it saved.
+      try {
+        const g = await api('GET', '/api/config');
+        if (g.ok && g.json && Array.isArray(g.json.keys) && cfgSig(g.json) === JSON.stringify(body)) r = {ok:true, status:200, json:{ok:true, config:g.json}};
+      } catch (_) {}
+    }
+    const fresh = r && r.status === 409 && r.json && r.json.config;
+    if (!fresh || !Array.isArray(fresh.keys) || round >= 3) break;
+    for (const n of mergeOnto(fresh)) if (!both.includes(n)) both.push(n);
+    // Nothing of this page's is missing on the radio (a save whose answer got lost lands here too).
+    if (!isDirty()){ r = {ok:true, status:200, json:{ok:true, config:fresh}}; break; }
   }
   clearTimeout(slow); saving = false;
   if (!r){
@@ -2559,10 +2690,10 @@ async function save(){
   } else if (r.ok && r.json && r.json.ok){
     errs = {}; hints = {}; general = [];
     adopt(r.json.config || Object.assign({}, cfg, body));
-    saveMsg = {text: label + ' saved to the radio.', bad:false};
+    saveMsg = {text: both.length ? bothWords(both) : label + ' saved to the radio.', bad:false};
     // A saved combination closes its editor, back to its row.
     if (cbWas){ ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; saveMsg = {text:'', bad:false}; focusAfter = 'cedit-' + comboPairId(cbWas.keys); }
-    toast(label + ' saved');
+    toast(both.length ? bothWords(both) : label + ' saved');
     buildBank();
     refreshHa();
   } else if (r.json && Array.isArray(r.json.errors) && r.json.errors.length){
@@ -2588,13 +2719,20 @@ async function save(){
 /* ================= change a key from elsewhere (Browse, HA) ================= */
 // Read the radio's keys, change them, write them back. With no answer the whole
 // round goes once more (it reads again, so nothing lands twice); then null.
+// The PUT carries the read's "rev": changed in between (another phone), the radio
+// answers 409 and the round starts again from what it has now.
 async function freshConfig(build){
-  for (let n = 0; ; n++){
+  for (let n = 0, stale = 0; ; n++){
     try {
       const g = await api('GET', '/api/config');
       if (!g.ok || !g.json || !Array.isArray(g.json.keys)) throw new Error('config');
-      const body = build(g.json);
-      return {g, body, r: await api('PUT', '/api/config', body)};
+      const body = build(g.json), rev = g.json.rev;
+      const r = await api('PUT', '/api/config', rev ? Object.assign({rev}, body) : body);
+      const now = r.status === 409 && r.json && r.json.config;
+      // Already there: a try whose answer got lost had saved it.
+      if (now && Array.isArray(now.keys) && cfgSig(now) === JSON.stringify(body)) return {g, body, r: {ok:true, status:200, json:{ok:true, config:now}}};
+      if (now && stale++ < 3){ n--; continue; }
+      return {g, body, r};
     } catch (_) { if (n) return null; await new Promise(res => setTimeout(res, 1500)); }
   }
 }
@@ -7816,6 +7954,8 @@ async function poll(){
   try {
     const r = await api('GET', '/api/status', undefined, {timeout:4000, retry:0});
     if (r.ok && r.json){ status = r.json; online = true; failStreak = 0; lastOk = Date.now(); } else missed();
+    // The keys changed elsewhere (another phone, Home Assistant): show them, unless this page has unsaved ones.
+    if (r.ok && r.json && r.json.config_rev && cfg && cfg.rev && r.json.config_rev !== cfg.rev && !saving && !isDirty()) refreshConfig();
   } catch (_) { missed(); }
   polling = false;
   renderRemote();
