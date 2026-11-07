@@ -259,7 +259,7 @@ class TestLatchingStatus:
         assert st["latched"] == "k5"
         assert st["switches"] == [{"id": "sp", "label": "SP", "on": True}]
         assert st["selectors"][0] == {"id": "speaker_sel", "label": "Speakers", "position": 0,
-                                      "positions": ["Both", "Left", "Right"], "text": "Both"}
+                                      "positions": ["Both", "Left", "Right"], "text": "Both", "wired": True}
         assert [k["id"] for k in st["keys"]] == BANK_IDS
         assert st["keys"][7] == {"id": "tape", "label": "Tape", "n": 7, "name": "Radio Swiss Pop", "source": "radio"}
 

@@ -426,6 +426,13 @@ Checks:
       is *inactive (dead)* once `haslerd` runs.
 - [ ] Power on: dark, then within about 5 s a soft amber breath. Never a hard
       colour or a flash.
+- [ ] **Lamp check, once per radio** (Maker tools → Lamp colours → Lamp check,
+      about ten minutes, in a dim room after the radio has played for 20
+      minutes). The shipped standard is the bench LED's; an LED from the same
+      bag can need twice the floor, and the amber drifts as it warms. Until it
+      is done the Maker tools row says *Lamp never checked on this radio*. The
+      check stamps the LED part id (`io.lamp.led`) with the result, so a
+      changed part shows as such.
 - [ ] `sudo poweroff`: an ember breath while it shuts down, then **dark**: safe to
       unplug.
 

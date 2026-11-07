@@ -71,6 +71,26 @@ DEFAULT_SELECTOR_BAND = 200      # counts a selector must clear a threshold by t
 DEFAULT_RANGE = (0, 26400)       # a 3.3 V rail at +/-4.096 V full scale
 RAW_HISTORY = 256                # recent readings kept per analog control (~5 s at 50 Hz)
 
+# The knob drift / loose-wiper detector (Pot.drift; the knob card's hint).
+# ``past_end``: the median reading sits beyond the calibration's end by more
+# than DRIFT_END_MARGIN for DRIFT_HOLD_S - the track's end moved, or the wiper
+# wandered off it. The margin is max(3 x noise, DRIFT_END_HYSTERESIS x
+# hysteresis): the shipped curves end up to ~40 counts inside the physical
+# stops so 0 and 100 stay reachable, and that must never read as drift.
+# ``wander``: the raw readings of the last DRIFT_WANDER_POLLS polls spread more
+# than DRIFT_WANDER_HYSTERESIS x hysteresis while no change was committed -
+# the median held still but the wiper didn't (a scratchy or loose contact).
+# A ``jump`` of more than EXCURSION_FRACTION of the calibrated range between
+# two consecutive medians is held for one poll (the mixer keeps its last
+# committed level): a hand can't do that in 20 ms, a loose wiper can, and on
+# the volume knob that excursion is full volume into a 1964 cone. The next
+# poll agreeing commits it, so a real fast turn is at most 20 ms late.
+DRIFT_HOLD_S = 3.0
+DRIFT_END_HYSTERESIS = 3
+DRIFT_WANDER_POLLS = 50
+DRIFT_WANDER_HYSTERESIS = 3
+EXCURSION_FRACTION = 0.25
+
 
 @dataclass(frozen=True)
 class Event:
@@ -594,6 +614,14 @@ class Pot(_RawHistory, Control):
         self._value: float | None = None
         self._value_spec: PotSpec | None = None     # the spec _value was scaled under
         self._init_history()
+        # The drift detector (module constants above): what it found (None,
+        # "past_end" or "wander"), since when the median has sat past the end,
+        # the poll a change was last committed at, and a jump held one poll.
+        self.drift: str | None = None
+        self._past_end_since: float | None = None
+        self._last_commit_poll = 0
+        self._polls = 0
+        self._held: int | None = None
 
     # Read-only views of the live spec.
     @property
@@ -706,19 +734,72 @@ class Pot(_RawHistory, Control):
             self._samples.pop(0)
         if len(self._samples) < self.median_n:
             return []
+        self._polls += 1
         counts = sorted(self._samples)[len(self._samples) // 2]
         committed = self._committed_counts
+        self._watch_drift(now, counts, spec)
         # A new spec re-reads the knob at once; only the panel thread touches
         # _value_spec, so a respec racing this poll is simply seen next poll.
         if spec is self._value_spec and committed is not None and abs(counts - committed) < spec.hysteresis:
+            self._held = None
             return []
+        if spec is self._value_spec and committed is not None and self._is_jump(counts, committed, spec):
+            # A full-scale excursion in one poll: hold the mixer where it was
+            # until the next poll agrees (EXCURSION_FRACTION above).
+            if self._held is None or abs(counts - self._held) >= spec.hysteresis:
+                self._held = counts
+                return []
+        self._held = None
         self._committed_counts = counts
         self._value_spec = spec
+        self._last_commit_poll = self._polls
         value = self._scale(counts, spec)
         if value == self._value:
             return []
         self._value = value
         return [Event(self.id, "change", value)]
+
+    @staticmethod
+    def _ends(spec: PotSpec) -> tuple[int, int]:
+        """The calibrated range's low and high counts (the curve's ends, else the range)."""
+        if spec.curve:
+            return spec.curve[0][0], spec.curve[-1][0]
+        lo, hi = spec.counts_range or DEFAULT_RANGE
+        return (lo, hi) if lo <= hi else (hi, lo)
+
+    def _is_jump(self, counts: int, committed: int, spec: PotSpec) -> bool:
+        lo, hi = self._ends(spec)
+        return abs(counts - committed) > EXCURSION_FRACTION * max(1, hi - lo)
+
+    def _watch_drift(self, now: float, counts: int, spec: PotSpec) -> None:
+        """Keep ``drift`` (module docstring: past_end / wander / None)."""
+        doc = summarize(self.recent(15))
+        noise = float(doc["noise"]) if doc else 0.0
+        lo, hi = self._ends(spec)
+        margin = max(3.0 * noise, float(DRIFT_END_HYSTERESIS * spec.hysteresis))
+        beyond = counts < lo - margin or counts > hi + margin
+        if beyond:
+            if self._past_end_since is None:
+                self._past_end_since = now
+            if now - self._past_end_since >= DRIFT_HOLD_S:
+                if self.drift != "past_end":
+                    log.warning("%s: reads past its calibration (raw %d, calibrated %d..%d)", self.id, counts, lo, hi)
+                self.drift = "past_end"
+                return
+        else:
+            self._past_end_since = None
+        recent = self.recent(DRIFT_WANDER_POLLS)
+        quiet = self._polls - self._last_commit_poll >= DRIFT_WANDER_POLLS
+        if (len(recent) >= DRIFT_WANDER_POLLS and quiet
+                and max(recent) - min(recent) > DRIFT_WANDER_HYSTERESIS * spec.hysteresis):
+            if self.drift != "wander":
+                log.warning("%s: the wiper wanders while the knob is still (raw %d..%d)",
+                            self.id, min(recent), max(recent))
+            self.drift = "wander"
+        elif self.drift == "past_end" and not beyond:
+            self.drift = None
+        elif self.drift == "wander" and not quiet:
+            self.drift = None
 
     def state(self):
         return self._value

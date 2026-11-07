@@ -31,6 +31,7 @@ boot timeline is judged by.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import socket
@@ -437,6 +438,50 @@ def shutdown_kind(state_dir: Path | None, boot_id_file: Path = BOOT_ID) -> str:
     except OSError:
         log.warning("could not update %s / %s", marker, seen, exc_info=True)
     return "clean" if clean else "power-cut"
+
+
+POWER_CUTS_FILE = "power-cuts.json"      # ours: how often the plug is pulled
+POWER_CUTS_KEPT = 60                     # the last this many, with their times
+PLUG_TIMER_HINT_FROM = 3                 # this many in a month: say "a plug timer?"
+
+
+def note_power_cut(state_dir: Path | None, now: float | None = None) -> dict:
+    """Count a boot after a power cut in ``<state_dir>/power-cuts.json``
+    (atomic; docs/using.md "After a power cut"). The doc is
+    ``{"total": n, "events": ["2026-11-07T06:12:03+01:00", ...]}`` (the last
+    POWER_CUTS_KEPT, oldest first). Returns it; never raises."""
+    if state_dir is None:
+        return {"total": 0, "events": []}
+    doc = _read_power_cuts(Path(state_dir))
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(time.time() if now is None else now))
+    doc["total"] = int(doc.get("total") or 0) + 1
+    doc["events"] = (list(doc.get("events") or []) + [stamp])[-POWER_CUTS_KEPT:]
+    try:
+        from .boxconfig import atomic_write_text
+        atomic_write_text(Path(state_dir) / POWER_CUTS_FILE, json.dumps(doc) + "\n")
+    except OSError:
+        log.warning("could not count the power cut in %s", Path(state_dir) / POWER_CUTS_FILE, exc_info=True)
+    return doc
+
+
+def _read_power_cuts(state_dir: Path) -> dict:
+    try:
+        doc = json.loads((state_dir / POWER_CUTS_FILE).read_text())
+    except (OSError, ValueError):
+        return {"total": 0, "events": []}
+    return doc if isinstance(doc, dict) else {"total": 0, "events": []}
+
+
+def power_cuts(state_dir: Path | None, now: float | None = None) -> dict:
+    """For /api/diagnostics: ``{"total": n, "month": n (this calendar month,
+    local time), "last_at": iso | None, "hint": bool (month >=
+    PLUG_TIMER_HINT_FROM: a plug timer or wall switch is the likely cause)}``."""
+    doc = _read_power_cuts(Path(state_dir)) if state_dir is not None else {"total": 0, "events": []}
+    events = [e for e in (doc.get("events") or []) if isinstance(e, str)]
+    this_month = time.strftime("%Y-%m", time.localtime(time.time() if now is None else now))
+    month = sum(1 for e in events if e.startswith(this_month))
+    return {"total": int(doc.get("total") or 0), "month": month, "last_at": events[-1] if events else None,
+            "hint": month >= PLUG_TIMER_HINT_FROM}
 
 
 def clock_synced(timesync_dir: Path = TIMESYNC_DIR) -> bool:

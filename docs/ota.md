@@ -124,8 +124,8 @@ reaches the radio.
 | `update_mode` | `auto` (the default: patch/minor at night in standby; major or migration releases still ask, and so does any release whose major number is above the running one - from 1.0.0 on, a 2.0.1 never slips in as a "patch" before 2.0.0 was accepted), `ask`, `off`. An unknown word reads as `ask`. |
 | `box_id` | A random UUID, made once by migration 001. Places the radio in a ring (and names it in a future check-in). |
 | `checkin` | Reserved for the planned opt-in daily check-in. Nothing is sent today. |
-| `metered` | `true`: never download in the background (phone hotspot, capped plans). |
-| `os_updates` | `on` (the default) or `off`: Debian security updates at night (§6). |
+| `metered` | `true`: never download in the background (phone hotspot, capped plans). The owner's switch under Settings → Updates ("This Wi-Fi is a phone hotspot or capped") writes it. |
+| `os_updates` | `on` (the default) or `off`: Debian security updates at night (§6). The maker's switch under Maker tools writes it (as `false`). |
 | `update_url` | Bench only: a local channel (`ota-bootstrap.sh --update-url`). Without it: the public channel. |
 | `migrations` | Written by `python -m haslerd.migrations --apply`: the ids applied here. Don't edit. |
 
@@ -135,7 +135,9 @@ optional haslerd override blocks are the same as in the old
 
 - `moode:` `mpd_host`, `mpd_port`, `mixer` (the hardware mixer, `Digital`),
   `card` (`sndrpihifiberry`), `volume_limit` (mixer ceiling %; the key page's
-  saved one wins), `volume_floor` (28), `dsp_command`
+  saved one wins), `volume_limit_max` (the maker's cap on that ceiling: the
+  descriptor's `audio.volume_limit_max`, 90 on the HM, lowered here for one
+  radio; the page can never raise it), `volume_floor` (28), `dsp_command`
   (`/usr/local/bin/hasler-dsp`, the knob effects; `""` = off), `tone_commands`
   (only without `dsp_command`), `source_flags`, `renderer_units`, the tool
   paths (`moodeutl`, `amixer`, `bluetoothctl`), `spotify:` (`enabled`,

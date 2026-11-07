@@ -245,5 +245,9 @@ class FakePlayer:
         self.calls.append(("shutdown",))
         self.shutdown_called = True
 
+    def reboot(self) -> None:
+        """The page's "Restart the radio" (web/server.py restart): recorded only."""
+        self.calls.append(("reboot",))
+
     def verbs(self) -> list[str]:
         return [c[0] for c in self.calls]

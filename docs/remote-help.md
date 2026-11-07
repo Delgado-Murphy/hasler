@@ -6,6 +6,14 @@ opens a private link from the radio to the makers for one day, over
 [Tailscale](https://tailscale.com). It is off until the owner asks, it needs a
 press on the radio to start, and it ends on its own.
 
+Before a live session, the first step is usually smaller: **Settings → This
+radio → How the radio is** says in plain words what the makers ask first
+(Wi-Fi, internet, temperature, memory card, the last switch-off, the player),
+and Maker tools → Diagnostics → **Copy support bundle** puts everything a
+maker wants into one file the owner can paste into a message (the descriptor
+in use, the panel chips found, the calibration in force, the journal's last
+lines; never a password, token or cookie).
+
 **Contents**
 
 - [For owners](#for-owners)

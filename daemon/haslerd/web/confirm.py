@@ -3,9 +3,10 @@
 docs/ota.md section 3, "LAN attacker": anybody on the Wi-Fi can talk to the key
 page, so installing or rolling back a release, changing the Wi-Fi, resetting
 the keys, moving to another release channel, starting remote help (Tailscale
-for 24 h, web/help_api.py) or signing the radio in to or out of Spotify
-(web/spotify_account_api.py), or allowing changes through another address
-(web/hosts.py) needs a hand on the cabinet.
+for 24 h, web/help_api.py), signing the radio in to or out of Spotify
+(web/spotify_account_api.py), allowing changes through another address
+(web/hosts.py) or restarting the radio (``POST /api/restart``) needs a hand
+on the cabinet.
 
     POST /api/confirm/request {"action": "update", "args": {"version": "1.2.0"}}
         -> {"token": "...", "state": "pending", "expires_in": 30}
@@ -46,7 +47,8 @@ log = logging.getLogger(__name__)
 
 ACTIONS = ("update", "rollback", "wifi", "reset", "channel", "help",   # help: web/help_api.py
            "spotify",                                                   # web/spotify_account_api.py
-           "hostname")                                                  # web/hosts.py
+           "hostname",                                                  # web/hosts.py
+           "restart")                                                   # "Restart the radio" (server.py restart)
 # Always a real press, even on a bench with web.allow_unconfirmed: the request
 # comes from an address the radio doesn't trust yet.
 ALWAYS_PRESS = ("hostname",)

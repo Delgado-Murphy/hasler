@@ -118,6 +118,11 @@ class MoodeConfig:
     # coil on a part that cannot be bought. Calibrate by ear (see docs), then
     # the knob's full sweep maps into 0..volume_limit.
     volume_limit: int = 70
+    # The maker's cap on volume_limit: the owner's Sound slider stops here and
+    # a saved ceiling above it is pulled down (main.moode_config). Seeded from
+    # the descriptor's audio.volume_limit_max; box.yaml moode.volume_limit_max
+    # lowers it for one radio. 100 = no cap. Raising it is file-only.
+    volume_limit_max: int = 100
     # Mixer percentage at the knob's first step above zero. Digital on the
     # Amp4 Pro is linear in dB (0.5 dB per step, 0% = -103.5 dB), so without
     # a floor the bottom half of the knob is silent (1% is -102.5 dB). 28%
@@ -1027,9 +1032,19 @@ class MoodePlayer:
 
     # -- misc -------------------------------------------------------------
 
+    # Excelsior only - DPDT relay on GPIO 24 plus a CamillaDSP profile swap.
+    # False while route_speaker below is a stub: the page says "not wired yet"
+    # next to the selector's position (/api/status selectors[].wired).
+    speaker_route_wired = False
+
     def route_speaker(self, position: int) -> None:
-        # Excelsior only - DPDT relay on GPIO 24 plus a CamillaDSP profile swap.
         log.info("speaker route -> position %s (relay not fitted on this cabinet)", position)
+
+    def reboot(self) -> None:
+        """"Restart the radio" from the key page (web/server.py restart), after
+        a press on the radio; sudoers allows exactly ``systemctl reboot``."""
+        log.warning("restart requested from the key page")
+        subprocess.run(["sudo", "systemctl", "reboot"], capture_output=True, timeout=10)
 
     def prefetch(self, presets: list[Preset]) -> None:
         """Have sources that can warm up ahead of a press do so (today: ytm)."""

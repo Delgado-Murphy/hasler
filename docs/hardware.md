@@ -205,6 +205,31 @@ The knob effects add no power: whatever a knob lifts, the DSP turns the
 whole signal down by at least as much ([sound.md](sound.md)), so under the
 ceiling no frequency ever gets more than it does with the knobs flat.
 
+**The maker's cap.** The owner's slider stops at `volume_limit_max`, which the
+maker sets and the page can't raise: the slider's hint says "the maker set the
+top at 90", and a ceiling saved above it is pulled down at the next start. It
+lives in the descriptor's `audio:` block (below) and can be lowered for one
+radio in `box.yaml` (`moode: {volume_limit_max: 80}`). Raising it is file-only,
+on purpose. The bench HM's number is 90 - the bring-up found rattle and
+distortion above 95 on this cone, and the ceiling an owner actually wants is
+far lower (70 as shipped).
+
+**The `audio:` block.** The cabinet's audio facts live in its descriptor
+(`config/variants/<variant>.yaml`), not in the code, so a third cabinet with
+two speakers or another amp gets its own defaults:
+
+```yaml
+audio:
+  speakers: 1               # 1 = mono by default (the owner may switch it off)
+  volume_limit_max: 90      # the maker's cap on the owner's ceiling
+  volume_limit_default: 70  # the ceiling a new radio starts with
+  volume_floor_default: 28  # mixer % at the knob's first step (-74.5 dB)
+  card: sndrpihifiberry     # the amp's ALSA id (amixer -c, the first-sound line)
+```
+
+Everything in it has the bench HM's value as the code's fallback for an older
+descriptor; `scripts/hasler-audio-mono` keeps its own fallback card too.
+
 **⚠️ Never wire the speaker across the two amp channels.** Class-D outputs are
 already bridged inside; connecting across two of them is a dead short that
 destroys the amplifier. Use one channel only (L+ / L−). The key page's **Mono**

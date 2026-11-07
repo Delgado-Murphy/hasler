@@ -18,6 +18,17 @@
 variant: hasler-hm
 title: "Hasler HM · Bern 1964"
 
+# The cabinet's audio facts, the same as hasler-hm.yaml's (one 16 ohm cone on
+# the Amp4 Pro's left channel; the keys there explain each one). The maker's
+# cap on the owner's volume ceiling is volume_limit_max; box.yaml
+# moode.volume_limit_max lowers it for one radio.
+audio:
+  speakers: 1
+  volume_limit_max: 90
+  volume_limit_default: 70
+  volume_floor_default: 28
+  card: sndrpihifiberry
+
 io:
   digital:
     backend: mcp23017
@@ -49,6 +60,9 @@ io:
     pins: {red: 17, green: 22, blue: 27}   # J2-13, J2-15, J2-16 - Pi header 11, 15, 13
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
     frequency_hz: 800
+    # The LED part the standard below was measured on (stamped into
+    # `calibrated` by the Lamp check): frosted 5 mm common-anode RGB, 220/100/100 ohm.
+    led: "frosted-5mm-cA-220-100-100"
     # pwm_hz: 400        # to try: longer pulses at the lowest duties (hasler-hm.yaml)
     # The bench HM's Lamp check (2026-11-07, 1.4.0, frosted 5 mm common-anode
     # RGB on 220/100/100 ohm, warm): the standard for every radio fitted with

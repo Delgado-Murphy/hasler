@@ -82,9 +82,12 @@ before it is read (``local_peer``). Each change is one INFO line in the journal.
 (haslerd/ytdlp_lane.py); ``/api/software/yt-dlp/update|rollback`` are the
 Music services buttons.
 Installing or rolling back a release, changing the Wi-Fi (except from a phone
-on the setup hotspot), resetting the keys and changing the release channel
-also need a press on the radio (web/confirm.py); ``/api/software`` is the
-"About this radio" card (web/software.py).
+on the setup hotspot), resetting the keys, changing the release channel and
+restarting the radio (``POST /api/restart``) also need a press on the radio
+(web/confirm.py); ``/api/software`` is the "About this radio" card
+(web/software.py). ``GET /api/diagnostics`` is the owner's "How the radio is"
+card and ``GET /api/diagnostics/bundle`` the maker's support bundle, secrets
+stripped (web/diagnostics.py documents both shapes).
 
 ``/api/browse`` serves the curated library (web/catalog.py), and anything under
 ``/api/ha`` (and ``/api/sources``, ``/api/casting``, ``/api/group``,
@@ -230,13 +233,30 @@ def save_settings(path: Path, doc: dict) -> None:
         raise Unavailable(f"can't save settings to {path}: {exc.strerror}") from exc
 
 
-def volume_limit_from(raw: Any) -> int:
-    """A submitted ceiling -> int in VOLUME_LIMIT_RANGE, or ValueError saying why."""
+def volume_limit_range(cap: Any = None) -> tuple[int, int]:
+    """What the owner's ceiling may be: 30 up to the maker's cap (the
+    descriptor's ``audio.volume_limit_max``, lowered per radio by box.yaml
+    ``moode.volume_limit_max``; MoodeConfig.volume_limit_max). None or a bad
+    cap = the full range; a cap under 30 reads as 30."""
     lo, hi = VOLUME_LIMIT_RANGE
+    try:
+        cap = None if cap is None or isinstance(cap, bool) else int(cap)
+    except (TypeError, ValueError):
+        cap = None
+    if cap is None:
+        return lo, hi
+    return lo, max(lo, min(hi, cap))
+
+
+def volume_limit_from(raw: Any, cap: Any = None) -> int:
+    """A submitted ceiling -> int in volume_limit_range(cap), or ValueError saying why."""
+    lo, hi = volume_limit_range(cap)
     if isinstance(raw, bool) or not isinstance(raw, (int, float)) or raw != int(raw):
         raise ValueError(f"volume_limit must be a whole number from {lo} to {hi}")
     value = int(raw)
     if not lo <= value <= hi:
+        if hi < VOLUME_LIMIT_RANGE[1] and value > hi:
+            raise ValueError(f"volume_limit must be from {lo} to {hi}: the maker set the top at {hi}")
         raise ValueError(f"volume_limit must be from {lo} to {hi}")
     return value
 
@@ -381,6 +401,17 @@ class WebApp:
         self.on_overlay_saved: Callable[[str], None] | None = None
         # Where the Lamp check reads the CPU's temperature (None: the Pi's thermal zone).
         self.cpu_temp_file: Path | None = None
+        # Diagnostics (web/diagnostics.py; set by main): the throttle word and
+        # uptime files (None: the Pi's), the internet probe (net.Connectivity:
+        # /api/status ``online``), the LampKeeper (``fault_reasons``,
+        # ``fault_cleared_at``), how the last run ended (bootresume.shutdown_kind)
+        # and the first-sound watcher (bootresume.FirstSound).
+        self.throttled_file: Path | None = None
+        self.uptime_file: Path | None = None
+        self.connectivity: Any = None
+        self.lamp_keeper: Any = None
+        self.shutdown_kind: str | None = None
+        self.first_sound: Any = None
         self._knob_lock = threading.Lock()
         # The Lamp check's animated samples: a scratch engine's frames streamed
         # onto the live lamp (lamp/scratch.py); any other preview ends them.
@@ -714,6 +745,13 @@ class WebApp:
             "stalled_s": stream["stalled_s"],
             # Why, in a few words ("MPD not answering for 34 s"); None when not recovering.
             "recovering_reason": stream.get("reason"),
+            # The lamp's SOS reasons now (lamp/faults.py: "update", "storage",
+            # "sound", "panel", "heat"; [] = none), and when the last SOS cleared
+            # (ISO, local; None = never this run) - the page says it once.
+            "fault_reasons": self._fault_reasons(),
+            "fault_cleared_at": self._fault_cleared_at(),
+            # The internet probe (net.Connectivity): True/False, None = no probe (a test).
+            "online": self._online(),
             "standby": self.actions.standby,
             "volume": None if volume is None else round(volume),
             # What owns the speaker: radio | spotify | ytm | bluetooth | airplay.
@@ -773,9 +811,14 @@ class WebApp:
                 names = [str(x) for x in (spec.get("labels") or [])]
                 names += [str(i + 1) for i in range(len(names), n)]
                 pos = state if isinstance(state, int) and not isinstance(state, bool) else None
+                verb = (self.actions.variant.actions.get(f"{cid}.position") or {}).get("do")
                 selectors.append({"id": cid, "label": str(spec.get("label") or cid), "position": pos,
                                   "positions": names,
-                                  "text": names[pos] if pos is not None and 0 <= pos < len(names) else None})
+                                  "text": names[pos] if pos is not None and 0 <= pos < len(names) else None,
+                                  # The speaker selector: False while the player's
+                                  # route_speaker is a stub (the page says "not wired yet").
+                                  "wired": (bool(getattr(self.actions.player, "speaker_route_wired", True))
+                                            if verb == "speaker_route" else True)})
             elif kind == "pot" and cid != "tone":
                 doc = self._knob_status(cid, state, spec)
                 if doc is not None:
@@ -827,6 +870,21 @@ class WebApp:
         except Exception:
             log.debug("multiroom status failed", exc_info=True)
             return None
+
+    def _fault_reasons(self) -> list[str]:
+        reasons = getattr(self.lamp_keeper, "fault_reasons", None)
+        return [str(r) for r in reasons] if isinstance(reasons, (list, tuple)) else []
+
+    def _fault_cleared_at(self) -> str | None:
+        at = getattr(self.lamp_keeper, "fault_cleared_at", None)
+        if not isinstance(at, (int, float)) or isinstance(at, bool):
+            return None
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(at))
+        return stamp[:-2] + ":" + stamp[-2:]
+
+    def _online(self) -> bool | None:
+        conn = self.connectivity
+        return bool(getattr(conn, "online", False)) if conn is not None else None
 
     def manifest(self) -> dict:
         """``GET /manifest.webmanifest``: what a phone needs to put the key page
@@ -938,6 +996,18 @@ class WebApp:
         except (TypeError, ValueError):
             return None
 
+    def _volume_cap(self) -> int | None:
+        """The maker's cap on the ceiling (MoodeConfig.volume_limit_max), or None."""
+        cap = getattr(getattr(self.actions.player, "config", None), "volume_limit_max", None)
+        try:
+            return None if cap is None else int(cap)
+        except (TypeError, ValueError):
+            return None
+
+    def _volume_limit_set(self) -> bool:
+        """Has a person saved a ceiling (settings.json ``volume_limit``)?"""
+        return self.settings_file is not None and "volume_limit" in load_settings(self.settings_file)
+
     def _volume_floor(self) -> int | None:
         """Mixer % at the knob's first step: the player's, else the saved one, else None."""
         floor = getattr(getattr(self.actions.player, "config", None), "volume_floor", None)
@@ -1022,8 +1092,12 @@ class WebApp:
             ssid = ""
         return {
             "volume_limit": self._volume_limit(),
-            # What PUT accepts for volume_limit, so the page needn't hard-code it.
-            "volume_limit_range": list(VOLUME_LIMIT_RANGE),
+            # What PUT accepts for volume_limit: 30 up to the maker's cap
+            # (volume_limit_range; a top under 100 is the maker's, file-only to raise).
+            "volume_limit_range": list(volume_limit_range(self._volume_cap())),
+            # Has a person ever set the ceiling (settings.json has it)? False =
+            # the radio runs on the descriptor's / box.yaml's default ("Make it yours").
+            "volume_limit_set": self._volume_limit_set(),
             # Mixer % at the knob's first step: the quietest audible one. Saved
             # here wins over box.yaml's moode.volume_floor.
             "volume_floor": self._volume_floor(),
@@ -1054,7 +1128,7 @@ class WebApp:
                              "{\"spotify_guests\": true|false}, "
                              "{\"ytm\": {\"hide_explicit\": true|false}}, "
                              "{\"lamp\": {\"brightness\": \"low\"|\"normal\"|\"bright\", \"key_replies\": true|false}}")
-        limit = volume_limit_from(body["volume_limit"]) if "volume_limit" in body else None
+        limit = volume_limit_from(body["volume_limit"], self._volume_cap()) if "volume_limit" in body else None
         floor = (volume_floor_from(body["volume_floor"], limit if limit is not None else self._volume_limit())
                  if "volume_floor" in body else None)
         if floor is None and limit is not None:
@@ -1417,14 +1491,21 @@ class WebApp:
         from ..lamp import policy
         lamp = self.lamp
         preview = getattr(lamp, "preview", None)
+        saved = lamp_check.saved_from((self._overlay().get("io") or {}).get("lamp"))
+        led = lamp_check.led_of(self._descriptor_lamp())
+        checked_led = (saved.get("calibrated") or {}).get("led") if isinstance(saved.get("calibrated"), dict) else None
         return {
             "variant": self.variant_name,
             "lamp": lamp is not None,
             "can_save": self.box_paths is not None,
             "raw_preview": callable(getattr(lamp, "preview_duty", None)) or (callable(preview) and lamp_check.accepts(preview, "raw")),
-            "saved": lamp_check.saved_from((self._overlay().get("io") or {}).get("lamp")),
+            "saved": saved,
             "standard": lamp_check.over_descriptor(lamp_check.standard(lamp_engine, lamp),
                                                    self._descriptor_lamp()),
+            # The LED part this descriptor names (io.lamp.led; the standard was
+            # measured on it), and whether the saved check was made for another part.
+            "led": led,
+            "led_changed": bool(led and checked_led and checked_led != led),
             # The sweep; the page sends {"draft", "look": id, "night"} and
             # the engine draws it (there is no model of the engine on the page).
             "looks": lamp_check.sweep(policy),
@@ -1451,7 +1532,8 @@ class WebApp:
         """Save the Lamp check's result into the overlay's ``io.lamp`` and apply it."""
         cal = lamp_check.check(body)
         paths = self._require_paths()
-        cal = lamp_check.stamp(cal, lamp_check.cpu_temp_c(self.cpu_temp_file))
+        cal = lamp_check.stamp(cal, lamp_check.cpu_temp_c(self.cpu_temp_file),
+                               led=lamp_check.led_of(self._descriptor_lamp()))
         with self._knob_lock:
             current = (self._overlay().get("io") or {}).get("lamp")
             self._write_overlay(paths, lamp_check.save_patch(current, cal))
@@ -1644,6 +1726,10 @@ class WebApp:
                 "curve": [[r, v] for r, v in spec.curve] if spec.curve else None,
                 "hysteresis_counts": spec.hysteresis,
                 "direction": spec.direction,
+                # The drift detector (panel/controls.py): None, "past_end" (the
+                # reading sits beyond the calibration) or "wander" (the wiper
+                # moves while the knob is still) - the knob card's "calibrate it" hint.
+                "drift": getattr(control, "drift", None),
             })
             if control.end_switch_id:
                 state = states.get(control.end_switch_id)
@@ -1897,6 +1983,34 @@ class WebApp:
             return 503, {"ok": False, "error": "health report not installed"}
         with mpd_patience(SOURCE_MPD_S):      # must answer while MPD hangs (2026-10-25)
             return 200, health.health_report(self)
+
+    def diagnostics(self) -> dict:
+        """``GET /api/diagnostics``: the owner's "How the radio is" (web/diagnostics.py owner_doc)."""
+        from . import diagnostics
+        with mpd_patience(SOURCE_MPD_S):
+            return diagnostics.owner_doc(self)
+
+    def diagnostics_bundle(self) -> dict:
+        """``GET /api/diagnostics/bundle``: the maker's support bundle, secrets stripped."""
+        from . import diagnostics
+        with mpd_patience(SOURCE_MPD_S):
+            return diagnostics.bundle(self)
+
+    def restart(self, body: Any) -> dict:
+        """``POST /api/restart {"confirm": token}``: reboot the radio, after a
+        press on the radio (confirm action ``restart``). The player's
+        ``reboot`` runs ``sudo systemctl reboot`` (config/sudoers/haslerd); the
+        main loop's SIGTERM path then does what the knob's shutdown does
+        (the ember breath, YouTube Music's boot cache)."""
+        body = body if isinstance(body, dict) else {}
+        self.confirm.consume(body.get("confirm"), "restart", {})
+        reboot = getattr(self.actions.player, "reboot", None)
+        if not callable(reboot):
+            raise Unavailable("this radio can't restart from the page")
+        log.warning("restart requested from the key page")
+        with self.lock:
+            reboot()
+        return {"restarting": True}
 
     # -- browse -----------------------------------------------------------
 
@@ -2426,6 +2540,10 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(self._art_current)
             elif url.path == "/api/health":
                 self._guard(lambda: self._json(*app.health()))
+            elif url.path == "/api/diagnostics":
+                self._guard(lambda: self._json(200, app.diagnostics()))
+            elif url.path == "/api/diagnostics/bundle":
+                self._guard(lambda: self._json(200, app.diagnostics_bundle()))
             elif url.path == "/api/software":
                 self._guard(lambda: self._json(200, app.software.status()))
             elif m := CONFIRM_ID.match(url.path):
@@ -2622,6 +2740,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(join)
             elif path == "/api/reset":
                 self._guard(lambda: self._json(200, {"ok": True, "config": app.confirmed_reset(self._body())}))
+            elif path == "/api/restart":
+                self._guard(lambda: self._json(200, {"ok": True, **app.restart(self._body())}))
             elif path == "/api/confirm/request":
                 def ask() -> None:
                     body = self._body()

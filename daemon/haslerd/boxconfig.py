@@ -235,11 +235,19 @@ def read_yaml(path: Path) -> dict:
 
 
 def write_yaml(path: Path, doc: dict, header: str = "", mode: int = 0o644) -> None:
-    """Atomically write ``doc`` as YAML, ``schema`` first, after ``header``."""
+    """Atomically write ``doc`` as YAML, ``schema`` first, after ``header``.
+
+    One ``key: value`` line per top-level key, always: the updater and
+    scripts/hasler-os-update read box.yaml line by line, without a YAML
+    parser, and PyYAML would fold a file of plain scalars into one
+    ``{schema: 1, ...}`` line. Nested leaf collections stay in flow style
+    (``curve: [[25, 100], ...]``)."""
     doc = dict(doc)
     ordered = {"schema": doc.pop("schema")} if "schema" in doc else {}
     ordered.update(doc)
     text = yaml.safe_dump(ordered, sort_keys=False, allow_unicode=True, default_flow_style=None)
+    if text.startswith("{"):
+        text = yaml.safe_dump(ordered, sort_keys=False, allow_unicode=True, default_flow_style=False)
     atomic_write_text(path, header + text, mode)
 
 
@@ -337,12 +345,38 @@ def write_overlay(paths: Paths, variant: str, patch: dict) -> dict:
     return new
 
 
+def guard_io_overlay(shipped_io: dict, overlay_io: dict) -> dict:
+    """``overlay_io`` minus the keys this descriptor must keep for itself.
+
+    hasler-hm.yaml and hasler-hm-hat.yaml share one overlay (both are
+    ``variant: hasler-hm``). The stripboard finds its MCP23017 by ``addr:
+    auto`` and an overlay may pin what it found (0x27); the HAT pins 0x20 in
+    its descriptor because the CH224A answers at 0x22/0x23. That left-over
+    ``io.digital.addr`` would silently point the HAT at the wrong chip -
+    "panel board not found", keys dead, music playing. So an overlay address
+    never overrides a descriptor that pins its own: warned about and ignored.
+    Never mutates its arguments.
+    """
+    overlay_io = copy.deepcopy(overlay_io or {})
+    pinned = ((shipped_io or {}).get("digital") or {}).get("addr")
+    over = (overlay_io.get("digital") or {}) if isinstance(overlay_io.get("digital"), dict) else {}
+    if "addr" in over and pinned not in (None, "auto") and over["addr"] != pinned:
+        log.warning("calibration overlay sets io.digital.addr %r, but this descriptor pins %r; "
+                    "ignoring the overlay's (remove it from variant.d)", over["addr"], pinned)
+        over = {k: v for k, v in over.items() if k != "addr"}
+        if over:
+            overlay_io["digital"] = over
+        else:
+            overlay_io.pop("digital", None)
+    return overlay_io
+
+
 def effective(variant, overlay: dict, overlay_path: Path | None = None):
     """``variant`` (a Variant) with ``overlay`` applied, as a new Variant."""
     return replace(
         variant,
         controls=merge_controls(variant.controls, overlay.get("controls") or {}),
-        io=deep_merge(variant.io or {}, overlay.get("io") or {}),
+        io=deep_merge(variant.io or {}, guard_io_overlay(variant.io or {}, overlay.get("io") or {})),
         actions=copy.deepcopy(variant.actions),
         presets=copy.deepcopy(variant.presets),
         overlay_path=overlay_path,

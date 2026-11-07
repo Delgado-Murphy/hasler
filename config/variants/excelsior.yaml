@@ -22,6 +22,17 @@
 variant: excelsior
 title: "Excelsior"
 
+# The cabinet's audio facts (hasler-hm.yaml explains each key). TODO(build):
+# to be set at build, once the cabinet is open: two speakers are assumed from
+# the both/left/right selector, so mono is off by default and the ceiling cap
+# is the HM's cautious 90 until the cones are measured (docs/hardware.md).
+audio:
+  speakers: 2
+  volume_limit_max: 90
+  volume_limit_default: 70
+  volume_floor_default: 28
+  card: sndrpihifiberry
+
 io:
   # addr pinned: the CH224A can answer at 0x22/0x23. int_gpio: INTA, accepted
   # but not used yet - the panel polls.
@@ -36,6 +47,9 @@ io:
     pins: {red: 17, green: 22, blue: 27}   # J2-13, J2-15, J2-16 - Pi header 11, 15, 13
     common: anode
     frequency_hz: 800
+    # The LED part the standard below was measured on (stamped into
+    # `calibrated` by the Lamp check): frosted 5 mm common-anode RGB, 220/100/100 ohm.
+    led: "frosted-5mm-cA-220-100-100"
     # pwm_hz: 400        # to try: longer pulses at the lowest duties (hasler-hm.yaml)
     # The bench HM's Lamp check (2026-11-07, 1.4.0, frosted 5 mm common-anode
     # RGB on 220/100/100 ohm, warm): the standard for every radio fitted with

@@ -151,6 +151,38 @@ const shot = async (target, name) => { if (SHOTS){ fs.mkdirSync(SHOTS, {recursiv
       await page.close();
     });
 
+    await check('sound: the ceiling slider stops at the maker’s cap and says so', async () => {
+      const page = await fresh('#settings/sound');
+      await page.waitForSelector('#limit');
+      await until(async () => (await page.getAttribute('#limit', 'max')) === '90', 5000, 'the slider max');
+      assert((await page.textContent('#limitHint')).includes('the maker set the top at 90'), await page.textContent('#limitHint'));
+      const s = await (await fetch(radio.base + '/api/settings')).json();
+      assert(JSON.stringify(s.volume_limit_range) === '[30,90]' && s.volume_limit_set === false, JSON.stringify([s.volume_limit_range, s.volume_limit_set]));
+      const r = await fetch(radio.base + '/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json', Host: 'localhost'}, body: JSON.stringify({volume_limit: 95})});
+      assert(r.status === 400 && /maker set the top at 90/.test((await r.json()).error), 'PUT 95 was not refused');
+      await page.close();
+    });
+
+    await check('this radio: How the radio is, in words, and Restart asks for a key press', async () => {
+      const page = await fresh('#settings/radio');
+      await page.waitForSelector('#sec-how');
+      await until(async () => /Wi-Fi/.test(await page.textContent('#howBox')) && /Running for/.test(await page.textContent('#howBox')), 8000, 'the card’s rows');
+      const txt = await page.textContent('#howBox');
+      assert(/Internet/.test(txt) && /Memory card/.test(txt) && /Last switched off/.test(txt) && /Player/.test(txt), txt);
+      const d = await (await fetch(radio.base + '/api/diagnostics')).json();
+      assert(d.last_shutdown && d.last_shutdown.kind === 'unknown' && Array.isArray(d.faults) && 'online' in d, JSON.stringify(d.last_shutdown));
+      await page.click('#restartBtn');
+      await page.waitForSelector('#dlg[open]');
+      assert(/Restart the radio\?/.test(await page.textContent('#dlgTitle')), await page.textContent('#dlgTitle'));
+      assert(/Press any key on the radio/.test(await page.textContent('#dlg')), 'no press prompt');
+      await page.click('#dlg button:has-text("Cancel")');
+      await until(async () => !(await page.$('#dlg[open]')), 3000, 'the sheet to close');
+      const st = await (await fetch(radio.base + '/api/status')).json();
+      assert(Array.isArray(st.fault_reasons) && 'online' in st && 'fault_cleared_at' in st, 'status fields');
+      await shot(await page.$('#sec-how'), 'how-the-radio-is.png');
+      await page.close();
+    });
+
     await check('key card: the back button returns to Edit keys; no console errors', async () => {
       const before = errors.length;
       const page = await fresh('#print');

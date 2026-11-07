@@ -116,6 +116,42 @@ def too_hot(temp_file: Path = CPU_TEMP, hot_c: float = HOT_C) -> bool:
         return False
 
 
+# The firmware's throttle word, readable without root (vcgencmd get_throttled
+# says the same). Measured and shown (web/diagnostics.py), never an SOS of
+# its own: heat already is, and the amp's heat is in the Amp4 Pro, not the Pi.
+THROTTLED_FILE = Path("/sys/devices/platform/soc/soc:firmware/get_throttled")
+THROTTLED_BITS = {
+    0: "under_voltage_now", 1: "freq_capped_now", 2: "throttled_now", 3: "soft_temp_limit_now",
+    16: "under_voltage_seen", 17: "freq_capped_seen", 18: "throttled_seen", 19: "soft_temp_limit_seen",
+}
+
+
+def throttled(path: Path = THROTTLED_FILE) -> dict | None:
+    """The Pi's throttle bits, decoded: ``{"raw": "0x50000", "under_voltage_now":
+    bool, ..., "any_now": bool, "any_seen": bool}``, or None off a Pi.
+    ``*_now`` is this moment; ``*_seen`` since boot (a power supply that
+    sagged once at 3 a.m.). Never raises."""
+    try:
+        text = path.read_text().strip()
+        word = int(text, 16) if text.lower().startswith("0x") else int(text, 16)
+    except (OSError, ValueError):
+        return None
+    doc: dict = {"raw": f"0x{word:x}"}
+    for bit, name in THROTTLED_BITS.items():
+        doc[name] = bool(word & (1 << bit))
+    doc["any_now"] = any(doc[n] for n in THROTTLED_BITS.values() if n.endswith("_now"))
+    doc["any_seen"] = any(doc[n] for n in THROTTLED_BITS.values() if n.endswith("_seen"))
+    return doc
+
+
+def cpu_temp_c(temp_file: Path = CPU_TEMP) -> float | None:
+    """The SoC's temperature in degC (one decimal), or None off a Pi."""
+    try:
+        return round(int(temp_file.read_text().strip()) / 1000.0, 1)
+    except (OSError, ValueError):
+        return None
+
+
 def check(state_dir: Path | None = None, update_state: Path | None = UPDATE_STATE, panel: Any = None,
           asound: Path = ASOUND, temp_file: Path = CPU_TEMP) -> list[str]:
     """The reasons for an SOS now, in that order; [] when all is well."""

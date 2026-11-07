@@ -16,6 +16,10 @@ moode:
   # this up slowly, by ear, until it is as loud as you ever want it - then stop.
   # The knob keeps its full sweep either way; it just tops out somewhere safe.
   volume_limit: 70
+  # The maker's cap on the owner's ceiling: the key page's Sound slider stops
+  # here and can't raise it. The descriptor's audio.volume_limit_max (90 on
+  # the HM) unless this lowers it for one radio.
+  # volume_limit_max: 90
 
   # spotify: presets. go-librespot's local API - see config/go-librespot/config.yml.
   # Needs Spotify Premium and the one-time login in build guide Phase 3c.
