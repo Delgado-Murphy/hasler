@@ -149,6 +149,24 @@ button{cursor:pointer}
 .ctl-btn:disabled + .ctl-lbl{opacity:.5}
 .ctl-btn[aria-pressed="true"]{border-color:var(--amber);box-shadow:0 0 14px rgba(255,178,56,.35)}
 .ctl-lbl{color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+/* The sleep timer: a small clock beside Standby (a tap on Standby stays instant), and a chip while set. */
+.ctl.sb{position:relative}
+.sleep-btn{position:absolute;top:-6px;right:-14px;width:30px;height:30px;border-radius:50%;border:1px solid var(--line2);display:flex;align-items:center;justify-content:center;
+  background:#1F150E;color:var(--muted);transition:color .2s,border-color .2s,box-shadow .2s}
+.sleep-btn[hidden]{display:none}
+.sleep-btn::after{content:"";position:absolute;inset:-8px}
+.sleep-btn:hover{color:var(--brass);border-color:#7A5A36}
+.sleep-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber);box-shadow:0 0 10px rgba(255,178,56,.3)}
+.sleep-btn:focus-visible,.sleep-chip:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.sleep-row{display:flex;justify-content:center;padding:10px 0 0}
+.sleep-row[hidden]{display:none}
+.sleep-chip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:4px 14px;border:1px solid var(--line2);border-radius:999px;background:none;
+  color:var(--brass);font:600 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+.sleep-chip .x{opacity:.6;font:400 15px/1 var(--sans)}
+.sleep-chip.fading{color:var(--amber);border-color:var(--amber)}
+.sleep-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 12px}
+.sleep-opts .btn{flex:none}
+.sleep-opts .btn[aria-current="true"]{border-color:var(--amber);color:var(--amber)}
 .knob{display:block;touch-action:none;cursor:grab;border-radius:50%}
 .knob:active{cursor:grabbing}
 .knob:focus-visible{outline:2px solid var(--amber);outline-offset:-6px}
@@ -990,7 +1008,10 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
     <div class="bank" id="bank" role="group" aria-label="Piano keys"></div>
 
     <div class="controls">
-      <div class="ctl">
+      <div class="ctl sb">
+        <button type="button" class="sleep-btn" id="sleepBtn" aria-haspopup="dialog" aria-pressed="false" aria-label="Sleep timer" title="Sleep timer">
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8.5" r="5.6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 5.6v3.1l2 1.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <button type="button" class="ctl-btn" id="standbyBtn" aria-pressed="false" aria-label="Standby">
           <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M5.8 5.6a6 6 0 1 0 8.4 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>
@@ -1019,6 +1040,10 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
         </button>
         <span class="ctl-lbl" aria-hidden="true">Next</span>
       </div>
+    </div>
+
+    <div class="sleep-row" id="sleepRow" hidden>
+      <button type="button" class="sleep-chip" id="sleepChip"><span id="sleepTxt">Sleep</span><span class="x" aria-hidden="true">×</span></button>
     </div>
 
     <div class="tone" id="tone" hidden aria-live="off">
@@ -1780,6 +1805,67 @@ $('standbyBtn').addEventListener('click', async () => {
   } catch (_) { toast(NET_ERR, true); }
   renderRemote(); pollSoon();
 });
+/* ================= remote: sleep timer (/api/sleep) ================= */
+// The clock beside Standby offers 15 · 30 · 60 min; while set, a chip says what is
+// left and a tap on it cancels (with Undo). The radio counts, fades its last minute
+// and goes to standby itself; any key or knob on the radio cancels it there.
+const SLEEP_MINUTES = [15, 30, 60];
+function sleepLeft(s){ return s.fading ? 'under a minute' : Math.ceil(s.ends_in_s / 60) + ' min'; }
+function paintSleep(){
+  const s = status && !status.standby ? status.sleep : null, sb = !!(status && status.standby);
+  $('sleepBtn').hidden = sb || !status;       // asleep already: nothing to time
+  $('sleepBtn').disabled = !online;
+  $('sleepBtn').setAttribute('aria-pressed', String(!!s));
+  $('sleepBtn').setAttribute('aria-label', s ? 'Sleep timer: ' + sleepLeft(s) + ' left' : 'Sleep timer');
+  $('sleepRow').hidden = !s;
+  if (!s) return;
+  const txt = s.fading ? 'Sleep · fading' : 'Sleep · ' + sleepLeft(s);
+  if ($('sleepTxt').textContent !== txt) $('sleepTxt').textContent = txt;
+  $('sleepChip').classList.toggle('fading', !!s.fading);
+  $('sleepChip').setAttribute('aria-label', 'Sleep timer, ' + sleepLeft(s) + ' left. Cancel it');
+}
+async function setSleep(minutes, quiet){
+  try {
+    const r = await api('POST', '/api/sleep', {minutes}, {retry:1});
+    if (r.ok && r.json){
+      if (status) status.sleep = r.json.sleep;
+      if (!quiet) toast('Sleeps in ' + Math.round(minutes) + ' min');
+    } else toast((r.json && r.json.error) || 'The sleep timer didn’t start.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  renderRemote(); pollSoon();
+}
+async function cancelSleep(){
+  const was = status && status.sleep;
+  try {
+    const r = await api('DELETE', '/api/sleep');
+    if (!r.ok){ toast((r.json && r.json.error) || 'The sleep timer is still on.', true); return; }
+    if (status) status.sleep = null;
+    // Undo sets back what was left, to the second.
+    toast('Sleep timer off', was ? {undo: () => setSleep(was.ends_in_s / 60, true)} : undefined);
+  } catch (_) { toast(NET_ERR, true); }
+  renderRemote(); pollSoon();
+}
+function openSleep(){
+  const s = status && status.sleep, opener = $('sleepBtn');
+  const dlg = h('dialog', {id:'sleepDlg', 'aria-labelledby':'sleepTitle', 'aria-describedby':'sleepSub'});
+  const close = () => dlg.close();
+  dlg.addEventListener('close', () => { dlg.remove(); if (!opener.hidden) opener.focus(); });
+  dlg.append(
+    h('h2', {id:'sleepTitle'}, 'Sleep timer'),
+    h('p', {class:'sub', id:'sleepSub'}, s ? 'The radio sleeps in ' + sleepLeft(s) + '. Choose again, or cancel.'
+      : 'Play on for a while, fade out over the last minute, then standby. Any key or knob on the radio cancels it.'),
+    h('div', {class:'sleep-opts', role:'group', 'aria-label':'Sleep in'}, SLEEP_MINUTES.map(m =>
+      h('button', {type:'button', class:'btn', 'data-min': String(m), 'aria-label': 'Sleep in ' + m + ' minutes',
+        'aria-current': s && Math.abs(s.minutes - m) < 0.01 ? 'true' : null,
+        onclick: () => { close(); setSleep(m); }}, m + ' min'))),
+    h('div', {class:'sleep-opts', style:'grid-template-columns:1fr' + (s ? ' 1fr' : '')},
+      s ? h('button', {type:'button', class:'btn', id:'sleepOff', onclick: () => { close(); cancelSleep(); }}, 'Turn the timer off') : null,
+      h('button', {type:'button', class:'btn', onclick: close}, s ? 'Keep it' : 'Cancel')));
+  document.body.append(dlg); dlg.showModal();
+  const first = dlg.querySelector('[data-min]'); if (first) first.focus();
+}
+$('sleepBtn').addEventListener('click', openSleep);
+$('sleepChip').addEventListener('click', cancelSleep);
 $('nextBtn').addEventListener('click', async () => {
   try {
     const r = await api('POST', '/api/next', {});
@@ -1799,7 +1885,7 @@ function renderRemote(){
   const canNext = !!(online && status && !sb && (pl ? pl.source !== 'radio' : puEngaged()));
   $('nextBtn').disabled = !canNext;
   $('nextBtn').setAttribute('aria-label', canNext ? 'Next song' : 'Next song (not for live radio)');
-  paintTone(); paintRooms();
+  paintTone(); paintRooms(); paintSleep();
 }
 function paintTone(){
   const t = status && status.tone, row = $('tone');

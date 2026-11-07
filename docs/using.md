@@ -67,6 +67,15 @@ The radio has six numbered keys and one key marked **PU**.
 A tap on any key wakes the radio from standby. The radio remembers the last
 key you pressed, even after you unplug it.
 
+**Sleep timer.** On the key page, tap the small clock beside **Standby** and
+choose 15, 30 or 60 minutes. A "Sleep · 23 min" chip shows what is left; tap
+it to cancel (Undo brings it back). In the last minute the music fades out and
+the lamp dims, then the radio goes to standby as if you had pressed Standby;
+the next time you wake it, it plays at your usual volume. Touching the radio
+(any key or knob) cancels the timer, and so does unplugging it. A Bluetooth
+phone is asked to pause; an AirPlay phone keeps sending to a silent radio until
+you stop it, but it doesn't wake the radio again.
+
 You choose what each key plays, and what holding it does, in
 [Edit keys](#edit-keys). What **PU** steps through, and in what order, is in
 **Settings → Keys & knobs**.

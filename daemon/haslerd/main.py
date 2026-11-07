@@ -47,6 +47,8 @@ from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_
 from .web.bluetooth_api import BluetoothApi
 from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
+from .web.sleep_api import SleepApi
+from .sleep import SleepTimer
 from .web.help_api import MAKERS_TAILNET, HelpApi
 from .web.spotify_account_api import SpotifyAccountApi
 from .web.stations_api import StationsApi
@@ -214,6 +216,9 @@ class LampKeeper:
         # player/watchdog.StreamWatchdog (set by main): MPD stopped a preset by
         # itself - not "playing" then, and the loading breath while it recovers.
         self.watchdog = None
+        # sleep.SleepTimer (set by main): its last minute dims the lamp, and a
+        # phone it slept through is not blue (the radio is asleep, muted).
+        self.sleep = None
         # A knob that reads off at power-up never counts down: only an off
         # after boot() (see arm) is a hand asking for shutdown.
         self._armed_at = float("inf")
@@ -404,7 +409,10 @@ class LampKeeper:
     def gather(self, now: float) -> BoxState:
         """The BoxState as of ``now`` (timers are this object's, flags Actions')."""
         actions, player, state = self.actions, self.actions.player, self.state
+        sleep = self.sleep
         phone = actions.phone_has_it(self.source)
+        if phone and actions.standby and sleep is not None and sleep.keeps_asleep(self.source):
+            phone = False
         if phone:
             self._cast_seen = now
         casting = self._cast_seen is not None and now - self._cast_seen < CAST_GRACE_S
@@ -438,6 +446,7 @@ class LampKeeper:
         )
         state.source = current.source if current is not None else self.source
         state.panel_missing = bool(self.panel is not None and getattr(self.panel, "absent", False))
+        state.sleeping = bool(sleep is not None and sleep.fading)
         group = getattr(actions, "group", None)
         if group is not None:
             try:
@@ -790,6 +799,11 @@ def build_web(
     # /api/spotify/account: sign the radio in to Spotify with a code (also in /api/casting)
     app.spotify_account = SpotifyAccountApi(app)
     app.extra_routes.append(SourcesApi(app))   # /api/sources, /api/casting
+    # /api/sleep: the sleep timer (haslerd/sleep.py), ticked by the main loop;
+    # any key or knob, from the cabinet or the page's remote, cancels it.
+    app.sleep = SleepTimer(actions)
+    actions.on_hand = app.sleep.hand
+    app.extra_routes.append(SleepApi(app, app.sleep))
     app.extra_routes.append(BluetoothApi(app))  # /api/bluetooth
     # /api/help: "Let the makers help (24 h)" - off until the owner asks
     app.extra_routes.append(HelpApi(app, tailnet=spec.get("help_tailnet", MAKERS_TAILNET)))
@@ -1075,6 +1089,9 @@ def main(argv=None) -> int:
         keeper.apply_palette(load_settings(getattr(app, "settings_file", None)))
         app.lamp = driver       # the Lamp colours page's preview (web/server.py)
     stream_watch = None if args.fake else build_stream_watchdog(actions, app, keeper)
+    sleep = getattr(app, "sleep", None)
+    if keeper is not None:
+        keeper.sleep = sleep
     log.info("haslerd up: %s, %d controls", actions.variant.name, len(panel.controls))
 
     running = True
@@ -1131,6 +1148,8 @@ def main(argv=None) -> int:
                 net_announced = True
                 network_up(actions)
             resume.tick(now)
+            if sleep is not None:
+                sleep.tick(now)                     # the sleep timer: fade, then standby
             if first_sound is not None:
                 first_sound.tick(now)
 
@@ -1156,9 +1175,12 @@ def main(argv=None) -> int:
                 phone_volume.tick(now, source == "bluetooth" and not actions.standby)
             if actions.group is not None:
                 actions.group.tick(now, source)     # multiroom: keep in touch (on its own thread)
-            if (actions.standby or actions.pairing) and actions.phone_has_it(source):
+            if (actions.standby or actions.pairing) and actions.phone_has_it(source) and not (
+                actions.standby and sleep is not None and sleep.keeps_asleep(source)
+            ):
                 # The phone wakes the radio: standby ends, nothing of ours
                 # resumes. A phone that connected also ends the pairing breath.
+                # (Not the phone the sleep timer slept through: it didn't start anything.)
                 actions.wake_for_phone(source)
                 actions.end_pairing(paired=True)
 

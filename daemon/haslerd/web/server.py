@@ -18,7 +18,8 @@ The sign-in body is the account's cookie: it is never logged or echoed back.
 ``ytm.hide_explicit`` (settings) drops explicit songs and albums from them.
 
 The remote control (``/api/press``, ``/api/volume``, ``/api/next``,
-``/api/standby``) drives the radio exactly as the cabinet does: a pressed key is
+``/api/standby``, and the sleep timer ``/api/sleep`` - web/sleep_api.py)
+drives the radio exactly as the cabinet does: a pressed key is
 dispatched as the same ``Event`` the panel would emit, so "press the playing
 key again" means the same thing from the phone as from the wood. Volume is on
 the knob's 0-100 scale; the player maps it inside ``volume_limit``, which
@@ -154,6 +155,7 @@ EXTRA_PREFIXES = ("/api/ha", "/api/sources", "/api/casting", "/api/bluetooth", "
                   "/api/knobs/functions", "/api/knobs/try",   # web/knobs_api.py
                   "/api/help",                                # web/help_api.py
                   "/api/spotify",                             # web/spotify_account_api.py
+                  "/api/sleep",                               # web/sleep_api.py
                   "/api/stations/try", "/api/stations/mine", "/api/stations/report")  # web/stations_api.py
 
 # A key's tap action as the remote's caption says it, when it isn't a preset.
@@ -313,6 +315,8 @@ class WebApp:
         self.lamp: Any = None
         # player/watchdog.StreamWatchdog (main.py): MPD stopping a preset by itself.
         self.stream_watch: Any = None
+        # sleep.SleepTimer (main.build_web, web/sleep_api.py), or None.
+        self.sleep: Any = None
         self.station_db = station_db
         # /api/info and /api/art/current, for the Home Assistant integration (web/integration.py).
         self.art = integration.ArtProxy(station_db)
@@ -674,6 +678,8 @@ class WebApp:
             "knob_on": states.get("power") if isinstance(states.get("power"), bool) else None,
             # Multiroom: None alone, else {"role", "joining", "leader": {id, name}|None, "members": n}.
             "group": self._group_status(),
+            # The sleep timer (haslerd/sleep.py): {"ends_in_s", "fading", "minutes"} or None.
+            "sleep": self.sleep.status() if self.sleep is not None else None,
         }
 
     def _tone_doc(self, tone: Any) -> dict | None:
@@ -852,6 +858,8 @@ class WebApp:
             else:
                 raise ValueError("expected {\"value\": 0-100} or {\"delta\": ±n}")
             target = max(0.0, min(100.0, target))
+            if self.sleep is not None:
+                self.sleep.volume_set()     # during the sleep fade: the timer is off, this level stands
             player.set_volume(target)
         return round(target)
 
