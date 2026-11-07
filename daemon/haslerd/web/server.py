@@ -38,7 +38,12 @@ kept), ``DELETE`` goes back to the release's palette. ``WebApp.lamp_listeners``
 hear the doc, so the engine's ``set_palette`` follows at once.
 ``POST /api/lamp/preview {"rgb": [r, g, b], "level": "full"|"night"|"ember"|0..1}``
 shows a colour on the lamp for 30 s after the last call (only the shutdown
-countdown outranks it); ``{"rgb": null}`` ends it.
+countdown outranks it); ``{"rgb": null}`` ends it. ``{"duty": [r, g, b]}``
+shows raw channel duties (no gamma, balance or floors) and ``{"look": {...},
+"night": bool, "calibration": {...}}`` a policy Look through a draft
+calibration, for the guided Lamp check (Maker tools; web/lamp_check.py), whose
+``GET/PUT(POST)/DELETE /api/lamp/calibration`` reads, saves and clears the
+calibration in the box overlay's ``io.lamp``.
 
 Knob calibration (``/api/knobs``) is the guided version of what we did by
 hand on the bench: the page asks the owner to hold each knob still at a few
@@ -103,6 +108,7 @@ from ..actions import Actions
 from ..lamp import night
 from ..lamp import engine as lamp_engine
 from .. import boxconfig
+from . import lamp_check
 from ..panel import calibrate
 from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot, bank_keys, bank_latching
 from ..player.base import Preset
@@ -358,6 +364,8 @@ class WebApp:
         self.box_paths: Any = None
         self.reload_variant: Callable[[], Any] | None = None
         self.on_overlay_saved: Callable[[str], None] | None = None
+        # Where the Lamp check reads the CPU's temperature (None: the Pi's thermal zone).
+        self.cpu_temp_file: Path | None = None
         self._knob_lock = threading.Lock()
         # A press on the radio for the risky buttons (web/confirm.py). The lamp
         # hook is read at call time: the LampKeeper sets it after build_web.
@@ -1180,7 +1188,16 @@ class WebApp:
         return self.lamp_palette()
 
     def lamp_preview(self, body: Any) -> dict:
-        """``{"rgb": [r, g, b], "level": name|0..1}`` on the lamp for a while; ``{"rgb": null}`` ends it."""
+        """``{"rgb": [r, g, b], "level": name|0..1}`` on the lamp for a while; ``{"rgb": null}`` ends it.
+
+        ``{"duty": [r, g, b]}`` shows raw channel duties (the Lamp check), and
+        ``{"look": {...}, "night": bool, "calibration": {...}}`` a policy Look
+        through a draft calibration - see ``_preview_duty`` / ``_preview_look``.
+        """
+        if isinstance(body, dict) and "duty" in body:
+            return self._preview_duty(body["duty"])
+        if isinstance(body, dict) and "look" in body:
+            return self._preview_look(body)
         if not isinstance(body, dict) or "rgb" not in body:
             raise ValueError('expected {"rgb": [r, g, b], "level": "full"|"night"|"ember"} or {"rgb": null}')
         rgb = None if body["rgb"] is None else _rgb_from(body["rgb"], "rgb")
@@ -1199,6 +1216,131 @@ class WebApp:
             preview(rgb, level)
         return {"lamp": lamp is not None, "showing": rgb is not None and lamp is not None,
                 "expires_s": lamp_engine.PREVIEW_S if rgb is not None else 0}
+
+    def _preview_duty(self, raw: Any) -> dict:
+        """Raw channel duties 0..1 on the lamp, bypassing gamma, balance and floors.
+
+        Needs the engine's ``preview(rgb, level, raw=True)`` (``rgb`` = the
+        duties written as they are). An engine without it gets the nearest
+        colour preview - right for a lamp with no balance, but its floors still
+        apply, so ``raw`` in the answer says which one the lamp drew.
+        """
+        duty = lamp_check.duty_from(raw)
+        lamp = self.lamp
+        preview = getattr(lamp, "preview", None)
+        exact = False
+        if callable(preview):
+            if lamp_check.accepts(preview, "raw"):
+                preview(duty, 1.0, raw=True)
+                exact = True
+            else:
+                peak = max(duty)
+                gamma = getattr(lamp_engine, "GAMMA", 2.2)
+                rgb = [d / peak for d in duty] if peak > 0 else [0.0, 0.0, 0.0]
+                preview(rgb, peak ** (1.0 / gamma) if peak > 0 else 0.0)
+        return {"lamp": lamp is not None, "showing": lamp is not None, "raw": exact,
+                "expires_s": getattr(lamp_engine, "PREVIEW_S", 30.0)}
+
+    def _preview_look(self, body: dict) -> dict:
+        """A Look (colour, level, motion, period_s, floor) at day or night, drawn
+        through a draft calibration - the engine's ``preview_look(look, night,
+        calibration)``. Without it nothing is shown and ``look`` is false: the
+        page then draws the look itself with raw duties."""
+        raw = body["look"]
+        if not isinstance(raw, dict):
+            raise ValueError('look must be {"colour", "level", "motion", "period_s", "floor"}')
+        names = getattr(lamp_engine, "DEFAULT_PALETTE", {}) or {}
+        colour = raw.get("colour")
+        if not isinstance(colour, str) or (names and colour not in names):
+            raise ValueError("look.colour must be one of the lamp's colours")
+        motion = raw.get("motion", "solid")
+        if motion not in ("solid", "breath"):
+            raise ValueError("look.motion must be solid or breath")
+        level = lamp_check.number(raw.get("level"), "look.level", 0.0, 1.0)
+        period = lamp_check.number(raw.get("period_s", 0.0), "look.period_s", 0.0, 60.0)
+        floor = lamp_check.number(raw.get("floor", 0.0), "look.floor", 0.0, 1.0)
+        night = body.get("night", False)
+        if not isinstance(night, bool):
+            raise ValueError("night must be true or false")
+        cal = lamp_check.check(body["calibration"]) if body.get("calibration") is not None else None
+        lamp = self.lamp
+        fn = getattr(lamp, "preview_look", None)
+        if not callable(fn):
+            return {"lamp": lamp is not None, "showing": False, "look": False, "expires_s": 0}
+        from ..lamp.contract import Look
+        fn(Look(colour, level, motion, period, floor), night, cal)
+        return {"lamp": True, "showing": True, "look": True,
+                "expires_s": getattr(lamp_engine, "PREVIEW_S", 30.0)}
+
+    # -- the Lamp check's calibration (web/lamp_check.py) -------------------
+
+    def lamp_calibration(self) -> dict:
+        """``GET /api/lamp/calibration``: what is saved, the standard values,
+        the looks to verify, and what this lamp can preview."""
+        from ..lamp import policy
+        lamp = self.lamp
+        preview = getattr(lamp, "preview", None)
+        return {
+            "variant": self.variant_name,
+            "lamp": lamp is not None,
+            "can_save": self.box_paths is not None,
+            "raw_preview": callable(preview) and lamp_check.accepts(preview, "raw"),
+            "look_preview": callable(getattr(lamp, "preview_look", None)),
+            "saved": lamp_check.saved_from((self._overlay().get("io") or {}).get("lamp")),
+            "standard": lamp_check.standard(lamp_engine, lamp),
+            "looks": lamp_check.sweep(policy),
+            "model": {"gamma": getattr(lamp_engine, "GAMMA", 2.2),
+                      "night_cap": getattr(lamp_engine, "NIGHT_CAP", 0.35),
+                      "minor_share": getattr(lamp_engine, "MINOR_SHARE", 0.2),
+                      "standby_ember": getattr(lamp_engine, "STANDBY_EMBER", 0.22)},
+            "preview_s": getattr(lamp_engine, "PREVIEW_S", 30.0),
+            "cpu_temp_c": lamp_check.cpu_temp_c(self.cpu_temp_file),
+        }
+
+    def put_lamp_calibration(self, body: Any) -> dict:
+        """Save the Lamp check's result into the overlay's ``io.lamp`` and apply it."""
+        cal = lamp_check.check(body)
+        paths = self._require_paths()
+        cal = lamp_check.stamp(cal, lamp_check.cpu_temp_c(self.cpu_temp_file))
+        with self._knob_lock:
+            current = (self._overlay().get("io") or {}).get("lamp")
+            self._write_overlay(paths, lamp_check.save_patch(current, cal))
+            if cal["calibrated"]["cpu_temp_c"] is None:
+                # An overlay patch's None deletes; the contract keeps the key as null.
+                doc = boxconfig.read_overlay(paths, self.variant_name)
+                doc["io"]["lamp"]["calibrated"]["cpu_temp_c"] = None
+                boxconfig.write_yaml(paths.overlay_file(self.variant_name), {"schema": boxconfig.SCHEMA, **doc},
+                                     boxconfig.OVERLAY_HEADER, mode=0o664)
+            self._apply_lamp_calibration(cal)
+        log.info("lamp calibrated from the web page: %s", cal)
+        return self.lamp_calibration()
+
+    def delete_lamp_calibration(self) -> dict:
+        """"Back to standard": the contract's keys out of the overlay, live."""
+        paths = self._require_paths()
+        with self._knob_lock:
+            self._write_overlay(paths, lamp_check.clear_patch())
+            self._apply_lamp_calibration(None)
+        log.info("lamp back to its standard calibration")
+        return self.lamp_calibration()
+
+    def _apply_lamp_calibration(self, cal: dict | None) -> None:
+        """The running variant's io follows the overlay; the engine follows at
+        once when it offers ``set_calibration(cal | None)``, else at restart."""
+        hook, reload = self.on_overlay_saved, self.reload_variant
+        try:
+            if hook is not None:
+                hook(self.variant_name)
+            elif reload is not None:
+                reload()
+        except Exception:
+            log.exception("re-applying the overlay after the lamp check failed")
+        setter = getattr(self.lamp, "set_calibration", None)
+        if callable(setter):
+            try:
+                setter(cal)
+            except Exception:
+                log.exception("the lamp engine refused the calibration")
 
     def _lamp_doc(self) -> dict:
         saved = self.lamp_settings()
@@ -2080,6 +2222,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, app.settings(self.headers.get("Host"))))
             elif url.path == "/api/lamp/palette":
                 self._guard(lambda: self._json(200, app.lamp_palette()))
+            elif url.path == "/api/lamp/calibration":
+                self._guard(lambda: self._json(200, app.lamp_calibration()))
             elif url.path == "/api/knobs":
                 self._guard(lambda: self._json(200, app.knobs()))
             elif (m := KNOB_ID.match(url.path)) and m.group(2) == "sample":
@@ -2184,6 +2328,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, **app.software_settings(self._body())}))
             elif path == "/api/lamp/palette":
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
+            elif path == "/api/lamp/calibration":
+                self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_calibration(self._body())}))
             else:
                 self._send(404, b"not found", "text/plain")
 
@@ -2270,6 +2416,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, **app.lamp_preview(self._body())}))
             elif path == "/api/lamp/palette":       # as PUT, for clients that only POST
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
+            elif path == "/api/lamp/calibration":   # as PUT, for clients that only POST
+                self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_calibration(self._body())}))
             elif path == "/api/settings":            # as PUT, for clients that only POST
                 self._guard(lambda: self._json(
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
@@ -2347,6 +2495,8 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, "account": app.ytm_sign_out()}))
             elif path == "/api/lamp/palette":
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette({"palette": {}})}))
+            elif path == "/api/lamp/calibration":
+                self._guard(lambda: self._json(200, {"ok": True, **app.delete_lamp_calibration()}))
             elif (m := KNOB_ID.match(path)) and m.group(2) == "calibration":
                 self._guard(lambda: self._json(200, {"ok": True, **app.delete_calibration(m.group(1))}))
             else:
