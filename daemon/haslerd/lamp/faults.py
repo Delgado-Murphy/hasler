@@ -6,7 +6,7 @@ the lamp only says "something needs a maker", the page and the journal say
 what:
 
 ``update``   the updater could not roll a failed update back (its state file
-             says ``rollback_failed``/``broken``) - the radio runs on luck
+             stays in trial/rollback for over 10 min) - the radio runs on luck
 ``storage``  the SD card is read-only, or nearly full (state directory)
 ``sound``    no sound card at all (on a Pi: /proc/asound has none)
 ``panel``    the panel board is missing (the keys can't work)
@@ -20,6 +20,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +29,7 @@ log = logging.getLogger(__name__)
 
 FAULT_POLL_S = 30.0
 UPDATE_STATE = Path("/var/lib/hasler-apply/state.json")
-ROLLBACK_FAILED = ("rollback_failed", "broken", "stuck")
+ROLLBACK_STUCK_S = 600.0    # a rollback still not done after 10 min keeps failing
 CPU_TEMP = Path("/sys/class/thermal/thermal_zone0/temp")
 HOT_C = 80.0                # the Pi throttles at 80-85 degC, and shuts down at its limit
 ASOUND = Path("/proc/asound")
@@ -45,8 +47,42 @@ def update_phase(state_file: Path | None = UPDATE_STATE) -> str | None:
     return phase if isinstance(phase, str) else None
 
 
-def update_broken(state_file: Path | None = UPDATE_STATE) -> bool:
-    return update_phase(state_file) in ROLLBACK_FAILED
+def _when(stamp: Any) -> float | None:
+    """An updater ``iso()`` time -> epoch seconds, or None."""
+    if not isinstance(stamp, str) or not stamp:
+        return None
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def update_broken(state_file: Path | None = UPDATE_STATE, now: float | None = None,
+                  stuck_s: float = ROLLBACK_STUCK_S) -> bool:
+    """The updater could not roll a failed update back.
+
+    Its phases are trial, probation, committed and rolled_back
+    (update/hasler_update/apply.py). A rollback sets ``phase: trial, step:
+    rollback`` and, once done, ``rolled_back``; it is resumed at the next boot
+    and haslerd start. So a ``trial``/``rollback`` state that has lasted more
+    than ``stuck_s`` (since the history's last "rollback" entry, else the file's
+    time) is a rollback that keeps failing - the radio runs on whatever is left.
+    """
+    if state_file is None:
+        return False
+    try:
+        path = Path(state_file)
+        doc = json.loads(path.read_text())
+        mtime = path.stat().st_mtime
+    except (OSError, ValueError):
+        return False
+    if not isinstance(doc, dict) or doc.get("phase") != "trial" or doc.get("step") != "rollback":
+        return False
+    history = [h for h in (doc.get("history") or []) if isinstance(h, dict)]
+    since = next((_when(h.get("at")) for h in reversed(history) if h.get("event") == "rollback"), None)
+    if since is None:
+        since = mtime
+    return (time.time() if now is None else now) - since > stuck_s
 
 
 def storage_bad(path: Path | None) -> bool:

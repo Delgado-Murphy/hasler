@@ -432,7 +432,7 @@ class TestBootScript:
         assert levels[0] < 0.01 and levels == sorted(levels)
         assert (tmp_path / "pwm" / "pwmchip0" / "pwm0" / "period").read_text().strip() == "2500000"
         state = json.loads((tmp_path / "run" / "boot").read_text())
-        assert state["released"] is True and (state["floor"], state["peak"]) == (0.25, 0.60)
+        assert state["released"] is True and (state["floor"], state["peak"]) == (0.22, 0.70)
 
     def test_a_handover_breathes_on_from_the_leds_frame(self, tmp_path):
         root = lit_sysfs(tmp_path, period=2500000, duties=(int(0.3 * 2500000), 0, 0))
@@ -442,20 +442,20 @@ class TestBootScript:
         levels = frames(res.stdout)
         start = 0.3 ** (1 / 2.2)
         assert abs(levels[0] - start) < 0.02                # no dark frame, no jump
-        assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.05
+        assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.07
         assert 0.25 - 0.01 <= levels[-1] <= 0.60 + 0.01
         assert (root / "pwmchip0" / "pwm0" / "period").read_text().strip() == "2500000"   # kept
         assert not (tmp_path / "run" / "handover").exists()
 
-    def test_an_update_handover_is_the_pure_red_ember_breath(self, tmp_path):
+    def test_an_update_handover_is_the_amber_busy_breath(self, tmp_path):
         root = lit_sysfs(tmp_path, duties=(60000, 0, 0))
         (tmp_path / "run").mkdir()
         (tmp_path / "run" / "handover").write_text(json.dumps({"mode": "ember", "at": time.time()}))
         res = run_boot(tmp_path, "--print", "--seconds", "1.2")
         levels = frames(res.stdout)
-        assert 0.14 <= levels[-1] <= 0.36
-        assert duty(root, 1) == 0 and duty(root, 2) == 0
-        assert json.loads((tmp_path / "run" / "boot").read_text())["colour"] == "ember"
+        assert 0.21 <= levels[-1] <= 0.71         # the busy breath, 22-70 %, amber (v2: never ember)
+        assert duty(root, 1) > 0 and duty(root, 2) == 0
+        assert json.loads((tmp_path / "run" / "boot").read_text())["colour"] == "amber"
 
     def test_a_stale_note_is_not_a_handover(self, tmp_path):
         (tmp_path / "run").mkdir()
@@ -565,9 +565,9 @@ def test_haslerd_leaves_the_boot_breath_its_frames_on_change(real):
     assert len(busy["frames"]) == round(policy.UPDATING.period_s * handover.BOOT_FPS)
     amber = doc["looks"]["amber"]
     top = lambda e: max(max(f) for f in e["frames"]) ** (1 / 2.2)
-    assert top(amber["day"]) == pytest.approx(0.60, abs=0.01)
-    assert top(amber["night"]) == pytest.approx(0.35, abs=0.01)          # night-scaled
-    assert amber["night"]["peak"] == 0.35 and amber["night"]["floor"] < 0.25
+    assert top(amber["day"]) == pytest.approx(policy.BUSY.level, abs=0.01)    # v2: starting is the busy breath
+    assert top(amber["night"]) < 0.45 < top(amber["day"])               # night-scaled (the engine's night breath)
+    assert amber["night"]["peak"] == policy.BUSY.night and amber["night"]["floor"] < amber["day"]["floor"]
     lit_green = [f[1] for f in amber["day"]["frames"] if f[1] > 0]
     assert lit_green and min(lit_green) >= 0.008                        # the calibrated floor holds
     assert doc["hold"]["night"] == pytest.approx(list(engine.duty_for("ember", 0.12)), abs=1e-6)
@@ -609,10 +609,10 @@ class TestBootScriptWithNotes:
         assert res.returncode == 0, res.stderr
         levels = frames(res.stdout)
         assert levels[0] < 0.01                                          # still a fade up from dark
-        assert max(levels) <= 0.36                                       # never 60 % in the bedroom
+        assert max(levels) < 0.45                                        # never the day's 70 % in the bedroom
         assert max(levels[len(levels) // 2:]) > 0.25
         state = json.loads((tmp_path / "run" / "boot").read_text())
-        assert state["peak"] == 0.35 and state["floor"] < 0.25 and state["colour"] == "amber"
+        assert state["peak"] == policy.BUSY.night and state["floor"] < policy.BUSY.floor and state["colour"] == "amber"
 
     def test_an_update_handover_breathes_the_engines_busy_breath(self, tmp_path):
         doc = _boot_notes(tmp_path, night=False)
@@ -624,13 +624,13 @@ class TestBootScriptWithNotes:
         res = run_boot(tmp_path, "--print", "--seconds", "1.5")
         levels = frames(res.stdout)
         assert abs(levels[0] - max(start) ** (1 / 2.2)) < 0.03           # from the LED's frame, no jump
-        assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.05
+        assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.07
         state = json.loads((tmp_path / "run" / "boot").read_text())
-        assert state["period_s"] == policy.UPDATING.period_s and state["colour"] == "ember"
+        assert state["period_s"] == policy.UPDATING.period_s and state["colour"] == "amber"   # busy is amber
 
     def test_odd_notes_fall_back_to_the_scripts_own_breath(self, tmp_path):
         (tmp_path / "lamp-boot.json").write_text('{"looks": {"amber": {"day": {"frames": "nope"}}}, "fps": 25}')
         res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "0.3")
         assert res.returncode == 0 and frames(res.stdout)[0] < 0.01
         state = json.loads((tmp_path / "run" / "boot").read_text())
-        assert (state["floor"], state["peak"]) == (0.25, 0.60)
+        assert (state["floor"], state["peak"]) == (0.22, 0.70)               # the script's own busy breath

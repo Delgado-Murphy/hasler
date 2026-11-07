@@ -208,7 +208,7 @@ button{cursor:pointer}
 .lm-sw[data-c="green"]{--lm:#4ade80}.lm-sw[data-c="red"]{--lm:#ef4444}
 .lm-sw[data-c="off"]{background:transparent;box-shadow:inset 0 0 0 1.5px var(--text3,#777)}
 .lm-sw[data-c="ready"]{--lm:#ffa733;opacity:.55}
-.lm-sw[data-m="breath"]{animation:lm-breath 3.4s ease-in-out infinite}
+.lm-sw[data-m="breath"]{animation:lm-breath 2.8s ease-in-out infinite}
 .lm-sw[data-m="slow"]{animation:lm-breath 6s ease-in-out infinite}
 .lm-sw[data-m="kick"]{animation:lm-kick 2.2s ease-out infinite}
 .lm-sw[data-m="beckon"]{animation:lm-beckon 2.8s linear infinite}
@@ -5630,28 +5630,27 @@ function morseAnim(word){
 // identify (POST /api/lamp/identify), none (nothing to show). A row's Show me appears when
 // this radio's lamp knows the name (settings.lamp.looks / replies).
 const LAMP_MEANS = [
-  ['Everyday', 'look', 'playing', 'Playing', 'Music from the radio’s own keys', 'amber', 'steady', 'steady amber'],
+  ['Everyday', 'look', 'playing', 'Playing', 'Music from a key, or with another room', 'amber', 'steady', 'warm and bright, like a light bulb — a faint, living shimmer'],
   ['Everyday', 'look', 'ready', 'Ready', 'On and quiet — press a key to play', 'ready', 'steady', 'steady, softer amber'],
   ['Everyday', 'look', 'asleep', 'Asleep', 'Standby. A key or the knob wakes it', 'ember', 'steady', 'a still ember — it never moves'],
   ['Everyday', 'look', 'phone', 'A phone is playing', 'Bluetooth, AirPlay or Spotify from a phone', 'blue', 'steady', 'steady moon blue'],
-  ['Everyday', 'look', 'starting', 'Starting up', 'Waking up, or tuning in to a station', 'amber', 'breath', 'amber, breathing'],
+  ['Everyday', 'look', 'starting', 'Starting up', 'Waking up, tuning in, or joining another room', 'amber', 'breath', 'amber, breathing'],
   ['Everyday', 'look', 'pairing', 'Pairing', 'Looking for a phone to pair with', 'blue', 'breath', 'blue, breathing'],
-  ['Everyday', 'look', 'busy', 'Busy — don’t unplug', 'Updating or shutting down. When the lamp is dark, it’s safe to unplug', 'amber', 'slow', 'amber, a slow breath'],
+  ['Everyday', 'look', 'busy', 'Busy — don’t unplug', 'Updating or shutting down. When the lamp is dark, it’s safe to unplug', 'amber', 'breath', 'amber, breathing — the same busy breath'],
   ['Replies', 'reply', 'heard', 'I heard you', 'A key press reached the radio', 'amber', 'kick', 'one quick flash'],
-  ['Replies', 'reply', 'ok', 'Done', 'An update installed, setup finished, a phone paired', 'green', 'bloom', 'a green bloom, then ' + morseCaption('OK')],
-  ['Replies', 'reply', 'no', 'No', 'What you asked for didn’t work. Try again in a moment', 'red', 'eye', 'a slow red eye'],
-  ['Replies', 'reply', 'hello', 'Hello', 'The radio says hello', 'green', 'bloom', 'a friendly flash'],
+  ['Replies', 'reply', 'ok', 'Done', 'A phone paired, Wi-Fi joined, your press confirmed; after setup or an update, OK in Morse too', 'green', 'bloom', 'a green glow, then ' + morseCaption('OK')],
+  ['Replies', 'reply', 'no', 'No', 'What you asked for didn’t work. Try again in a moment', 'red', 'eye', 'a red glow that holds, then fades'],
   ['Needs you', 'look', 'asking', 'Press a key on the radio', 'This page is asking you to confirm on the radio itself', 'amber', 'beckon', 'two flashes and a rest, in the colour on show'],
   ['Needs you', 'look', 'setup', 'Set me up', 'The radio needs your Wi-Fi details', 'amber', 'morse:CQ', morseCaption('CQ')],
-  ['Needs you', 'identify', 'identify', 'It’s me', 'Identify (This radio, Rooms): so you can tell which radio this is', 'green', 'morse:HI', morseCaption('HI')],
-  ['Problems', 'look', 'no_internet', 'No internet', 'Only while the radio is awake and idle', 'red', 'alert', 'two red pulses every 6 seconds'],
+  ['Needs you', 'reply', 'hello', 'It’s me', 'Identify (This radio, Rooms): so you can tell which radio this is', 'green', 'morse:HI', morseCaption('HI') + ', three times'],
+  ['Problems', 'look', 'no_internet', 'No internet', 'Only while the radio is awake and idle', 'red', 'alert', 'two red flashes every 6 seconds, over dim amber'],
   ['Problems', 'look', 'fault', 'Something needs a maker', 'A fault the radio can’t fix itself — ask the makers', 'red', 'morse:SOS', morseCaption('SOS')],
   ['Problems', 'none', 'dark', 'Dark', 'Off: safe to unplug', 'off', 'steady', 'no light at all'],
 ];
 // /api/status "lamp" in words, for "Now:" on the lamp page.
 const LAMP_WORDS = {playing:'playing', ready:'ready', asleep:'asleep', phone:'a phone is playing', busy:'busy — don’t unplug',
   asking:'asking you to press a key', setup:'needs setting up', starting:'starting', pairing:'looking for a phone',
-  offline:'no internet', no_internet:'no internet', fault:'something needs a maker'};
+  offline:'no internet', no_internet:'no internet', fault:'something needs a maker', off:'off — safe to unplug'};
 const lampLook = {showing:null, until:0, timer:null, busy:false, tour:null, caption:''};
 const lampPrefs = () => Object.assign({brightness:'normal', key_replies:true, present:false, show_s:5, identify_s:10, geek:false, callsign:'H',
   looks:['playing', 'ready', 'asleep', 'phone', 'busy', 'asking', 'setup'], replies:['heard', 'no']}, (settings && settings.lamp) || {});
@@ -5673,7 +5672,7 @@ function lampNowWords(){
 }
 function lampNowRow(){
   const now = lampNowWords();
-  const row = LAMP_MEANS.find(r => r[2] === (now && (now.m === 'offline' ? 'no_internet' : now.m)));
+  const row = LAMP_MEANS.find(r => r[2] === (now && ({offline:'no_internet', off:'dark'}[now.m] || now.m)));
   return h('div', {class:'lm-now', id:'lampNow', 'data-m': now ? now.m : '', hidden: !now},
     row ? lampSwatch(row[5], row[6]) : null, h('span', null, 'Now: ', h('b', null, now ? now.words : '')));
 }
@@ -5690,10 +5689,10 @@ function lampMeanings(panel){
   for (const [g, kind, id, title, sub, colour, motion, rhythm] of LAMP_MEANS){
     if (g !== group){ group = g; list.append(h('div', {class:'lm-group', role:'heading', 'aria-level':'4'}, g)); }
     const on = lampLook.showing === id, can = lampCan(kind, id);
-    const tip = kind === 'identify' && lampV2() ? 'It taps HI in Morse, in green' : sub;
+    const tip = id === 'hello' && lampV2() ? 'Identify taps HI in Morse, in green, so you can tell which radio this is' : sub;
     list.append(h('div', {class:'li', 'data-mean':id},
       lampSwatch(colour, motion),
-      h('div', {class:'li-txt', style:'flex:1'}, h('span', {class:'li-title'}, title), h('span', {class:'li-sub'}, kind === 'identify' ? tip : sub),
+      h('div', {class:'li-txt', style:'flex:1'}, h('span', {class:'li-title'}, title), h('span', {class:'li-sub'}, tip),
         h('span', {class:'lm-rhythm'}, rhythm)),
       can ? h('button', {type:'button', class:'li-act', id:'lampShow-' + id, 'aria-label':'Show me on the lamp: ' + title,
         'aria-pressed': String(on), onclick: () => lampShow(kind, id, title)}, on ? 'Showing…' : 'Show me') : null));
@@ -5745,7 +5744,7 @@ async function lampTour(){
   for (let i = 0; i < items.length; i++){
     if (lampLook.tour !== token) return;
     const [, kind, id, title, , , , rhythm] = items[i];
-    const secs = kind === 'look' ? lp.show_s : kind === 'identify' ? Math.min(9, lp.identify_s) : 3;
+    const secs = kind === 'look' ? Math.min(lp.show_s, 5) : kind === 'identify' ? Math.min(9, lp.identify_s) : id === 'hello' ? 4 : 3;
     lampLook.showing = id;
     lampTourCaption((i + 1) + ' of ' + items.length + ' — ' + title + ': ' + rhythm);
     if (onPage('lamp')) document.querySelectorAll('#lampMeans [data-mean]').forEach(el => el.classList.toggle('on', el.dataset.mean === id));
@@ -8077,7 +8076,7 @@ function pressToConfirm(action, args, title, sub){
     dlg.append(h('h2', {id:'dlgTitle'}, title || 'Confirm on the radio'), sub ? h('p', {class:'sub'}, sub) : '',
       h('div', {class:'cf'}, ring, h('div', {class:'cf-txt'},
         h('span', {class:'li-title'}, 'Press any key on the radio'),
-        h('span', {class:'li-sub'}, 'The pilot lamp dips twice while it waits. That press only confirms — it won’t change the station.'))),
+        h('span', {class:'li-sub'}, 'The pilot lamp brightens twice, again and again, while it waits. That press only confirms — it won’t change the station.'))),
       h('div', {style:'display:flex;justify-content:flex-end;margin-top:14px'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
     dlg.onclose = () => {
       if (dlg.open) return;

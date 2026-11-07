@@ -504,7 +504,7 @@ class TestFollowerKeys:
         kitchen.group.check()
         assert kitchen.group.lamp() == ("following", "ytm", True)
         look, _ = policy.look_for(BoxState(group="following", group_source="ytm", group_playing=True))
-        assert look == policy.playing_look("ytm") and look.colour == "amber"   # no playlist tint
+        assert look == policy.playing_look("ytm") and look.colour == "gold"    # the filament, no playlist tint
         # a follower whose leader is silent is ready, and offline red still waits for playing
         look, _ = policy.look_for(BoxState(group="following", group_playing=False))
         assert look == policy.READY

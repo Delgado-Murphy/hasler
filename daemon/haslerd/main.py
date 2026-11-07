@@ -197,16 +197,19 @@ REPLY_WORDS: dict[str, tuple[str, ...]] = {
     # v2's green bloom ("that worked"); an engine without it swells, or kicks.
     "bloom": ("ok", "swell", "confirmed", "kick", "ack"),
     "ok": ("bloom", "swell", "confirmed", "kick", "ack"),
+    "update_ok": ("ok", "bloom", "swell", "confirmed", "kick"),
 }
 
 
 def _engine_knows(driver: Any, name: str) -> bool:
     """Does the lamp engine draw the reply ``name``? (Its REPLY_S table.)"""
-    tables = [getattr(driver, "REPLY_S", None), getattr(driver, "REPLY_ALIASES", None)]
-    if tables == [None, None]:
+    tables = [getattr(driver, "REPLY_S", None), getattr(driver, "REPLY_ALIASES", None),
+              getattr(driver, "OVERLAY_REPLIES", None)]
+    if tables == [None, None, None]:
         try:
             from .lamp import engine as lamp_engine
-            tables = [getattr(lamp_engine, "REPLY_S", None), getattr(lamp_engine, "REPLY_ALIASES", None)]
+            tables = [getattr(lamp_engine, "REPLY_S", None), getattr(lamp_engine, "REPLY_ALIASES", None),
+                      getattr(lamp_engine, "OVERLAY_REPLIES", None)]
         except Exception:
             pass
     known = [t for t in tables if t is not None]
@@ -292,6 +295,7 @@ class LampKeeper:
         self.fault_reasons: list = []
         self._next_fault_poll = 0.0
         self._ok_until = 0.0
+        self._prev_state: BoxState | None = None     # the last tick's, for policy.events_for
         self._was_hotspot = False
         self._geek = lamp_api.geek_doc({})
         actions.on_egg = self.egg
@@ -746,6 +750,7 @@ class LampKeeper:
         """Recompute the Look; tell the engine only if it changed."""
         now = self.clock() if now is None else now
         state = self.gather(now)
+        self._events(state)
         look, fade = look_for(state)
         if self.boot_breath is not None and state.boot == "daemon" and look == policy.BOOT.get("daemon"):
             look = self.boot_breath     # the boot script's breath, carried on
@@ -760,6 +765,23 @@ class LampKeeper:
             if not self._fed:
                 self._arm_watchdog()
         return look
+
+    def _events(self, state: BoxState) -> None:
+        """One-shot replies for what just happened (policy.events_for: an update
+        installed -> update_ok), and the geek's farewell '73' as a shutdown starts."""
+        before = self._prev_state
+        try:
+            events = getattr(policy, "events_for", None)
+            if callable(events):
+                for word in events(before, state) or ():
+                    self.driver.reply(self._word(word))
+            if state.shutting_down and not (before is not None and before.shutting_down):
+                farewell = getattr(self.driver, "farewell", None)
+                if callable(farewell):
+                    farewell()          # '73' in amber Morse - the engine plays it only in geek mode
+        except Exception:
+            log.debug("lamp events failed", exc_info=True)
+        self._prev_state = dataclasses.replace(state)
 
     def _arm_watchdog(self) -> None:
         """After the first show: a main loop that stops ticking (feed) ends in

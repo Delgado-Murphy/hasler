@@ -236,7 +236,7 @@ class TestValidation:
         (("palette", "ember"), KeyError),
         (("level_gain", "blue"), 0.05),
         (("level_gain", "blue"), 9),
-        (("level_gain", "red"), 1),
+        (("level_gain", "purple"), 1),
         (("levels", "ember_day"), 0),
         (("levels", "ember_night"), 1.2),
         (("levels",), KeyError),
@@ -250,8 +250,8 @@ class TestValidation:
         assert not overlay_file(app).exists()
 
     def test_extra_colours_the_engine_draws_join_the_contract(self, app, monkeypatch):
-        monkeypatch.setitem(eng.DEFAULT_PALETTE, "green", (0.1, 1.0, 0.05))
-        assert lamp_check.colours() == ("amber", "ember", "blue", "green")
+        assert "green" in lamp_check.colours() and "red" in lamp_check.colours()   # v2: the engine draws them
+        assert lamp_check.colours()[:3] == ("amber", "ember", "blue")
         body = copy.deepcopy(CAL)
         body["palette"]["green"] = [0.1, 1.0, 0.05]
         body["level_gain"]["green"] = 0.57
@@ -267,7 +267,7 @@ class TestValidation:
         with pytest.raises(ValueError):
             app.put_lamp_calibration(bad)
         bad = copy.deepcopy(CAL)
-        bad["level_gain"]["red"] = 1.0
+        bad["level_gain"]["purple"] = 1.0
         with pytest.raises(ValueError):
             app.put_lamp_calibration(bad)
 
@@ -294,15 +294,27 @@ class TestGet:
 
     def test_looks_come_from_the_policy(self, app):
         looks = {lk["id"]: lk for lk in app.lamp_calibration()["looks"]}
-        assert looks["standby"]["colour"] == "ember" and looks["standby"]["level"] == 0.22
+        assert looks["standby"]["colour"] == "ember" and looks["standby"]["level"] == eng.EMBER_LEVEL
         assert looks["pairing"]["motion"] == "breath" and looks["pairing"]["period_s"] == pytest.approx(eng.BREATH_PERIOD)
         from haslerd.lamp import policy
         assert looks["playing"]["level"] == policy.PLAYING.level == 0.80
-        assert looks["hotspot"]["motion"] == "beckon"                   # setup beckons now, never steady
-        assert looks["shutting_down"]["period_s"] == policy.SHUTTING_DOWN.period_s
+        assert looks["hotspot"]["motion"] in ("beckon", "pattern")      # setup calls CQ, never steady
+        assert looks["busy"]["period_s"] == policy.SHUTTING_DOWN.period_s
         assert {"asking", "kick", "refuse", "swell", "hue_blue"} <= set(looks)    # the behaviours too
         assert "offline" not in looks                                   # no red breath any more
         assert all(lk["watch"] for lk in looks.values())
+
+    def test_a_v2_engine_offers_green_and_its_draft_round_trips(self, app):
+        from haslerd.lamp.outputs import FakeOutput
+        app.lamp = eng.LampEngine(FakeOutput(), threaded=False, clock=lambda: 1.0)
+        doc = app.lamp_calibration()
+        std = doc["standard"]
+        assert "green" in doc["colours"] and "green" in std["palette"] and "green" in std["level_gain"]
+        assert lamp_check.check(std) == std                          # the page's draft starts valid
+        out = app.lamp_preview({"draft": std, "colour": "green", "level": 0.55})
+        assert out["duty"][1] > 0                                     # green drawn by the engine
+        app.put_lamp_calibration(copy.deepcopy(std))
+        assert overlay(app)["io"]["lamp"]["palette"]["green"] == std["palette"]["green"]
 
     def test_no_model_of_the_engine_for_the_page(self, app):
         assert "model" not in app.lamp_calibration()
@@ -423,8 +435,8 @@ class TestDraftPreview:
 
     def test_a_look_streams_the_engines_frames_and_names_the_channel_to_blame(self, app):
         app.lamp = RawLamp()
-        doc = app.lamp_preview({"draft": copy.deepcopy(CAL), "look": "loading", "night": False})
-        assert doc["look"] == "loading" and doc["jump"] in ("red", "green", "blue")
+        doc = app.lamp_preview({"draft": copy.deepcopy(CAL), "look": "busy", "night": False})
+        assert doc["look"] == "busy" and doc["jump"] in ("red", "green", "blue")
         assert wait_for(lambda: len(app.lamp.raw) > 5), "no frames streamed"
         assert all(hold == pytest.approx(1.0) for _, hold in app.lamp.raw)
         levels = {round(d[0], 4) for d, _ in app.lamp.raw}
@@ -448,10 +460,10 @@ class TestDraftPreview:
     def test_night_draws_the_looks_own_night_level(self, app):
         from haslerd.lamp import policy, scratch as sc
         spec = lamp_check.check(copy.deepcopy(CAL))
-        day = sc.SceneFrames(spec, sc.Scene(policy.PLAYING)).at(0.0)
-        night = sc.SceneFrames(spec, sc.Scene(policy.PLAYING), night=True).at(0.0)
-        assert day == pytest.approx(scratch().duty_for("amber", policy.PLAYING.level))
-        assert night == pytest.approx(scratch().duty_for("amber", policy.PLAYING.night))
+        day = sc.SceneFrames(spec, sc.Scene(policy.READY)).at(0.0)
+        night = sc.SceneFrames(spec, sc.Scene(policy.READY), night=True).at(0.0)
+        assert day == pytest.approx(scratch().duty_for("amber", policy.READY.level))
+        assert night == pytest.approx(scratch().duty_for("amber", policy.READY.night))
 
     def test_the_hue_change_never_shows_purple_and_the_kick_peaks(self, app):
         from haslerd.lamp import policy, scratch as sc

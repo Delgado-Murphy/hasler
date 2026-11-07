@@ -17,7 +17,11 @@ from haslerd.lamp.engine import LampEngine, open_lamp
 from haslerd.lamp.outputs import (
     FakeOutput, GpiozeroOutput, NullOutput, SysfsPwmOutput, discover_chips, open_output,
 )
-from haslerd.lamp.policy import CASTING, LOADING, PLAYING, READY, STANDBY
+from haslerd.lamp.policy import CASTING, LOADING, READY, STANDBY
+
+# A steady amber 80 %: the engine's behaviours over a still Look (playing itself is
+# the filament, tested on its own below).
+PLAYING = steady("amber", 0.80, 0.35)
 
 AMBER = Look("amber", 1.0)
 NO_FLOOR = (0.0, 0.0, 0.0)
@@ -82,22 +86,22 @@ def test_nothing_is_written_before_the_first_show():
 def test_the_first_show_without_a_seed_cuts():
     lamp, _, clock = make()
     lamp.show(READY, fade_s=5.0)
-    assert lvl(lamp, clock.t) == pytest.approx(0.30)
+    assert lvl(lamp, clock.t) == pytest.approx(0.45)
     assert lamp.render(clock.t)[1] is False
 
 
 def test_a_seed_writes_nothing_and_the_first_show_glides_from_it():
     lamp, out, clock = make()
-    glow = lamp.duty_for("amber", 0.45)
+    glow = lamp.duty_for("amber", 0.60)
     lamp.seed(glow)
     lamp.step(clock.t)
     assert out.writes == []
-    lamp.show(READY)                           # down to 30 %: the fall rule
+    lamp.show(READY)                           # down to 45 %: the fall rule
     lamp.step(clock.t)
     assert out.writes == []                    # the first frame IS the glow: no write, no jump
-    assert lvl(lamp, clock.t) == pytest.approx(0.45, abs=1e-3)
-    assert 0.30 < lvl(lamp, clock.t + 0.6) < 0.45
-    assert lvl(lamp, clock.t + eng.FALL_S) == pytest.approx(0.30)
+    assert lvl(lamp, clock.t) == pytest.approx(0.60, abs=1e-3)
+    assert 0.45 < lvl(lamp, clock.t + 0.6) < 0.60
+    assert lvl(lamp, clock.t + eng.FALL_S) == pytest.approx(0.45)
 
 
 def test_seed_level_and_an_ember_glow():
@@ -120,15 +124,17 @@ def test_gamma_and_palette_ratio():
     lamp.show(READY)
     (r, g, b), moving = lamp.render(clock.t)
     assert not moving
-    assert r == pytest.approx(0.30 ** G)
-    assert g == pytest.approx(0.17 * 0.30 ** G)     # amber 1.0 : 0.17 : 0
+    assert r == pytest.approx(0.45 ** G)
+    assert g == pytest.approx(0.17 * 0.45 ** G)     # amber 1.0 : 0.17 : 0
     assert b == 0.0
 
 
-def test_the_three_colours():
+def test_the_five_colours():
     assert eng.DEFAULT_PALETTE == {
         "amber": (1.0, 0.17, 0.0), "ember": (1.0, 0.06, 0.0), "blue": (0.10, 0.0, 1.0),
+        "green": (0.0, 1.0, 0.0), "red": (1.0, 0.0, 0.0), "gold": (1.0, 0.22, 0.0),
     }
+    assert eng.DEFAULT_GAIN["green"] == 0.55
     lamp, _, clock = make()
     lamp.show(CASTING)
     r, g, b = lamp.render(clock.t)[0]
@@ -137,7 +143,7 @@ def test_the_three_colours():
 
 def test_old_colour_names_are_aliases():
     lamp, _, clock = make()
-    for old, new in (("amber_pale", "amber"), ("white", "amber"), ("red", "ember"), ("magenta", "blue")):
+    for old, new in (("amber_pale", "amber"), ("white", "amber"), ("red", "red"), ("magenta", "blue")):
         lamp.show(Look(old, 0.5), cut=True)
         assert frame(lamp, clock.t).w == eng.ONEHOT[new]
     assert parse_reply("signature:magenta") == ("signature", "magenta", None)
@@ -153,10 +159,10 @@ def test_balance_applies_after_gamma():
 
 def test_palette_override_from_the_descriptor_and_old_names_ignored():
     lamp, _, clock = make(palette={"amber": [1.0, 0.2, 0.0], "amber_pale": [1, 1, 1],
-                                   "white": [1, 1, 1], "red": {"red": 1.0}})
+                                   "white": [1, 1, 1], "magenta": {"red": 1.0}})
     lamp.show(AMBER)
     assert lamp.render(clock.t)[0][1] == pytest.approx(0.2)
-    assert set(lamp.palette) == {"amber", "ember", "blue"}
+    assert set(lamp.palette) == {"amber", "ember", "blue", "green", "red", "gold"}
 
 
 # -- transition rules ---------------------------------------------------------
@@ -167,9 +173,9 @@ def test_brightness_rises_in_0_6s_ease_out():
     lamp.show(READY)
     lamp.show(PLAYING)
     t0 = clock.t
-    assert lvl(lamp, t0) == pytest.approx(0.30)
-    assert lvl(lamp, t0 + 0.02) > 0.30 + 0.01            # under way on the first frame
-    assert lvl(lamp, t0 + 0.3) > (0.30 + 0.80) / 2       # ease-out: past half at half time
+    assert lvl(lamp, t0) == pytest.approx(0.45)
+    assert lvl(lamp, t0 + 0.02) > 0.45 + 0.01            # under way on the first frame
+    assert lvl(lamp, t0 + 0.3) > (0.45 + 0.80) / 2       # ease-out: past half at half time
     assert lvl(lamp, t0 + eng.RISE_S) == pytest.approx(0.80)
     assert lamp.render(t0 + eng.RISE_S + 0.01)[1] is False
 
@@ -180,9 +186,9 @@ def test_brightness_falls_in_1_2s_with_a_long_tail_never_symmetric():
     lamp.show(READY)
     t0 = clock.t
     assert lvl(lamp, t0 + 0.02) < 0.80 - 0.01            # starts at once
-    assert lvl(lamp, t0 + 0.6) < (0.30 + 0.80) / 2       # most of the way at half time ...
-    assert lvl(lamp, t0 + 1.1) > 0.30 + 1e-3             # ... a tail still to go
-    assert lvl(lamp, t0 + eng.FALL_S) == pytest.approx(0.30)
+    assert lvl(lamp, t0 + 0.6) < (0.45 + 0.80) / 2       # most of the way at half time ...
+    assert lvl(lamp, t0 + 1.1) > 0.45 + 1e-3             # ... a tail still to go
+    assert lvl(lamp, t0 + eng.FALL_S) == pytest.approx(0.45)
     assert eng.FALL_S == 2 * eng.RISE_S
 
 
@@ -215,7 +221,7 @@ def test_amber_and_ember_fade_directly():
     t0 = clock.t
     mid = frame(lamp, t0 + 0.3).w
     levels = samples(lamp, t0 + 0.3, t0 + eng.FALL_S)
-    assert min(levels) >= 0.22 - 1e-6                        # no trough: one family
+    assert min(levels) >= 0.20 - 1e-6                        # no trough: one family
     assert 0 < mid[0] < 1 and 0 < mid[1] < 1 and mid[2] == 0
 
 
@@ -259,31 +265,42 @@ def test_off_falls_dark_without_a_hue_change():
 # -- breath ------------------------------------------------------------------
 
 
-def test_breath_is_asymmetric_rise_1_3_fall_1_7_rest_0_4():
+def test_the_breath_is_amber_22_to_70_rise_1_1_fall_1_4_rest_0_3():
     lamp, _, clock = make()
-    look = breathing("amber", 0.60)
-    lamp.show(look)
+    lamp.show(eng.BUSY)
     t0 = clock.t
-    floor = 0.60 * 0.45
-    assert lvl(lamp, t0) == pytest.approx(floor)                     # starts at the trough
-    assert lvl(lamp, t0 + 0.65) > (floor + 0.60) / 2                 # rise: ease-out
-    assert lvl(lamp, t0 + 1.3) == pytest.approx(0.60)                # peak
-    assert lvl(lamp, t0 + 1.3 + 0.85) == pytest.approx((floor + 0.60) / 2, abs=1e-6)  # fall: ease-in-out
-    assert lvl(lamp, t0 + 3.0) == pytest.approx(floor)
-    assert lvl(lamp, t0 + 3.2) == pytest.approx(floor)               # rest
-    assert lvl(lamp, t0 + 3.4 + 1.3) == pytest.approx(0.60)          # period 3.4 s
-    levels = samples(lamp, t0, t0 + 6.8)
-    assert min(levels) == pytest.approx(floor) and max(levels) == pytest.approx(0.60)
+    assert eng.BUSY.colour == "amber" and eng.BREATH_PERIOD == pytest.approx(2.8)
+    assert lvl(lamp, t0) == pytest.approx(0.22)                      # starts at the trough
+    assert lvl(lamp, t0 + 0.55) > (0.22 + 0.70) / 2                  # rise: ease-out
+    assert lvl(lamp, t0 + 1.1) == pytest.approx(0.70)                # peak
+    assert lvl(lamp, t0 + 1.1 + 0.7) == pytest.approx((0.22 + 0.70) / 2, abs=1e-6)  # fall: ease-in-out
+    assert lvl(lamp, t0 + 2.5) == pytest.approx(0.22)
+    assert lvl(lamp, t0 + 2.7) == pytest.approx(0.22)                # rest
+    assert lvl(lamp, t0 + 2.8 + 1.1) == pytest.approx(0.70)          # period 2.8 s
+    levels = samples(lamp, t0, t0 + 5.6)
+    assert min(levels) == pytest.approx(0.22) and max(levels) == pytest.approx(0.70)
     assert lamp.render(t0 + 10)[1]                                   # a breath never settles
+    assert (0.70 / 0.22) ** G > 10
 
 
-def test_the_slow_tempo_is_6s_with_a_40_percent_floor():
+def test_the_breath_at_night_is_slower_and_lower():
     lamp, _, clock = make()
-    lamp.show(breathing("ember", 0.35, slow=True))
+    lamp.set_night(True)
+    lamp.show(eng.BUSY, cut=True)
     t0 = clock.t
-    assert lvl(lamp, t0) == pytest.approx(0.35 * 0.40)
-    assert lvl(lamp, t0 + 1.3 * 6 / 3.4) == pytest.approx(0.35)
-    assert lvl(lamp, t0 + 6.0) == pytest.approx(0.35 * 0.40)
+    trough = lvl(lamp, t0)
+    assert trough == pytest.approx(0.22)                  # 18 % would be under the amber band: held
+    assert lvl(lamp, t0 + 1.1 * 1.5) == pytest.approx(0.22 * eng.BREATH_MIN_SWING)   # 4.2 s tempo
+    assert lvl(lamp, t0 + 4.2 + 1.65) == pytest.approx(lvl(lamp, t0 + 1.65))
+
+
+def test_the_night_switch_keeps_the_breath_s_phase():
+    lamp, _, clock = make()
+    lamp.show(eng.BUSY, cut=True)
+    clock.t += 0.55                        # half way up
+    phase_before = (clock.t - lamp._epoch) / 2.8
+    lamp.set_night(True)
+    assert (clock.t - lamp._epoch) / 4.2 == pytest.approx(phase_before)
 
 
 def test_breath_keeps_its_phase_when_only_the_floor_moves():
@@ -342,12 +359,12 @@ def test_kick_shape_attack_30ms_then_350ms_cool_down():
     lamp.reply("kick")
     t0 = clock.t
     lead = eng.KICK_LEAD_S
-    assert lvl(lamp, t0 + 0.03 - lead) == pytest.approx(0.5)        # +40 % of 30 % < 50 %: 50 %
+    assert lvl(lamp, t0 + 0.03 - lead) == pytest.approx(0.63)       # +40 % of 45 %
     half = lvl(lamp, t0 + 0.03 - lead + 0.175)
-    assert half < 0.30 + 0.2 * 0.5 * 0.5                            # exponential: well under half
-    assert half > 0.30
+    assert half < 0.45 + 0.18 * 0.5 * 0.5                           # exponential: well under half
+    assert half > 0.45
     end = t0 + 0.03 + 0.35 - lead
-    assert lvl(lamp, end + 0.001) == pytest.approx(0.30)
+    assert lvl(lamp, end + 0.001) == pytest.approx(0.45)
     assert lamp._reply is None and lamp._blend_from is None          # ends exactly on the Look
 
 
@@ -379,7 +396,7 @@ def test_old_key_words_kick():
         lamp.show(READY)
         lamp.reply(word)
         assert lamp._reply == "kick", word
-        assert lvl(lamp, clock.t + 0.02) == pytest.approx(0.5)
+        assert lvl(lamp, clock.t + 0.02) == pytest.approx(0.63)
 
 
 def test_key_replies_off_drops_kicks_but_not_refusals():
@@ -389,7 +406,7 @@ def test_key_replies_off_drops_kicks_but_not_refusals():
     lamp.reply("ack")
     assert lamp._reply is None
     lamp.reply("fail")
-    assert lamp._reply == "refuse"
+    assert lamp._reply == "pattern"          # the HAL eye
     lamp.set_key_replies(True)
     lamp.reply("kick")
     assert lamp._reply == "kick"
@@ -405,33 +422,36 @@ def test_no_kick_on_a_dark_lamp():
 # -- refuse ---------------------------------------------------------------------
 
 
-def test_refuse_sags_to_25_percent_twice():
+def test_refuse_is_the_hal_eye():
     lamp, _, clock = make()
     lamp.show(READY)
     lamp.reply("refuse")
     t0 = clock.t
-    assert lvl(lamp, t0 + 0.15) == pytest.approx(0.075)
-    assert lvl(lamp, t0 + 0.30) == pytest.approx(0.075)              # hold 200 ms
-    assert 0.075 < lvl(lamp, t0 + 0.65) < 0.30                       # recovering, 600 ms
-    assert lvl(lamp, t0 + 0.95) == pytest.approx(0.30)
-    assert lvl(lamp, t0 + 0.95 + 0.15) == pytest.approx(0.075)       # twice
-    assert lvl(lamp, t0 + 1.9) == pytest.approx(0.30)
+    f = frame(lamp, t0 + 0.15)
+    assert f.w[4] > 0.5                                              # cross-fading to red
+    assert 0.45 < f.level < 0.65
+    assert lvl(lamp, t0 + 0.3) == pytest.approx(0.65)                # red 65 % in 300 ms ...
+    assert lvl(lamp, t0 + 0.99) == pytest.approx(0.65)               # ... held 700 ms
+    mid = frame(lamp, t0 + 1.45)
+    assert 0 < mid.w[0] < 1 and 0 < mid.w[4] < 1                     # back to amber over 900 ms
+    assert frame(lamp, t0 + 1.95).w == eng.ONEHOT["amber"]
+    assert lvl(lamp, t0 + 1.95) == pytest.approx(0.45)
     assert lamp._reply is None
 
 
-def test_fail_refuses_and_nudge_is_one_sag():
+def test_fail_refuses_and_nudge_is_one_plain_sag():
     lamp, _, clock = make()
     lamp.show(READY)
     lamp.reply("fail")
-    assert lamp._reply == "refuse"
+    assert lamp._reply == "pattern"
     lamp.reply("nudge")
     assert lamp._reply == "refuse1"
     t0 = clock.t
-    assert lvl(lamp, t0 + 0.2) == pytest.approx(0.075, abs=0.02)
-    assert lvl(lamp, t0 + 1.1) == pytest.approx(0.30)                # once only
-    lamp.reply("refuse3")
-    assert lvl(lamp, clock.t + 0.95 * 2 + 0.2) == pytest.approx(0.075)
-    assert lvl(lamp, clock.t + 0.95 * 3 + 0.01) == pytest.approx(0.30)
+    assert lvl(lamp, t0 + 0.2) == pytest.approx(0.45 * 0.25, abs=0.02)
+    assert frame(lamp, t0 + 0.2).w == eng.ONEHOT["amber"]            # no red
+    assert lvl(lamp, t0 + 1.1) == pytest.approx(0.45)                # once only
+    lamp.reply("refuse3")                                            # old word: the HAL eye
+    assert frame(lamp, clock.t + 0.5).w == eng.ONEHOT["red"]
 
 
 # -- swell ----------------------------------------------------------------------
@@ -454,7 +474,7 @@ def test_stop_glides_down_to_ready():
     lamp.reply("stop")
     t0 = clock.t
     assert lvl(lamp, t0 + 0.02) < 0.80
-    assert lvl(lamp, t0 + eng.FALL_S - 0.01) == pytest.approx(0.30, abs=0.01)
+    assert lvl(lamp, t0 + eng.FALL_S - 0.01) == pytest.approx(0.45, abs=0.01)
 
 
 # -- beckon, identify -----------------------------------------------------------
@@ -464,44 +484,75 @@ def test_beckon_is_two_kicks_250ms_apart_then_rest_until_resolved():
     lamp, _, clock = make()
     lamp.show(beckoning("amber", 0.30, rest_s=4.0))
     t0 = clock.t
-    assert lvl(lamp, t0 + 0.03) == pytest.approx(0.5)
-    assert lvl(lamp, t0 + 0.28) == pytest.approx(0.5)
+    assert lvl(lamp, t0 + 0.03) == pytest.approx(0.8)                # 6:1 in light over ready
+    assert lvl(lamp, t0 + 0.28) == pytest.approx(0.8)
     assert lvl(lamp, t0 + 1.0) == pytest.approx(0.30)                # resting
     cycle = 0.25 + 0.38 + 4.0
-    assert lvl(lamp, t0 + cycle + 0.03) == pytest.approx(0.5)        # and again
-    assert lvl(lamp, t0 + 5 * cycle + 0.28) == pytest.approx(0.5)    # and again
+    assert lvl(lamp, t0 + cycle + 0.03) == pytest.approx(0.8)        # and again
+    assert lvl(lamp, t0 + 5 * cycle + 0.28) == pytest.approx(0.8)    # and again
     assert lamp.render(t0 + 100)[1]
 
 
-def test_beckon_is_half_as_tall_at_night():
+def test_beckon_stays_bold_at_night():
     lamp, _, clock = make()
     lamp.set_night(True)
-    lamp.show(beckoning("amber", 0.30, 0.20))
+    lamp.show(beckoning("amber", 0.30, 0.22))
     t0 = clock.t
-    assert lvl(lamp, t0 + 0.03) == pytest.approx(0.20 + (0.5 - 0.20) / 2)
+    assert lvl(lamp, t0 + 0.03) == pytest.approx(eng.BECKON_TOP_NIGHT)
+    assert (eng.BECKON_TOP_NIGHT / 0.22) ** G > 4
 
 
-def test_identify_beckons_in_the_colour_on_show_then_stops():
+def test_setup_is_long_short_daah_dit():
+    lamp, _, clock = make()
+    lamp.show(beckoning("amber", 0.30, 0.22, rest_s=1.0, rhythm="long-short"))
+    t0 = clock.t
+    assert 0.30 < lvl(lamp, t0 + 0.1) < 0.8                          # the long glow rises ...
+    for t in (0.35, 0.5, 0.79):
+        assert lvl(lamp, t0 + t) == pytest.approx(0.8)               # ... and holds 0.45 s
+    assert lvl(lamp, t0 + 1.3) == pytest.approx(0.30)                # the gap
+    assert lvl(lamp, t0 + 1.6 + 0.03) == pytest.approx(0.8)          # the short kick
+    assert lvl(lamp, t0 + 2.3) == pytest.approx(0.30)                # rest
+    cycle = eng.long_short_len(1.0)
+    assert cycle == pytest.approx(2.98)
+    assert lvl(lamp, t0 + cycle + 0.5) == pytest.approx(0.8)         # and again
+    assert lamp.render(t0 + 100)[1]
+
+
+def test_identify_is_hi_in_green_morse_three_times_then_back():
     lamp, _, clock = make()
     lamp.show(CASTING)
-    lamp.identify(10)
+    lamp.identify(9)
     t0 = clock.t
     assert lamp.identifying
-    f = frame(lamp, t0 + 0.03)
-    assert f.w == eng.ONEHOT["blue"] and f.level == pytest.approx(0.77)
-    cycle = 0.25 + 0.38 + eng.IDENTIFY_REST_S
-    assert lvl(lamp, t0 + cycle + 0.28) == pytest.approx(0.77)
-    lamp.render(t0 + 10.0)
+    assert lvl(lamp, t0 + eng.OVERLAY_DIP_S) == pytest.approx(eng.HUE_TROUGH)   # moon blue dips first
+    f = frame(lamp, t0 + eng.OVERLAY_DIP_S + 0.08)
+    assert f.w == eng.ONEHOT["green"] and f.level == pytest.approx(1.0)        # H's first dot
+    gap = frame(lamp, t0 + eng.OVERLAY_DIP_S + 0.13 + 0.11)
+    assert gap.w == eng.ONEHOT["blue"] and gap.level == pytest.approx(0.10)    # 10 % of the colour on show
+    cycle = eng.identify_len()
+    assert cycle == pytest.approx(23 * 0.13)                                    # HI + rest: ~3 s
+    total = eng.OVERLAY_DIP_S + 3 * cycle + eng.IDENTIFY_BACK_S
+    lamp.render(t0 + total + 0.05)
     assert not lamp.identifying
-    assert lvl(lamp, t0 + 10.5) == pytest.approx(0.55)
+    assert lvl(lamp, t0 + total + 0.1) == pytest.approx(0.55)
 
 
-def test_identify_on_a_dark_lamp_uses_amber_and_can_be_cancelled():
+def test_identify_is_bright_at_night_whatever_the_brightness():
+    lamp, _, clock = make()
+    lamp.set_night(True)
+    lamp.set_brightness("low")
+    lamp.show(READY, cut=True)
+    lamp.identify(10)
+    assert lvl(lamp, clock.t + 0.1) == pytest.approx(0.75)
+
+
+def test_identify_on_a_dark_lamp_uses_amber_gaps_and_can_be_cancelled():
     lamp, _, clock = make()
     lamp.show(Look())
     lamp.identify(5)
-    f = frame(lamp, clock.t + 0.03)
-    assert f.w == eng.ONEHOT["amber"] and f.level == pytest.approx(0.5)
+    f = frame(lamp, clock.t + 0.08)
+    assert f.w == eng.ONEHOT["green"] and f.level == pytest.approx(1.0)
+    assert frame(lamp, clock.t + 0.24).w == eng.ONEHOT["amber"]
     lamp.identify(0)
     assert not lamp.identifying
     assert lamp.render(clock.t + 1)[0] == (0.0, 0.0, 0.0)
@@ -524,7 +575,7 @@ def test_a_reply_interrupting_a_reply_blends_from_the_frame_on_show():
     jumps = [abs(a - b) for a, b in zip(steps, steps[1:])]
     assert jumps[0] < 0.05                                       # unblended: 0.2 in one frame
     assert max(jumps) < 0.15
-    assert lvl(lamp, clock.t + 0.15) == pytest.approx(0.075)     # then the refuse itself
+    assert lvl(lamp, clock.t + 0.35) == pytest.approx(0.65)      # then the HAL eye itself
 
 
 def test_frames_stay_continuous_through_a_busy_minute():
@@ -546,7 +597,7 @@ def test_frames_stay_continuous_through_a_busy_minute():
         6.4: lambda: lamp.countdown(None),
         7.0: lambda: lamp.show(STANDBY),
         8.0: lambda: lamp.reply("stop"),
-        8.1: lambda: lamp.identify(2),
+        8.1: lambda: lamp.identify(2),      # its flashes are meant to flash: not counted
         8.3: lambda: lamp.reply("nudge"),
         11.0: lambda: lamp.show(beckoning("amber", 0.3)),
         14.0: lambda: lamp.set_brightness("low"),
@@ -564,7 +615,7 @@ def test_frames_stay_continuous_through_a_busy_minute():
         if last is not None:
             hue_swap = family(f.w) != family(last[1].w)
             countdown_step = t in (6.0, 6.2)            # driven by the knob, ~20 Hz steps
-            if not hue_swap and not countdown_step:
+            if not hue_swap and not countdown_step and not lamp.identifying:
                 worst = max(worst, max(abs(a - b) for a, b in zip(duty, last[0])))
         last = (duty, f)
     assert worst < 0.2          # a 70 ms blend of the biggest jump: ~0.17 a frame
@@ -594,19 +645,10 @@ def test_hue_swaps_happen_only_at_the_trough():
 def test_night_levels():
     lamp, _, clock = make()
     lamp.set_night(True)
-    for look, level in ((PLAYING, 0.35), (READY, 0.20), (STANDBY, 0.15), (CASTING, 0.30),
+    for look, level in ((PLAYING, 0.35), (READY, 0.30), (STANDBY, 0.18), (CASTING, 0.30),
                         (Look("amber", 0.9), eng.NIGHT_CAP)):
         lamp.show(look, cut=True)
         assert lvl(lamp, clock.t) == pytest.approx(level), look
-
-
-def test_night_breath_keeps_its_shape():
-    lamp, _, clock = make()
-    lamp.set_night(True)
-    lamp.show(LOADING, cut=True)
-    t0 = clock.t
-    assert lvl(lamp, t0) == pytest.approx(0.35 * 0.45)
-    assert lvl(lamp, t0 + 1.3) == pytest.approx(0.35)
 
 
 def test_night_switch_glides_and_falls_and_swells_are_slower():
@@ -617,15 +659,15 @@ def test_night_switch_glides_and_falls_and_swells_are_slower():
     assert 0.35 < lvl(lamp, t0 + 0.75) < 0.80
     assert lvl(lamp, t0 + eng.NIGHT_SWITCH_S) == pytest.approx(0.35)
     clock.t += 2
-    lamp.show(READY)                                     # 35 % -> 20 % at night: 1.8 s
+    lamp.show(READY)                                     # 35 % -> 30 % at night: 1.8 s
     t1 = clock.t
-    assert lvl(lamp, t1 + 1.3) > 0.20 + 1e-4
-    assert lvl(lamp, t1 + 1.8) == pytest.approx(0.20)
+    assert lvl(lamp, t1 + 1.3) > 0.30 + 1e-4
+    assert lvl(lamp, t1 + 1.8) == pytest.approx(0.30)
     clock.t += 2
     lamp.reply("swell")
     t2 = clock.t
-    assert lvl(lamp, t2 + 0.9) == pytest.approx(0.20 * 1.3)
-    assert lvl(lamp, t2 + 1.8) == pytest.approx(0.20)
+    assert lvl(lamp, t2 + 0.9) == pytest.approx(0.30 * 1.3)
+    assert lvl(lamp, t2 + 1.8) == pytest.approx(0.30)
     lamp.reply("kick")
     assert lamp._reply_len() == pytest.approx(0.03 + 0.35 * 1.5 - eng.KICK_LEAD_S)
     lamp.show(PLAYING)                                   # rises stay quick
@@ -647,14 +689,22 @@ def test_night_hue_change_falls_slower_rises_as_by_day():
 # -- brightness ---------------------------------------------------------------
 
 
-def test_brightness_scales_every_level_capped_at_full():
+def test_brightness_scales_every_level_keeping_the_headroom():
     lamp, _, clock = make()
-    lamp.show(READY)
+    lamp.show(CASTING)
     lamp.set_brightness("low")
-    assert lvl(lamp, clock.t + eng.FALL_S) == pytest.approx(0.18)
+    assert lvl(lamp, clock.t + eng.FALL_S) == pytest.approx(0.33)
+    lamp.show(READY, cut=True)
+    assert lvl(lamp, clock.t) == pytest.approx(0.27)
+    lamp.show(Look("amber", 0.30), cut=True)
+    assert lvl(lamp, clock.t) == pytest.approx(0.22)         # 0.18 would be under the amber band
+    lamp.show(READY, cut=True)
     lamp.set_brightness("bright")
+    assert lvl(lamp, clock.t + 1.0) == pytest.approx(0.5625)
     lamp.show(PLAYING, cut=True)
-    assert lvl(lamp, clock.t) == pytest.approx(1.0)          # 0.8 x 1.25, capped
+    assert lvl(lamp, clock.t) == pytest.approx(0.80)         # 0.8 x 1.25 would leave no room for a kick
+    lamp.show(AMBER, cut=True)
+    assert lvl(lamp, clock.t) == pytest.approx(1.0)          # a Look defined higher keeps its level
     lamp.set_brightness("normal")
     assert lamp.brightness == 1.0
     lamp.set_brightness("dazzling")                          # unknown: ignored
@@ -665,12 +715,12 @@ def test_low_brightness_never_takes_ember_below_its_visible_floor_or_off_on():
     lamp, _, clock = make()
     lamp.set_brightness("low")
     lamp.show(STANDBY, cut=True)
-    assert lvl(lamp, clock.t) == pytest.approx(0.15)          # 0.22 x 0.6 = 0.13 < night ember
+    assert lvl(lamp, clock.t) == pytest.approx(0.18)          # 0.20 x 0.6 = 0.12 < night ember
     lamp.set_night(True)
-    assert lvl(lamp, clock.t + 2) == pytest.approx(0.15)
+    assert lvl(lamp, clock.t + 2) == pytest.approx(0.18)
     lamp.show(Look(), cut=True)
     assert lamp.render(clock.t)[0] == (0.0, 0.0, 0.0)
-    lamp.show(Look("amber", 0.12), cut=True)
+    lamp.show(Look("blue", 0.20), cut=True)
     assert lvl(lamp, clock.t) == pytest.approx(eng.VISIBLE_MIN)
 
 
@@ -682,11 +732,11 @@ def test_countdown_glows_amber_down_to_the_night_ember():
     lamp.show(PLAYING)
     lamp.countdown(0.5)
     f = frame(lamp, clock.t)
-    assert f.level == pytest.approx((0.80 + 0.15) / 2)
-    assert f.w == pytest.approx((0.5, 0.5, 0.0))
+    assert f.level == pytest.approx((0.80 + 0.18) / 2)
+    assert f.w == pytest.approx((0.5, 0.5, 0.0, 0.0, 0.0, 0.0))
     lamp.countdown(1.0)
     f = frame(lamp, clock.t)
-    assert f.w == eng.ONEHOT["ember"] and f.level == pytest.approx(0.15)
+    assert f.w == eng.ONEHOT["ember"] and f.level == pytest.approx(0.18)
 
 
 def test_countdown_from_blue_never_goes_purple():
@@ -739,13 +789,13 @@ def test_standby_ember_is_pure_red_with_realistic_floors():
         assert r > 0.006 and g == 0.0 and b == 0.0
 
 
-def test_night_ready_stays_amber_its_green_held_at_the_floor():
+def test_night_ready_stays_amber_clear_of_the_band():
     lamp, _, clock = make(min_duty=None)
     lamp.set_night(True)
     lamp.show(READY, cut=True)
     r, g, _ = lamp.render(clock.t)[0]
-    assert r == pytest.approx(0.20 ** G)
-    assert g == pytest.approx(0.006)                 # wanted 0.0049: held, not dropped
+    assert r == pytest.approx(0.30 ** G)
+    assert g == pytest.approx(0.17 * 0.30 ** G) and g > 0.006    # clear of the band: real amber, over its floor
 
 
 def test_no_breath_trough_flicks_hue():
@@ -768,15 +818,16 @@ def test_amber_blends_into_ember_below_the_band_instead_of_flicking():
     share = [lamp.duty_for("amber", x)[1] / lamp.duty_for("amber", x)[0] for x in (hi, (lo + hi) / 2, lo)]
     assert share[0] == pytest.approx(0.17)
     assert 0.06 < share[1] < 0.17
-    assert share[2] == pytest.approx(0.06)
+    assert 0.0 < share[1] < 0.17
+    assert share[2] == 0.0                           # ember is its red alone
     lamp2, _, _ = make(amber_band=[0.20, 0.30])
-    assert lamp2.duty_for("amber", 0.20)[1] / lamp2.duty_for("amber", 0.20)[0] == pytest.approx(0.06)
+    assert lamp2.duty_for("amber", 0.20)[1] == 0.0
 
 
 def test_a_fall_through_the_band_drops_green_once():
     lamp, _, clock = make(min_duty=None)
     lamp.show(READY, cut=True)
-    lamp.show(Look("amber", 0.05), fade_s=4.0)
+    lamp.show(Look("ember", 0.05), fade_s=4.0)
     t0 = clock.t
     greens = [lamp.render(t0 + i * 0.01)[0][1] > 0 for i in range(401)]
     flips = sum(1 for a, b in zip(greens, greens[1:]) if a != b)
@@ -825,8 +876,8 @@ def test_calibrate_live_and_read_back():
     cal = lamp.calibration()
     assert cal["palette"]["amber"] == {"day": [1.0, 0.25, 0.0], "night": [1.0, 0.25, 0.0]}
     assert cal["min_duty"] == {"red": 0.008, "green": 0.007, "blue": 0.009}
-    assert cal["level_gain"] == {"amber": 1.0, "ember": 1.0, "blue": 1.2}
-    assert cal["levels"] == {"ember_day": 0.25, "ember_night": 0.15}
+    assert cal["level_gain"] == {"amber": 1.0, "ember": 1.0, "blue": 1.2, "green": 0.55, "red": 1.0, "gold": 1.0}
+    assert cal["levels"] == {"ember_day": 0.25, "ember_night": 0.18}
     assert cal["amber_band"] == [0.1, 0.18]
     assert lamp.base_palette["amber"] == (1.0, 0.25, 0.0)
     lamp.calibrate(None)
@@ -837,7 +888,7 @@ def test_bad_calibration_falls_back_to_defaults():
     lamp, _, _ = make(palette={"amber": "orange"}, level_gain={"blue": "x"},
                       levels={"ember_day": None}, amber_band="wide")
     assert lamp.palette["amber"] == eng.DEFAULT_PALETTE["amber"]
-    assert lamp.level_gain["blue"] == 1.0 and lamp.ember_day == 0.22
+    assert lamp.level_gain["blue"] == 1.0 and lamp.ember_day == 0.20
     assert lamp.amber_band == eng.AMBER_BAND
 
 
@@ -852,7 +903,7 @@ def test_preview_colour_goes_through_the_calibration():
 # -- watchdog --------------------------------------------------------------------
 
 
-def test_watchdog_breathes_slow_ember_when_the_keeper_stops():
+def test_watchdog_breathes_busy_amber_when_the_keeper_stops():
     lamp, _, clock = make()
     lamp.watchdog(5.0)
     lamp.show(READY)
@@ -864,14 +915,13 @@ def test_watchdog_breathes_slow_ember_when_the_keeper_stops():
     clock.t += 1.5
     lamp.render(clock.t)
     assert lamp.tripped
-    f = frame(lamp, clock.t + eng.FALL_S * 2)
-    assert f.w == eng.ONEHOT["ember"]
+    assert lamp._target_look() == eng.signals.get("busy")
     assert lamp.render(clock.t + 5)[1]                       # breathing
     lamp.feed()                                              # the keeper is back
     assert not lamp.tripped
     t0 = clock.t
     f = frame(lamp, t0 + 3)
-    assert f.w == eng.ONEHOT["amber"] and f.level == pytest.approx(0.30)
+    assert f.w == eng.ONEHOT["amber"] and f.level == pytest.approx(0.45)
 
 
 def test_watchdog_is_lifted_by_a_show_too_and_can_be_disarmed():
@@ -937,7 +987,7 @@ def test_thread_sleeps_when_steady_and_renders_fades():
         lamp.show(READY)
         time.sleep(0.1)
         n = len(out.writes)
-        assert out.last == pytest.approx((0.30 ** G, 0.17 * 0.30 ** G, 0.0))
+        assert out.last == pytest.approx((0.45 ** G, 0.17 * 0.45 ** G, 0.0))
         time.sleep(0.3)
         assert len(out.writes) == n                        # steady: no writes
         lamp.show(AMBER)
@@ -996,6 +1046,8 @@ def test_close_without_halt_dark_leaves_the_last_frame():
 def test_steady_and_beckoning_helpers():
     assert steady("amber", 0.3, 0.2) == Look("amber", 0.3, "solid", 0.0, 0.0, 0.2)
     assert beckoning("amber", 0.3).period_s == 2.2
+    assert beckoning("amber", 0.3).rhythm == "pair"
+    assert beckoning("amber", 0.3, rhythm="long-short").rhythm == "long-short"
 
 
 # -- sysfs pwm ---------------------------------------------------------------
@@ -1220,9 +1272,13 @@ def test_preview_reply_and_stop_preview():
     lamp.preview_reply("heard")
     assert lamp._reply == "kick"                 # the page shows it even with key replies off
     lamp.preview_reply("no")
-    assert lamp._reply == "refuse"
+    assert lamp._reply == "pattern"              # the HAL eye
     lamp.preview_reply("wave")
-    assert lamp._reply == "refuse"
+    assert lamp._reply == "pattern"
+    lamp.preview_reply("ok")
+    assert lamp._reply == "pattern"
+    lamp.preview_reply("hello")
+    assert lamp.identifying
     lamp.preview_look("busy", 30)
     lamp.preview([0, 0, 1])
     lamp.identify(10)
@@ -1231,14 +1287,14 @@ def test_preview_reply_and_stop_preview():
     assert frame(lamp, clock.t + 3).w == eng.ONEHOT["amber"]
 
 
-def test_confirmed_kicks_even_with_key_replies_off():
+def test_confirmed_blooms_even_with_key_replies_off():
     lamp, _, clock = make()
     lamp.show(READY)
     lamp.set_key_replies(False)
     lamp.reply("ack")
     assert lamp._reply is None
     lamp.reply("confirmed")
-    assert lamp._reply == "kick"
+    assert lamp._reply == "pattern" and frame(lamp, clock.t + 0.3).w == eng.ONEHOT["green"]
 
 
 def test_preview_duty_is_raw():
@@ -1247,3 +1303,57 @@ def test_preview_duty_is_raw():
     lamp.preview_duty((0.004, 0.003, 0.0), hold_s=1.0)
     assert lamp.render(clock.t)[0] == (0.004, 0.003, 0.0)    # no floor, no balance, no gamma
     assert lamp.render(clock.t + 2)[0] != (0.004, 0.003, 0.0)
+
+
+# -- playing: the filament ---------------------------------------------------------
+
+
+def test_playing_is_a_gold_filament_with_a_tiny_irregular_shimmer():
+    from haslerd.lamp import policy
+    lamp, _, clock = make(seed=3)
+    lamp.show(policy.PLAYING, cut=True)
+    t0 = clock.t
+    frames = [frame(lamp, t0 + i * 0.02) for i in range(1500)]
+    levels = [f.level for f in frames]
+    assert all(f.w == eng.ONEHOT["gold"] for f in frames)
+    assert all(f.env == pytest.approx(0.80) for f in frames)        # colour judged at the level: no flicks
+    assert 0.80 * 0.96 - 1e-9 <= min(levels) < 0.79 and 0.81 < max(levels) <= 0.80 * 1.04 + 1e-9
+    steps = [abs(a - b) for a, b in zip(levels, levels[1:])]
+    assert max(steps) < 0.015                                        # smooth: under 2 % of the level a frame
+    assert lamp.render(t0 + 30)[1]                                    # alive: never settles
+
+
+def test_the_filament_is_smaller_at_night_and_repeatable_per_seed():
+    from haslerd.lamp import policy
+    runs = []
+    for seed in (5, 5, 6):
+        lamp, _, clock = make(seed=seed)
+        lamp.set_night(True)
+        lamp.show(policy.PLAYING, cut=True)
+        runs.append([lvl(lamp, clock.t + 2 + i * 0.05) for i in range(400)])
+    assert runs[0] == runs[1] and runs[0] != runs[2]
+    assert all(0.35 * 0.97 - 1e-9 <= v <= 0.35 * 1.03 + 1e-9 for v in runs[0])
+
+
+def test_the_filament_warms_up_and_cools_down_like_any_look():
+    from haslerd.lamp import policy
+    lamp, _, clock = make(seed=1)
+    lamp.show(READY, cut=True)
+    lamp.show(policy.PLAYING)
+    t0 = clock.t
+    assert 0.45 < lvl(lamp, t0 + 0.3) < 0.80
+    assert lvl(lamp, t0 + eng.RISE_S + 0.01) == pytest.approx(0.80, rel=0.05)
+    lamp.show(READY)
+    t1 = clock.t
+    assert lvl(lamp, t1 + 0.6) > 0.46
+    assert lvl(lamp, t1 + eng.FALL_S) == pytest.approx(0.45)
+
+
+def test_the_filament_minor_channel_never_toggles_even_with_the_measured_floors():
+    from haslerd.lamp import policy
+    for night in (False, True):
+        lamp, _, clock = make(seed=2, min_duty={"red": 0.03, "green": 0.045, "blue": 0.03})
+        lamp.set_night(night)
+        lamp.show(policy.PLAYING, cut=True)
+        greens = {lamp.render(clock.t + i * 0.02)[0][1] > 0 for i in range(1000)}
+        assert greens == {True}, night

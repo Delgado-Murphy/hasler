@@ -41,8 +41,9 @@ log = logging.getLogger(__name__)
 RUN_DIR = Path(os.environ.get("HASLER_LAMP_RUN", "/run/hasler-lamp"))
 GAMMA = 2.2                 # the engine's (lamp/engine.py); the boot script's too
 TAKEOVER_WAIT_S = 0.3       # the boot script answers within a frame or two
-# What a shutdown leaves for the halt hook: the shutting-down breath's middle
-# (0.15..0.35 perceptual), steady - never a frozen breath at a random phase.
+# What a shutdown leaves for the halt hook: a steady ember inside the
+# shutting-down breath (0.12..0.50 perceptual) - never a frozen breath at a
+# random phase.
 # Pure red, as the engine draws deep ember (its green is under the floor).
 HOLD_LEVEL = 0.25
 HOLD_LEVEL_NIGHT = 0.17     # the night ember's share of that (0.15 / 0.22)
@@ -132,10 +133,19 @@ BOOT_VERSION = 1
 
 
 def _boot_amber() -> Any:
-    """The boot script's own amber breath (25-60 %, 3 s by day; 0.10/0.35 read
-    as off on the bench LED), with the night cap at night."""
+    """The boot breath: the policy's busy breath (v2: starting is busy, one
+    amber breath), else the boot script's old 25-60 %, 3 s breath."""
+    from . import policy
     from .contract import NIGHT_CAP, Look
+    busy = getattr(policy, "BUSY", None)
+    if isinstance(busy, Look) and busy.motion == "breath" and canonical_amber(busy.colour):
+        return busy
     return Look("amber", 0.60, "breath", 3.0, 0.25, night=NIGHT_CAP)
+
+
+def canonical_amber(colour: str) -> bool:
+    from .contract import canonical
+    return canonical(colour) == "amber"
 
 
 def _levels(look: Any, night: bool) -> tuple[float, float]:
@@ -145,6 +155,8 @@ def _levels(look: Any, night: bool) -> tuple[float, float]:
     if night:
         peak = look.night if look.night is not None else min(look.level, NIGHT_CAP)
     floor = look.floor * peak / look.level if look.level > 0 else 0.0
+    if night and getattr(look, "night_floor", None) is not None:
+        floor = look.night_floor
     return round(floor, 4), round(peak, 4)
 
 

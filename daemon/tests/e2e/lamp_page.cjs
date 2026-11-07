@@ -71,7 +71,7 @@ async function until(fn, ms, what){
     await check('api: preview takes a look or a reply, refuses nonsense', async () => {
       let r = await send('POST', '/api/lamp/preview', {look: 'phone'});
       let j = await r.json();
-      assert(r.ok && j.showing && j.look === 'phone' && j.expires_s === 5, 'look: ' + JSON.stringify(j));
+      assert(r.ok && j.showing && j.look === 'phone' && j.expires_s === 8, 'look: ' + JSON.stringify(j));
       r = await send('POST', '/api/lamp/preview', {reply: 'no'}); j = await r.json();
       assert(r.ok && j.reply === 'no', 'reply: ' + JSON.stringify(j));
       r = await send('POST', '/api/lamp/preview', {look: 'disco'});
@@ -110,7 +110,7 @@ async function until(fn, ms, what){
         await page.goto(radio.base + '/#settings/lamp');
         await until(() => page.isVisible('#lampMeans'), 5000, 'the meanings');
         const rows = await page.$$eval('#lampMeans [data-mean]', els => els.map(e => e.dataset.mean));
-        assert(rows.join() === 'playing,ready,asleep,phone,starting,pairing,busy,heard,ok,no,hello,asking,setup,identify,no_internet,fault,dark', 'rows: ' + rows.join());
+        assert(rows.join() === 'playing,ready,asleep,phone,starting,pairing,busy,heard,ok,no,asking,setup,hello,no_internet,fault,dark', 'rows: ' + rows.join());
         const groups = await page.$$eval('#lampMeans .lm-group', els => els.map(e => e.textContent));
         assert(groups.join() === 'Everyday,Replies,Needs you,Problems', 'groups: ' + groups.join());
         const titles = await page.$$eval('#lampMeans .li-title', els => els.map(e => e.textContent));
@@ -120,9 +120,9 @@ async function until(fn, ms, what){
         assert(await page.$eval('#lampMeans [data-mean="fault"] .lm-sw', el => getComputedStyle(el).animationName.startsWith('lm-morse')), 'SOS swatch not tapping Morse');
         // Show me for what this lamp's engine knows (meanings.LOOKS/REPLIES) and Identify; never for Dark.
         const lp = (await get('/api/settings')).lamp;
-        const want = lp.looks.length + lp.replies.length + 1;
+        const want = lp.looks.length + lp.replies.length;
         const buttons = await page.$$eval('#lampMeans button', b => b.map(x => x.id.replace('lampShow-', '')));
-        assert(buttons.length === want && !buttons.includes('dark') && buttons.includes('identify'), 'Show me buttons: ' + buttons.join());
+        assert(buttons.length === want && !buttons.includes('dark') && ['starting', 'pairing', 'no_internet', 'fault', 'ok', 'hello'].every(b => buttons.includes(b)), 'Show me buttons: ' + buttons.join());
         await shot(page, name + '-lamp-page');
       });
 
@@ -131,7 +131,7 @@ async function until(fn, ms, what){
         await page.click('#lampTourBtn');
         await until(() => posts.some(p => p[0] === '/api/lamp/preview'), 3000, 'the first preview');
         assert(JSON.parse(posts[0][1]).look === 'playing', 'first: ' + posts[0][1]);
-        await until(async () => /^1 of \d+ — Playing: steady amber/.test(await page.textContent('#lampTour')), 2000, 'the caption');
+        await until(async () => /^1 of \d+ — Playing: warm and bright/.test(await page.textContent('#lampTour')), 2000, 'the caption');
         assert((await page.textContent('#lampTourBtn')) === 'Stop', 'no Stop');
         await page.click('#lampTourBtn');
         await until(() => posts.some(p => p[1] && JSON.parse(p[1]).look === null), 3000, 'the end of the tour');
@@ -237,23 +237,40 @@ async function until(fn, ms, what){
         await shot(page, name + '-this-radio');
       });
 
-      if (name === 'phone') await check('the key card has the lamp legend for a v2 lamp (only)', async () => {
+      if (name === 'phone') await check('the key card has the lamp legend (this lamp speaks v2), not for a v1 lamp', async () => {
         await page.goto(radio.base + '/#print');
-        await until(() => page.isVisible('#keyCard'), 6000, 'the key card');
-        assert(!(await page.$('#kcLamp')), 'a v2 legend for a lamp that speaks v1');
-        await page.route('**/api/settings', async route => {
-          if (route.request().method() !== 'GET') return route.continue();
-          const res = await route.fetch(), doc = await res.json();
-          doc.lamp.looks = doc.lamp.looks.concat(['no_internet', 'fault']); doc.lamp.replies = doc.lamp.replies.concat(['ok']);
-          await route.fulfill({response: res, json: doc});
-        });
-        await page.reload();
         await until(() => page.isVisible('#kcLamp'), 6000, 'the lamp legend');
         const rows = await page.$$eval('#kcLamp p', ps => ps.map(p => p.textContent.trim()));
         assert(rows.join('|') === 'set me up|it’s me|done|no|no internet|call a maker', 'legend: ' + rows.join('|'));
         assert(await page.$$eval('#kcLamp p:first-of-type .kc-dah', d => d.length) === 5, 'CQ is not – · – ·  – – · –');
         await shot(page, 'keycard-lamp-legend');
+        await page.route('**/api/settings', async route => {
+          if (route.request().method() !== 'GET') return route.continue();
+          const res = await route.fetch(), doc = await res.json();
+          doc.lamp.looks = ['playing', 'ready', 'asleep', 'phone', 'busy', 'asking', 'setup']; doc.lamp.replies = ['heard', 'no'];
+          await route.fulfill({response: res, json: doc});
+        });
+        await page.reload();
+        await until(() => page.isVisible('#keyCard'), 6000, 'the key card');
+        await sleep(500);
+        assert(!(await page.$('#kcLamp')), 'a v2 legend for a lamp that speaks v1');
         await page.unroute('**/api/settings');
+      });
+
+      if (name === 'phone') await check('geek mode: the surprise plays only when it is on; Show me It’s me taps HI', async () => {
+        let r = await (await send('POST', '/api/lamp/egg', {})).json();
+        assert(r.ok && r.played === false && r.geek === false, 'egg outside geek mode: ' + JSON.stringify(r));
+        await send('PUT', '/api/settings', {lamp: {geek: true}});
+        r = await (await send('POST', '/api/lamp/egg', {})).json();
+        assert(r.ok && r.played === true, 'no egg in geek mode: ' + JSON.stringify(r));
+        await send('PUT', '/api/settings', {lamp: {geek: false}});
+        r = await (await send('POST', '/api/lamp/preview', {reply: 'hello'})).json();
+        assert(r.ok && r.reply === 'hello' && r.showing, 'hello: ' + JSON.stringify(r));
+        for (const look of ['starting', 'pairing', 'no_internet', 'fault']){
+          r = await (await send('POST', '/api/lamp/preview', {look})).json();
+          assert(r.ok && r.showing, look + ': ' + JSON.stringify(r));
+        }
+        await send('POST', '/api/lamp/preview', {look: null});
       });
       await ctx.close();
     }

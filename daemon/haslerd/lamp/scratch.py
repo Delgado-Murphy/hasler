@@ -83,6 +83,9 @@ class Scene:
             return self.length_s
         if self.look.motion == "breath" and self.look.period_s > 0:
             return self.look.period_s
+        if self.look.motion == "pattern":
+            total = sum(float(s[1]) for s in (getattr(self.look, "steps", ()) or ()))
+            return total if total > 0 else 1.0
         if self.look.motion == "beckon":
             return 0.8 + max(0.0, self.look.period_s)     # two kicks 0.25 s apart, then the rest
         return 1.0
