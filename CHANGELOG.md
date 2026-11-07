@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.1 - 2026-11-07
+
+- The Excelsior gets the same key page as the HM. Its keys 1-6, PU and Tape
+  show and can be set; a latching bank shows the key that is down, key 0 is
+  drawn as the off key, and the front page shows SP, the speaker selector
+  (both / left / right), treble and bass. Wording follows the model ("Select"
+  for latching keys, no source key where there is none, the model's name).
+  Latching keys have no hold job (a latched key reads as held); key 0 is
+  standby, held it shuts down. Excelsiors modified so the keys spring back:
+  `controls: {presets: {latching: false}}` in
+  /etc/hasler/variant.d/excelsior.yaml, then tap and hold work as on the HM
+  (docs/hardware.md, "Excelsior: latching or not").
+- Fixed: Standby, or the tone knob, while a phone played over Bluetooth woke
+  the radio again at once. Standby now asks a Bluetooth phone to pause, and
+  only a new start on a phone wakes the radio.
+
 ## 1.2.0 - 2026-11-07
 
 Keys
