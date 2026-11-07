@@ -91,12 +91,24 @@ button{cursor:pointer}
 .dial-name{margin:0;color:#1E1308;font:600 34px/38px var(--serif);letter-spacing:-.01em;overflow-wrap:break-word;
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .dial-name.long{font-size:25px;line-height:29px}
-.song{display:flex;align-items:center;gap:10px;min-width:0;min-height:34px}
+.song{display:flex;align-items:center;gap:10px;min-width:0;min-height:35px}
 .cover{position:relative;flex:none;width:34px;height:34px;border-radius:4px;overflow:hidden;box-shadow:0 0 0 1px rgba(60,40,20,.25);
   background:linear-gradient(135deg,#9C4A2E 0%,#C8643C 55%,#E3B98A 100%)}
 .cover.radio{background:linear-gradient(160deg,#F6EBD0,#DCC594);display:flex;align-items:center;justify-content:center}
 .cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .song-txt{display:flex;flex-direction:column;gap:1px;min-width:0}
+/* The song's own small buttons (YouTube Music): Lyrics and More, ink rings on the glass.
+   44 px to the finger, 34 px to the eye; the negative margins keep the row as tall as without them. */
+.song-acts{display:flex;flex:none;margin:-5px -8px -5px auto}
+.song-acts[hidden]{display:none}
+.sa-btn{position:relative;display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;background:none;color:#5A4128;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sa-btn::before{content:"";position:absolute;inset:5px;border-radius:50%;border:1px solid rgba(110,83,48,.42);background:rgba(255,248,228,.38);transition:background .15s,border-color .15s}
+.sa-btn svg{position:relative}
+.sa-btn:hover::before{border-color:#6E5330;background:rgba(255,248,228,.7)}
+.sa-btn[aria-expanded="true"]{color:#F6EBD0}
+.sa-btn[aria-expanded="true"]::before{background:#6E5330;border-color:#6E5330}
+.sa-btn:focus-visible{outline:none}
+.sa-btn:focus-visible::before{box-shadow:0 0 0 2px #FBF0D4,0 0 0 4px #9A5B1E}
 .song-title{color:#2E1F10;font:600 14px/18px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .song-sub{color:#6E5330;font:12px/16px var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .scale{position:relative;height:50px;overflow:hidden;
@@ -637,11 +649,6 @@ dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);max-height:min(88dvh,760
 .song-line .ebadge{background:#6E5330;color:#F6EBD0;margin-left:5px}
 .ytm-now{display:flex;flex-direction:column;gap:8px;margin:10px 0 2px}
 .ytm-now[hidden]{display:none}
-.ytn-btns{display:flex;flex-wrap:wrap;gap:6px}
-.ytn-btn{min-height:44px;padding:0 14px;border:1px solid var(--line2);border-radius:22px;background:none;color:var(--brass);font:700 13px/1 var(--sans);white-space:nowrap}
-.ytn-btn:hover:not(:disabled){border-color:var(--amber)}
-.ytn-btn[aria-pressed="true"],.ytn-btn[aria-expanded="true"]{color:var(--amber);border-color:#7A5A36;background:#24170F}
-.ytn-btn:disabled,.ytn-btn[aria-disabled="true"]{opacity:.6}
 .ytn-lyrics{max-height:min(46vh,420px);overflow:auto;overscroll-behavior:contain;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--sheet)}
 .ytn-text{margin:0;white-space:pre-wrap;color:var(--cream);font:15px/1.55 var(--sans)}
 .ytn-src{margin:10px 0 0;color:var(--muted);font:10px/14px var(--mono);letter-spacing:.08em;text-transform:uppercase}
@@ -1177,13 +1184,14 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
         <div class="song" id="song">
           <span class="cover radio" id="cover" aria-hidden="true"></span>
           <div class="song-txt"><span class="song-line"><span class="song-title" id="songTitle"></span><span class="ebadge" id="songE" title="Explicit" hidden>E</span></span><span class="song-sub" id="songSub"></span></div>
+          <div class="song-acts" id="songActs" role="group" aria-label="This song" hidden></div>
         </div>
         <div class="scale" id="scale" aria-hidden="true"><div class="strip still" id="stripEl"></div><div class="needle"></div></div>
       </div>
     </div>
     <p class="sr" id="nowLive" aria-live="polite"></p>
     <a class="front-attn" id="frontAttn" href="#settings/radio/help" hidden></a>
-    <div class="ytm-now" id="ytmNow" role="group" aria-label="YouTube Music: the song playing now" hidden></div>
+    <div class="ytm-now" id="ytmNow" hidden></div>
 
     <div class="bank" id="bank" role="group" aria-label="Piano keys"></div>
 
@@ -4289,6 +4297,13 @@ function ytSheet(it, opts, opener){
     if (pick) acts.append(use(opts.pickLabel + ': this song’s radio', it.radio || it.preset));
     acts.append(btn('Start a radio from this song', () => playing(null, () => ytStartRadio(it)), !pick, 'ytsPlay'));
     if (!pick) acts.append(toKey(it.radio || it.preset));
+    // The song playing now (the front's More): Like it, when signed in.
+    if (opts.now && ytm.signed_in){
+      const words = () => ytNow.liked ? ['♥ Liked', 'Liked: ' + title + '. Take the like back'] : ['♡ Like', 'Like ' + title];
+      const like = btn('', async () => { await ytLike(); paint(); }, false, 'ytnLike');
+      const paint = () => { const [w, l] = words(); like.textContent = w; like.setAttribute('aria-label', l); like.setAttribute('aria-pressed', String(ytNow.liked)); };
+      paint(); acts.append(like);
+    }
   } else if (t === 'album'){
     if (pick){ acts.append(use(opts.pickLabel, it.preset)); if (it.radio) acts.append(btn(opts.pickLabel + ': album radio', () => { close(); ytUse(opts, it.radio, it); })); }
     acts.append(btn('Play the album', () => playing(null, () => ytPlay(it.preset, true)), !pick, 'ytsPlay'));
@@ -4540,28 +4555,32 @@ async function ytSaveExplicit(on, undoable){
 
 /* -- the front screen: what YouTube Music plays now -- */
 const ytNow = {vid:'', liked:false, busy:false, lyr:null, lyrFor:'', lyrOpen:false, lyrBusy:false, sig:''};
+// The song YouTube Music plays now, as the More sheet (ytSheet) sees it: Start a radio
+// from it and Put on a key run the same ytStartRadio / ytToKey as anywhere else.
+const ytNowItem = t => ({type:'song', id:t.vid, title:t.title, subtitle:t.artist, thumb:t.art || t.thumb, explicit:!!t.explicit,
+  radio:{source:'ytm', kind:'radio', seed:'song:' + t.vid, name:((t.title || 'Song') + ' radio').slice(0, 60),
+    uri:'https://music.youtube.com/watch?v=' + t.vid + '&list=RDAMVM' + t.vid, shuffle:false}});
+const IC_LYR = () => icon('<g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4.5h7M2.5 8h7M2.5 11.5h4.5"/><path d="M12.5 12.2V4.2l2.2.9"/></g><circle cx="11.2" cy="12.4" r="1.5" fill="currentColor"/>', 17, 17, '0 0 16 16');
 function paintYtmNow(){
-  const box = $('ytmNow'); if (!box) return;
+  const box = $('ytmNow'), acts = $('songActs'); if (!box || !acts) return;
   const pl = status && !status.standby && status.playing, t = status && status.track;
   const on = !!(online && pl && pl.source === 'ytm' && t && t.vid && !status.recovering);
-  box.hidden = !on;
-  if (!on){ if (ytNow.sig){ ytNow.sig = ''; box.textContent = ''; } return; }
+  acts.hidden = !on;
+  box.hidden = !(on && ytNow.lyrOpen);
+  if (!on){ if (ytNow.sig){ ytNow.sig = ''; box.textContent = ''; acts.textContent = ''; } return; }
   if (t.vid !== ytNow.vid) Object.assign(ytNow, {vid:t.vid, liked:false, busy:false});
-  const sig = [t.vid, ytm.signed_in, ytNow.liked, ytNow.busy, ytNow.lyrOpen, ytNow.lyrFor === t.vid ? (ytNow.lyrBusy ? 'b' : 'y') : 'n'].join('|');
+  const sig = [t.vid, t.title, ytNow.lyrOpen, ytNow.lyrFor === t.vid ? (ytNow.lyrBusy ? 'b' : 'y') : 'n'].join('|');
   if (sig === ytNow.sig) return;
   ytNow.sig = sig;
-  const had = document.activeElement && box.contains(document.activeElement) ? document.activeElement.id : null;
-  box.textContent = '';
+  const act = document.activeElement;
+  const had = act && (box.contains(act) || acts.contains(act)) ? act.id : null;
+  box.textContent = ''; acts.textContent = '';
   const song = t.title || 'this song';
-  const row = h('div', {class:'ytn-btns'},
-    h('button', {type:'button', class:'ytn-btn', id:'ytnRadio', onclick: () => ytStartRadio({type:'song', id:t.vid, title:t.title, radio:{seed:'song:' + t.vid, name:(t.title || 'Song') + ' radio'}})}, 'Start radio from this song'),
-    h('button', {type:'button', class:'ytn-btn', id:'ytnKey', onclick: () => ytToKey({source:'ytm', kind:'radio', seed:'song:' + t.vid, name:((t.title || 'Song') + ' radio').slice(0, 60),
-      uri:'https://music.youtube.com/watch?v=' + t.vid + '&list=RDAMVM' + t.vid, shuffle:false}, {type:'song', id:t.vid, title:t.title, subtitle:t.artist, thumb:t.art || t.thumb})}, 'Put this on a key'),
-    ytm.signed_in ? h('button', {type:'button', class:'ytn-btn', id:'ytnLike', 'aria-pressed': String(ytNow.liked), 'aria-disabled': ytNow.busy ? 'true' : null,
-      'aria-label': (ytNow.liked ? 'Liked: ' : 'Like ') + song + (ytNow.liked ? '. Take the like back' : ''), onclick: ytLike},
-      h('span', {'aria-hidden':'true'}, ytNow.liked ? '♥ ' : '♡ '), ytNow.liked ? 'Liked' : 'Like') : null,
-    h('button', {type:'button', class:'ytn-btn', id:'ytnLyr', 'aria-expanded': String(ytNow.lyrOpen), 'aria-controls':'ytnLyrics', onclick: () => { ytNow.lyrOpen = !ytNow.lyrOpen; paintYtmNow(); }}, 'Lyrics'));
-  box.append(row);
+  acts.append(
+    h('button', {type:'button', class:'sa-btn', id:'ytnLyr', title:'Lyrics', 'aria-label':'Lyrics for ' + song, 'aria-expanded': String(ytNow.lyrOpen), 'aria-controls':'ytnLyrics',
+      onclick: () => { ytNow.lyrOpen = !ytNow.lyrOpen; paintYtmNow(); }}, IC_LYR()),
+    h('button', {type:'button', class:'sa-btn', id:'ytnMore', title:'More', 'aria-label':'More for ' + song, 'aria-haspopup':'dialog',
+      onclick: e => ytSheet(ytNowItem(t), {mode:'browse', now:true}, e.currentTarget)}, icon('<circle cx="3.5" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.5" cy="8" r="1.4" fill="currentColor"/>', 16, 16, '0 0 16 16')));
   if (ytNow.lyrOpen){
     const dr = h('div', {class:'ytn-lyrics', id:'ytnLyrics', role:'region', 'aria-label':'Lyrics for ' + song, tabindex:'0'});
     if (ytNow.lyrFor !== t.vid && !ytNow.lyrBusy) ytLyrics(t.vid);

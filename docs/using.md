@@ -320,9 +320,10 @@ endless song radio, a chart, a mood list, or your Liked songs. Charts and
 lists are fetched fresh each time you press the key; if YouTube Music can't
 be reached, the key plays what it played last time.
 
-While a YouTube Music song plays, the front screen can **Like** it (signed
-in) or **Start radio** from it. **Hide explicit songs** is in the YouTube
-Music settings.
+While a YouTube Music song plays, two small buttons sit beside it on the
+dial: **Lyrics** (opens them under the dial) and **⋯** (start a radio from
+the song, put it on a key, or **Like** it when signed in). **Hide explicit
+songs** is in the YouTube Music settings.
 
 ### Edit keys
 
