@@ -5,7 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#17100B">
-<link rel="icon" href="data:,">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hasler">
 <title>Hasler</title>
 <!-- Fonts (Fraunces 600/700/600i, JetBrains Mono 400; latin subset, SIL OFL) are embedded so the page needs no network. -->
 <style id="fonts">
@@ -847,6 +853,78 @@ html.has-bar .toast{bottom:calc(92px + env(safe-area-inset-bottom))}
 .chk b{font-weight:600}.chk .ok{color:#8FCF9F}.chk .no{color:#F07A62}
 .danger-row{display:flex;flex-direction:column;gap:6px;margin-top:6px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--sheet)}
 </style>
+<style id="extras">
+/* ---------- key-cap label field (in Rename) ---------- */
+.rename-box{display:flex;flex-direction:column;gap:8px}
+.key-l.long{font-size:8px;letter-spacing:0}
+.key-l.longer{font-size:7px;letter-spacing:-.02em}
+.short-field{display:flex;align-items:center;gap:10px;padding:0 2px}
+.short-field .mono{flex:none}
+.short-field input[type=text]{flex:1;min-width:0;min-height:36px;padding:6px 8px;font:12px/16px var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.short-field input::placeholder{text-transform:uppercase}
+.print-link{display:flex;justify-content:center;padding:4px 0 8px}
+
+/* ---------- key card (#print) ---------- */
+.app[data-view="print"] #remote{display:none !important}
+@media (min-width:960px){ .app[data-view="print"]{display:block;max-width:1100px} }
+.print-tools{display:flex;flex-direction:column;gap:12px}
+.print-tools .actions{position:static;margin:0;padding:0;background:none}
+.card-sheet{display:flex;padding:18px 0 28px;overflow-x:auto}
+.card-sheet > .keycard{margin:0 auto}
+.keycard{--ink:#2A1C10;--soft:#7A6346;--rule:#D9C9A6;--accent:#B9781E;flex:none;display:flex;flex-direction:column;color:var(--ink);
+  background:#FBF6EA;font:9pt/1.3 var(--sans);box-shadow:0 10px 40px rgba(0,0,0,.45);border-radius:2px;
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+.keycard.kc-a6{width:105mm;height:148mm;overflow:hidden;padding:7mm 8mm 5mm;gap:2.4mm}
+.keycard.kc-strip{width:calc(var(--n,7) * 30mm + 52mm);padding:4mm 5mm;gap:2mm}
+.kc-head{display:flex;align-items:baseline;gap:2.5mm;padding-bottom:2mm;border-bottom:.5pt solid var(--rule)}
+.kc-title{margin:0;font:italic 600 18pt/1 var(--serif);color:var(--ink)}
+.kc-room{font:600 11pt/1 var(--serif);color:var(--soft)}
+.kc-kind{margin-left:auto;font:7pt/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--soft)}
+.kc-keys{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1.6mm}
+.kc-key{display:flex;align-items:flex-start;gap:3mm;min-width:0;break-inside:avoid}
+.kc-cap{flex:none;width:7.5mm;height:8.5mm;border-radius:1.2mm;background:#EFE4CB;border:.5pt solid #CDB98F;border-bottom-width:1.6pt;
+  display:flex;align-items:center;justify-content:center;font:800 10pt/1 var(--sans);color:var(--ink)}
+.kc-cap.pu{background:#4A3726;border-color:#2E2016;color:#F3E7CC;font-size:7.5pt}
+.kc-jobs{min-width:0;display:flex;flex-direction:column;gap:.6mm;padding-top:.4mm}
+.kc-tap{font:600 10pt/1.1 var(--serif);color:var(--ink);overflow-wrap:anywhere}
+.kc-src{font:6.5pt/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+.kc-hold{font:8pt/1.25 var(--sans);color:var(--ink);overflow-wrap:anywhere}
+.kc-lbl{font:6.5pt/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.kc-sec{display:flex;flex-direction:column;gap:.8mm;padding-top:1.6mm;border-top:.5pt solid var(--rule)}
+.kc-sec h2{margin:0;font:6.5pt/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--accent)}
+.kc-sec p{margin:0;font:8pt/1.3 var(--sans)}
+.kc-sec b{font-weight:700}
+.kc-foot{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:3mm;padding-top:2mm;color:var(--soft);font:7pt/1.2 var(--sans)}
+.kc-mark{display:flex;align-items:center;gap:2mm;font:600 6pt/1 var(--sans);letter-spacing:.28em;text-transform:uppercase;color:#8A7F6E;white-space:nowrap}
+.kc-mark::before{content:"";width:5mm;height:.5pt;background:#B8A888}
+.kc-mark .amp{font:italic 400 7pt/1 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;letter-spacing:0;text-transform:none}
+/* the strip: one column per key, in the order they sit on the cabinet */
+.keycard.kc-strip .kc-head{padding-bottom:1.2mm}
+.keycard.kc-strip .kc-title{font-size:12pt}
+.keycard.kc-strip .kc-room{font-size:9pt}
+.keycard.kc-strip .kc-body{display:flex;gap:3mm;align-items:stretch}
+.keycard.kc-strip .kc-keys{flex:1;display:grid;grid-template-columns:repeat(var(--n,7),minmax(0,1fr));gap:2mm}
+.keycard.kc-strip .kc-key{flex-direction:column;align-items:center;text-align:center;gap:1.2mm;padding:0 .5mm}
+.keycard.kc-strip .kc-key + .kc-key{border-left:.5pt solid var(--rule)}
+.keycard.kc-strip .kc-jobs{align-items:center}
+.keycard.kc-strip .kc-tap{font-size:8.5pt}
+.keycard.kc-strip .kc-hold{font-size:7pt}
+.keycard.kc-strip .kc-src{display:none}
+.keycard.kc-strip .kc-more{flex:0 0 44mm;display:flex;flex-direction:column;gap:1.6mm;padding-left:3mm;border-left:.5pt solid var(--rule)}
+.keycard.kc-strip .kc-sec{padding-top:0;border-top:0}
+.keycard.kc-strip .kc-sec p{font-size:7pt}
+.keycard.kc-strip .kc-foot{padding-top:1mm}
+.keycard.kc-a6 .kc-body,.keycard.kc-a6 .kc-more{display:contents}
+@media print{
+  html,body{background:#fff !important;min-height:0}
+  .app[data-view="print"]{max-width:none;margin:0;padding:0 !important;display:block}
+  .app[data-view="print"] #panel{display:block;min-height:0;padding:0}
+  .app[data-view="print"] .print-tools,#toast,#dlg{display:none !important}
+  .card-sheet{display:block;padding:0;overflow:visible}
+  .keycard{box-shadow:none;border-radius:0;margin:0 auto;background:#fff}
+  .keycard.kc-strip{outline:.4pt dashed #B8A888;outline-offset:0;max-width:100%}
+}
+</style>
 </head>
 <body>
 <div class="app" id="app" data-view="remote">
@@ -1176,7 +1254,7 @@ function payload(d){
     presets: d.presets
       .filter(p => refCount(d, p.n) || (p.uri || '').trim())
       .map(p => Object.assign({n:p.n, name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(),
-        shuffle: p.source === 'radio' || isRadioUri(p.uri) || ytmEndless(p) ? false : !!p.shuffle}, ytmRef(p))),
+        shuffle: p.source === 'radio' || isRadioUri(p.uri) || ytmEndless(p) ? false : !!p.shuffle}, ytmRef(p), shortOut(p))),
   };
   // Only on a radio that has combinations; one still missing a key or an action isn't sent.
   if (Array.isArray(d.combos)) out.combos = d.combos.filter(comboReady).map(comboOut);
@@ -1224,7 +1302,7 @@ function comboWhat(a, lower){
 }
 function keySig(d, k){
   const ps = ['tap','hold'].map(s => k[s] && k[s].do === 'preset' ? presetIn(d, k[s].n) : null)
-    .map(p => p ? Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle}, ytmRef(p)) : null);
+    .map(p => p ? Object.assign({name:(p.name || '').trim(), source:p.source, uri:(p.uri || '').trim(), shuffle:!!p.shuffle}, ytmRef(p), shortOut(p)) : null);
   return JSON.stringify([normAct(k.tap), normAct(k.hold), ps]);
 }
 const isDirty = () => !!draft && JSON.stringify(payload(draft)) !== baseline;
@@ -1260,7 +1338,7 @@ function applyServerErrors(list){
     if ((m = /^presets\[(\d+)\](?:\.(\w+))?/.exec(where))){
       const p = lastSent && lastSent.presets[+m[1]];
       if (p){
-        const f = ['name','source','uri','shuffle'].includes(m[2]) ? m[2] : '_';
+        const f = ['name','source','uri','shuffle','short'].includes(m[2]) ? m[2] : '_';
         const kk = 'p' + p.n + '.' + f; errs[kk] = errs[kk] ? errs[kk] + ' ' + msg : msg;
         if (!refCount(draft, p.n)) general.push('Preset “' + (p.name || p.n) + '”: ' + msg);
         continue;
@@ -1281,7 +1359,7 @@ function keyErrCount(k){
   for (const s of ['tap','hold','_']) if (errs[k.id + '.' + s]) c++;
   for (const s of ['tap','hold']){
     const a = k[s];
-    if (a && a.do === 'preset') for (const f of ['name','source','uri','shuffle','_']) if (errs['p' + a.n + '.' + f]) c++;
+    if (a && a.do === 'preset') for (const f of ['name','source','uri','shuffle','short','_']) if (errs['p' + a.n + '.' + f]) c++;
   }
   return c;
 }
@@ -1415,8 +1493,9 @@ function paintBank(){
     const k = remoteKeys().find(x => x.id === id) || {id, label:id};
     const name = keyName(k);
     const lbl = btn.querySelector('.key-l');
-    const short = id === 'pu' && !cfg ? 'Source' : shortLabel(name);
+    const short = id === 'pu' && !cfg ? 'Source' : keyCap(k, name);
     if (lbl.textContent !== short) lbl.textContent = short;
+    capFit(lbl, short);
     const down = localDown.has(id) || (flashUntil[id] || 0) > now || pressed.has(id) || cur === id || (id === 'pu' && puEngaged());
     btn.classList.toggle('down', down);
     btn.setAttribute('aria-label', (k.label ? (id === 'pu' ? 'PU' : 'Key ' + k.label) : id) + (name && name !== '—' ? ': ' + name : '') + (cur === id ? ', playing' : ''));
@@ -1684,7 +1763,7 @@ function parseHash(){
   if (p[0] === 'ha'){ p = ['settings', 'radio', 'ha']; fixed = true; }
   if (p[0] === 'settings' && SET_ALIAS[p[1]]){ p[1] = SET_ALIAS[p[1]]; fixed = true; }
   if (fixed) history.replaceState(null, '', '#' + p.join('/'));
-  return {view: ['edit','browse','settings'].includes(p[0]) ? p[0] : 'remote', arg: p[1] || null, arg2: p[2] || null};
+  return {view: ['edit','browse','settings','print'].includes(p[0]) ? p[0] : 'remote', arg: p[1] || null, arg2: p[2] || null};
 }
 // "home", "sound", "radio/updates"… or null away from Settings.
 function pageKey(r){
@@ -1759,6 +1838,7 @@ function renderPanel(){
   if (v === 'edit') renderEdit();
   else if (v === 'browse') renderBrowse();
   else if (v === 'settings') renderSettings();
+  else if (v === 'print') renderPrint();
 }
 function screenTop(title, backTo, extra){
   const kids = [];
@@ -1803,6 +1883,7 @@ function renderEdit(){
   else if (!k) sheet.append(keyList());
   else keySheet(sheet, k);
   panel.append(sheet);
+  if (!k && !cb) panel.append(printLink());
 }
 function selectKey(id){
   ed.key = id; ed.combo = null; ed.pick = null; ed.ent = null; ed.lp = null; ed.rename = false; saveMsg = {text:'', bad:false};
@@ -1924,7 +2005,7 @@ function choiceCard(k, p){
     const m = /(playlist|album|track|artist|show|episode)/i.exec(uri);
     type = 'Spotify' + (m ? ' · ' + m[1] : '');
   }
-  const nameErr = errText(pk + '.name');
+  const nameErr = errText(pk + '.name'), capErr = errText(pk + '.short');
   if (!uri && !(p.source === 'ytm' && p.kind)){
     return h('div', {class:'choice unset'}, thumbEl, h('div', {class:'choice-txt'},
       h('span', {class:'choice-name'}, 'Nothing chosen yet'),
@@ -1934,23 +2015,29 @@ function choiceCard(k, p){
   if (ed.rename){
     const inp = h('input', {type:'text', id:'renameInp', value:p.name, 'aria-label':'Name for this key', autocomplete:'off', maxlength:'80',
       'aria-invalid': nameErr ? 'true' : 'false',
-      onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); commit(); } else if (e.key === 'Escape'){ e.preventDefault(); ed.rename = false; rerender(); $('renameBtn') && $('renameBtn').focus(); } },
-      onblur: () => commit()});
+      onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); commit(); } else if (e.key === 'Escape'){ e.preventDefault(); cancel(); } }});
+    const cancel = () => { ed.rename = false; rerender(); $('renameBtn') && $('renameBtn').focus(); };
+    const cap = shortField(p, () => commit(), cancel);
     const commit = () => {
       if (!ed.rename) return;
       ed.rename = false;
-      const v = inp.value.trim();
+      const v = inp.value.trim(), sv = capValue(cap);
       if (v !== p.name){ const pp = ownPreset(k); pp.name = v; autoName[pp.n] = null; clearErr(pk + '.name'); }
+      if (sv !== (p.short || '')){ const pp = ownPreset(k); if (sv) pp.short = sv; else delete pp.short; clearErr(pk + '.short'); }
       rerender(); const b = $('renameBtn'); if (b) b.focus();
     };
     txt = h('div', {class:'choice-txt'}, inp);
-    setTimeout(() => { inp.focus(); inp.select(); }, 0);
-    return h('div', null, h('div', {class:'choice'}, thumbEl, txt), nameErr ? h('p', {class:'err'}, nameErr) : null);
+    if (renameFocus){ renameFocus = false; setTimeout(() => { inp.focus(); inp.select(); }, 0); }
+    // Leaving both fields (not moving between them) keeps what was typed.
+    const box = h('div', {class:'rename-box', onfocusout: e => { if (!box.contains(e.relatedTarget)) commit(); }},
+      h('div', {class:'choice'}, thumbEl, txt), cap);
+    return h('div', null, box, nameErr ? h('p', {class:'err'}, nameErr) : null, capErr ? h('p', {class:'err'}, capErr) : null);
   }
+  if (p.short) type += ' · key: ' + p.short;
   txt = h('div', {class:'choice-txt'}, h('span', {class:'choice-name'}, p.name || 'Untitled'), h('span', {class:'choice-type'}, type));
   return h('div', null, h('div', {class:'choice'}, thumbEl, txt,
-      h('button', {type:'button', class:'link', id:'renameBtn', 'aria-label':'Rename ' + (p.name || 'this'), onclick: () => { ed.rename = true; rerender(); }}, 'Rename')),
-    nameErr ? h('p', {class:'err', role:'alert'}, nameErr) : null);
+      h('button', {type:'button', class:'link', id:'renameBtn', 'aria-label':'Rename ' + (p.name || 'this'), onclick: () => { ed.rename = true; renameFocus = true; rerender(); }}, 'Rename')),
+    nameErr ? h('p', {class:'err', role:'alert'}, nameErr) : null, capErr ? h('p', {class:'err', role:'alert'}, capErr) : null);
 }
 function pickInto(k, fields){
   const p = ownPreset(k);
@@ -7839,6 +7926,117 @@ document.addEventListener('visibilitychange', () => { if (document.hidden){ clea
 window.addEventListener('online', () => { poll().then(schedule); });
 window.addEventListener('pageshow', e => { if (e.persisted){ graceUntil = Date.now() + 8000; poll().then(schedule); refreshConfig(); } });
 
+/* ================= key-cap labels · key card ================= */
+// The owner's own key-cap label: a preset's "short" (up to cfg.short_max), else the
+// name shortened by shortLabel().
+const shortMax = () => (cfg && cfg.short_max) || 12;
+const shortOut = p => { const v = String((p && p.short) || '').replace(/\s+/g, ' ').trim(); return v ? {short: v} : {}; };
+function keyCap(k, name){
+  if (cfg){
+    const a = k.tap, p = a && a.do === 'preset' ? presetIn(cfg, a.n) : null;
+    if (p && p.short) return p.short;
+  } else {
+    const sk = status && status.keys && status.keys.find(x => x.id === k.id);
+    if (sk && sk.short) return sk.short;
+  }
+  return shortLabel(name);
+}
+// An owner's label may hold a word too long for the cap at its usual size: a smaller face.
+function capFit(el, text){
+  const w = Math.max(0, ...String(text || '').split(/\s+/).map(x => x.length));
+  el.classList.toggle('long', w >= 7 && w < 10); el.classList.toggle('longer', w >= 10);
+}
+let renameFocus = false;
+// The small "On the key" field under Rename's name field.
+function shortField(p, commit, cancel){
+  const max = shortMax();
+  const inp = h('input', {type:'text', id:'shortInp', value: p.short || '', maxlength: String(max), autocomplete:'off', spellcheck:'false',
+    placeholder: shortLabel(p.name), 'aria-label':'Label on the key cap, up to ' + max + ' characters (blank: shortened from the name)',
+    onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); commit(); } else if (e.key === 'Escape'){ e.preventDefault(); cancel(); } }});
+  return h('label', {class:'short-field', for:'shortInp'}, h('span', {class:'mono', 'aria-hidden':'true'}, 'On the key'), inp);
+}
+const capValue = el => { const i = el.querySelector('input'); return i ? i.value.replace(/\s+/g, ' ').trim().slice(0, shortMax()) : ''; };
+
+function printLink(){
+  return h('div', {class:'print-link'}, h('a', {class:'link quiet', href:'#print', id:'printLink'}, 'Print a key card'));
+}
+let cardSize = 'a6';
+try { if (localStorage.getItem('hasler.card') === 'strip') cardSize = 'strip'; } catch (_) {}
+// What a key's tap or hold does, in a few words for paper ('' = nothing).
+function cardWhat(a){
+  const v = verbOf(a);
+  if (v === 'none') return '';
+  if (v === 'preset'){ const p = presetIn(cfg, a.n); return p ? (p.name || 'Untitled').trim() : 'Play music'; }
+  if (isHa(v)){ const t = haTarget(a); return verbShort(v) + (t ? ' · ' + t : ''); }
+  if (v === 'custom') return a.label || 'Custom';
+  if (v === 'bt_pair') return 'Pair a phone';
+  return verbShort(v);
+}
+function cardSrc(a){
+  if (verbOf(a) !== 'preset') return '';
+  const p = presetIn(cfg, a.n); return p ? SRC_HEAD[p.source] || p.source : '';
+}
+const ctlWord = id => String(id || '').replace(/[_-]+/g, ' ');
+// How to switch it off, from the cabinet's descriptor (GET /api/config "power").
+function powerLines(){
+  const out = [];
+  for (const w of (cfg && cfg.power) || []){
+    if (w.kind === 'end_switch'){
+      out.push([h('b', null, 'Off: '), 'turn the ' + ctlWord(w.control) + ' knob to its end until it clicks — the radio goes to standby.' +
+        (w.off_held === 'shutdown' ? ' Left there ' + (w.held_s || 5) + ' s, it shuts down safely.' : '')]);
+    } else if (w.kind === 'release_key'){
+      out.push([h('b', null, 'Off: '), 'press the release key — standby.' + (w.hold === 'shutdown' ? ' Hold it to shut down.' : '')]);
+    }
+  }
+  return out;
+}
+function keyCard(size){
+  const room = settings && settings.room && settings.room.custom ? settings.room.name : '';
+  const keys = cfg.keys || [];
+  const list = h('ol', {class:'kc-keys'}, keys.map(k => {
+    const tap = cardWhat(k.tap), hold = cardWhat(k.hold), src = cardSrc(k.tap);
+    return h('li', {class:'kc-key', 'data-key':k.id},
+      h('span', {class:'kc-cap' + (k.id === 'pu' ? ' pu' : ''), 'aria-label': keyLabel(k)}, k.label),
+      h('div', {class:'kc-jobs'},
+        h('span', {class:'kc-tap'}, tap || '—'),
+        src ? h('span', {class:'kc-src'}, src) : null,
+        hold ? h('span', {class:'kc-hold'}, h('span', {class:'kc-lbl'}, 'Hold '), hold) : null));
+  }));
+  const combos = (cfg.combos || []).filter(c => Array.isArray(c.keys) && c.keys.length === 2 && verbOf(c) !== 'none');
+  const more = [];
+  if (combos.length) more.push(h('section', {class:'kc-sec kc-combos'}, h('h2', null, 'Two keys together'),
+    combos.map(c => h('p', null, h('b', null, comboOrder(c.keys).map(id => comboKey(id).label).join(' + ')),
+      ' held ' + holdWords(c.hold_s) + ': ' + comboWhat(c)))));
+  const pw = powerLines();
+  if (pw.length) more.push(h('section', {class:'kc-sec kc-power'}, h('h2', null, 'Switching off'), pw.map(l => h('p', null, l))));
+  return h('article', {class:'keycard kc-' + size, id:'keyCard', style:'--n:' + keys.length, 'aria-label':'Key card'},
+    h('header', {class:'kc-head'}, h('h1', {class:'kc-title'}, 'Hasler'), room ? h('span', {class:'kc-room'}, room) : null,
+      h('span', {class:'kc-kind'}, 'The keys')),
+    h('div', {class:'kc-body'}, list, more.length ? h('div', {class:'kc-more'}, more) : null),
+    h('footer', {class:'kc-foot'}, h('span', null, 'Tap a key to play · hold for its second job'),
+      h('span', {class:'kc-mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
+}
+function renderPrint(){
+  const panel = $('panel'); panel.textContent = '';
+  const SIZES = [{id:'a6', label:'Card · A6'}, {id:'strip', label:'Strip · under the keys'}];
+  const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Size'}, SIZES.map(z =>
+    h('button', {type:'button', role:'radio', 'aria-checked': String(cardSize === z.id), tabindex: cardSize === z.id ? '0' : '-1', 'data-size': z.id,
+      onclick: () => { cardSize = z.id; try { localStorage.setItem('hasler.card', z.id); } catch (_) {} renderPrint(); const b = panel.querySelector('[data-size="' + z.id + '"]'); if (b) b.focus(); }}, z.label)));
+  panel.append(h('div', {class:'print-tools'}, screenTop('Key card', 'edit'),
+    h('p', {class:'hint'}, 'What each key does, to keep by the radio. ' + (isDirty() ? 'It shows the keys as last saved.' : 'It shows the keys as saved now.')),
+    seg, h('div', {class:'actions'}, h('button', {type:'button', class:'btn primary', id:'printBtn', disabled: !cfg, onclick: () => window.print()}, 'Print'))));
+  if (!cfg){ panel.append(h('p', {class:'loading'}, cfg === null ? 'Warming up the valves…' : 'Couldn’t load the keys.')); return; }
+  panel.append(h('div', {class:'card-sheet'}, keyCard(cardSize)));
+}
+// The paper size goes in only while the card prints, so other pages print as before.
+const PAGE_SIZE = {a6:'@page{size:105mm 148mm;margin:0}', strip:'@page{size:A4 landscape;margin:10mm}'};
+window.addEventListener('beforeprint', () => {
+  if (view !== 'print') return;
+  const st = $('cardPage') || document.head.appendChild(h('style', {id:'cardPage'}));
+  st.textContent = PAGE_SIZE[cardSize] || '';
+});
+window.addEventListener('afterprint', () => { const st = $('cardPage'); if (st) st.remove(); });
+
 /* ================= boot ================= */
 // Pick up changes made elsewhere (another phone, Browse) before editing.
 async function refreshConfig(){
@@ -7855,6 +8053,7 @@ async function loadConfig(){
   } catch (_) { cfg = cfg || undefined; }
   buildBank(); renderRemote(); paintMr();
   if (view === 'edit'){ onRoute(); }
+  else if (view === 'print') renderPanel();
 }
 window.addEventListener('beforeunload', e => { const pg = SET_PAGE[curPage()]; if (isDirty() || (pg && pg.dirty && pg.dirty())){ e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 's' && view === 'edit'){ e.preventDefault(); save(); } });

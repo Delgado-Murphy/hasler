@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 EVENTS = ("tap", "hold")
 VOLUME_DELTA = 2          # knob units per step; ~1.8 dB on the Amp4 Pro
 VOLUME_REPEAT_S = 0.15    # a held volume key ramps at this rate
+SHORT_MAX = 12            # the owner's own key-cap label (preset ``short``)
 
 # The menu, in the order the page shows it. ``params`` are the fields the page
 # must collect for that choice.
@@ -125,7 +126,10 @@ def to_page(spec: dict | None) -> dict | None:
 def preset_to_page(p: Preset) -> dict:
     """A preset for the page; a ytm reference adds its fields (kind, id, mode,
     seed, country, list, title, params - player/sources/ytm_refs.py)."""
-    return {"n": p.n, "name": p.name, "source": p.source, "uri": p.uri, "shuffle": p.shuffle, **p.ytm_ref}
+    doc = {"n": p.n, "name": p.name, "source": p.source, "uri": p.uri, "shuffle": p.shuffle, **p.ytm_ref}
+    if p.short:
+        doc["short"] = p.short      # the owner's own key-cap label
+    return doc
 
 
 def ha_connected(ha: Any) -> bool:
@@ -158,6 +162,39 @@ def combo_to_page(combo: dict) -> dict:
     }
 
 
+def power_doc(actions: Actions) -> list[dict]:
+    """How this cabinet is switched off, for the printed key card: one entry per
+    switch that puts the radio in standby.
+
+    ``{"kind": "end_switch", "control": "tone", "off": "standby", "off_held":
+    "shutdown"|None, "held_s": 5.0|None}`` - a knob's switch at the end of its
+    turn; ``{"kind": "release_key", "control": "presets", "tap": "standby",
+    "hold": "shutdown"|None}`` - the release key of an interlocked bank.
+    Keys bound to standby_toggle are on the card already, as keys."""
+    table = actions.variant.actions
+
+    def verb(name: str) -> str | None:
+        spec = table.get(name)
+        return spec.get("do") if isinstance(spec, dict) else None
+
+    out: list[dict] = []
+    for c in actions.variant.controls:
+        if not isinstance(c, dict):
+            continue
+        sw = c.get("end_switch")
+        if isinstance(sw, dict) and sw.get("id") and verb(f"{sw['id']}.off") == "standby":
+            held = verb(f"{sw['id']}.off_held")
+            ms = sw.get("off_hold_ms")
+            out.append({"kind": "end_switch", "control": c.get("id"), "off": "standby", "off_held": held,
+                        "held_s": round(ms / 1000, 1) if held and isinstance(ms, (int, float)) else None})
+        if c.get("kind") == "interlocked_bank" and c.get("release"):
+            rid = f"{c.get('id')}_release"
+            if verb(f"{rid}.tap") == "standby":
+                out.append({"kind": "release_key", "control": c.get("id"), "tap": "standby",
+                            "hold": verb(f"{rid}.hold")})
+    return out
+
+
 def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
     table = actions.variant.actions
     keys = []
@@ -179,6 +216,8 @@ def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
         "combo_keys": combo_keys(actions),
         "combo_limits": {"hold_s": list(COMBO_HOLD_RANGE), "default_hold_s": DEFAULT_COMBO_HOLD_S,
                          "max": MAX_COMBOS},
+        "power": power_doc(actions),
+        "short_max": SHORT_MAX,
     }
 
 
@@ -285,11 +324,28 @@ def ytm_ref_from_page(raw: dict, where: str, errors: list) -> tuple[dict, str] |
     return ref, ytm_refs.link_for(ref) or uri
 
 
+def short_from_page(raw: dict, where: str, errors: list) -> str | None:
+    """The preset's optional ``short`` (its own key-cap label): "" when absent
+    or blank, None (and an error at ``<where>.short``) when it can't be one."""
+    value = raw.get("short")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        errors.append({"where": f"{where}.short", "message": "the key label must be text"})
+        return None
+    value = " ".join(value.split())
+    if len(value) > SHORT_MAX:
+        errors.append({"where": f"{where}.short", "message": f"a key label fits {SHORT_MAX} characters"})
+        return None
+    return value
+
+
 def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
     """Page preset -> descriptor-style spec (``{n, name, radio: …}``).
 
     A ytm preset with a ``kind`` keeps its reference beside the link:
     ``{n, name, ytm: <link or "">, kind, id, …, shuffle}`` (ytm_ref_from_page).
+    An owner's key-cap label rides along as ``short`` (optional, up to SHORT_MAX).
     """
     if not isinstance(raw, dict):
         errors.append({"where": where, "message": "not a preset"})
@@ -298,6 +354,9 @@ def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
         n = int(raw.get("n"))
     except (TypeError, ValueError):
         errors.append({"where": f"{where}.n", "message": "missing preset number"})
+        return None
+    short = short_from_page(raw, where, errors)
+    if short is None:
         return None
     source = raw.get("source", "radio")
     if source not in ("radio", "spotify", "ytm"):
@@ -313,6 +372,8 @@ def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
         endless = ref["kind"] == "radio" or (ref["kind"] == "artist" and ref.get("mode") != "top")
         if raw.get("shuffle") and not endless:
             spec["shuffle"] = True
+        if short:
+            spec["short"] = short
         return spec
     uri = normalise_uri(source, str(raw.get("uri") or ""))
     problem = check_uri(source, uri)
@@ -323,6 +384,8 @@ def preset_from_page(raw: Any, where: str, errors: list) -> dict | None:
     spec: dict[str, Any] = {"n": n, "name": name[:60], source: uri}
     if source != "radio" and raw.get("shuffle"):
         spec["shuffle"] = True
+    if short:
+        spec["short"] = short
     return spec
 
 
