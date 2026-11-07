@@ -155,7 +155,7 @@ const shot = async (target, name) => { if (SHOTS){ fs.mkdirSync(SHOTS, {recursiv
       const page = await fresh('#settings/sound');
       await page.waitForSelector('#limit');
       await until(async () => (await page.getAttribute('#limit', 'max')) === '90', 5000, 'the slider max');
-      assert((await page.textContent('#limitHint')).includes('the maker set the top at 90'), await page.textContent('#limitHint'));
+      assert((await page.textContent('#limitHint')).includes('· top 90') && !/maker/.test(await page.textContent('#limitHint')), await page.textContent('#limitHint'));
       const s = await (await fetch(radio.base + '/api/settings')).json();
       assert(JSON.stringify(s.volume_limit_range) === '[30,90]' && s.volume_limit_set === false, JSON.stringify([s.volume_limit_range, s.volume_limit_set]));
       const r = await fetch(radio.base + '/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json', Host: 'localhost'}, body: JSON.stringify({volume_limit: 95})});

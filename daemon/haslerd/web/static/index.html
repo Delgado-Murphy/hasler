@@ -37,8 +37,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 [hidden]{display:none !important}
 .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+:root{accent-color:var(--amber)}
 :focus{outline:none}
 :focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+/* A plain link in running text: brass, never the browser's blue / purple on the dark ground. */
+#app a:not([class]):not([style]),#dlg a:not([class]):not([style]){color:var(--brass);text-underline-offset:3px}
 .mono{font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;font-size:10px;line-height:14px;color:var(--muted)}
 
 /* ---------- shell ---------- */
@@ -268,7 +271,7 @@ button{cursor:pointer}
 .choice.hold .choice-name{white-space:normal;overflow-wrap:anywhere}
 .choice.hold.miss{border-color:rgba(217,68,43,.6)}
 .sheet{position:relative;display:flex;flex-direction:column;gap:16px;margin:0 -16px;padding:18px 18px 0;border-top:1px solid var(--line2);border-radius:22px 22px 0 0;
-  background:linear-gradient(180deg,#261A11 0%,#1F150D 100%);min-height:60vh}
+  background:linear-gradient(180deg,#261A11 0%,#1F150D 100%);min-height:60vh;min-height:60svh}
 .grab{align-self:center;width:40px;height:4px;border-radius:2px;background:var(--line2);flex:none}
 .sheet-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .sheet-head h2{margin:0;color:var(--title);font:600 28px/32px var(--serif)}
@@ -300,13 +303,15 @@ button{cursor:pointer}
 .searchbox svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none}
 .searchbox input[type]{padding-left:40px}
 input[type=text],input[type=search],input[type=url],input[type=password],input[type=number],input[type=time],textarea{width:100%;min-height:46px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;
-  background:var(--well);color:var(--cream);font:15px/20px var(--sans);-webkit-appearance:none;appearance:none}
+  background:var(--well);color:var(--cream);font:16px/20px var(--sans);-webkit-appearance:none;appearance:none}
 input::-webkit-search-cancel-button{-webkit-appearance:none}
 input:focus-visible,textarea:focus-visible{outline:2px solid var(--amber);outline-offset:1px;border-color:transparent}
 input::placeholder,textarea::placeholder{color:#857256}
-textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
+textarea{min-height:120px;resize:vertical;font:16px/1.45 var(--sans)}
 [aria-invalid="true"]{border-color:var(--red) !important}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
+/* 36 px to look at, 44 px to hit (::after) */
+.chip::after{content:"";position:absolute;inset:-4px 0}
 .chip{position:relative;min-height:36px;padding:4px 14px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--muted);font:700 13px/1 var(--sans)}
 .chip::after{content:"";position:absolute;inset:-4px 0}
 .chip[aria-checked="true"]{background:var(--cream);border-color:var(--cream);color:#1E140C}
@@ -351,7 +356,7 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .switch input::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
 .switch input:checked{background:#5A4128}
 .switch input:checked::after{transform:translateX(18px);background:var(--amber)}
-.actions{position:sticky;bottom:0;z-index:5;display:flex;gap:10px;margin:auto -18px 0;padding:14px 18px calc(16px + env(safe-area-inset-bottom));
+.actions{position:sticky;bottom:var(--vv-bottom,0px);z-index:5;display:flex;gap:10px;margin:auto -18px 0;padding:14px 18px calc(16px + env(safe-area-inset-bottom));
   background:linear-gradient(180deg,rgba(31,21,13,0),#1F150D 22%)}
 .btn{flex:1 1 0;min-height:48px;padding:12px 14px;border:1px solid var(--line2);border-radius:12px;background:none;color:var(--brass);font:700 15px/20px var(--sans);display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .btn:hover:not(:disabled):not([aria-disabled="true"]){border-color:#7A5A36}
@@ -376,7 +381,7 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 /* The key list: a Tap line and a Hold line per key, each its own button, never cut short. */
 .keylist.slots li{display:flex;align-items:center;gap:14px;padding:6px 4px;border-bottom:1px solid var(--line)}
 .keylist.slots .kl-n{cursor:pointer}
-.keylist.slots button{display:flex;align-items:baseline;gap:8px;min-height:32px;padding:5px 2px;border:0;border-radius:6px}
+.keylist.slots button{display:flex;align-items:center;gap:8px;min-height:44px;padding:5px 2px;border:0;border-radius:6px}
 .kl-k{flex:none;width:34px;color:var(--muted);font:10px/20px var(--mono);letter-spacing:.12em;text-transform:uppercase}
 .kl-v{flex:1;min-width:0;color:var(--cream);font:600 15px/20px var(--serif);overflow-wrap:anywhere}
 .kl-line.hold .kl-v{color:var(--text2);font:500 14px/20px var(--sans)}
@@ -452,7 +457,7 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 /* the station browser */
 .br{display:flex;flex-direction:column;gap:18px;min-width:0}
 .br-head{display:flex;flex-direction:column;gap:10px}
-.br-browse .br-head{position:sticky;top:0;z-index:12;margin:0 -16px;padding:8px 16px 10px;background:var(--ground);box-shadow:0 8px 14px -12px rgba(0,0,0,.7)}
+.br-browse .br-head{position:sticky;top:0;z-index:12;margin:0 -16px;padding:8px 16px 10px;padding-top:max(8px,env(safe-area-inset-top));background:var(--ground);box-shadow:0 8px 14px -12px rgba(0,0,0,.7)}
 @media (min-width:960px){ .br-browse .br-head{margin:0;padding:8px 0 10px} }
 .br-body{display:flex;flex-direction:column;gap:22px;min-width:0}
 .br-chips{flex-wrap:nowrap;overflow-x:auto;margin:0 -16px;padding:4px 16px;scrollbar-width:none}
@@ -519,7 +524,7 @@ textarea{min-height:120px;resize:vertical;font:13px/1.45 var(--mono)}
 .country .cn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .br-net .shelf-head h2{font-size:17px}
 /* station sheet, filter sheets, menus */
-dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);overflow:auto;overscroll-behavior:contain}
+dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);max-height:min(88dvh,760px);overflow:auto;overscroll-behavior:contain}
 .sts-head{display:flex;align-items:flex-start;gap:14px;margin-bottom:12px}
 .sts-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding-top:4px}
 .sts-txt h2{margin:0;overflow-wrap:anywhere}
@@ -669,7 +674,7 @@ dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);overflow:auto;overscroll
 .pair{display:flex;gap:10px;min-width:0}
 .pair > .field{flex:1 1 0;min-width:0}
 .acts{display:flex;flex-wrap:wrap;gap:10px}
-.grp-sec{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.grp-sec{display:flex;flex-direction:column;gap:8px;margin-top:8px;scroll-margin-top:64px}
 .grp-sec + .grp-sec{margin-top:20px}
 .grp-lbl{padding:0 4px}
 h3.grp-lbl{margin:0;font-weight:400}
@@ -695,8 +700,8 @@ input[type=range]:disabled{opacity:.4;cursor:default}
 @keyframes cf-breathe{50%{box-shadow:0 0 18px rgba(255,178,56,.28)}}
 .li-danger{width:100%;text-align:left;border:0;background:none;padding:0;min-height:44px;color:var(--red-text);font:600 15px/20px var(--sans)}
 input[type=range]{width:100%;height:44px;margin:0;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}
-input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--amber) var(--pct,50%),var(--line) var(--pct,50%))}
-input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:linear-gradient(90deg,var(--amber) var(--pct,50%),var(--line) var(--pct,50%))}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;--stop:calc(12px + (100% - 24px) * var(--p,.5));background:linear-gradient(90deg,var(--amber) var(--stop),var(--line) var(--stop))}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;--stop:calc(12px + (100% - 24px) * var(--p,.5));background:linear-gradient(90deg,var(--amber) var(--stop),var(--line) var(--stop))}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;margin-top:-10px;border-radius:50%;border:0;background:radial-gradient(circle at 40% 30%,#F0D59A,#C9A15A 55%,#7A5A2C)}
 input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;border:0;background:radial-gradient(circle at 40% 30%,#F0D59A,#C9A15A 55%,#7A5A2C)}
 .steps{margin:0;padding-left:22px;color:var(--text2);font-size:14px}
@@ -707,6 +712,7 @@ details.how summary{cursor:pointer;color:var(--brass);font:600 13px/20px var(--s
 details.how summary::-webkit-details-marker{display:none}
 details.how summary::before{content:"›";display:inline-block;width:14px;transition:transform .15s}
 details.how[open] summary::before{transform:rotate(90deg)}
+.more-body{display:flex;flex-direction:column;gap:10px;padding-top:4px}
 .about{margin:auto 0 0;padding-top:28px;display:flex;flex-direction:column;align-items:center;gap:10px}
 .about p{margin:0;color:var(--muted);font-size:12px}
 .ent{display:flex;align-items:center;gap:10px;padding:10px 16px;min-height:60px;border-top:1px solid var(--line)}
@@ -939,12 +945,12 @@ input[type=range].kel::-moz-range-track{background:linear-gradient(90deg,#FF9A3C
 .field > label.switch{color:inherit;font:inherit;letter-spacing:0;text-transform:none}
 .sub-lbl{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .sub-lbl label,.sub-lbl > span:first-child{color:var(--muted);font:10px/14px var(--mono);letter-spacing:.14em;text-transform:uppercase}
-select{width:100%;min-height:46px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--well);color:var(--cream);font:15px/20px var(--sans)}
+select{width:100%;min-height:46px;padding:11px 14px;border:1px solid var(--line);border-radius:10px;background:var(--well);color:var(--cream);font:16px/20px var(--sans)}
 select:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
 
 /* ---------- dialog / toast ---------- */
 dialog{width:min(440px,100vw);max-width:100vw;margin:auto auto 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));border:0;border-top:1px solid var(--line2);border-radius:22px 22px 0 0;
-  background:linear-gradient(180deg,#2A1C12,#1F150D);color:var(--cream);max-height:85vh;overflow:auto}
+  background:linear-gradient(180deg,#2A1C12,#1F150D);color:var(--cream);max-height:85vh;max-height:85dvh;overflow:auto}
 dialog::backdrop{background:rgba(10,6,3,.62)}
 @media (min-width:600px){ dialog{margin:auto;border:1px solid var(--line2);border-radius:18px} }
 dialog h2{margin:0 0 4px;color:var(--title);font:600 22px/28px var(--serif)}
@@ -972,6 +978,8 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .set-row:focus-visible{outline-offset:-3px}
 .set-row .li-txt{flex:1}
 .set-row .li-sub{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+/* The Settings home stays scannable: one line per row (the full line is the row's title tooltip). */
+#setRows .set-row .li-sub,#setWrong .set-row .li-sub{-webkit-line-clamp:1}
 .set-row .chev{flex:none;color:var(--brass)}
 .set-ic{flex:none;width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--well);border:1px solid var(--line);color:var(--brass)}
 .attn{border-color:rgba(233,179,92,.45);background:linear-gradient(180deg,#2A1D10,#21160D)}
@@ -983,6 +991,7 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .yours-count{padding-right:4px;color:var(--muted);font:12px/16px var(--sans);white-space:nowrap}
 .yours-lede{padding:0 4px}
 .yours-row{padding-right:10px}
+.yours-row .li-act{margin-right:8px}
 .yours-go{flex:1;min-width:0;display:flex;align-items:center;gap:12px;align-self:stretch;margin:-12px 0 -12px -16px;padding:12px 0 12px 16px;color:inherit;text-decoration:none;background:none;border:0;font:inherit;text-align:left;cursor:pointer}
 .yours-go:focus-visible{outline-offset:-3px}
 .yours-dot{flex:none;width:8px;height:8px;border-radius:50%;border:1.5px solid var(--brass)}
@@ -1028,9 +1037,9 @@ pre.say{margin:0;padding:10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;f
 .pv-pill button{min-height:36px;min-width:44px;padding:0 10px;border:0;border-radius:14px;background:var(--amber);color:#1A1208;font:800 12.5px/16px var(--sans)}
 .pv-pill .pv-short{display:none}
 @media (max-width:420px){ .pv-pill .pv-what{display:none} .pv-pill .pv-short{display:inline} }
-.app[data-view="settings"] .panel > .title-row{position:sticky;top:0;z-index:15;margin:0 -16px;padding:6px 16px;background:var(--ground)}
+.app[data-view="settings"] .panel > .title-row{position:sticky;top:0;z-index:15;margin:0 -16px;padding:6px 16px;padding-top:max(6px,env(safe-area-inset-top));background:var(--ground)}
 @media (min-width:960px){ .app[data-view="settings"] .panel > .title-row{margin:0;padding:6px 0} }
-.savebar{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;gap:10px;margin:8px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
+.savebar{position:sticky;bottom:var(--vv-bottom,0px);z-index:20;display:flex;align-items:center;gap:10px;margin:8px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
   border-top:1px solid var(--line2);background:var(--sheet);box-shadow:0 -10px 24px rgba(0,0,0,.45)}
 .savebar[hidden]{display:none !important}
 .savebar .sb-txt{flex:1;min-width:0;color:#F3CF8C;font:600 14px/18px var(--sans)}
@@ -1136,7 +1145,7 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
   .app[data-view="print"] #panel{display:block;min-height:0;padding:0}
   .app[data-view="print"] .print-tools,#toast,#dlg{display:none !important}
   .card-sheet{display:block;padding:0;overflow:visible}
-  .keycard{box-shadow:none;border-radius:0;margin:0 auto;background:#fff}
+  .keycard{box-shadow:none;border-radius:0;margin:0 auto;background:#fff;zoom:1 !important}
   .keycard.kc-strip{outline:.4pt dashed #B8A888;outline-offset:0;max-width:100%}
 }
 </style>
@@ -1253,20 +1262,47 @@ const $ = id => document.getElementById(id);
 const clone = o => JSON.parse(JSON.stringify(o));
 function h(tag, props, ...kids){
   const el = document.createElement(tag);
+  let val;
   for (const [k, v] of Object.entries(props || {})){
     if (v == null || v === false) continue;
     if (k === 'class') el.className = v;
     else if (k === 'text') el.textContent = v;
     else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
-    else if (k === 'value' || k === 'checked' || k === 'disabled') el[k] = v;
+    else if (k === 'value') val = v;
+    else if (k === 'checked' || k === 'disabled') el[k] = v;
     else el.setAttribute(k, v === true ? '' : v);
   }
+  // The value goes in last: a range snaps it to the min / max / step it has by then
+  // (set before step="0.1", 1 s on a 0.5–3 slider became 1.5 and the thumb left its fill).
+  if (val != null){ el.value = val; if (el.type === 'range') rangeFill(el); }
   for (const c of kids.flat()){
     if (c == null || c === false || c === '') continue;
     el.append(c.nodeType ? c : document.createTextNode(String(c)));
   }
   return el;
 }
+// Every slider's filled track (--p, 0..1) from its own min / max / value: on render (h), on input
+// (the listener below), and after a value is set in place (call it again).
+function rangeFill(el){
+  const lo = +el.min || 0, hi = el.max === '' ? 100 : +el.max, v = +el.value;
+  el.style.setProperty('--p', String(Math.max(0, Math.min(1, (v - lo) / ((hi - lo) || 1)))));
+}
+document.addEventListener('input', e => { const t = e.target; if (t && t.type === 'range') rangeFill(t); }, true);
+// Back (or a swipe back) with a sheet open: the sheet goes with the page it was opened on, instead of
+// staying over the new page with everything under it inert. Registered before onRoute; a step held
+// to ask "Save your changes?" (routeHold) keeps its sheet.
+window.addEventListener('hashchange', () => {
+  if (typeof routeHold !== 'undefined' && routeHold) return;
+  document.querySelectorAll('dialog[open]').forEach(d => { if (!d.dataset.keepOnRoute) d.close(); });
+});
+// A browser bar or keyboard laid over the bottom of the page (iOS Safari): the sticky Save / Try
+// buttons rise above it instead of sitting under it, cut off.
+(() => {
+  const vv = window.visualViewport; if (!vv) return;
+  const fit = () => { const gap = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    document.documentElement.style.setProperty('--vv-bottom', (gap > 0 && gap < 400 && Math.abs(vv.scale - 1) < .01 ? gap : 0) + 'px'); };
+  vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit); fit();
+})();
 // Static, trusted SVG markup only (icons below).
 function icon(markup, w = 16, hgt = 16, vb){
   const t = document.createElement('template');
@@ -1410,11 +1446,11 @@ const SHORT = {none:'Nothing', preset:'Play music', cycle_source:'Cycle sources'
   ha_light:'Light', ha_service:'Other action', custom:'Custom', join_group:'Join another Hasler', bluetooth:'Bluetooth', wifi_setup:'Wi-Fi setup'};
 // What each choice in the "A tap… / Holding…" list says under its name.
 const VERB_DESC = {
-  cycle_source:'Steps to the next source. Which ones, and in what order, is set in Settings → Source key & knobs',
+  cycle_source:'Steps to the next source (which ones: Settings → Keys)',
   join_group:'Join the music playing on another Hasler',
-  bluetooth:'Plays a phone through the radio. Press again for the next track, hold to pause',
-  sleep:'Plays on for a while, fades out over the last minute, then standby',
-  wifi_setup:'Opens the radio’s setup network now, forgetting nothing — for a changed router password or a guest network. It goes back to its Wi-Fi by itself in a few minutes if nobody uses it',
+  bluetooth:'Plays a phone through the radio · again: next track, hold: pause',
+  sleep:'Plays on a while, fades out, then standby',
+  wifi_setup:'Opens the setup network for a few minutes, forgetting nothing — for a new router password',
   ha_light:'Turn lights on or off, dim them, change their colour',
   ha_scene:'Set a scene from Home Assistant',
   ha_script:'Run a Home Assistant script',
@@ -2098,6 +2134,9 @@ function openSleep(){
     h('div', {class:'sleep-opts', style:'grid-template-columns:1fr' + (s ? ' 1fr' : '')},
       s ? h('button', {type:'button', class:'btn', id:'sleepOff', onclick: () => { close(); cancelSleep(); }}, 'Turn the timer off') : null,
       h('button', {type:'button', class:'btn', onclick: close}, s ? 'Keep it' : 'Cancel')));
+  // A tap outside the sheet closes it, like the other sheets.
+  dlg.addEventListener('click', e => { const r = dlg.getBoundingClientRect();
+    if (e.target === dlg && (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom)) close(); });
   document.body.append(dlg); dlg.showModal();
   const first = dlg.querySelector('[data-min]'); if (first) first.focus();
 }
@@ -2351,6 +2390,7 @@ function onRoute(){
     ed.pick = sl === 'tap' ? 'tap' : null; ed.ent = null; ed.lp = null; ed.rename = false; ed.combo = null;
     edArrive = sl && next.arg ? {key: next.arg, slot: sl, until: Date.now() + 8000} : null;
   }
+  setUi.deepDone = false;
   renderPanel();
   if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); paintGearDot(); }
   if (changed && (view === 'remote' || view === 'settings')) loadGroup().then(() => { paintGroup(); grpSchedule(); });
@@ -2360,7 +2400,7 @@ function onRoute(){
   if (view === 'edit' && next.arg === 'reset'){ const b = $('resetKeys'); if (b){ b.scrollIntoView({block:'center'}); b.focus({preventScroll:true}); } }
   else if (view === 'edit' && next.arg === 'combos' && $('comboH')){ const t = $('comboH'); t.scrollIntoView({block:'start'}); t.focus({preventScroll:true}); }
   else if (pageChanged){
-    window.scrollTo(0, 0);
+    if (!setUi.deepDone) window.scrollTo(0, 0);    // a deep link already scrolled to its section
     const back = curPage() === 'home' && setUi.backTo ? $('setrow-' + setUi.backTo) : null;
     const f = back || (view === 'remote' ? null : $('panel').querySelector('[data-focus]'));
     if (f) f.focus({preventScroll:true});
@@ -2368,6 +2408,7 @@ function onRoute(){
   }
   if (view === 'edit' && edArrive) arriveSlot();
   setDeepLink();
+  setUi.deepDone = false;
 }
 window.addEventListener('hashchange', onRoute);
 // Arrow keys move between the choices of any segmented control (Enter/Space picks).
@@ -2528,7 +2569,7 @@ function keyList(){
   }
   // The built-in stations are the starter set in force (cfg.starter); "Start from a set…" opens the others.
   const sets = (cfg && cfg.starters) || [], cur = sets.find(s => s.id === cfg.starter);
-  return h('div', {class:'field'}, h('p', {class:'hint'}, latchingBank() ? latchHint() : 'Pick a key to change what it plays, and what it does when you hold it.'), ul,
+  return h('div', {class:'field'}, h('p', {class:'hint'}, latchingBank() ? latchHint() : 'Pick a key to change it.'), ul,
     combosOn() ? comboSection() : null,
     h('div', {class:'danger-row', id:'sec-reset'},
       h('span', {class:'li-sub'}, 'Every key back to the built-in stations' + (cur ? ' (' + cur.title + ')' : '') + '. The radio asks for a key press to be sure.'),
@@ -3035,9 +3076,8 @@ function capWords(l){
 }
 const kelvinWord = k => k < 3000 ? 'warm' : k < 4500 ? 'neutral' : 'cool';
 function rangeInput(props, lo, hi, v, onInput){
-  const pct = x => ((x - lo) / ((hi - lo) || 1) * 100) + '%';
-  return h('input', Object.assign({type:'range', min:String(lo), max:String(hi), value:String(v), style:'--pct:' + pct(v),
-    oninput: e => { e.target.style.setProperty('--pct', pct(+e.target.value)); onInput(+e.target.value); }}, props));
+  return h('input', Object.assign({type:'range', min:String(lo), max:String(hi), value:String(v),
+    oninput: e => onInput(+e.target.value)}, props));
 }
 // A multi-choice list grouped by area (lights, or what another action works on).
 function multiPicker(k, slot, items, areas, what){
@@ -3535,7 +3575,8 @@ function putItemOnKey(item, keyId){
     const shuffle = ref.kind ? ['playlist', 'liked', 'mood'].includes(ref.kind) && !ytmEndless(item) : item.type === 'playlist';
     const fields = Object.assign({name, source:item.source, uri:item.uri || '', shuffle}, ref);
     let p = k.tap && k.tap.do === 'preset' && refCount(d, k.tap.n) === 1 ? presetIn(d, k.tap.n) : null;
-    if (p){ for (const f of YTM_REF) delete p[f]; Object.assign(p, fields); }
+    // The old cap's short name goes too: the key's cap says the new name (COFFEE SHOP stayed on key 3).
+    if (p){ for (const f of YTM_REF) delete p[f]; delete p.short; Object.assign(p, fields); }
     else { p = Object.assign({n: nextFreeN(d)}, fields); d.presets.push(p); k.tap = {do:'preset', n:p.n}; }
   }, name + ' is on ' + (k0 ? keyLabel(k0).replace(/^Key/, 'key') : keyId));
 }
@@ -3740,7 +3781,7 @@ function comboSheet(sheet, c){
       c.hold_s = x; $('holdSVal').textContent = holdWords(x); $('holdS').setAttribute('aria-valuetext', holdWords(x));
       clearErr(c.id + '._'); paintSave();
     }),
-    h('p', {class:'hint'}, 'Hold both keys together this long. Then neither key does its own tap or hold; let go sooner and nothing happens.')));
+    h('p', {class:'hint'}, 'Let go sooner and nothing happens.')));
   if (ed.pick !== 'combo') sheet.append(h('div', {class:'sub-lbl'}, h('span', null, 'Then it does')));
   actionSection(sheet, c, 'combo');
   const dirty = isDirty(), ready = comboReady(c), lbl = two ? name : 'combination';
@@ -5497,6 +5538,14 @@ function verTap(){
 }
 const setGroup = (id, label, ...kids) => h('section', {class:'grp-sec', id:'sec-' + id, 'aria-labelledby':'sech-' + id, tabindex:'-1'},
   h('h3', {class:'mono grp-lbl', id:'sech-' + id}, label), ...kids);
+// A page's rarely-used controls, folded under one small line ("More options"); open stays open across re-renders.
+const moreOpen = {};
+function moreBox(id, label, kids, open){
+  return h('details', {class:'how more', id:'more-' + id, open: open || moreOpen[id] ? true : null,
+    ontoggle: e => { moreOpen[id] = e.target.open; }}, h('summary', null, label), h('div', {class:'more-body'}, kids));
+}
+// A section that is only a fold: no heading of its own, the summary says it.
+const moreSec = (id, label, kids, open) => h('section', {class:'grp-sec', id:'sec-' + id, 'aria-label': label, tabindex:'-1'}, moreBox(id, label, kids, open));
 function setRow(id, title, sub, href, lead, extra){
   return h('a', Object.assign({class:'set-row', id:'setrow-' + id, href}, extra || {}), lead || null,
     h('span', {class:'li-txt'}, h('span', {class:'li-title'}, title), sub ? h('span', {class:'li-sub'}, sub) : null),
@@ -5520,7 +5569,7 @@ const skelRow = () => h('div', {class:'li skel', 'aria-busy':'true'}, h('i'), h(
 function setDeepLink(){
   if (!setUi.wantSec || view !== 'settings') return;
   const el = $('sec-' + setUi.wantSec); if (!el) return;
-  setUi.wantSec = null;
+  setUi.wantSec = null; setUi.deepDone = true;
   el.scrollIntoView({block:'start'});
   el.focus({preventScroll:true});
 }
@@ -5535,7 +5584,7 @@ const SET_STATIC = {
   accounts:'Spotify and YouTube Music — the accounts the keys play from',
   rooms:'This room’s name, and playing in step with the other Haslers',
   lamp:'How bright, when it dims, and what each colour means',
-  radio:'Wi-Fi, updates, Home Assistant, and help from the makers',
+  radio:'Wi-Fi, updates, Home Assistant and help',
 };
 function soundSummary(){
   if (!settings) return SET_STATIC.sound;
@@ -5739,7 +5788,8 @@ function setHomeAttention(panel){
 }
 function setHomeRows(panel){
   const rows = SET_PAGES.filter(p => p.summary && (!p.shown || p.shown()));
-  panel.append(h('nav', {class:'set-list', id:'setRows', 'aria-label':'Settings'}, rows.map(p => setRow(p.id, p.title, p.summary(), '#settings/' + p.id, setIc(SET_ICONS[p.id] || '')))));
+  panel.append(h('nav', {class:'set-list', id:'setRows', 'aria-label':'Settings'}, rows.map(p => { const sum = p.summary();
+    return setRow(p.id, p.title, sum, '#settings/' + p.id, setIc(SET_ICONS[p.id] || ''), {title: sum || null}); })));
 }
 function setHomeAbout(panel){
   const v = swVer();
@@ -5798,36 +5848,36 @@ function yoursRows(){
   const r = settings.room || {}, lp = lampPrefs();
   const keysDone = cfg.factory === false || cfg.starter_from === 'page';
   const nKeys = cfg.keys.filter(k => k.id !== 'pu').length;
-  rows.push({id:'ceiling', core:true, title:'Set how loud it may go', open:'The 1964 speaker has limits. Set the ceiling by ear, before the first loud evening.',
+  rows.push({id:'ceiling', core:true, title:'Set how loud it may go', open:'Set it by ear — it protects the 1964 speaker.',
     done: !!settings.volume_limit_set, after:'Loudest ' + settings.volume_limit, href:'#settings/sound/volume', word:'how loud'});
-  rows.push({id:'keys', core:true, title:'Put your music on the keys', open:'The ' + numWord(nKeys) + ' keys still play the makers’ test set. Choose your stations and playlists.',
+  rows.push({id:'keys', core:true, title:'Put your music on the keys', open:'They still play a test set. Choose your music.',
     done: keysDone, after: yoursKeysText(), run: startFromSet, word:'your keys'});
-  rows.push({id:'room', title:'Name the room', open:'Kitchen, Study, Hall… It shows on this page, on phones and in the rooms list.',
+  rows.push({id:'room', title:'Name the room', open:'Kitchen, Study, Hall…',
     done: !!r.custom, after: r.name, href:'#settings/rooms/name', word:'the room’s name'});
   if (lp.present){
     const night = settings.night || 'sun', loc = settings.location;
-    rows.push({id:'place', skip:true, title:'Tell it where it stands', open:'So the lamp knows when the sun sets and goes gentle at night.',
+    rows.push({id:'place', skip:true, title:'Tell it where it stands', open:'So the lamp dims after sunset.',
       done: night !== 'sun' || settings.location_source === 'owner',
       after: night === 'off' ? 'Never dims' : night !== 'sun' ? 'Dims ' + night.replace('-', ' to ') : (loc && loc.name ? loc.name + ' · ' : '') + 'dims by the sun',
       href:'#settings/lamp/night', word:'where it stands'});
   }
   if (btDoc && Array.isArray(btDoc.devices) && btDoc.available !== false){
     const bk = btKeyName(), key = bk && bk !== 'its key' ? bk : 'PU';
-    rows.push({id:'pair', skip:true, title:'Pair a phone', open:'Hold ' + key + ' on the radio until the lamp breathes blue, then choose Hasler on your phone.',
+    rows.push({id:'pair', skip:true, title:'Pair a phone', open:'Hold ' + key + ' until the lamp breathes blue.',
       done: btDoc.devices.length > 0, after: nameAnd(btDoc.devices.map(d => d.name || 'a phone')), href:'#settings/phones/bt', word:'a phone'});
   }
   const sp = spotifyAcct();
   if (sp && !attn.has('attn-spotify'))
-    rows.push({id:'spotify', skip:true, title:'Sign in to Spotify', open:'For Spotify on a key you need Premium. Guests on your Wi-Fi can already play to the radio from their own app.',
+    rows.push({id:'spotify', skip:true, title:'Sign in to Spotify', open:'For Spotify on a key (Premium).',
       done: !!sp.signed_in, after:'Signed in as ' + (sp.user || 'a Spotify account'), href:'#settings/accounts/spotify', word:'Spotify'});
   if (ytm.available && !attn.has('attn-ytm'))
-    rows.push({id:'ytm', skip:true, title:'Sign in to YouTube Music', open:'Only for your Liked songs and private playlists. Public playlists work without it.',
+    rows.push({id:'ytm', skip:true, title:'Sign in to YouTube Music', open:'Only for Liked songs and private lists.',
       done: !!ytm.signed_in, after:'Signed in', href:'#settings/accounts/ytm', word:'YouTube Music'});
   if (haState && !haState.unsupported && !attn.has('attn-ha') && !attn.has('attn-halost'))
-    rows.push({id:'ha', skip:true, title:'Connect Home Assistant', open:'If you have it: a held key can run a scene or set the lights.',
+    rows.push({id:'ha', skip:true, title:'Connect Home Assistant', open:'If you have it: a key can run a scene.',
       done: !!haState.connected, after:'Connected', href:'#settings/radio/ha', word:'Home Assistant'});
   // The card can't be known as printed: a Skip-only row, once the keys are the owner's.
-  if (keysDone) rows.push({id:'print', skip:true, title:'Print a card for the radio', open:'What each key does and what the lamp says, to keep by it.', done:false, href:'#print', word:'the card'});
+  if (keysDone) rows.push({id:'print', skip:true, title:'Print a card for the radio', open:'What each key does, to keep by it.', done:false, href:'#print', word:'the card'});
   return rows;
 }
 const yoursOpen = rows => rows.filter(r => !r.done && !yoursSkipped(r.id));
@@ -5870,7 +5920,7 @@ function setHomeYours(panel){
   sec.append(h('div', {class:'yours-head'}, h('h3', {class:'mono grp-lbl', id:'yoursH'}, 'Make it yours'),
     h('span', {class:'yours-count', id:'yoursCount'}, open.length + ' of ' + rows.length + ' to go')));
   if (!done.length && !skipped.length) sec.append(h('p', {class:'hint yours-lede', id:'yoursLede'},
-    'The radio works as it is. These are the choices that make it yours — a few minutes, in any order. The first one protects the old speaker.'));
+    'The radio works as it is. A few minutes, in any order.'));
   const list = h('div', {class:'set-list', id:'yoursList'}, open.map(yoursRow));
   if (done.length || skipped.length) list.append(h('div', {class:'yours-done', id:'yoursDone', title: done.map(r => r.title + ': ' + r.after).join('\n') || null}, h('span', {class:'yours-tick', 'aria-hidden':'true'}, '✓'),
     h('span', null, (done.length ? 'Done · ' + nameAnd(done.map(r => r.word)) : 'Skipped · ' + nameAnd(skipped.map(r => r.word)))
@@ -6015,13 +6065,12 @@ function radioConfirm({action, args, title, sub}){ return pressToConfirm(action,
 // The ceiling slider runs 30 up to the maker's cap (/api/settings volume_limit_range;
 // the descriptor's audio.volume_limit_max, lowered per radio in box.yaml). Raising the cap is file-only.
 const limitRange = () => { const r = settings && settings.volume_limit_range; return Array.isArray(r) && r.length === 2 ? [+r[0], +r[1]] : [30, 100]; };
-const limitPct = v => { const [lo, hi] = limitRange(); return ((v - lo) / ((hi - lo) || 1) * 100) + '%'; };
-const limitHintText = () => { const hi = limitRange()[1]; return 'Protects the 1964 speaker — the knob stops here' + (hi < 100 ? ' · the maker set the top at ' + hi : ''); };
+const limitHintText = () => { const hi = limitRange()[1]; return 'The knob stops here, to protect the 1964 speaker' + (hi < 100 ? ' · top ' + hi : ''); };
 // Nobody has set the ceiling yet (volume_limit_set): the recipe, with this cabinet's volume-up key.
 const limitUnset = () => !!(settings && settings.volume_limit_set === false);
 function limitUnsetText(){
   const k = cfg && Array.isArray(cfg.keys) ? cfg.keys.find(x => verbOf(x.hold) === 'volume_up') : null;
-  return 'Not set yet — the radio is on its factory ceiling. Play something dense, hold ' + (k ? keyLabel(k).replace(/^Key /, 'key ') : 'the volume-up key')
+  return 'Play something dense, hold ' + (k ? keyLabel(k).replace(/^Key /, 'key ') : 'the volume-up key')
     + ' until it stops rising, and move this up in steps of 5. At the first rattle from the cone, go back two.';
 }
 const volText = v => v + ' of 100';
@@ -6030,9 +6079,9 @@ function renderSound(panel){
   const mono = settings && settings.mono;
   const [lo, hi] = limitRange();
   const range = h('input', {type:'range', id:'limit', min:String(lo), max:String(hi), step:'1', value: String(lim ?? hi), 'aria-describedby':'limitHint', disabled: lim == null,
-    'aria-valuetext': lim == null ? 'not known yet' : volText(lim), style:'--pct:' + limitPct(lim ?? hi),
+    'aria-valuetext': lim == null ? 'not known yet' : volText(lim),
     oninput: e => {
-      const v = +e.target.value; e.target.style.setProperty('--pct', limitPct(v)); e.target.setAttribute('aria-valuetext', volText(v));
+      const v = +e.target.value; e.target.setAttribute('aria-valuetext', volText(v));
       $('limitVal').textContent = v; $('limitWarn').hidden = v < 95; $('limitErr').textContent = '';
       if (limitFrom == null && settings) limitFrom = settings.volume_limit;
       clearTimeout(limitTimer); limitTimer = setTimeout(() => { const from = limitFrom; limitFrom = null; saveLimit(v, from); }, 350);
@@ -6043,14 +6092,14 @@ function renderSound(panel){
         h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'limit'}, 'Volume ceiling'), h('span', {class:'li-sub', id:'limitHint'}, limitHintText())),
         h('span', {class:'li-val', id:'limitVal', 'aria-hidden':'true', style:'padding-top:2px'}, lim ?? '—')),
       range,
-      h('p', {class:'note-bad', id:'limitWarn', hidden: !(lim >= 95)}, 'Above 95 the old speaker can rattle and distort. Go gently.'),
-      h('p', {class:'hint', id:'limitUnset', hidden: !limitUnset()}, limitUnsetText()),
+      h('p', {class:'note-bad', id:'limitWarn', hidden: !(lim >= 95)}, 'Above 95 the old speaker can rattle. Go gently.'),
+      h('details', {class:'how', id:'limitUnset', hidden: !limitUnset()}, h('summary', null, 'Not set yet — how to set it'), h('p', {class:'hint', style:'margin:0'}, limitUnsetText())),
       h('p', {class:'err', id:'limitErr', role:'alert'})),
     floorItem(),
     mono && mono.available ? h('div', {class:'li col', style:'gap:4px'},
       h('label', {class:'switch', for:'mono', style:'flex:1'},
         h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Mono'),
-          h('span', {class:'li-sub'}, 'One speaker: left and right mixed together, so nothing is lost')),
+          h('span', {class:'li-sub'}, 'Left and right mixed, for one speaker')),
         h('input', {type:'checkbox', role:'switch', id:'mono', checked: !!mono.on, onchange: e => saveMono(e.target.checked, true)})),
       h('p', {class:'err', id:'monoErr', role:'alert'})) : null)));
   const fxs = fxSection();
@@ -6079,14 +6128,16 @@ function renderPhones(panel){
   // Your phones: the Bluetooth block (what plays, the paired phones, pairing, reconnecting), on a radio that has it.
   panel.append(setGroup('bt', 'Your phones', h('div', {class:'list', id:'btBox'})));
   fillCast();
-  if (srcDoc && !srcDoc.missing && !srcDoc.err)
-    panel.append(setGroup('back', 'When a phone stops', h('div', {class:'list'}, h('div', {class:'li'},
+  // Set once and left: folded under More options (open for a name waiting for Save, or arrived at by address).
+  panel.append(moreSec('phones', 'More options', [
+    srcDoc && !srcDoc.missing && !srcDoc.err ? setGroup('back', 'When a phone stops', h('div', {class:'list'}, h('div', {class:'li'},
       h('label', {class:'switch', for:'resume', style:'flex:1'},
         h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Back to the radio when a phone stops'),
-          h('span', {class:'li-sub'}, 'When a phone stops playing, the radio goes back to its station by itself')),
+          h('span', {class:'li-sub'}, 'It goes back to its station by itself')),
         h('input', {type:'checkbox', role:'switch', id:'resume', checked: !!srcDoc.resume_after_cast,
-          onchange: e => setResume(e.target.checked, true)}))))));
-  panel.append(setGroup('names', 'What phones call the radio', h('div', {class:'list', id:'castNameBox'}, castNameRow())));
+          onchange: e => setResume(e.target.checked, true)}))))) : null,
+    setGroup('names', 'What phones call the radio', h('div', {class:'list', id:'castNameBox'}, castNameRow()))],
+    route.arg2 === 'back' || route.arg2 === 'names' || castNamesDirty().length > 0));
 }
 function loadPhones(){
   const again = () => { if (onPage('phones')) rerender(); };
@@ -6111,7 +6162,7 @@ function castNameRow(){
   return h('div', {class:'li col', style:'gap:10px'},
     h('div', {class:'li-row'},
       h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'What phones call the radio'),
-        h('span', {class:'li-sub'}, 'AirPlay, Bluetooth, Spotify and other apps all show this name.')),
+        h('span', {class:'li-sub'}, 'Every app on a phone shows this name.')),
       h('span', {class:'li-val', id:'castNameNow', style:'font-size:15px;flex:none;max-width:40%;overflow-wrap:anywhere;text-align:right'}, name)),
     h('p', {class:'li-sub', style:'margin:0'}, ...line),
     r.apply && r.apply.state !== 'idle' ? roomApplyLine(r.apply) : null,
@@ -6168,9 +6219,10 @@ function renderLamp(panel){
   lampGlow(panel);
   lampSettings(panel);
   lampMeanings(panel);
-  panel.append(lampGeek());
-  panel.append(h('p', {class:'hint', id:'lampMakers', style:'padding:0 4px'}, 'Lamp colours are set by the makers',
-    makerOn() ? [' — ', h('a', {href:'#settings/maker/colours', id:'lampMakersLink', style:'color:var(--brass);text-underline-offset:3px'}, 'change them in Maker tools')] : null, '.'));
+  panel.append(moreSec('lamp', 'More options', lampGeek(), route.arg2 === 'geek'));
+  // The lamp's colours themselves live in Maker tools: a pointer there only while they are on.
+  if (makerOn()) panel.append(h('p', {class:'hint', id:'lampMakers', style:'padding:0 4px'}, 'Lamp colours: ',
+    h('a', {href:'#settings/maker/colours', id:'lampMakersLink', style:'color:var(--brass);text-underline-offset:3px'}, 'change them in Maker tools'), '.'));
 }
 function loadLamp(){ loadSettings().then(() => { if (onPage('lamp')) rerender(); }); }
 
@@ -6290,9 +6342,8 @@ function lampMeanings(panel){
       h('summary', null, 'Every colour and rhythm' + (lp.present ? ', with Show me' : '')), list),
     lp.present ? h('div', {class:'acts', style:'padding:8px 4px 0'},
       h('button', {type:'button', class:'btn small', id:'lampTourBtn', 'aria-pressed': String(tourOn), onclick: lampTour}, tourOn ? 'Stop' : 'Show me everything')) : null,
-    h('p', {class:'hint lm-tour', id:'lampTour', 'aria-live':'polite', style:'padding:0 4px'}, lampLook.caption || ''),
-    h('p', {class:'hint', style:'padding:0 4px'}, lp.present ? 'Show me plays it on the radio’s lamp for a few seconds — at night, the night version (dimmer and slower).'
-      : 'This radio has no lamp fitted, so there’s nothing to show.')));
+    h('p', {class:'hint lm-tour', id:'lampTour', 'aria-live':'polite', style:'padding:0 4px', hidden: !lampLook.caption}, lampLook.caption || ''),
+    lp.present ? null : h('p', {class:'hint', style:'padding:0 4px'}, 'This radio has no lamp fitted, so there’s nothing to show.')));
 }
 function lampPost(kind, id){
   return kind === 'identify' ? api('POST', '/api/lamp/identify', {}) : api('POST', '/api/lamp/preview', {[kind]: id});
@@ -6317,7 +6368,7 @@ async function lampShow(kind, id, title){
   back();
 }
 // "Show me everything": every look and reply this lamp knows, in order, with a caption for each (~1 min).
-function lampTourCaption(text){ lampLook.caption = text; const el = $('lampTour'); if (el) el.textContent = text; }
+function lampTourCaption(text){ lampLook.caption = text; const el = $('lampTour'); if (el){ el.textContent = text; el.hidden = !text; } }
 function lampTourStop(end = true){
   if (!lampLook.tour) return;
   lampLook.tour = null; lampLook.showing = null;
@@ -6360,7 +6411,7 @@ function lampGlow(panel){
   panel.append(setGroup('glow', 'Brightness', h('div', {class:'list'},
     h('div', {class:'li col', style:'gap:12px'},
       h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'How bright the lamp glows'),
-        h('span', {class:'li-sub'}, 'Asleep stays a dim ember whatever you pick. At night it is dimmer still.')),
+        h('span', {class:'li-sub'}, 'Dimmer still at night')),
       seg),
     h('div', {class:'li'}, h('label', {class:'switch', for:'lampKeys', style:'flex:1'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Key replies'),
@@ -6374,12 +6425,12 @@ function lampGeek(){
   return setGroup('geek', 'Geek mode', h('div', {class:'list'},
     h('div', {class:'li'}, h('label', {class:'switch', for:'lampGeek', style:'flex:1'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Geek mode'),
-        h('span', {class:'li-sub'}, 'The lamp speaks a little more radio: your callsign for Identify, 73 before it shuts down, a tune after an update — and a surprise or two')),
+        h('span', {class:'li-sub'}, 'The lamp speaks a little more radio: a callsign, 73 at shutdown, a surprise or two')),
       h('input', {type:'checkbox', role:'switch', id:'lampGeek', checked: !!lp.geek, disabled: lampLook.busy,
         onchange: e => saveLampPrefs({geek: e.target.checked}, {geek: !e.target.checked})}))),
     lp.geek ? h('div', {class:'li'},
       h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'lampCall'}, 'Callsign'),
-        h('span', {class:'li-sub'}, 'Up to 3 letters or digits, tapped in Morse when you identify this radio. Empty: the room’s initial')),
+        h('span', {class:'li-sub'}, 'Up to 3 letters or digits, tapped by Identify. Empty: the room’s initial')),
       h('input', {type:'text', id:'lampCall', class:'inp', maxlength:'3', autocapitalize:'characters', spellcheck:'false', style:'width:5em;text-transform:uppercase',
         value: lp.callsign_saved || '', placeholder: lp.callsign || 'H', 'aria-describedby':'lampCallMorse',
         onkeydown: e => { if (e.key === 'Enter') e.target.blur(); },
@@ -6431,8 +6482,8 @@ function identifyRow(){
   if (!settings || !lp.present) return null;
   return h('div', {class:'list', style:'margin-top:8px'}, h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Identify this radio'),
-      h('span', {class:'li-sub'}, lampV2() ? 'It taps HI in Morse, in green, for about ' + Math.round(Math.min(lp.identify_s, 9)) + ' seconds — so you can tell which radio this is'
-        : 'Its lamp signals for ' + Math.round(lp.identify_s) + ' seconds, so you can tell which radio this is')),
+      h('span', {class:'li-sub'}, lampV2() ? 'Its lamp taps HI in green for a few seconds'
+        : 'Its lamp signals for ' + Math.round(lp.identify_s) + ' seconds')),
     h('button', {type:'button', class:'li-act', id:'identSelf', disabled: !!identUi.busy.self, onclick: () => identify(null, 'self')},
       identUi.busy.self ? 'Signalling…' : 'Identify')));
 }
@@ -6465,8 +6516,8 @@ function otherRadiosGroup(){
   }
   // None found yet: say the radio is looking, and what the other one needs.
   if (!rooms.length) return setGroup('radios', 'The other Haslers', h('div', {class:'empty', id:'otherRadiosEmpty'},
-    h('p', {style:'margin:0'}, grp.enabled ? 'No other Haslers found yet. Switch on Play in several rooms on the other radio too, then give it half a minute.'
-      : 'No other Haslers found yet. Switch on Play in several rooms here and on the other radio, then give it half a minute.')));
+    h('p', {style:'margin:0'}, grp.enabled ? 'No other Haslers yet. Switch this on on the other radio too.'
+      : 'No other Haslers yet. Switch on Play in several rooms here and on the other radio.')));
   const list = h('div', {class:'list', id:'otherRadios'});
   for (const r of rooms){
     const k = 'peer-' + rid(r.id), busy = !!identUi.busy[k];
@@ -6483,14 +6534,13 @@ function otherRadiosGroup(){
 // What each key plays is in Edit keys; this page points there, holds the source key's list and the way back to defaults.
 function keysEditGroup(){
   return setGroup('keys', 'What the keys play', h('div', {class:'set-list'},
-    setRow('editkeys', 'What each key plays', 'Stations, playlists and what holding a key does, in Edit keys', '#edit'),
-    setRow('combos', 'Key combinations', 'Two keys held together: sleep, standby, a station', '#edit/combos')),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Stations and playlists, and what holding a key does, are in Edit keys.'));
+    setRow('editkeys', 'What each key plays', 'Tap and hold, in Edit keys', '#edit'),
+    setRow('combos', 'Key combinations', 'Two keys held together', '#edit/combos')));
 }
 function keysResetGroup(){
   return setGroup('reset', 'Starting over', h('div', {class:'set-list'},
     setRow('reset', 'Reset keys to defaults', 'Every key back to the built-in stations', '#edit/reset')),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Every key back to the built-in stations. The radio asks for a key press first.'));
+    h('p', {class:'hint', style:'padding:0 4px'}, 'The radio asks for a key press first.'));
 }
 function renderKeysPage(panel){
   panel.append(keysEditGroup());
@@ -6549,6 +6599,14 @@ async function loadHow(){
 function paintHow(){
   const box = $('howBox'); if (!box || !onPage('radio')) return;
   box.replaceChildren(...howRows());
+  howSum();
+}
+// The fold's one line says how it went; anything wrong opens it (unless it was closed by hand).
+function howSum(){
+  const box = $('howBox'), sum = $('howSum'), d = radioHow; if (!box || !sum) return;
+  const bad = !!box.querySelector('b.no, .note-bad');
+  sum.textContent = !d ? 'Checking…' : d.missing || d.err ? 'Details' : bad ? 'Something needs a look' : 'All well';
+  if (bad && !moreOpen.howShut) box.closest('details').open = true;
 }
 function howRows(){
   const d = radioHow;
@@ -6575,12 +6633,15 @@ function howRows(){
   return rows;
 }
 function howTheRadioIs(){
+  queueMicrotask(howSum);
   return setGroup('how', 'How the radio is', h('div', {class:'list'},
-    h('div', {class:'li col', id:'howBox', style:'gap:0'}, howRows()),
+    h('div', {class:'li col', style:'gap:0;padding-top:4px;padding-bottom:4px'},
+      h('details', {class:'how', id:'howMore', open: moreOpen.how ? true : null,
+          ontoggle: e => { moreOpen.how = e.target.open; if (!e.target.open) moreOpen.howShut = true; }},
+        h('summary', {id:'howSum'}, 'Checking…'), h('div', {id:'howBox'}, howRows()))),
     h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Restart the radio'),
-        h('span', {class:'li-sub'}, 'Like unplugging it and plugging it in, but tidier. The music stops for about a minute.')),
-      h('button', {type:'button', class:'li-act', id:'restartBtn', onclick: restartRadio}, 'Restart'))),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Looked at every half minute while this page is open. Restarting asks for a press on the radio.'));
+        h('span', {class:'li-sub'}, 'The music stops for about a minute.')),
+      h('button', {type:'button', class:'li-act', id:'restartBtn', onclick: restartRadio}, 'Restart'))));
 }
 async function restartRadio(){
   const token = await radioConfirm({action:'restart', title:'Restart the radio?',
@@ -6605,7 +6666,7 @@ function setupNetRow(){
     h('span', {style:'display:flex;align-items:center;gap:8px;min-width:0'}, h('b', {class:'help-v', id: extra ? 'setupPw' : null}, v), extra || null));
   return h('div', {class:'li col', style:'gap:8px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Setup network'),
-      h('span', {class:'li-sub'}, 'If the radio can’t join your Wi-Fi, it opens this network so a phone can set it up again. Worth writing down.')),
+      h('span', {class:'li-sub'}, 'Opens when the radio can’t join your Wi-Fi. Worth writing down.')),
     h('div', null, kv('Name', s.ssid),
       kv('Password', pw === null ? 'None — it’s an open network' : !pw ? 'Not shown here' : setupUi.show ? pw : '••••••••',
         pw ? h('button', {type:'button', class:'li-act', id:'setupPwShow', 'aria-label': (setupUi.show ? 'Hide' : 'Show') + ' the setup password',
@@ -6654,18 +6715,17 @@ const moveCard = (id, label, ...kids) => h('section', {class:'card-box', id:'mov
 const moveP = (...kids) => h('p', {class:'body', style:'margin:0'}, ...kids);
 function renderMove(panel){
   if (!settings){ panel.append(skel(3)); return; }
-  panel.append(h('p', {class:'hint', style:'padding:0 4px 4px'}, 'Nothing here is needed for everyday use. These are the three times a radio changes place.'));
+  panel.append(h('p', {class:'hint', style:'padding:0 4px 4px'}, 'Only for the day the radio moves.'));
   panel.append(moveRoomCard(), moveHomeCard(), moveOwnerCard());
 }
 // Card 1 — Another room: the name, Identify, the keys that ran the old room's scenes.
 function moveRoomCard(){
   const r = settings.room, busy = !!identUi.busy.self;
   return moveCard('room', 'Another room',
-    moveP(h('b', null, 'Give it the room’s name. '), 'The other rooms, your phones and Home Assistant know this radio by its name', r && r.custom ? ' — it is “' + r.name + '” now.' : '.'),
+    moveP(h('b', null, 'Give it the room’s name. '), 'Phones, other rooms and Home Assistant know it by that', r && r.custom ? ' — “' + r.name + '” now.' : '.'),
     h('div', {class:'acts'}, h('a', {class:'btn small', id:'moveRename', href:'#settings/rooms/name'}, r && r.custom ? 'Rename' : 'Name it'),
       lampPrefs().present ? h('button', {type:'button', class:'btn small', id:'moveIdentify', disabled: busy, onclick: () => identify(null, 'self')}, busy ? 'Signalling…' : 'Identify') : null),
-    lampPrefs().present ? moveP(h('b', null, 'Not sure which radio is which? '), 'Identify: its lamp taps HI in green.') : null,
-    moveP('If a key runs lights or a scene for the old room, choose new ones in ', moveLink('#edit', 'Edit keys'), '. Rooms play together just as before; there is nothing to set up again.'));
+    moveP('A key ran the old room’s lights? Change it in ', moveLink('#edit', 'Edit keys'), '.'));
 }
 // Card 2 — Another home, or a new Wi-Fi: the setup network to write down, what happens there,
 // the networks the radio knows (Forget), and what to look at afterwards.
@@ -6682,18 +6742,19 @@ function moveHomeCard(){
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, n.ssid), h('span', {class:'li-sub'}, n.current ? 'The network it is on now' : 'Saved — it joins this one when it is in range')),
     h('button', {type:'button', class:'li-act', disabled: !!moveUi.busy[n.ssid], 'aria-label':'Forget ' + n.ssid, onclick: () => forgetNet(n)}, moveUi.busy[n.ssid] ? 'Forgetting…' : 'Forget')));
   return moveCard('home', 'Another home, or a new Wi-Fi',
-    moveP(h('b', null, 'Before you go, write these down. '), 'When the radio can’t find your Wi-Fi it opens its own network, so a phone can tell it the new one.'),
+    moveP(h('b', null, 'Before you go, write these down. '), 'The radio opens this network when it can’t find your Wi-Fi.'),
     h('div', null, kv('Setup network', (s && s.ssid) || 'Hasler'),
       kv('Password', pw === null ? 'None — it’s an open network' : pw === '' ? 'Not shown here' : moveUi.show ? pw : '••••••••',
         pw ? h('span', {style:'display:flex;gap:4px'},
           h('button', {type:'button', class:'li-act', id:'movePwShow', 'aria-label': (moveUi.show ? 'Hide' : 'Show') + ' the setup password', onclick: () => { moveUi.show = !moveUi.show; rerender(); }}, moveUi.show ? 'Hide' : 'Show'),
           h('button', {type:'button', class:'li-act', id:'movePwPrint', onclick: () => { printOptsRef().password = true; go('print'); }}, 'Print')) : null)),
-    moveP(h('b', null, 'At the new home: '), 'plug it in, wait two minutes for the lamp to tap ', h('i', null, 'CQ'), ' (long-short-long-short, long-long-short-long), join ', h('b', null, (s && s.ssid) || 'Hasler'), ' on your phone, and the Wi-Fi page opens by itself. Music comes back on its own; the lamp glows green and taps OK.'),
     moveP(h('b', null, 'Changing Wi-Fi here, now: '), moveLink('/wifi', 'Change Wi-Fi', 'moveWifi'), ' (a key press on the radio).'),
     h('div', null, h('span', {class:'mono', style:'display:block;margin-bottom:6px'}, 'Networks the radio knows'), h('div', {class:'list', id:'moveNets'}, ...nets)),
-    moveP(h('b', null, 'Afterwards: '), 'if you had Home Assistant, connect the new home’s: ', moveLink('#settings/radio/ha', 'Home Assistant'), '. The radio tells you which keys pointed at things the old home had. Night dimming and update hours follow the radio’s clock; if the new home is in another time zone, change it below.'),
     h('div', {class:'list'}, clockRow(false)),
-    moveP(h('b', null, 'No phone handy, or it won’t join? '), 'A plain-text file called ', h('b', null, 'hasler-wifi.txt'), ' on the memory card does the same (how: ', h('i', null, 'Using your Hasler → Wi-Fi'), '). A network cable works too. No internet yet at the new home? Bluetooth from a phone still works.'));
+    moreBox('newhome', 'At the new home, step by step', [
+      moveP(h('b', null, 'At the new home: '), 'plug it in, wait two minutes for the lamp to tap ', h('i', null, 'CQ'), ' (long-short-long-short, long-long-short-long), join ', h('b', null, (s && s.ssid) || 'Hasler'), ' on your phone, and the Wi-Fi page opens by itself. Music comes back on its own; the lamp glows green and taps OK.'),
+      moveP(h('b', null, 'Afterwards: '), 'if you had Home Assistant, connect the new home’s: ', moveLink('#settings/radio/ha', 'Home Assistant'), '. The radio tells you which keys pointed at things the old home had. Night dimming and update hours follow the radio’s clock: if the new home is in another time zone, change it above.'),
+      moveP(h('b', null, 'No phone handy, or it won’t join? '), 'A plain-text file called ', h('b', null, 'hasler-wifi.txt'), ' on the memory card does the same (how: ', h('i', null, 'Using your Hasler → Wi-Fi'), '). A network cable works too. No internet yet? Bluetooth from a phone still works.')]));
 }
 // Card 3 — A new owner: what the hand-over forgets and keeps, the makers, the press, the one-time password.
 function moveOwnerCard(){
@@ -6710,12 +6771,13 @@ function moveOwnerCard(){
       (res.failed || []).length ? ' Not everything could be forgotten (' + res.failed.join(', ') + ') — tell the makers.' : ''),
     h('div', {class:'acts'}, h('button', {type:'button', class:'btn small primary', id:'handPrint', onclick: () => { printOptsRef().password = true; setupNet = Object.assign({}, setupNet || {}, {ssid: res.setup.ssid, password: res.setup.password, password_set: true}); go('print'); }}, 'Print a card for the new owner')));
   return moveCard('owner', 'A new owner',
-    moveP(h('b', null, 'Hand over. '), 'The radio forgets you and keeps only what belongs to the cabinet: the knobs’ calibration, the lamp’s colours, the volume ceiling. The new owner starts as you did: plug it in, join its setup network, press key 1.'),
-    moveP(h('b', null, 'It forgets: ')), list(forgets),
-    moveP(h('b', null, 'It keeps: ')), list(keeps),
-    notes.length ? h('div', null, moveP(h('b', null, 'The makers’ notes about this cabinet stay with it: ')), list(notes.map(n => (n.at ? n.at + ' — ' : '') + n.text)),
-      moveP('Ask the makers if one of them should go.')) : null,
-    moveP('The makers can still help from afar — only if the new owner asks them to, with a key press. Their own way in (an SSH key put there when the radio was built) stays on the radio; remote help needs a press on the radio and ends by itself after 24 hours.'),
+    moveP(h('b', null, 'Hand over. '), 'The radio forgets you and keeps what belongs to the cabinet. The new owner starts as you did: plug it in, join its setup network, press key 1.'),
+    moreBox('handover', 'What it forgets and keeps', [
+      moveP(h('b', null, 'It forgets: ')), list(forgets),
+      moveP(h('b', null, 'It keeps: ')), list(keeps),
+      notes.length ? h('div', null, moveP(h('b', null, 'The makers’ notes about this cabinet stay with it: ')), list(notes.map(n => (n.at ? n.at + ' — ' : '') + n.text)),
+        moveP('Ask the makers if one of them should go.')) : null,
+      moveP('The makers can still help from afar — only if the new owner asks, with a key press. Their own way in (an SSH key put there when the radio was built) stays on the radio; remote help ends by itself after 24 hours.')]),
     moveUi.err ? h('p', {class:'note-bad', role:'alert'}, moveUi.err) : null,
     h('div', {class:'acts'}, h('button', {type:'button', class:'btn small danger-btn', id:'handOver', disabled: !!moveUi.busy.hand, onclick: handOver}, moveUi.busy.hand ? 'Forgetting…' : 'Hand over to a new owner')),
     h('p', {class:'hint'}, 'Then press any key on the radio within 30 seconds. The lamp asks you: two quick brightens, again and again.'));
@@ -6928,7 +6990,7 @@ function helpBody(){
   if (!d) return skelRow();
   if (d.err) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Couldn’t check remote help'), h('span', {class:'li-sub'}, d.err)),
     h('button', {type:'button', class:'li-act', id:'helpRetry', onclick: () => { help = null; paintHelp(); loadHelp(); }}, 'Try again'));
-  if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t on this radio yet. The makers can add it — mention it next time you’re in touch.'));
+  if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t on this radio yet. Ask the makers to add it.'));
   const stopBtn = (label) => h('button', {type:'button', class:'btn small', id:'helpStop', disabled: !!busy, onclick: helpStop}, label || 'Stop');
   if (st === 'starting' || st === 'ending')
     return h('div', {class:'li col'}, h('span', {class:'li-title'}, h('span', {class:'spin', 'aria-hidden':'true', style:'margin-right:10px'}), st === 'ending' ? 'Ending help…' : 'Starting help…'),
@@ -6973,7 +7035,7 @@ function helpBody(){
   const contact = radioInfo && radioInfo.makers_contact;
   return h('div', {class:'li col', style:'gap:10px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Remote help is off'),
-      h('span', {class:'li-sub', id:'helpWhat'}, 'The makers can see this page and log in to the radio to fix things, for 24 hours, and you can stop at any time.'),
+      h('span', {class:'li-sub', id:'helpWhat'}, 'For 24 hours the makers can see this page and fix things. Stop any time.'),
       h('span', {class:'li-sub'}, 'Nothing happens until you press a key on the radio. Prefer to write first? Send them a report.')),
     offline ? h('p', {class:'note-warn', id:'helpOffline'}, 'The radio has no internet right now, so the makers couldn’t reach it. Send a report instead.') : null,
     h('div', {class:'acts', style:'align-items:center'},
@@ -7049,7 +7111,7 @@ async function copyText(text, msg){
 SET_ICONS.wrong = '<circle cx="8" cy="8" r="6"/><path d="M8 4.8v3.8M8 11.4v.2"/>';
 function setHomeWrong(panel){
   panel.append(h('nav', {class:'set-list', id:'setWrong', 'aria-label':'Something’s wrong?'},
-    setRow('wrong', 'Something’s wrong?', 'The radio checks itself and says what it found.', '#settings/wrong', setIc(SET_ICONS.wrong))));
+    setRow('wrong', 'Something’s wrong?', 'The radio checks itself', '#settings/wrong', setIc(SET_ICONS.wrong))));
 }
 SET_HOME.splice(SET_HOME.indexOf(setHomeRows), 0, setHomeWrong);
 // The lamp's motion as a rhythm word, for "The lamp right now: red, tapping SOS — something needs a maker".
@@ -7097,8 +7159,8 @@ function whatIsWrong(){
       + (res.why || res.reason ? ' Why: ' + (res.why || res.reason) + '.' : '') + ' The makers will want to know — the report has the details.', try: tell});
   if (sw && sw.stale){
     const t = Date.parse(sw.last_check || ''), days = t ? Math.round((Date.now() - t) / 86400000) : 0;
-    out.push({id:'stale', title:'No news from the makers for ' + (days >= 2 ? days + ' days' : 'a while'),
-      body:'The radio can’t reach the makers’ update server, or there’s nothing new. Everything plays as before.', try:{label:'Check now', run: swCheck}});
+    out.push({id:'stale', title:'No update check for ' + (days >= 2 ? days + ' days' : 'a while'),
+      body:'The radio can’t reach the update server, or there’s nothing new. Everything plays as before.', try:{label:'Check now', run: swCheck}});
   }
   const pl = d && d.player;
   if (pl && pl.restarts_last_hour >= 1) out.push({id:'restarts', title:'The player inside restarted',
@@ -7234,7 +7296,8 @@ function tellMakers(){
   dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; if (from && from.isConnected && from.focus) from.focus({preventScroll:true}); };
   dlg.onclick = null;
   dlg.showModal();
-  ta.focus();
+  // A phone: no keyboard over the sheet before it is read (the heading takes focus); a computer: straight to the note.
+  if (matchMedia('(hover:hover) and (pointer:fine)').matches) ta.focus(); else { const t = $('dlgTitle'); t.tabIndex = -1; t.focus(); }
 }
 /* "From the makers": a maker's notes left on the radio (scripts/hasler-note; GET /api/notes), newest first,
    with the date. Seen folds a note away; it stays readable under This radio. */
@@ -7511,28 +7574,28 @@ const SET_PAGES = [
   {id:'home', render: renderSetHome, load: loadSetHome},
   {id:'sound', title:'Sound', summary: soundSummary, note: NOTE_INSTANT, render: renderSound, load: loadSound, leave: leaveSound},
   {id:'keys', title:'Keys', summary: keysSummary, note: NOTE_INSTANT, render: renderKeysPage, load: loadKeysPage},
-  {id:'phones', title:'Phones', summary: phonesSummary, note:'Switches apply at once, with Undo. A new name waits for Save at the bottom.',
+  {id:'phones', title:'Phones', summary: phonesSummary, note:'Switches apply at once. A new name waits for Save.',
     render: renderPhones, load: loadPhones, leave: leavePhones,
     dirty: () => castNamesDirty().length > 0, discard: () => { castUi.names = {}; }, save: castSaveNames, busy: () => !!castUi.saving,
     what: () => nameAnd(castNamesDirty().map(castLabel)) + (castNamesDirty().length === 1 ? ' name' : ' names')},
   {id:'accounts', title:'Music accounts', summary: accountsSummary, note:'Signing Spotify in or out asks for a press on the radio.',
     render: renderAccounts, load: loadAccounts, leave: leaveAccounts},
-  {id:'rooms', title:'Rooms', summary: roomsSummary, note:'Switches apply at once, with Undo. The room name waits for Save at the bottom.',
+  {id:'rooms', title:'Rooms', summary: roomsSummary, note:'Switches apply at once. The name waits for Save.',
     render: renderRooms, load: loadRooms,
     dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
-  {id:'lamp', title:'Pilot lamp', summary: lampSummary, note:'Changes apply at once, with Undo. A new place waits for Save at the bottom.',
+  {id:'lamp', title:'Pilot lamp', summary: lampSummary, note:'Changes apply at once. A new place waits for Save.',
     render: renderLamp, load: loadLamp, leave: leaveLamp,
     dirty: lampDirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
-  {id:'radio', title:'This radio', summary: radioSummary, note:'Letting the makers help, or allowing an address, asks for a press on the radio.',
+  {id:'radio', title:'This radio', summary: radioSummary, note:'Remote help and new addresses ask for a press on the radio.',
     render: renderRadio, load: loadRadio, leave: leaveHelp},
   {id:'maker', title:'Maker tools', summary: makerSummary, shown: makerOn,
     note:'Lamp colours wait for Save at the bottom; everything else applies at once.',
     render: renderMaker, load: loadMaker, leave: leaveMaker,
     dirty: () => !!(lcal.data && lcalDirty()), discard: () => { lcalAdopt(); lcalStop(false); lcalEnd(); }, save: lcalSave, busy: () => lcal.busy, what: () => 'Lamp colours'},
-  {id:'radio/updates', title:'Updates', parent:'radio', note:'Installing, going back or switching channel asks for a press on the radio, so nobody else on the Wi-Fi can do it.',
+  {id:'radio/updates', title:'Updates', parent:'radio', note:'Installing or going back asks for a press on the radio.',
     render: renderUpdates, load: loadUpdates, leave: leaveUpdates},
   {id:'radio/ha', title:'Home Assistant', parent:'radio', note: NOTE_INSTANT, render: renderHa, load: () => refreshHa()},
-  {id:'radio/move', title:'Moving this radio', parent:'radio', note:'Forgetting a Wi-Fi network, or handing the radio over, asks for a press on the radio.',
+  {id:'radio/move', title:'Moving this radio', parent:'radio', note:'Forgetting a network or handing over asks for a press on the radio.',
     render: renderMove, load: loadMove},
   // Not a row (no summary): reached from the "Something's wrong?" button on the home list (setHomeWrong).
   {id:'wrong', title:'Something’s wrong?', render: renderWrong, load: loadWrong, leave: leaveWrong},
@@ -7758,7 +7821,6 @@ function lcalSlider(n, [label, ch, sqrt], idx){
   const set = e => {
     const p = +e.target.value / 1000, val = Math.round((sqrt ? p * p : p) * 10000) / 10000;
     lcal.draft[n][idx] = val;
-    e.target.style.setProperty('--pct', (p * 100) + '%');
     e.target.setAttribute('aria-valuetext', val.toFixed(3));
     const out = $(id + '-v'); if (out) out.textContent = val.toFixed(3);
     const sw = $('lcsw-' + n); if (sw) sw.style.cssText = lcalSw(n);
@@ -7772,7 +7834,7 @@ function lcalSlider(n, [label, ch, sqrt], idx){
     h('div', {class:'lc-chrow'}, h('label', {for:id}, label, sqrt ? h('span', {class:'lc-fine'}, ' · fine near 0') : null),
       h('span', {class:'li-val', id: id + '-v', 'aria-hidden':'true'}, v.toFixed(3))),
     h('input', {type:'range', id, min:'0', max:'1000', step:'1', value: String(pos), 'aria-valuetext': v.toFixed(3),
-      style:'--pct:' + (pos / 10) + '%', oninput: set,
+      oninput: set,
       onpointerdown: () => { lcal.drag = true; }}));
 }
 function lcalTag(n){
@@ -8358,12 +8420,12 @@ function floorItem(){
   return h('div', {class:'li col'},
     h('div', {style:'display:flex;justify-content:space-between;align-items:flex-start;gap:12px'},
       h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'floor'}, 'Quietest step'),
-        h('span', {class:'li-sub', id:'floorHint'}, 'The first click of the volume knob — raise it if the first step is silent')),
+        h('span', {class:'li-sub', id:'floorHint'}, 'Raise it if the knob’s first click is silent')),
       h('span', {class:'li-val', id:'floorVal', 'aria-hidden':'true', style:'padding-top:2px'}, fl ?? '—')),
     h('input', {type:'range', id:'floor', min:String(lo), max:String(hi), step:'1', value:String(v), 'aria-describedby':'floorHint', disabled: fl == null,
-      'aria-valuetext': fl == null ? 'not known yet' : volText(fl), style:'--pct:' + ((v - lo) / ((hi - lo) || 1) * 100) + '%',
+      'aria-valuetext': fl == null ? 'not known yet' : volText(fl),
       oninput: e => {
-        const n = +e.target.value; e.target.style.setProperty('--pct', ((n - lo) / ((hi - lo) || 1) * 100) + '%'); e.target.setAttribute('aria-valuetext', volText(n));
+        const n = +e.target.value; e.target.setAttribute('aria-valuetext', volText(n));
         $('floorVal').textContent = n; $('floorErr').textContent = '';
         if (floorFrom == null && settings) floorFrom = settings.volume_floor;
         clearTimeout(floorTimer); floorTimer = setTimeout(() => { const from = floorFrom; floorFrom = null; saveFloor(n, from); }, 350);
@@ -8376,13 +8438,13 @@ function paintFloor(){
   const fr = settings.volume_floor_range || [0, 90], fl = settings.volume_floor;
   el.min = String(fr[0]); el.max = String(fr[1]);
   if (fl != null){ el.disabled = false; el.value = String(fl); $('floorVal').textContent = fl; floorShown = +fl; el.setAttribute('aria-valuetext', volText(fl)); }
-  el.style.setProperty('--pct', ((+el.value - fr[0]) / ((fr[1] - fr[0]) || 1) * 100) + '%');
+  rangeFill(el);
 }
 function paintLimit(){
   const el = $('limit'); if (!el || !settings || settings.volume_limit == null) return;
   const v = +settings.volume_limit, [lo, hi] = limitRange();
   el.min = String(lo); el.max = String(hi);
-  el.value = String(v); el.disabled = false; el.style.setProperty('--pct', limitPct(v)); el.setAttribute('aria-valuetext', volText(v));
+  el.value = String(v); el.disabled = false; rangeFill(el); el.setAttribute('aria-valuetext', volText(v));
   $('limitVal').textContent = v; $('limitWarn').hidden = v < 95;
   const hint = $('limitHint'); if (hint) hint.textContent = limitHintText();
   const unset = $('limitUnset'); if (unset) unset.hidden = !limitUnset();   // the first save settles it
@@ -8452,7 +8514,7 @@ function sourcesGroup(){
   const bound = boundKeys();
   const list = h('div', {class:'list'});
   list.append(h('div', {class:'li', style:'min-height:0'},
-    h('span', {class:'li-txt'}, h('span', {class:'li-sub'}, 'Tick the ones you use and put them in order. A source that can’t play right now is skipped.'),
+    h('span', {class:'li-txt'}, h('span', {class:'li-sub'}, 'Tick the ones you use, in the order you like.'),
       h('span', {class:'li-sub'}, bound.length ? ['Source key: ', h('b', {style:'color:var(--cream);font-weight:600'}, bound.map(b => b.text).join(', '))] : 'No key does this yet.')),
     h('button', {type:'button', class:'li-act', onclick: () => go(bound.length === 1 ? 'edit/' + bound[0].kid : 'edit')}, bound.length ? 'Change' : 'Choose a key')));
   const n = srcDraft.length;
@@ -8656,11 +8718,11 @@ function spAccountRows(){
   if (!castDoc) return skelRow();
   const t = (castDoc.targets || []).find(x => x.id === 'spotify');
   if (!t || !t.available) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Spotify isn’t on this radio'),
-    h('span', {class:'li-sub'}, (t && t.reason ? capFirst(t.reason).replace(/\.?$/, '. ') : '') + 'The makers can add it.')));
+    t && t.reason ? h('span', {class:'li-sub'}, capFirst(t.reason).replace(/\.?$/, '.')) : null));
   if (!t.account) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Spotify'),
     h('span', {class:'li-sub'}, 'This radio’s software can’t sign in to Spotify by itself yet. Updating it adds that.')));
   if (!t.account.available) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Spotify isn’t set up on this radio'),
-    h('span', {class:'li-sub'}, (t.account.error && !/isn.t set up/.test(t.account.error) ? capFirst(t.account.error).replace(/\.?$/, '. ') : '') + 'The makers can add it.')));
+    t.account.error && !/isn.t set up/.test(t.account.error) ? h('span', {class:'li-sub'}, capFirst(t.account.error).replace(/\.?$/, '.')) : null));
   return spAccount(t.account);
 }
 async function spCopyCode(){
@@ -9325,7 +9387,7 @@ function fillMr(box){
   box.append(h('div', {class:'li'}, h('label', {class:'switch', for:'mrOn', style:'flex:1'},
     h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Play in several rooms'),
       h('span', {class:'li-sub'}, on ? ['This radio can play along with other Haslers at home, in step. Add rooms from the ', h('a', {href:'#', id:'mrFront', style:'color:var(--brass);text-underline-offset:3px'}, 'front page'), '.']
-        : 'Let this radio play the same music as other Haslers at home, in step.')),
+        : 'The same music as other Haslers at home, in step')),
     h('input', {type:'checkbox', role:'switch', id:'mrOn', checked: on, disabled: busy, onchange: e => saveMr({enabled: e.target.checked}, e.target, true)}))));
   const er = grpErrRow('mrRetry'); if (er) box.append(h('div', {class:'li col', style:'min-height:0'}, er));
   if (!on) return;
@@ -9472,7 +9534,7 @@ function hostsGroup(){
       h('span', {class:'li-sub'}, (it.host === d.this ? 'This page · ' : '') + 'allowed ' + (day(new Date(it.added * 1000).toISOString()) || 'with a key press'))),
     hostRemoveBtn(it.host)));
   for (const b of d.box || []) rows.push(h('div', {class:'li'},
-    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Allowed by the makers'))));
+    h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Always allowed'))));
   if (!rows.length && !d.this_allowable) rows.push(h('div', {class:'li'}, h('span', {class:'li-sub'},
     'Changes only come in through the radio’s own address, so another website can’t touch your keys. If you open the radio another way, such as from a home dashboard, this page asks you to allow that address first.')));
   if (d.this_allowable) rows.push(h('div', {class:'li'},
@@ -9856,10 +9918,10 @@ function renderSoftwareUpdates(panel){
   if (!software) return wrap(skel(2));
   if (software.missing) return wrap(h('div', {class:'list'}, h('div', {class:'li col', style:'gap:10px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
-      h('span', {class:'li-sub'}, 'Updates aren’t set up on this radio yet, so it stays on this version. It keeps working as it is.')),
+      h('span', {class:'li-sub'}, 'Updates aren’t set up on this radio yet. It keeps working as it is.')),
     help && help.available
       ? h('div', {class:'acts', style:'align-items:center'}, h('a', {class:'btn small inline', href:'#settings/radio/help', id:'swAskHelp'}, 'Ask the makers to set them up'))
-      : h('p', {class:'hint', style:'margin:0'}, 'The makers can set them up — mention it next time you’re in touch.'))));
+      : h('p', {class:'hint', style:'margin:0'}, 'Ask the makers to set them up.'))));
   if (software.err) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
     h('span', {class:'li-sub'}, software.err)),
@@ -10085,8 +10147,10 @@ function knobLiveGroup(){
   const st = knobState();
   if (st) return setGroup('knobs', 'If a knob feels off', st);
   if (!knobs.knobs.length) return null;
-  return setGroup('knobs', 'If a knob feels off', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If the radio and the knob disagree, Calibrate walks you through it: a short guide where you turn it to a few positions.'));
+  // Folded: most owners never need it. Open when a knob drifts, or arrived at by its address.
+  return moreSec('knobs', 'A knob feels off?', [h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If they disagree, Calibrate.')],
+    route.arg2 === 'knobs' || knobs.knobs.some(k => k.drift));
 }
 function knobCurveGroup(){
   const st = knobState();
@@ -10276,18 +10340,16 @@ function fxParams(k, e, d){
 }
 function fxSlider(k, e, p, v){
   const sid = 'fxp-' + kid(k.id) + '-' + kid(p.id), lo = +p.min, hi = +p.max;
-  const pct = x => ((x - lo) / ((hi - lo) || 1) * 100) + '%';
   return h('div', {class:'fx-par'},
     h('div', {class:'fx-ph'}, h('label', {for: sid}, p.label || p.id),
       h('span', {class:'li-val', id: sid + '-v', 'aria-hidden':'true'}, fxFmt(e, p, v))),
     h('input', {type:'range', id: sid, min: String(lo), max: String(hi), step: String(p.step || 1), value: String(v),
-      'aria-valuetext': fxFmt(e, p, v), style:'--pct:' + pct(v),
+      'aria-valuetext': fxFmt(e, p, v),
       onpointerdown: () => { fxUi.drag = true; },
       oninput: ev => {
         const n = +ev.target.value;
         if (!fxUi.draft[k.id]) fxUi.draft[k.id] = clone(fxDraft(k));
         fxUi.draft[k.id].params[p.id] = n;
-        ev.target.style.setProperty('--pct', pct(n));
         ev.target.setAttribute('aria-valuetext', fxFmt(e, p, n));
         $(sid + '-v').textContent = fxFmt(e, p, n);
         fxPaintTag(k);
@@ -10564,7 +10626,7 @@ function renderAccounts(panel){
     h('p', {class:'hint', style:'padding:0 4px'}, 'Spotify keys play from this account. Guests on your Wi-Fi can still use their own.')));
   fillCast();
   panel.append(setGroup('ytm', 'YouTube Music', h('div', {class:'list', id:'ytmAcctBox'}, accountRows(), ytExplicitRow(), ytmHelperRow()),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Sign in for your Liked songs and private playlists. It takes a computer and a few technical steps — the makers can do it for you over ',
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Only for Liked songs and private playlists. It takes a computer, or ',
       h('a', {href:'#settings/radio/help', style:'color:var(--brass);text-underline-offset:3px'}, 'remote help'), '.')));
 }
 function loadAccounts(){
@@ -10594,7 +10656,7 @@ function accountRows(){
   ta.value = acctUi.text;
   return h('div', {class:'li col', id:'acctRow', style:'gap:10px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'acctH', tabindex:'-1'}, 'Signing in to YouTube Music'),
-      h('span', {class:'li-sub'}, 'It takes a computer and a few technical steps. The makers can do it for you over remote help.')),
+      h('span', {class:'li-sub'}, 'It takes a computer and a few technical steps — or ask for remote help.')),
     h('ol', {class:'steps'},
       h('li', null, 'On a computer, open ', h('b', null, 'music.youtube.com'), ' and make sure you’re signed in.'),
       h('li', null, 'Open the browser’s developer tools (', h('b', null, 'F12'), ') → ', h('b', null, 'Network'), ' tab, and click anything on the page.'),
@@ -11052,7 +11114,7 @@ function welcomeCard(){
     h('section', {class:'kc-sec'}, h('h2', null, 'The key page'),
       h('p', null, h('b', null, 'http://' + addr), ' — on the same Wi-Fi.', ip ? [' Or ', h('b', null, 'http://' + ip), '.'] : null)),
     settings && settings.volume_limit_set ? h('section', {class:'kc-sec'}, h('h2', null, 'How loud'),
-      h('p', null, 'The makers set the volume ceiling to ', h('b', null, String(settings.volume_limit)), ' for this speaker. Settings → Sound to change it.')) : null,
+      h('p', null, 'Volume ceiling: ', h('b', null, String(settings.volume_limit)), ', for this speaker. Settings → Sound to change it.')) : null,
     h('section', {class:'kc-sec'}, h('h2', null, 'If the lamp taps'),
       h('p', {class:'wc-cq'}, cardMorse('CQ', 'amber'), '(amber): join the Wi-Fi network ', h('b', null, ssid),
         pw ? [', password ', h('b', {class:'wc-pw', id:'wcPw'}, pw)] : sn.password_set ? ', password from the makers' : null, ', and a page opens.')),
@@ -11080,7 +11142,7 @@ function renderPrint(){
       onclick: () => { cardSize = z.id; try { localStorage.setItem('hasler.card', z.id); } catch (_) {} renderPrint(); const b = panel.querySelector('[data-size="' + z.id + '"]'); if (b) b.focus(); }}, z.label)));
   const canPw = welcome && setupNet && setupNet.password_set && setupNet.password;
   panel.append(h('div', {class:'print-tools'}, screenTop(welcome ? 'Welcome card' : 'Key card', 'edit'),
-    h('p', {class:'hint'}, welcome ? 'For the maker to print and leave with the radio: how to start, the key page, the setup network, what the lamp says. Both sides on one A5 sheet, to fold.'
+    h('p', {class:'hint'}, welcome ? 'To leave with the radio: how to start, the key page, what the lamp says. One A5 sheet, folded.'
       : 'What each key does, to keep by the radio. ' + (isDirty() ? 'It shows the keys as last saved.' : 'It shows the keys as saved now.')),
     seg,
     canPw ? h('label', {for:'cardPw', style:'display:flex;align-items:center;gap:10px;min-height:44px;color:var(--cream);font-size:14px;cursor:pointer'},
@@ -11091,7 +11153,16 @@ function renderPrint(){
     h('div', {class:'actions'}, h('button', {type:'button', class:'btn primary', id:'printBtn', disabled: !cfg, onclick: () => window.print()}, 'Print'))));
   if (!cfg){ panel.append(h('p', {class:'loading'}, cfg === null ? 'Warming up the valves…' : 'Couldn’t load the keys.')); return; }
   panel.append(h('div', {class:'card-sheet'}, welcome ? welcomeCard() : keyCard(cardSize)));
+  fitCard();
 }
+// On screen the card shrinks to the width there is (a phone showed half the A6 card, cut off); printing is full size.
+function fitCard(){
+  const card = $('keyCard'), sheet = card && card.parentElement; if (!sheet) return;
+  card.style.zoom = '';
+  const k = sheet.clientWidth / card.offsetWidth;
+  if (k < 1) card.style.zoom = String(Math.floor(k * 1000) / 1000);
+}
+window.addEventListener('resize', () => { if (view === 'print') fitCard(); });
 // The paper size goes in only while the card prints, so other pages print as before.
 const PAGE_SIZE = {a6:'@page{size:105mm 148mm;margin:0}', strip:'@page{size:A4 landscape;margin:10mm}', welcome:'@page{size:210mm 148mm;margin:0}'};
 window.addEventListener('beforeprint', () => {

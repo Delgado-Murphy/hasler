@@ -102,7 +102,9 @@ const SW = {ok: true, installed: true, version: '1.4.0', channel: 'stable', upda
       assert((await page.textContent('#pageNote')) === 'Changes apply at once, with Undo.', 'note: ' + await page.textContent('#pageNote'));
       await until(() => page.isVisible('#sec-knobs'), 6000, 'the knobs group');
       const heads = await page.$$eval('#panel h3.grp-lbl', hs => hs.map(x => x.textContent.trim()));
-      assert(heads[0] === 'Volume' && heads[heads.length - 1] === 'If a knob feels off', 'headings: ' + heads.join('|'));
+      const secs = await page.$$eval('#panel .grp-sec', ss => ss.map(x => x.id));
+      assert(heads[0] === 'Volume' && secs[secs.length - 1] === 'sec-knobs', 'headings: ' + heads.join('|') + ' / ' + secs.join('|'));
+      assert((await page.textContent('#more-knobs summary')) === 'A knob feels off?' && !(await page.getAttribute('#more-knobs', 'open')), 'the knobs fold');
       assert((await page.$$('#sec-knobs button:has-text("Calibrate")')).length >= 1, 'no Calibrate');
       assert(await page.getAttribute('#limit', 'aria-valuetext') === '70 of 100', 'valuetext ' + await page.getAttribute('#limit', 'aria-valuetext'));
       assert(!(await page.$$eval('#panel .hint:not(.page-note)', hs => hs.some(x => /apply at once/.test(x.textContent)))), 'an ad-hoc "apply at once" hint left on the page');
@@ -125,6 +127,9 @@ const SW = {ok: true, installed: true, version: '1.4.0', channel: 'stable', upda
 
     await check('Phones: one "What phones call the radio" row with a link to Rooms', async () => {
       const page = await fresh('#settings/phones');
+      await until(() => page.isVisible('#more-phones summary'), 6000, 'More options');
+      assert(!(await page.isVisible('#castNameBox')), 'the name row shown before More options');
+      await page.click('#more-phones summary');
       await until(() => page.isVisible('#castNameBox .li-title'), 6000, 'the name row');
       assert((await page.textContent('#castNameBox .li-title')) === 'What phones call the radio', 'title');
       assert((await page.textContent('#castNameNow')) === 'Hasler', 'name ' + await page.textContent('#castNameNow'));
