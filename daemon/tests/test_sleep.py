@@ -327,8 +327,10 @@ class FakeDriver:
 class TestLamp:
     def test_playing_dims_slowly_in_the_last_minute(self):
         look, fade = look_for(BoxState(playing=True, source="ytm", sleeping=True))
-        assert look == Look("amber_pale", policy.SLEEP_LEVEL) and fade == policy.FADE_SLEEP
-        assert look_for(BoxState(sleeping=True)) == (Look("amber", policy.SLEEP_LEVEL), policy.FADE_SLEEP)
+        assert look == Look("amber", policy.SLEEP_LEVEL, night=policy.SLEEP_LEVEL)
+        assert fade == policy.FADE_SLEEP
+        look, fade = look_for(BoxState(sleeping=True))
+        assert (look.colour, look.level, fade) == ("amber", policy.SLEEP_LEVEL, policy.FADE_SLEEP)
 
     def test_standby_and_alerts_are_not_dimmed(self):
         assert look_for(BoxState(standby=True, sleeping=True))[0] == policy.STANDBY
