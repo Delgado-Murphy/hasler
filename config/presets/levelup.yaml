@@ -1,0 +1,21 @@
+# Starter set: Level Up (the format: dial.yaml). What's new this week, K-pop,
+# anime and game music: pop culture as it is played now.
+pack: levelup
+title: "Level Up"
+group: "Every day"
+blurb: "This week's pop, K-pop, anime songs from a fan-run Tokyo radio, game soundtracks and 8-bit chiptune."
+presets:
+  - {n: 1, name: "Pop Hotlist", short: "Hotlist", ytm: RDCLAK5uy_npj3EI5VV_uv_GdeeNgVpsGe5n_9YwzoI,
+     why: "The newest pop, from YouTube Music, refreshed as songs break. Press again to skip."}
+  - {n: 2, name: "BBC Radio 1", short: "Radio 1", station: gb-bbc-radio-1,
+     why: "The BBC's station for new music, live from London."}
+  - {n: 3, name: "K-HITLIST", short: "K-pop", ytm: RDCLAK5uy_l7wbVbkC-dG5fyEQQsBfjm_z3dLAhYyvo,
+     why: "The K-pop everyone's talking about, from YouTube Music."}
+  - {n: 4, name: "LISTEN.moe", short: "Anime", station: jp-listen-moe-j-pop,
+     why: "A fan-run web radio of J-pop and anime openings, around the clock."}
+  - {n: 5, name: "Video Game Soundtracks", short: "Game OST", ytm: RDCLAK5uy_nebpZj-vRJ3W47DV1uCky0oAZkZFHuxWM,
+     why: "The music from the games, for homework or for winning."}
+  - {n: 6, name: "Rainwave Chiptune", short: "Chiptune", station: zz-rainwave-chiptune,
+     why: "The sound chips of 8- and 16-bit consoles, voted onto the air by listeners worldwide."}
+  - {n: 7, name: "Nightwave Plaza", short: "Vaporwave", station: zz-nightwave-plaza,
+     why: "Vaporwave and future funk: the internet's own genre, as a radio station."}

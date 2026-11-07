@@ -538,7 +538,7 @@ def fetch_release(base: str, channel: str, out: Path, root_pubs: list[str], now:
 # --- settings ----------------------------------------------------------------------------
 
 DEFAULTS = {"channel": "stable", "update_mode": "auto", "variant": "hasler-hm-hat", "user": "",
-            "moode": "yes", "moode_update": "yes", "panel_optional": "no", "update_url": "", "starter": "eclectic",
+            "moode": "yes", "moode_update": "yes", "panel_optional": "no", "update_url": "", "starter": "dial",
             # Support (docs/using.md "When something is wrong"): who built the radio
             # and how to reach them; the opt-in daily check-in and where it goes.
             "makers_contact": "", "checkin": "no", "checkin_url": ""}
@@ -580,7 +580,7 @@ def validate(s: dict) -> dict:
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", s["variant"]):
         raise InstallError(f"bad variant {s['variant']!r}")
     if not re.fullmatch(r"[a-z][a-z0-9_-]*", s["starter"]):
-        raise InstallError(f"bad starter {s['starter']!r} (a starter set's name, like eclectic)")
+        raise InstallError(f"bad starter {s['starter']!r} (a starter set's name, like dial)")
     if s["user"] and not re.fullmatch(r"[a-z_][a-z0-9_-]*", s["user"]):
         raise InstallError(f"bad user {s['user']!r}")
     for k in ("moode", "moode_update", "panel_optional"):

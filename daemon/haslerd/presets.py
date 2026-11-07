@@ -4,13 +4,13 @@ A cabinet descriptor says only how many keys hold music (``presets: {slots:
 6}``; the Excelsior has seven, the seventh being Tape). *What* they hold comes
 from a starter set in ``config/presets/<pack>.yaml``::
 
-    pack: eclectic
-    title: "Eclectic"
-    group: "Grown-ups"
-    blurb: "A little of everything ..."
+    pack: dial
+    title: "Turn the Dial"
+    group: "Every day"
+    blurb: "Paris, Switzerland, Madrid ..."
     presets:
       - {n: 1, name: "FIP", short: "FIP", station: fr-fip, why: "..."}
-      - {n: 3, name: "Coffee Shop Blend", short: "Coffee Shop", ytm: RDCLAK5uy_..., why: "..."}
+      - {n: 6, name: "Classic Feel-Good Pop", short: "Feel-Good", ytm: RDCLAK5uy_..., why: "..."}
 
 Each entry names exactly one of ``station`` (an id in
 config/stations/collection.json - the stream URL has one spelling, the
@@ -23,11 +23,11 @@ stays beside the id, as a ytm reference keeps the link it last resolved to,
 so a key still plays when an id is gone from a later collection.
 
 Which set a radio uses: ``box.yaml starter:`` (hasler-install writes
-``eclectic``), overridden by ``settings.json starter`` when the owner chose
+``dial``), overridden by ``settings.json starter`` when the owner chose
 one on the key page ("Start from a set"). ``DEFAULT_PACK`` when neither says.
 "Reset keys to defaults" resets to that set. A set a release dropped or
-renamed is followed to its successor (``PACK_ALIASES``): a radio on 1.5's
-``pop`` plays ``espana`` now, as if the owner had chosen it.
+renamed is followed to its successor (``PACK_ALIASES``): a radio on 1.6's
+``eclectic`` plays ``dial`` now, as if the owner had chosen it.
 
 ``layout_rev`` names a shipped layout (the set's presets and the descriptor's
 key table) by content; keys.yaml carries it as ``defaults_rev`` beside a
@@ -50,16 +50,24 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-DEFAULT_PACK = "eclectic"
-# The order the page lists the sets in (youngest listeners first, so the
-# sheet's ``group`` headings read in age order); anything else comes after, by name.
-PACK_ORDER = ("little", "family", "teens", "indie",
-              "eclectic", "classical", "jazz", "oldies", "espana", "world")
+DEFAULT_PACK = "dial"
+# The order the page lists the sets in, grouped by occasion (the sheet's
+# ``group`` headings: Every day, For a mood, Go somewhere, Family time - never
+# an age); anything else comes after, by name.
+PACK_ORDER = ("dial", "mixtape", "levelup", "deepcuts",
+              "afterhours", "encore", "passport", "sobremesa", "saturday", "nightlight")
 # Sets a release dropped or renamed -> the set that took their place. A radio
 # whose box.yaml or settings.json names an old one plays its successor (an
-# info line, not a warning: nobody did anything wrong). 1.6 folded 1.5's
-# "Pop & hits" and "Raíces" into "España".
-PACK_ALIASES = {"pop": "espana", "raices": "espana"}
+# info line, not a warning: nobody did anything wrong); its untouched keys
+# follow the new set, the owner's own keys stay (web/keymap.py apply_saved).
+# 1.6 folded 1.5's "Pop & hits" and "Raíces" into "España"; the sets were then
+# renamed by taste and occasion instead of by age.
+PACK_ALIASES = {
+    "eclectic": "dial", "oldies": "mixtape", "teens": "levelup", "indie": "deepcuts",
+    "jazz": "afterhours", "classical": "encore", "world": "passport",
+    "espana": "sobremesa", "pop": "sobremesa", "raices": "sobremesa",
+    "family": "saturday", "little": "nightlight",
+}
 PACK_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 SHORT_MAX = 12                  # a key-cap label (web/keymap.py SHORT_MAX)
 ENTRY_SOURCES = ("station", "ytm", "radio", "spotify", "url")
@@ -182,7 +190,7 @@ class Pack:
     blurb: str
     entries: tuple[dict, ...]       # as written, by n ascending (``why`` included)
     path: Path | None = None
-    group: str = ""                 # the sheet's heading for it ("Little ones", "Grown-ups" ...)
+    group: str = ""                 # the sheet's heading for it ("Every day", "Family time" ...)
 
 
 def _check_entry(raw: Any, where: str) -> dict:

@@ -1,0 +1,23 @@
+# Starter set: Sobremesa (the format: dial.yaml) - the long talk at the table
+# after lunch. Spain and Latin America: pop, flamenco, salsa, tango, copla. It
+# takes over 1.6's "España" and 1.5's "Pop & hits" and "Raíces"
+# (haslerd/presets.py PACK_ALIASES).
+pack: sobremesa
+title: "Sobremesa"
+group: "Go somewhere"
+blurb: "The lunch that runs into evening: Spanish pop, flamenco live from Andalusia, Camarón, salsa from a Madrid record vault and tango."
+presets:
+  - {n: 1, name: "Pop español", short: "Pop español", ytm: RDCLAK5uy_mODoXSJeiOpgt_UVHmVsURrDfXEx3Ruok,
+     why: "The Spanish pop hits as a list, from YouTube Music. Press again to skip."}
+  - {n: 2, name: "Flamenco Radio", short: "Flamenco", station: es-flamenco-radio,
+     why: "Canal Sur's flamenco channel: cante, guitarra and baile, all day, at 320k."}
+  - {n: 3, name: "Radio Gladys Palmera", short: "Gladys", station: es-radio-gladys-palmera,
+     why: "Salsa, son and boogaloo from a 50,000-record Latin collection in Madrid."}
+  - {n: 4, name: "Camarón de la Isla radio", short: "Camarón", ytm: RDEM10QoLzBTeIlRCYcRC3ZOGQ,
+     why: "An endless radio around Camarón's voice."}
+  - {n: 5, name: "La movida", short: "Movida", ytm: RDCLAK5uy_nMjH-zwJOKTmoBGmVBQlTCML5WXHqxDOA,
+     why: "Spanish rock of the '80s and '90s, the movida and what came after."}
+  - {n: 6, name: "La 2x4", short: "Tango", station: ar-la-2x4,
+     why: "Buenos Aires's own all-tango station, live from the city."}
+  - {n: 7, name: "Lola Flores radio", short: "Lola Flores", ytm: RDEMo_LYHAjSQXW8TeGqyPFsCA,
+     why: "Start with La Faraona and let it run: copla without end."}

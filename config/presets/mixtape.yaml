@@ -1,0 +1,22 @@
+# Starter set: Mixtape (the format: dial.yaml). Every decade's sing-alongs on
+# YouTube Music, with stations that still play the records. Clean enough for
+# any kitchen.
+pack: mixtape
+title: "Mixtape"
+group: "Every day"
+blurb: "Side A, side B: the hits of the '70s to the '90s, Motown, disco and old 45s from a New Jersey cult station."
+presets:
+  - {n: 1, name: "The Hits: '80s", short: "'80s Hits", ytm: RDCLAK5uy_lMzHW51iFg1Kx0d_2EHpzbOgCrwtu8cgI,
+     why: "Synths, big choruses, every one a song you know. Press again for the next."}
+  - {n: 2, name: "Radio Swiss Pop", short: "Swiss Pop", station: ch-radio-swiss-pop,
+     why: "Pop you know, with no presenters and no ads."}
+  - {n: 3, name: "Essential Motown Hits", short: "Motown", ytm: RDCLAK5uy_md9QGmtE2Pn3CLaFPcx9AhVuY7CmE2yes,
+     why: "The Supremes, Marvin, Stevie: soul for a Saturday kitchen."}
+  - {n: 4, name: "Underground 80s", short: "New Wave", station: us-somafm-underground-80s,
+     why: "The B-sides of the decade: UK synth-pop and new wave, from San Francisco's SomaFM."}
+  - {n: 5, name: "Classic Disco Hits", short: "Disco", ytm: RDCLAK5uy_lwXnxGJ28lRP8WzewNcEpQKoSkysytWfU,
+     why: "Mirror ball on: the disco records that still fill a floor."}
+  - {n: 6, name: "WFMU Rock'n'Soul", short: "Rock'n'Soul", station: us-wfmu-rock-n-soul-radio,
+     why: "Old 45s of '50s and '60s rock'n'roll and soul, played from a cult New Jersey freeform station."}
+  - {n: 7, name: "The Hits: '90s", short: "'90s Hits", ytm: RDCLAK5uy_nQkPLhMF6chdzKSlWdX8NHMrLVpdci-eU,
+     why: "The decade of the CD single, start to finish."}

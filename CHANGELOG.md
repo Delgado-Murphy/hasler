@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.3 - 2026-11-07
+
+- Ten new starter sets, by taste and occasion: Turn the Dial (the one a radio
+  comes with), Mixtape, Level Up, Deep Cuts, After Hours, Encore, Passport,
+  Sobremesa, Saturday Morning and Night Light. A radio on an old set moves to
+  the closest new one; keys you changed stay yours.
+- Lyrics is a small button beside the song; "Start a radio" and "Put on a key"
+  live behind ⋯ next to it, so the keys sit higher on a phone.
+
 ## 1.6.2 - 2026-11-07
 
 - The 1.6.1 repair now actually runs: it hands the radio's files to the

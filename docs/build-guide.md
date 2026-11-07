@@ -231,7 +231,7 @@ Do these in order, with a meter. The details and the reasons are in
       `cat /proc/asound/cards`. Then `sudo systemctl restart haslerd`.
 - [ ] Now turn on moOde's **AirPlay** renderer (Configure → Renderers).
 - [ ] *(Optional)* The built-in stations are a starter set
-      (`config/presets/eclectic.yaml`: stations and YouTube Music lists, all
+      (`config/presets/dial.yaml`: stations and YouTube Music lists, all
       playing with no account). Pick another with `starter:` in box.yaml if
       you like; later the owner picks one on the key page (**Start from a
       set…**) or changes the keys one by one.

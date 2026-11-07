@@ -261,7 +261,7 @@ class TestLatchingStatus:
         assert st["selectors"][0] == {"id": "speaker_sel", "label": "Speakers", "position": 0,
                                       "positions": ["Both", "Left", "Right"], "text": "Both", "wired": True}
         assert [k["id"] for k in st["keys"]] == BANK_IDS
-        # Tape takes the starter set's seventh entry (config/presets/eclectic.yaml).
+        # Tape takes the starter set's seventh entry (config/presets/dial.yaml).
         assert st["keys"][7] == {"id": "tape", "label": "Tape", "n": 7, "name": "KEXP", "short": "KEXP",
                                  "source": "radio"}
 

@@ -1,0 +1,22 @@
+# Starter set: Encore (the format: dial.yaml). Inspired by how the radio is
+# played on the bench - orchestras, a concert piano, jazz without talk and a
+# far-away community station - without copying anyone's keys.
+pack: encore
+title: "Encore"
+group: "For a mood"
+blurb: "Front-row seats: the Proms live from London, a concert grand, the great film scores and Melbourne's wildest community station."
+presets:
+  - {n: 1, name: "Radio Swiss Classic", short: "Classic", station: ch-radio-swiss-classic,
+     why: "Classical music around the clock, no presenters - the gentlest first key there is."}
+  - {n: 2, name: "Jazz Piano", short: "Jazz Piano", ytm: RDCLAK5uy_nRr0zn4n0C5AGQqZKdSaSzs2zmbImOIwU,
+     why: "Just a piano and someone who can really play it. Press again to skip."}
+  - {n: 3, name: "BBC Radio 3", short: "BBC Radio 3", station: gb-bbc-radio-3,
+     why: "The BBC's classical and arts station: live concerts, the Proms and adventurous late nights."}
+  - {n: 4, name: "Epic Film Scores", short: "Film Scores", ytm: RDCLAK5uy_lwuEBboC99qPJNGXs0Um80VvHYNtxSTFg,
+     why: "The whole orchestra, from the films you remember."}
+  - {n: 5, name: "Triple R", short: "Triple R", station: au-3rrr-triple-r,
+     why: "Melbourne's independent community station: 45 years of specialist shows by people who love records."}
+  - {n: 6, name: "Classical Romance", short: "Romantic", ytm: RDCLAK5uy_kujHHFkpZkDcuyi7TNreotQ0F-UYjSAjo,
+     why: "Beethoven to Brahms: the big Romantic works, as the great orchestras recorded them."}
+  - {n: 7, name: "NRK Jazz", short: "NRK Jazz", station: no-nrk-jazz,
+     why: "Non-stop jazz from Norway, with the quiet Nordic accent of ECM country."}

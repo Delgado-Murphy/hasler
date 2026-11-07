@@ -1,0 +1,21 @@
+# Starter set: Deep Cuts (the format: dial.yaml). Cult stations, pirate-radio
+# heirs and the indie lists: for the one who reads the sleeve notes.
+pack: deepcuts
+title: "Deep Cuts"
+group: "Every day"
+blurb: "Record-shop radio: a village in the Alps, London's pirate heirs, a wooden cabin in Tbilisi, indie now and Tokyo city pop."
+presets:
+  - {n: 1, name: "Radio Meuh", short: "Meuh", station: fr-radio-meuh,
+     why: "A cult web radio from a village in the French Alps: crate-digger grooves, no ads, no chat."}
+  - {n: 2, name: "Today's Indie Hits", short: "Indie Hits", ytm: RDCLAK5uy_m0Nsi5Jnn_g6qbvc7fywPRhEv1qN0PcMM,
+     why: "The indie songs of the moment, from YouTube Music. Press again to skip."}
+  - {n: 3, name: "NTS 1", short: "NTS", station: gb-nts-1,
+     why: "Dalston's global underground station, the heir to London's pirate radio."}
+  - {n: 4, name: "City Pop: Origins", short: "City Pop", ytm: RDCLAK5uy_nEjjAWEM3M3fk2tT4Lhb5JOr_HoD0tjnk,
+     why: "Tokyo's glossy late-'70s and '80s pop, the sound the internet fell for."}
+  - {n: 5, name: "Mutant Radio", short: "Mutant", station: ge-mutant-radio,
+     why: "Tbilisi's community station, broadcast from a little wooden cabin: the city's club and art scene."}
+  - {n: 6, name: "Indie Anthems", short: "Anthems", ytm: RDCLAK5uy_m9Rw_g5eCJtMhuRgP1eqU3H-XW7UL6uWQ,
+     why: "The indie songs that became everybody's, from the 2000s on."}
+  - {n: 7, name: "Radio Nova", short: "Nova", station: fr-radio-nova,
+     why: "Paris's grand mix since 1981: hip-hop, soul, electronica and the odd surprise."}

@@ -82,9 +82,9 @@ def test_behaviour_is_inherited_not_copied():
 
 def test_the_hat_is_the_default_for_a_new_radio():
     firstboot = (ROOT / "config" / "firstboot" / "hasler.txt").read_text()
-    assert "variant = hasler-hm-hat" in firstboot and "starter = eclectic" in firstboot
+    assert "variant = hasler-hm-hat" in firstboot and "starter = dial" in firstboot
     install = (ROOT / "scripts" / "hasler-install").read_text()
-    assert '"variant": "hasler-hm-hat"' in install and '"starter": "eclectic"' in install
+    assert '"variant": "hasler-hm-hat"' in install and '"starter": "dial"' in install
     assert "starter: {s['starter']}" in install
     example = yaml.safe_load((ROOT / "config" / "box.yaml.example").read_text())
-    assert example["variant"] == "hasler-hm-hat" and example["starter"] == "eclectic"
+    assert example["variant"] == "hasler-hm-hat" and example["starter"] == "dial"
