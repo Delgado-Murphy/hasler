@@ -93,7 +93,9 @@ def test_every_pack_shows_what_the_radio_can_do(starters, name):
     stations = presets.collection(ROOT)
     six = [e for e in starters.pack(name).entries if e["n"] <= 6]
     assert sum(1 for e in six if e.get("station")) >= 2, name
-    assert sum(1 for e in six if e.get("ytm")) >= 2, name
+    # Eclectic carries one YouTube Music key: the owner chose RNE Radio 3 over a
+    # second list on key 3 (2026-11-07).
+    assert sum(1 for e in six if e.get("ytm")) >= (1 if name == "eclectic" else 2), name
     first = six[0]
     if first.get("station"):
         genres = set(stations[first["station"]].get("genres") or []) | {stations[first["station"]]["genre"].lower()}

@@ -175,7 +175,7 @@ class TestStatus:
         keys = app.status()["keys"]
         assert [k["id"] for k in keys] == ["k1", "k2", "k3", "k4", "k5", "k6", "pu"]
         assert keys[0] == {"id": "k1", "label": "1", "n": 1, "name": "FIP", "short": "FIP", "source": "radio"}
-        assert keys[2]["source"] == "ytm" and keys[3]["source"] == "radio" and keys[4]["source"] == "ytm"
+        assert keys[2]["source"] == "radio" and keys[3]["source"] == "radio" and keys[4]["source"] == "ytm"
         assert keys[6] == {"id": "pu", "label": "PU", "n": None, "name": "Next source", "source": None}
 
     def test_keys_follow_the_live_layout(self, rig):

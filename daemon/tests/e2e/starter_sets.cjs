@@ -93,7 +93,7 @@ const presetName = (cfg, n) => (cfg.presets.find(p => p.n === n) || {}).name;
       assert(JSON.stringify(c.starters.map(s => s.id)) === JSON.stringify(SETS), 'sets ' + c.starters.map(s => s.id));
       assert(c.starters.every(s => s.keys.length === 6 && s.title && s.blurb && s.group), 'six keys per set on the HM');
       assert(JSON.stringify([...new Set(c.starters.map(s => s.group))]) === JSON.stringify(GROUPS), 'groups ' + c.starters.map(s => s.group));
-      assert(presetName(c, 1) === 'FIP' && presetName(c, 3) === 'Coffee Shop Blend', 'eclectic keys ' + c.presets.map(p => p.name));
+      assert(presetName(c, 1) === 'FIP' && presetName(c, 3) === 'RNE Radio 3', 'eclectic keys ' + c.presets.map(p => p.name));
       assert(c.presets[0].station === 'fr-fip' && c.presets[0].uri.startsWith('https://'), 'station id on key 1: ' + JSON.stringify(c.presets[0]));
     });
 

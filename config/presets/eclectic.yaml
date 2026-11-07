@@ -11,14 +11,14 @@
 pack: eclectic
 title: "Eclectic"
 group: "Grown-ups"
-blurb: "A little of everything and not much talk: Paris, Switzerland, Havana and a Japanese beach, side by side."
+blurb: "A little of everything and not much talk: Paris, Switzerland, Madrid, Havana and a Japanese beach, side by side."
 presets:
   - {n: 1, name: "FIP", short: "FIP", station: fr-fip,
      why: "Radio France's eclectic channel: jazz, pop, world, hardly a word spoken. The key everyone agrees on."}
   - {n: 2, name: "Radio Swiss Jazz", short: "Swiss Jazz", station: ch-radio-swiss-jazz,
      why: "Jazz around the clock from the cabinet's homeland, no presenters."}
-  - {n: 3, name: "Coffee Shop Blend", short: "Coffee Shop", ytm: RDCLAK5uy_nBE4bLuBHUXWZrF59ZrkPEToKt8M_I3Vc,
-     why: "A YouTube Music list for a slow morning. Tap the key again for the next song."}
+  - {n: 3, name: "RNE Radio 3", short: "Radio 3", station: es-rne-radio-3,
+     why: "Spain's music station since 1979: indie, jazz, world and the odd surprise, live from Madrid."}
   - {n: 4, name: "Shonan Beach FM", short: "Shonan Beach", station: jp-shonan-beach-fm-78-9,
      why: "A little community station on a Japanese beach: jazz, bossa and AOR. Sunday afternoon, any day."}
   - {n: 5, name: "Buena Vista Social Club radio", short: "Buena Vista", ytm: RDEMkIlmPguUoTgHzbw6yV9n_g,

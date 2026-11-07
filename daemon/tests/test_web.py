@@ -61,7 +61,7 @@ class TestConfigDoc:
         # The eclectic starter set (config/presets/eclectic.yaml): stations by id, lists by link.
         assert by_n[2]["name"] == "Radio Swiss Jazz" and by_n[2]["source"] == "radio"
         assert by_n[2]["station"] == "ch-radio-swiss-jazz" and by_n[2]["uri"].startswith("https://")
-        assert by_n[3]["source"] == "ytm" and "station" not in by_n[3]
+        assert by_n[3]["source"] == "radio" and by_n[3]["station"] == "es-rne-radio-3"
         assert by_n[5]["source"] == "ytm"
 
     def test_an_action_the_page_cannot_edit_is_shown_and_kept(self, rig):
@@ -226,7 +226,7 @@ class TestPlayAndStatus:
         actions.dispatch(Event("k3", "tap"))
         st = app.status()
         assert st["pressed"] == ["k3"]
-        assert st["playing"]["name"] == "Coffee Shop Blend"
+        assert st["playing"]["name"] == "RNE Radio 3"
 
     def test_status_shows_the_tone_knob_and_its_switch(self, rig):
         app, actions, _, panel = rig

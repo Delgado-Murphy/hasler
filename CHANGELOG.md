@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The Eclectic set plays RNE Radio 3 on key 3, instead of the Coffee Shop list.
 - The update channels have one name each, everywhere: **Bench** (new
   versions reach the makers' radios first, and may break) and **Stable**
   (everyone). The page's picker said "Test versions".
