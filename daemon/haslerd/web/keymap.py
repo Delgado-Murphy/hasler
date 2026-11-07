@@ -14,6 +14,8 @@ old layout or the new one, never half of each.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 from pathlib import Path
@@ -158,7 +160,8 @@ def combo_to_page(combo: dict) -> dict:
     }
 
 
-def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
+def layout_doc(actions: Actions) -> dict:
+    """What the owner sets on the page: keys, presets, combinations."""
     table = actions.variant.actions
     keys = []
     for cid in key_ids(actions):
@@ -169,16 +172,35 @@ def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
             "hold": to_page(table.get(f"{cid}.hold")),
         })
     return {
-        "variant": actions.variant.name,
         "keys": keys,
         "presets": [preset_to_page(p) for p in sorted(actions.presets.values(), key=lambda p: p.n)],
+        "combos": [combo_to_page(c) for c in actions.variant.combos or [] if isinstance(c, dict)],
+    }
+
+
+def layout_rev(layout: dict) -> str:
+    """The layout's revision: a short hash of its content, so it changes with
+    any change (the page, Browse, a reset, Home Assistant) and survives restarts.
+    Two phones editing at once: a PUT carrying an old one is refused (409)."""
+    raw = json.dumps(layout, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha1(raw.encode()).hexdigest()[:12]
+
+
+def config_doc(actions: Actions, sources: dict[str, bool], ha: Any) -> dict:
+    layout = layout_doc(actions)
+    return {
+        "variant": actions.variant.name,
+        "keys": layout["keys"],
+        "presets": layout["presets"],
         "verbs": VERBS,
         "sources": sources,
         "ha": ha_connected(ha),
-        "combos": [combo_to_page(c) for c in actions.variant.combos or [] if isinstance(c, dict)],
+        "combos": layout["combos"],
         "combo_keys": combo_keys(actions),
         "combo_limits": {"hold_s": list(COMBO_HOLD_RANGE), "default_hold_s": DEFAULT_COMBO_HOLD_S,
                          "max": MAX_COMBOS},
+        # Send it back with the PUT ("rev", or If-Match) to be told about a change made meanwhile.
+        "rev": layout_rev(layout),
     }
 
 

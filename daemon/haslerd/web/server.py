@@ -121,6 +121,14 @@ from . import wifi_page
 
 log = logging.getLogger(__name__)
 
+
+class Stale(Exception):
+    """A key layout PUT made from an older revision: answered 409 with ``config``."""
+
+    def __init__(self, config: dict):
+        super().__init__("the keys were changed elsewhere")
+        self.config = config
+
 STATIC = Path(__file__).parent / "static"
 FONTS = STATIC / "fonts"
 FONT_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.woff2$")
@@ -571,8 +579,15 @@ class WebApp:
             log.debug("ha connected check failed", exc_info=True)
             return False
 
-    def save(self, doc: Any) -> dict:
+    def save(self, doc: Any, rev: str | None = None) -> dict:
+        """PUT /api/config. ``rev`` = the revision the page started from (body
+        "rev" or If-Match); when the keys changed since, Stale (409) with the
+        radio's current config, so the page can merge instead of undoing them."""
         with self.lock:
+            if rev is not None:
+                current = self.config()
+                if current["rev"] != rev:
+                    raise Stale(current)
             specs, table, combos = keymap.parse_layout(doc, self.actions)   # raises keymap.Invalid
             if self.keys_file is not None:
                 if combos is None:
@@ -662,6 +677,8 @@ class WebApp:
             # The remote's keys, k1..k6 then PU, and which one is lit.
             "keys": self._keys(),
             "current_key": self._current_key(current),
+            # GET /api/config's "rev": a page sees here that the keys changed elsewhere.
+            "config_rev": self._config_rev(),
             "volume_limit": self._volume_limit(),
             # The tone knob: 0-100 and what it does (None = no tone pot read yet):
             # {"value", "treble_db", "effect", "label", "text": "Warmer · 40%"}.
@@ -671,6 +688,13 @@ class WebApp:
             # Multiroom: None alone, else {"role", "joining", "leader": {id, name}|None, "members": n}.
             "group": self._group_status(),
         }
+
+    def _config_rev(self) -> str | None:
+        try:
+            return keymap.layout_rev(keymap.layout_doc(self.actions))
+        except Exception:
+            log.debug("config revision failed", exc_info=True)
+            return None
 
     def _tone_doc(self, tone: Any) -> dict | None:
         if not isinstance(tone, (int, float)) or isinstance(tone, bool):
@@ -2014,7 +2038,7 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 return
             path = urlparse(self.path).path
             if path == "/api/config":
-                self._guard(lambda: self._json(200, {"ok": True, "config": app.save(self._body())}))
+                self._guard(self._put_config)
             elif path == "/api/settings":
                 self._guard(lambda: self._json(
                     200, {"ok": True, **app.put_settings(self._body(), self.headers.get("Host"))}))
@@ -2027,6 +2051,18 @@ def _handler(app: WebApp) -> type[BaseHTTPRequestHandler]:
                 self._guard(lambda: self._json(200, {"ok": True, **app.put_lamp_palette(self._body())}))
             else:
                 self._send(404, b"not found", "text/plain")
+
+        def _put_config(self) -> None:
+            body = self._body()
+            rev = body.pop("rev", None) if isinstance(body, dict) else None
+            if rev is None:
+                tag = (self.headers.get("If-Match") or "").strip()
+                rev = tag.removeprefix("W/").strip('"') if tag and tag != "*" else None
+            try:
+                self._json(200, {"ok": True, "config": app.save(body, None if rev is None else str(rev))})
+            except Stale as exc:
+                self._json(409, {"ok": False, "stale": True, "errors": [], "config": exc.config,
+                                 "error": "the keys were changed elsewhere since this page read them"})
 
         def _wifi_page(self, lang: str | None, status: int = 200, form: dict | None = None, **kw: Any) -> None:
             """The Wi-Fi setup page, rendered for this phone (web/wifi_page.py)."""
