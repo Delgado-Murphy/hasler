@@ -348,6 +348,18 @@ every time:
 (If a pot reads backwards, enter the points descending; the shipped volume curve does this.)
 With direct GPIO wiring, also paste the `pins:` array printed by `panel-probe.py --identify`.
 
+The speaker's facts go in the descriptor's `audio:` block (section 4 above gives the numbers;
+[hardware.md](../hardware.md#the-speaker--measured) explains each key):
+
+```yaml
+audio:
+  speakers: 1               # one cone on the left channel: mono by default
+  volume_limit_max: 90      # the maker's cap on the owner's ceiling - set by ear, then stop
+  volume_limit_default: 70
+  volume_floor_default: 28
+  card: sndrpihifiberry
+```
+
 **Then re-run the tests** — they load this descriptor, so a malformed curve fails on the laptop
 rather than in the cabinet:
 

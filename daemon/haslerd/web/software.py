@@ -96,6 +96,15 @@ def _version_key(v: str) -> tuple:
     return nums + ((1,) if not pre else (0, pre))
 
 
+def _flag(raw: Any, default: bool) -> bool:
+    """A box.yaml on/off word (``on``, ``off``, ``true``, YAML's own bools) as a bool."""
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() not in ("off", "false", "no", "0", "")
+
+
 def systemctl_start(unit: str) -> None:
     """``systemctl start --no-block <unit>``; raises RuntimeError with systemd's words."""
     proc = subprocess.run(["systemctl", "start", "--no-block", unit],
@@ -190,7 +199,12 @@ class Software:
                 why = "was retired" if channel in RETIRED_CHANNELS else "is not a channel"
                 log.warning("box.yaml channel %r %s: treating it as stable", channel, why)
             channel = "stable"
-        return {"update_mode": mode if mode in MODES else "ask", "channel": channel}
+        return {"update_mode": mode if mode in MODES else "ask", "channel": channel,
+                # metered: never download in the background (a phone hotspot, a
+                # capped plan) - the owner's switch under Updates. os_updates:
+                # Debian security updates at night - the maker's, under Maker tools.
+                "metered": _flag(box.get("metered", False), False),
+                "os_updates": _flag(box.get("os_updates", True), True)}
 
     # -- the status document -----------------------------------------------------
 
@@ -216,6 +230,7 @@ class Software:
             "version": version,
             "channel": box["channel"],
             "update_mode": box["update_mode"],
+            "metered": box["metered"],
             "last_check": check.get("checked"),
             "check_error": check.get("message") if check.get("result") == "error" else None,
             "available": self._available(check, state, version),
@@ -397,6 +412,8 @@ class Software:
             raise ValueError(f"{to} is already running")
         self._start(f"hasler-update-apply@rollback-{to}.service")
 
+    SETTING_KEYS = ("update_mode", "channel", "metered", "os_updates")
+
     @staticmethod
     def check_settings(body: dict) -> None:
         """ValueError unless ``body`` is a valid ``put_settings`` request."""
@@ -405,11 +422,19 @@ class Software:
             raise ValueError("update_mode must be auto, ask or off")
         if channel is not None and channel not in CHANNELS:
             raise ValueError("channel must be bench or stable")
-        if mode is None and channel is None:
-            raise ValueError("expected {\"update_mode\"} and/or {\"channel\"}")
+        for flag in ("metered", "os_updates"):
+            if flag in body and not isinstance(body[flag], bool):
+                raise ValueError(f"{flag} must be true or false")
+        if not any(k in body for k in Software.SETTING_KEYS):
+            raise ValueError("expected {\"update_mode\"}, {\"channel\"}, {\"metered\": true|false} "
+                             "and/or {\"os_updates\": true|false}")
 
     def put_settings(self, body: dict) -> dict:
-        """``update_mode`` / ``channel`` into box.yaml (channel is confirm-gated by the caller)."""
+        """``update_mode`` / ``channel`` / ``metered`` / ``os_updates`` into
+        box.yaml (channel is confirm-gated by the caller). The two flags are
+        written as plain ``true`` / ``false`` lines, and only when they differ
+        from the default: the updater and scripts/hasler-os-update read
+        box.yaml line by line, without YAML, and both take that word."""
         self.check_settings(body)
         mode, channel = body.get("update_mode"), body.get("channel")
         if self.box_paths is None:
@@ -423,12 +448,22 @@ class Software:
             box["channel"] = channel
         elif str(box.get("channel", "")).lower() in RETIRED_CHANNELS:
             box["channel"] = "stable"        # what it already read as; say so in the file
+        if "metered" in body:
+            if body["metered"]:
+                box["metered"] = True
+            else:
+                box.pop("metered", None)     # the default: keep the file short
+        if "os_updates" in body:
+            if body["os_updates"]:
+                box.pop("os_updates", None)  # the default
+            else:
+                box["os_updates"] = False
         try:
             boxconfig.write_box_file(self.box_paths, box)
         except PermissionError as exc:
             raise SoftwareError(f"can't write {self.box_paths.box_file}: {exc.strerror}") from exc
         log.info("updates set to %s from the key page", {k: v for k, v in body.items()
-                                                         if k in ("update_mode", "channel")})
+                                                         if k in Software.SETTING_KEYS})
         return self.box_settings()
 
     # -- the approval and its tick ---------------------------------------------------

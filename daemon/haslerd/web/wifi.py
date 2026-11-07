@@ -228,6 +228,24 @@ class Wifi:
         watchdog calls this while the radio has no network)."""
         self.networks(False)
 
+    def signal_of(self, ssid: str) -> int | None:
+        """The signal (0-100) of ``ssid`` from the scan NetworkManager already
+        has (``--rescan no``: no new scan, so the diagnostics card costs the
+        Wi-Fi nothing), else the last list that had it; None when unknown."""
+        if not ssid:
+            return None
+        try:
+            out = self._run(
+                ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "no"],
+                capture_output=True, text=True, timeout=5,
+            ).stdout
+            nets = parse_scan(out or "")
+        except (OSError, subprocess.TimeoutExpired):
+            nets = []
+        with self._scan_lock:
+            nets = nets or list(self._last_scan)
+        return next((n["signal"] for n in nets if n["ssid"] == ssid), None)
+
     def _nm_scan(self) -> list[dict]:
         try:
             out = self._run(

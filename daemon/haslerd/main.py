@@ -36,7 +36,8 @@ import yaml
 
 from . import boxconfig
 from .actions import RENDERERS, SHUTDOWN_PREPARE_S, Actions
-from .bootresume import AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, shutdown_kind
+from .bootresume import (AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, note_power_cut,
+                         shutdown_kind)
 from .ha.rest import HomeAssistant
 from .player.bluetooth import Bluetooth
 from .player.btvolume import PhoneVolume
@@ -49,8 +50,9 @@ from .lamp.outputs import remember_period
 from .lamp.policy import look_for, reply_for
 from .web import lamp_api
 from .web import stations
-from .audio import DEFAULT as MONO_DEFAULT, MonoError, MonoSwitch
-from .web.server import SETTINGS_FILE, WebApp, WebServer, load_settings, volume_floor_from, volume_limit_from
+from .audio import MonoError, MonoSwitch, mono_default
+from .web.server import (SETTINGS_FILE, WebApp, WebServer, load_settings, volume_floor_from, volume_limit_from,
+                         volume_limit_range)
 from .web.bluetooth_api import BluetoothApi
 from .web.bluetooth_api import apply_saved as apply_bluetooth
 from .web.sources_api import SourcesApi
@@ -293,6 +295,9 @@ class LampKeeper:
         # for UPDATE_OK_S (an update installed, setup done).
         self.faults: Callable[[], list] | None = None
         self.fault_reasons: list = []
+        # Wall time (time.time) the last SOS cleared; None = none cleared this
+        # run. /api/status ``fault_cleared_at``: the page says it once.
+        self.fault_cleared_at: float | None = None
         self._next_fault_poll = 0.0
         self._ok_until = 0.0
         self._prev_state: BoxState | None = None     # the last tick's, for policy.events_for
@@ -538,6 +543,7 @@ class LampKeeper:
                     log.warning("lamp: SOS - %s needs a maker", ", ".join(found))
                 else:
                     log.info("lamp: the fault cleared")
+                    self.fault_cleared_at = time.time()
             self.fault_reasons = found
         if now >= self._next_update_poll:
             self._next_update_poll = now + UPDATE_POLL_S
@@ -877,8 +883,41 @@ class Watchdog:
             self._send("WATCHDOG=1")
 
 
-def moode_config(config: dict, settings: dict) -> MoodeConfig:
+# The descriptor's ``audio:`` keys that seed MoodeConfig (variant.Variant.audio).
+AUDIO_SEEDS = {"volume_limit_default": "volume_limit", "volume_floor_default": "volume_floor",
+               "volume_limit_max": "volume_limit_max", "card": "card"}
+
+
+def audio_seed(audio: dict | None) -> dict:
+    """MoodeConfig fields from a descriptor's ``audio:`` block (the cabinet's
+    own defaults); a bad value is logged and left to the code's default."""
+    out: dict = {}
+    for key, field in AUDIO_SEEDS.items():
+        if not isinstance(audio, dict) or key not in audio:
+            continue
+        value = audio[key]
+        if field == "card":
+            if isinstance(value, (str, int)) and not isinstance(value, bool) and str(value).strip():
+                out[field] = value
+            else:
+                log.warning("ignoring audio.card %r in the descriptor", value)
+        elif isinstance(value, bool) or not isinstance(value, (int, float)) or value != int(value):
+            log.warning("ignoring audio.%s %r in the descriptor: not a whole number", key, value)
+        else:
+            out[field] = int(value)
+    return out
+
+
+def moode_config(config: dict, settings: dict, audio: dict | None = None) -> MoodeConfig:
     """haslerd.yaml's ``moode:`` block, with the web page's saved settings on top.
+
+    Lowest first: MoodeConfig's bench-HM constants, the descriptor's ``audio:``
+    block (``volume_limit_default``, ``volume_floor_default``,
+    ``volume_limit_max``, ``card``: audio_seed), box.yaml's ``moode:``, then
+    settings.json's ``volume_limit`` / ``volume_floor``. Never above the
+    maker's cap: a ceiling over ``volume_limit_max`` is pulled down to it
+    (logged), so a cap lowered in a file holds at the next start whatever the
+    page once saved.
 
     A bad saved ``volume_limit`` / ``volume_floor`` is ignored (logged), never
     fatal: the yaml's own value then stands. So is a ``moode:`` key this
@@ -886,17 +925,28 @@ def moode_config(config: dict, settings: dict) -> MoodeConfig:
     (else the health check fails and the update rolls back).
     """
     known = {f.name for f in dataclasses.fields(MoodeConfig)}
-    spec = {}
+    spec = dict(audio_seed(audio))
     for key, value in dict(config.get("moode") or {}).items():
         if key in known:
             spec[key] = value
         else:
             log.warning("ignoring unknown setting moode.%s in box.yaml", key)
+    lo, cap = volume_limit_range(spec.get("volume_limit_max", MoodeConfig.volume_limit_max))
+    spec["volume_limit_max"] = cap
     if "volume_limit" in settings:
+        saved = settings["volume_limit"]
         try:
-            spec["volume_limit"] = volume_limit_from(settings["volume_limit"])
+            spec["volume_limit"] = volume_limit_from(saved, cap)
         except ValueError as exc:
-            log.warning("ignoring saved volume_limit %r: %s", settings["volume_limit"], exc)
+            if isinstance(saved, (int, float)) and not isinstance(saved, bool) and saved > cap:
+                log.warning("saved volume_limit %r is above the maker's cap of %d: using %d", saved, cap, cap)
+                spec["volume_limit"] = cap
+            else:
+                log.warning("ignoring saved volume_limit %r: %s", saved, exc)
+    limit = spec.get("volume_limit", MoodeConfig.volume_limit)
+    if isinstance(limit, (int, float)) and not isinstance(limit, bool) and limit > cap:
+        log.warning("volume_limit %r is above the maker's cap of %d: using %d", limit, cap, cap)
+        spec["volume_limit"] = cap
     if "volume_floor" in settings:
         limit = spec.get("volume_limit", MoodeConfig.volume_limit)
         try:
@@ -906,11 +956,12 @@ def moode_config(config: dict, settings: dict) -> MoodeConfig:
     return MoodeConfig(**spec)
 
 
-def fake_player(config: dict, settings: dict) -> FakePlayer:
-    """``--fake``'s player, with a real player's volume ceiling and floor (box.yaml,
-    then the saved settings, else MoodeConfig's 70/28) so the key page's sliders work."""
+def fake_player(config: dict, settings: dict, audio: dict | None = None) -> FakePlayer:
+    """``--fake``'s player, with a real player's volume ceiling, floor and cap
+    (the descriptor's audio block, box.yaml, then the saved settings, else
+    MoodeConfig's 70/28) so the key page's sliders work."""
     player = FakePlayer()
-    player.config = moode_config(config, settings)
+    player.config = moode_config(config, settings, audio)
     return player
 
 
@@ -1011,7 +1062,7 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
     state_dir = Path(state.path).parent if state.path is not None else None
     settings = load_settings(state_dir / SETTINGS_FILE if state_dir is not None else None)
     if args.fake:
-        player = fake_player(config, settings)
+        player = fake_player(config, settings, variant.audio)
         # HASLER_FAKE_LAMP=1: a lamp engine drawing to nowhere, so a page test
         # sees the lamp's meanings, Show me and Identify answer as on a radio.
         lamp = None
@@ -1020,7 +1071,7 @@ def build(args) -> tuple[Panel, Actions, LampDriver | None, dict, WebServer | No
             from .lamp.outputs import NullOutput
             lamp = LampEngine(NullOutput())
     else:
-        player = MoodePlayer(moode_config(config, settings), state_dir=state_dir)
+        player = MoodePlayer(moode_config(config, settings, variant.audio), state_dir=state_dir)
         lamp = open_lamp(variant.io.get("lamp") or {})
     log.info("state file: %s", state.path or "(in memory)")
 
@@ -1098,8 +1149,10 @@ def build_ha_api(actions: Actions, state_dir: Path | None, config: dict) -> obje
     return ha_api
 
 
-def build_mono(state_dir: Path | None) -> MonoSwitch | None:
-    """The mono switch, re-applied from settings.json (default on) off-thread.
+def build_mono(state_dir: Path | None, audio: dict | None = None) -> MonoSwitch | None:
+    """The mono switch, re-applied from settings.json off-thread. The default
+    is the cabinet's (``audio.speakers``, audio.mono_default: one speaker =
+    mono) until the owner says otherwise.
 
     Re-applying at every start also refreshes the override's slave from
     moOde's current output device. Absent helper (a laptop, --fake): None.
@@ -1108,8 +1161,9 @@ def build_mono(state_dir: Path | None) -> MonoSwitch | None:
     if not mono.available:
         return None
     settings = load_settings(state_dir / SETTINGS_FILE if state_dir is not None else None)
-    want = settings.get("mono", MONO_DEFAULT)
-    want = want if isinstance(want, bool) else MONO_DEFAULT
+    default = mono_default(audio)
+    want = settings.get("mono", default)
+    want = want if isinstance(want, bool) else default
 
     def apply() -> None:
         try:
@@ -1152,7 +1206,7 @@ def build_web(
         actions, panel, keys_file, available, ha_flag,
         settings_file=state_dir / SETTINGS_FILE if state_dir is not None else None,
         browse=build_browse(actions, state_dir),
-        mono=build_mono(state_dir),
+        mono=build_mono(state_dir, getattr(actions.variant, "audio", None)),
     )
     app.ha_api = ha_api
     # Physical confirmation and the "About this radio" card (web/confirm.py,
@@ -1453,12 +1507,21 @@ def main(argv=None) -> int:
     # in a clean shutdown, a power cut, or is this a haslerd restart?
     kind = "unknown" if args.fake else shutdown_kind(box_paths(args).state)
     log.info("last shutdown: %s", kind)
+    if kind == "power-cut":
+        # Counted on the card (power-cuts.json): the diagnostics card's "the
+        # power was cut 4 times this month - a plug timer?" hint.
+        cuts = note_power_cut(box_paths(args).state)
+        log.info("power cuts counted: %d", cuts.get("total", 0))
     first_sound = FirstSound(amp_card(actions.player)) if kind in ("clean", "power-cut") else None
     publisher = HaPublisher(app)
     confirm = getattr(app, "confirm", None)
     software = getattr(app, "software", None)
     ytdlp_lane = None if args.fake else getattr(app, "ytdlp_lane", None)
     connectivity = build_connectivity(config)
+    # For /api/status (online) and /api/diagnostics (web/diagnostics.py).
+    app.connectivity = connectivity
+    app.shutdown_kind = kind
+    app.first_sound = first_sound
     wifiwatch = build_wifiwatch(app, connectivity, args.fake)
     phone_volume = build_phone_volume(actions)
     keeper = None
@@ -1488,6 +1551,7 @@ def main(argv=None) -> int:
                 keeper.celebrate()              # the green bloom and Morse OK, once
         app.lamp = driver       # the Lamp colours page's preview (web/server.py)
         app.lamp_meaning = keeper.meaning    # /api/status "lamp"
+        app.lamp_keeper = keeper             # /api/status "fault_reasons", "fault_cleared_at"
     stream_watch = None if args.fake else build_stream_watchdog(actions, app, keeper)
     sleep = getattr(app, "sleep", None)
     if keeper is not None:

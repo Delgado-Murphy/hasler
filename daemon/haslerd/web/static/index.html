@@ -2105,8 +2105,9 @@ function paintCabinet(){
   if (sig === box.dataset.sig) return;
   box.dataset.sig = sig; box.textContent = '';
   for (const t of knobs) box.append(toneKnobRow(t));
+  // A selector whose route isn't built yet (the Excelsior's speakers while route_speaker is a stub) says so.
   const bits = sw.map(s => [s.id, s.label, s.on == null ? '—' : s.on ? 'On' : 'Off', s.on === true])
-    .concat(sel.map(s => [s.id, s.label, s.text || '—', false]));
+    .concat(sel.map(s => [s.id, s.label, (s.text || '—') + (s.wired === false ? ' · not wired yet' : ''), false]));
   if (bits.length) box.append(h('p', {class:'cab-line', id:'cabLine'},
     bits.map(([id, l, v, on]) => h('span', {'data-ctl':id}, l + ' · ', h('b', {class: on ? 'on' : null}, v)))));
 }
@@ -5333,7 +5334,7 @@ async function loadSettings(){
 }
 let limitTimer = null, limitFrom = null;
 /* ---- the Settings shell: a short list of pages (SET_PAGES), each with render / load / leave ---- */
-const setUi = {backTo:null, wantSec:null, taps:0, tapT:0, diag:null, diagErr:'', diagBusy:false};
+const setUi = {backTo:null, wantSec:null, taps:0, tapT:0, diag:null, diagErr:'', diagBusy:false, bundle:'', bundleBusy:false};
 const MAKER_KEY = 'hasler.maker';
 let makerFlag = (() => { try { return localStorage.getItem(MAKER_KEY) === '1'; } catch (_) { return false; } })();
 const makerOn = () => makerFlag;
@@ -5432,14 +5433,35 @@ function keysSummary(){
 function radioSummary(){
   if (!settings) return 'Checking…';
   const r = settings.room, w = settings.wifi, bits = [];
+  const faults = status && status.fault_reasons; if (faults && faults.length) bits.push('Needs a maker: ' + faultWords(faults));
   const hs = helpSummary(); if (hs) bits.push(hs);
   bits.push(r && r.custom ? r.name : 'Not named yet');
   if (w) bits.push(w.hotspot ? 'Wi-Fi setup mode' : w.ssid ? 'On ' + w.ssid : 'No Wi-Fi');
   const v = swVer(); if (v) bits.push('version ' + v);
   return bits.join(' · ');
 }
+// "Needs attention" entries from the radio's health (/api/status fault_reasons, fault_cleared_at):
+// a fault that needs a maker, and - once per clearing, this page load - that the last one cleared.
+// One function for the list builder (setAttention) to call.
+const FAULT_SEEN_KEY = 'hasler.faultClearedSeen';
+let faultClearedShowing = '';
+function attentionFromHealth(){
+  const out = [], st = status || {};
+  const faults = Array.isArray(st.fault_reasons) ? st.fault_reasons : [];
+  if (faults.length) out.push({id:'attn-fault', title:'Needs a maker: ' + faultWords(faults), sub:'The lamp taps SOS. The radio keeps playing; tell the people who built it', href:'#settings/radio/how'});
+  else if (st.fault_cleared_at){
+    let seen = ''; try { seen = localStorage.getItem(FAULT_SEEN_KEY) || ''; } catch (_) {}
+    if (seen !== st.fault_cleared_at || faultClearedShowing === st.fault_cleared_at){
+      faultClearedShowing = st.fault_cleared_at;
+      try { localStorage.setItem(FAULT_SEEN_KEY, st.fault_cleared_at); } catch (_) {}
+      out.push({id:'attn-cleared', title:'The fault cleared', sub:'The lamp stopped tapping SOS ' + ago(st.fault_cleared_at) + '. Nothing to do', href:'#settings/radio/how'});
+    }
+  }
+  return out;
+}
 function setAttention(){
   const out = [];
+  out.push(...attentionFromHealth());
   const s = software, a = s && !s.missing && !s.err ? s.available : null;
   if (a && !s.busy && !(s.approved && s.approved.version === a.version))
     out.push({id:'attn-update', title:'Update ready: ' + a.version, sub: a.kind === 'major' || a.requires_migration ? 'A bigger update — it waits for you' : 'Install it tonight, or now', href:'#settings/radio/updates'});
@@ -5469,6 +5491,7 @@ function loadSetHome(){
   const again = () => { if (onPage('home')) rerender(); };
   loadSettings().then(again); loadSources().then(again); loadGroup().then(again);
   loadSoftware(); refreshHa(); loadFx(); loadHelp();
+  if (makerOn() && !lchk.data && !lchk.loading) lchkLoad().then(again);   // the Maker tools row: "Lamp never checked"
 }
 
 function renderSettings(){
@@ -5555,13 +5578,19 @@ setInterval(paintPreview, 1000);
 function radioConfirm({action, args, title, sub}){ return pressToConfirm(action, args || {}, title, sub); }
 
 /* ---- 1 · Sound ---- */
+// The ceiling slider runs 30 up to the maker's cap (/api/settings volume_limit_range;
+// the descriptor's audio.volume_limit_max, lowered per radio in box.yaml). Raising the cap is file-only.
+const limitRange = () => { const r = settings && settings.volume_limit_range; return Array.isArray(r) && r.length === 2 ? [+r[0], +r[1]] : [30, 100]; };
+const limitPct = v => { const [lo, hi] = limitRange(); return ((v - lo) / ((hi - lo) || 1) * 100) + '%'; };
+const limitHintText = () => { const hi = limitRange()[1]; return 'Protects the 1964 speaker — the knob stops here' + (hi < 100 ? ' · the maker set the top at ' + hi : ''); };
 function renderSound(panel){
   const lim = settings && settings.volume_limit != null ? +settings.volume_limit : (status && status.volume_limit != null ? +status.volume_limit : null);
   const mono = settings && settings.mono;
-  const range = h('input', {type:'range', id:'limit', min:'30', max:'100', step:'1', value: String(lim ?? 90), 'aria-describedby':'limitHint', disabled: lim == null,
-    style:'--pct:' + (((lim ?? 90) - 30) / 70 * 100) + '%',
+  const [lo, hi] = limitRange();
+  const range = h('input', {type:'range', id:'limit', min:String(lo), max:String(hi), step:'1', value: String(lim ?? hi), 'aria-describedby':'limitHint', disabled: lim == null,
+    style:'--pct:' + limitPct(lim ?? hi),
     oninput: e => {
-      const v = +e.target.value; e.target.style.setProperty('--pct', ((v - 30) / 70 * 100) + '%');
+      const v = +e.target.value; e.target.style.setProperty('--pct', limitPct(v));
       $('limitVal').textContent = v; $('limitWarn').hidden = v < 95;
       if (limitFrom == null && settings) limitFrom = settings.volume_limit;
       clearTimeout(limitTimer); limitTimer = setTimeout(() => { const from = limitFrom; limitFrom = null; saveLimit(v, from); }, 350);
@@ -5569,7 +5598,7 @@ function renderSound(panel){
   panel.append(setGroup('volume', 'Volume', h('div', {class:'list'},
     h('div', {class:'li col'},
       h('div', {style:'display:flex;justify-content:space-between;align-items:center;gap:12px'},
-        h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'limit'}, 'Volume ceiling'), h('span', {class:'li-sub', id:'limitHint'}, 'Protects the 1964 speaker — the knob stops here')),
+        h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'limit'}, 'Volume ceiling'), h('span', {class:'li-sub', id:'limitHint'}, limitHintText())),
         h('span', {class:'li-val', id:'limitVal', 'aria-hidden':'true'}, lim ?? '—')),
       range,
       h('p', {class:'note-bad', id:'limitWarn', hidden: !(lim >= 95)}, 'Above 95 the old speaker can rattle and distort. Go gently.')),
@@ -5722,13 +5751,19 @@ function lampSwatch(colour, motion){
   if (motion.startsWith('morse:')) sw.style.animation = morseAnim(motion.slice(6));
   return sw;
 }
+// The lamp's SOS reasons (/api/status fault_reasons, lamp/faults.py) in the owner's words.
+const FAULT_WORDS = {storage:'the memory card is full, or won’t write', panel:'the keys aren’t answering', sound:'the amplifier isn’t answering',
+  heat:'it’s too hot inside', update:'an update got stuck half-way'};
+const faultWords = reasons => (Array.isArray(reasons) ? reasons : []).map(r => FAULT_WORDS[r] || String(r).replace(/_/g, ' ')).join('; ');
 // What the lamp says now ("Now: asleep" with its swatch), for anyone who can't tell the colours apart.
 function lampNowWords(){
   const m = online && status && status.lamp;
   if (!m) return null;
   // An older lamp shows ready while offline: say what it shows.
   if (m === 'offline' && !lampV2()) return {m:'ready', words:'ready'};
-  return {m, words: LAMP_WORDS[m] || m.replace(/_/g, ' ')};
+  // The SOS gets its noun: "something needs a maker: the memory card is full".
+  const noun = m === 'fault' && status.fault_reasons && status.fault_reasons.length ? ': ' + faultWords(status.fault_reasons) : '';
+  return {m, words: (LAMP_WORDS[m] || m.replace(/_/g, ' ')) + noun};
 }
 function lampNowRow(){
   const now = lampNowWords();
@@ -5739,7 +5774,7 @@ function lampNowRow(){
 function paintLampNow(){
   const el = $('lampNow'); if (!el) return;
   const now = lampNowWords();
-  if ((el.dataset.m || '') === (now ? now.m : '')) return;
+  if ((el.dataset.m || '') === (now ? now.m : '') && (!now || el.textContent.endsWith(now.words))) return;
   el.replaceWith(lampNowRow());
 }
 function lampMeanings(panel){
@@ -5973,12 +6008,71 @@ function renderRadio(panel){
     setupNetRow())));
   panel.append(setGroup('software', 'Software', h('div', {class:'set-list'},
     setRow('updates', 'Updates', updatesSummary(), '#settings/radio/updates'))));
+  panel.append(howTheRadioIs());
   const miss = ((haState && haState.missing) || []).length;
   panel.append(setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
     setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha'))));
   panel.append(setGroup('ytm', 'YouTube Music', accountCard(), ytExplicitRow()));
   const og = hostsGroup(); if (og) panel.append(og);
   const hg = helpGroup(); if (hg) panel.append(hg);   // last: rarely needed
+}
+/* ---- This radio → How the radio is: GET /api/diagnostics (web/diagnostics.py), in plain words ---- */
+// radioHow: null = loading, {missing} = an older radio, {err}, or the document. Refreshed every
+// half minute while This radio is open; the rows repaint in place.
+let radioHow = null, howTimer = null;
+async function loadHow(){
+  clearTimeout(howTimer); howTimer = null;
+  try {
+    const r = await api('GET', '/api/diagnostics', undefined, {timeout:15000});
+    radioHow = r.status === 404 ? {missing:true} : r.ok && r.json ? r.json : {err:(r.json && r.json.error) || 'Couldn’t ask the radio how it is.'};
+  } catch (_) { radioHow = {err:NET_ERR}; }
+  paintHow();
+  if (onPage('radio') && !document.hidden && !(radioHow && radioHow.missing)) howTimer = setTimeout(loadHow, 30000);
+}
+function paintHow(){
+  const box = $('howBox'); if (!box || !onPage('radio')) return;
+  box.replaceChildren(...howRows());
+}
+function howRows(){
+  const d = radioHow;
+  if (!d) return [h('span', {class:'li-sub'}, 'Checking…')];
+  if (d.missing) return [h('span', {class:'li-sub'}, 'This radio’s software can’t say yet. Updating it adds this.')];
+  if (d.err) return [h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Couldn’t ask the radio'), h('span', {class:'li-sub'}, d.err)),
+    h('button', {type:'button', class:'li-act', onclick: () => { radioHow = null; paintHow(); loadHow(); }}, 'Try again')];
+  const kv = (k, v, cls) => h('div', {class:'chk'}, h('span', null, k), h('b', {class: cls || null}, v));
+  const faults = d.faults || [], sw = d.software, res = sw && sw.last_result, pc = d.power_cuts || {};
+  const wifi = d.wifi || {}, t = d.temperature || {}, st = d.storage || {}, off = d.last_shutdown || {}, pl = d.player || {};
+  const rows = [];
+  if (faults.length) rows.push(h('p', {class:'note-bad', role:'alert', style:'margin:0 0 6px'}, 'Needs a maker: ' + faultWords(faults) + '. The radio keeps playing; tell the people who built it.'));
+  rows.push(kv('Wi-Fi', wifi.words || '—', wifi.hotspot ? 'no' : null));
+  rows.push(kv('Internet', d.online == null ? 'not known' : d.online ? 'yes' : 'no — nothing beyond the router answers', d.online === false ? 'no' : d.online ? 'ok' : null));
+  rows.push(kv('Inside the radio', t.words || '—', t.hot ? 'no' : null));
+  rows.push(kv('Memory card', st.words || '—', st.bad || st.read_only ? 'no' : null));
+  rows.push(kv('Last switched off', (off.words || '—') + (pc.month ? ' · the power was cut ' + (pc.month === 1 ? 'once' : pc.month + ' times') + ' this month' : ''), off.kind === 'power-cut' ? 'no' : null));
+  if (pc.hint) rows.push(h('p', {class:'hint', style:'margin:0 0 6px'}, 'A plug timer, or a wall switch? The radio prefers the tone knob: off for 5 seconds, wait for the lamp to go dark, then unplug if you must.'));
+  rows.push(kv('Running for', (d.running && d.running.words) || '—'));
+  rows.push(kv('Player', pl.words || '—', pl.mpd && pl.audio_card ? 'ok' : 'no'));
+  rows.push(kv('Lamp', (d.lamp && d.lamp.words) || '—'));
+  if (sw) rows.push(kv('Last update', !res ? 'none yet' : res.ok === false ? res.version + ' didn’t work; back to ' + (res.back_to || 'the one before') + (res.at ? ' (' + day(res.at) + ')' : '')
+    : res.ok ? res.version + ' installed' + (res.at ? ', ' + day(res.at) : '') : 'installing now', res && res.ok === false ? 'no' : null));
+  return rows;
+}
+function howTheRadioIs(){
+  return setGroup('how', 'How the radio is', h('div', {class:'list'},
+    h('div', {class:'li col', id:'howBox', style:'gap:0'}, howRows()),
+    h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Restart the radio'),
+        h('span', {class:'li-sub'}, 'Like unplugging it and plugging it in, but tidier. The music stops for about a minute.')),
+      h('button', {type:'button', class:'li-act', id:'restartBtn', onclick: restartRadio}, 'Restart'))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Looked at every half minute while this page is open. Restarting asks for a press on the radio.'));
+}
+async function restartRadio(){
+  const token = await radioConfirm({action:'restart', title:'Restart the radio?',
+    sub:'The music stops for about a minute while it starts again. Press a key on the radio to say yes.'});
+  if (!token){ const b = $('restartBtn'); if (b) b.focus({preventScroll:true}); return; }
+  let r = null;
+  try { r = await api('POST', '/api/restart', {confirm: token}); } catch (_) {}
+  if (r && r.ok) toast('Restarting — the lamp breathes amber until it’s back');
+  else toast(!r ? NET_ERR : r.status === 403 ? 'The radio didn’t get a key press, so it stays on.' : capFirst((r.json && r.json.error) || 'The radio didn’t restart') + '.', true);
 }
 // The setup network (GET /api/wifi .setup): what the radio opens when it can't join the home Wi-Fi.
 // The password is there only when Hasler set it; one set on the player's own page is stored as a key.
@@ -6018,7 +6112,7 @@ function haSummary(){
 }
 function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
-  loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp(); loadHosts();
+  loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp(); loadHosts(); loadHow();
 }
 function loadUpdates(){ loadSoftware(); loadMusic(); if (!help) loadHelp(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
@@ -6215,6 +6309,7 @@ function renderMaker(panel){
   panel.append(setGroup('player', 'Inside the player (moOde)', h('div', {class:'list'},
     h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Inside the player (moOde)'), h('span', {class:'li-sub'}, 'Library, queue and the audio set-up underneath the radio')),
       h('a', {class:'li-act', href:moode, target:'_blank', rel:'noopener'}, 'Open', IC.ext())))));
+  panel.append(setGroup('os', 'Security updates', h('div', {class:'list'}, osUpdatesRow())));
   panel.append(setGroup('diag', 'Diagnostics', diagBox()));
   panel.append(h('div', null, h('button', {type:'button', class:'btn small inline', id:'makerHide', onclick: () => {
     setMaker(false); toast('Maker tools hidden — tap the version 7 times to bring them back'); go('settings');
@@ -6223,20 +6318,51 @@ function renderMaker(panel){
 function loadMaker(){
   if (!lcal.data && !lcal.loading) lcalLoad();
   if (!lchk.data && !lchk.loading) lchkLoad();
-  loadKnobs(); loadDiag();
+  loadKnobs(); loadDiag(); if (!software) loadSoftware();
   loadSettings().then(() => { if (onPage('maker')) rerender(); });
 }
 function leaveMaker(){ lchkPause(false); lcalStop(false); lcalEnd(); }
 async function loadDiag(){
   setUi.diagBusy = true;
   const out = {};
-  await Promise.all([['health', '/api/health'], ['info', '/api/info'], ['status', '/api/status']].map(async ([k, u]) => {
+  await Promise.all([['health', '/api/health'], ['info', '/api/info'], ['status', '/api/status'], ['diagnostics', '/api/diagnostics']].map(async ([k, u]) => {
     try { const r = await api('GET', u); out[k] = r.ok ? r.json : {error: 'error ' + r.status}; } catch (_) { out[k] = {error:'no answer'}; }
   }));
   setUi.diag = out; setUi.diagBusy = false;
   if (onPage('maker')) rerender();
 }
 const CHECK_NAMES = {mpd:'Player (MPD)', audio_card:'Sound card', panel:'Key panel', lamp:'Pilot lamp', web:'This page'};
+// The maker's lines from /api/diagnostics (web/diagnostics.py owner_doc), in its words.
+function diagMakerLines(dg){
+  if (!dg || dg.error) return [];
+  const kv = (k, v, bad) => h('div', {class:'chk'}, h('span', null, k), h('b', {class: bad ? 'no' : null}, v));
+  const pc = dg.power_cuts || {}, dsp = (dg.player && dg.player.dsp) || {};
+  return [
+    kv('Wi-Fi', (dg.wifi && dg.wifi.words) || '—', dg.wifi && dg.wifi.hotspot),
+    kv('Internet', dg.online == null ? 'no probe' : dg.online ? 'yes' : 'no', dg.online === false),
+    kv('Temperature', (dg.temperature && dg.temperature.words) || '—', dg.temperature && (dg.temperature.hot || (dg.temperature.throttled && dg.temperature.throttled.any_now))),
+    kv('Storage', (dg.storage && dg.storage.words) || '—', dg.storage && (dg.storage.bad || dg.storage.read_only)),
+    kv('Last shutdown', (dg.last_shutdown && dg.last_shutdown.words) || '—', dg.last_shutdown && dg.last_shutdown.kind === 'power-cut'),
+    kv('Power cuts', (pc.month || 0) + ' this month · ' + (pc.total || 0) + ' ever' + (pc.last_at ? ' · last ' + ago(pc.last_at) : ''), pc.hint),
+    kv('Tone DSP', !dsp.installed ? 'not installed' : dsp.running ? 'live · clipped samples ' + (dsp.clipped_samples ?? '?') : 'not running', dsp.installed && !dsp.running),
+    dg.faults && dg.faults.length ? kv('Faults', dg.faults.join(', '), true) : null,
+  ];
+}
+// Copy support bundle: GET /api/diagnostics/bundle (one JSON, secrets stripped) to the clipboard,
+// or into the details box to copy by hand where the clipboard needs a fresh tap (Safari).
+async function copyBundle(){
+  setUi.bundleBusy = true; rerender();
+  let text = '';
+  try {
+    const r = await api('GET', '/api/diagnostics/bundle', undefined, {timeout:40000, retry:0});
+    if (r.ok && r.json) text = JSON.stringify(r.json, null, 2);
+    else toast(r.status === 404 ? 'This radio’s software has no support bundle yet' : 'Couldn’t put the bundle together', true);
+  } catch (_) { toast(NET_ERR, true); }
+  setUi.bundleBusy = false; setUi.bundle = text; rerender();
+  if (!text) return;
+  try { await navigator.clipboard.writeText(text); toast('Support bundle copied — paste it into a message to the makers'); }
+  catch (_) { const p = $('diagRaw'); if (p){ p.closest('details').open = true; const s = getSelection(), rg = document.createRange(); rg.selectNodeContents(p); s.removeAllRanges(); s.addRange(rg); } toast('Selected — copy it from there'); }
+}
 function diagBox(){
   const d = setUi.diag;
   if (!d) return h('div', {class:'list'}, h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…')));
@@ -6244,21 +6370,31 @@ function diagBox(){
   const checks = hl.checks && typeof hl.checks === 'object' ? Object.entries(hl.checks) : [];
   const up = +hl.uptime_s || 0;
   const upText = up >= 86400 ? Math.floor(up / 86400) + ' d ' + Math.floor(up % 86400 / 3600) + ' h' : up >= 3600 ? Math.floor(up / 3600) + ' h ' + Math.floor(up % 3600 / 60) + ' min' : Math.round(up / 60) + ' min';
-  const raw = JSON.stringify(d, null, 2);
+  const raw = setUi.bundle || JSON.stringify(d, null, 2);
   return h('div', {class:'list'},
     h('div', {class:'li col', style:'gap:8px'},
       h('div', {class:'li-txt'}, h('span', {class:'li-title'}, hl.ok ? 'Everything answers' : hl.error ? 'Couldn’t ask the radio' : 'Something isn’t answering'),
         h('span', {class:'li-sub'}, [info.variant, info.version || hl.version ? 'version ' + (info.version || hl.version) : '', 'running for ' + upText].filter(Boolean).join(' · '))),
       checks.length ? h('div', null, checks.map(([k, v]) => h('div', {class:'chk'}, h('span', null, CHECK_NAMES[k] || k),
-        h('b', {class: v === true || v === 'ok' ? 'ok' : 'no'}, v === true || v === 'ok' ? 'OK' : v === false ? 'Not answering' : String(v))))) : null),
+        h('b', {class: v === true || v === 'ok' ? 'ok' : 'no'}, v === true || v === 'ok' ? 'OK' : v === false ? 'Not answering' : String(v)))),
+        diagMakerLines(d.diagnostics)) : null),
     h('div', {class:'li col', style:'gap:8px'},
-      h('details', {class:'how'}, h('summary', null, 'Details for a bug report'), h('pre', {class:'diag', id:'diagRaw', tabindex:'0'}, raw)),
+      h('details', {class:'how'}, h('summary', null, setUi.bundle ? 'The support bundle' : 'Details for a bug report'), h('pre', {class:'diag', id:'diagRaw', tabindex:'0'}, raw)),
       h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn small primary', id:'copyBundle', disabled: setUi.bundleBusy, onclick: copyBundle}, setUi.bundleBusy ? 'Putting it together…' : 'Copy support bundle'),
         h('button', {type:'button', class:'btn small', onclick: async () => {
           try { await navigator.clipboard.writeText(raw); toast('Copied'); }
           catch (_) { const p = $('diagRaw'); if (p){ p.closest('details').open = true; const s = getSelection(), rg = document.createRange(); rg.selectNodeContents(p); s.removeAllRanges(); s.addRange(rg); } toast('Selected — copy it from there'); }
         }}, 'Copy details'),
-        h('button', {type:'button', class:'btn small', disabled: setUi.diagBusy, onclick: () => { setUi.diag = null; rerender(); loadDiag(); }}, 'Check again'))));
+        h('button', {type:'button', class:'btn small', disabled: setUi.diagBusy, onclick: () => { setUi.diag = null; setUi.bundle = ''; rerender(); loadDiag(); }}, 'Check again')),
+      h('p', {class:'hint', style:'margin:0'}, 'The bundle is one file for the makers: which descriptor and panel chips are in use, the calibration in force, the journal’s last lines. No passwords, tokens or cookies.')));
+}
+// The Maker tools row's summary: says so while this radio's lamp was never checked by eye
+// (the standard is the bench LED's; docs/build-guide.md Phase 4).
+function makerSummary(){
+  const base = 'Lamp colours, knob curves, the player, diagnostics';
+  const d = lchk.data, s = d && d.saved;
+  return d && !(s && (s.calibrated || s.min_duty)) ? 'Lamp never checked on this radio · ' + base : base;
 }
 
 /* the registry: the order is the order of the list */
@@ -6274,7 +6410,7 @@ const SET_PAGES = [
   {id:'keys', get title(){ return hasSourceKey() ? 'Source key & knobs' : 'Knobs & keys'; }, summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
   {id:'radio', title:'This radio', summary: radioSummary, render: renderRadio, load: loadRadio, leave: leaveHelp,
     dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
-  {id:'maker', title:'Maker tools', summary: () => 'Lamp colours, knob curves, the player, diagnostics', shown: makerOn,
+  {id:'maker', title:'Maker tools', summary: makerSummary, shown: makerOn,
     render: renderMaker, load: loadMaker, leave: leaveMaker,
     dirty: () => !!(lcal.data && lcalDirty()), discard: () => { lcalAdopt(); lcalStop(false); lcalEnd(); }, save: lcalSave, busy: () => lcal.busy, what: () => 'Lamp colours'},
   {id:'radio/updates', title:'Updates', parent:'radio', render: renderUpdates, load: loadUpdates, leave: leaveUpdates},
@@ -7035,7 +7171,9 @@ function lchkIntro(){
   const t = st && lchkTasks()[st.task];
   return [
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Lamp check'),
-      h('span', {class:'li-sub', id:'lchkState'}, cal && cal.at ? 'Checked by eye on ' + lchkWhen(cal.at) + (cal.cpu_temp_c != null ? ' (radio at ' + Math.round(cal.cpu_temp_c) + ' °C)' : '') : 'Standard settings — never checked on this lamp')),
+      h('span', {class:'li-sub', id:'lchkState'}, (cal && cal.at ? 'Checked by eye on ' + lchkWhen(cal.at) + (cal.cpu_temp_c != null ? ' (radio at ' + Math.round(cal.cpu_temp_c) + ' °C)' : '') : 'Standard settings — never checked on this lamp')
+        + (d.led ? ' · LED ' + d.led : ''))),
+    d.led_changed ? h('p', {class:'note-warn'}, 'That check was made for another LED part (' + ((cal && cal.led) || '?') + '); this radio names ' + d.led + '. Check again, or go back to standard.') : null,
     h('p', {class:'hint'}, 'About ten minutes. The lamp shows two versions of each colour in turn; you say which looks right. Every LED is a little different — this tunes the lamp to yours.'),
     h('p', {class:'hint'}, 'Do it in a dim room, at your listening position, after the radio has played for 20 minutes (the lamp shifts a little as it warms).' + (d.cpu_temp_c != null ? ' The radio is at ' + Math.round(d.cpu_temp_c) + ' °C now.' : '')),
     !d.lamp ? h('p', {class:'note-warn'}, 'No lamp on this radio — you can walk through the steps, but there is nothing to look at.') : null,
@@ -7110,9 +7248,11 @@ function paintFloor(){
 }
 function paintLimit(){
   const el = $('limit'); if (!el || !settings || settings.volume_limit == null) return;
-  const v = +settings.volume_limit;
-  el.value = String(v); el.disabled = false; el.style.setProperty('--pct', ((v - 30) / 70 * 100) + '%');
+  const v = +settings.volume_limit, [lo, hi] = limitRange();
+  el.min = String(lo); el.max = String(hi);
+  el.value = String(v); el.disabled = false; el.style.setProperty('--pct', limitPct(v));
   $('limitVal').textContent = v; $('limitWarn').hidden = v < 95;
+  const hint = $('limitHint'); if (hint) hint.textContent = limitHintText();
 }
 async function rereadSound(){
   try { const r = await api('GET', '/api/settings'); if (r.ok && r.json){ settings = Object.assign(settings || {}, r.json); paintLimit(); paintFloor(); } } catch (_) {}
@@ -8214,6 +8354,47 @@ function swBack(v){
     else toast((r.json && r.json.error) || 'Couldn’t go back.', true);
   });
 }
+// Metered Wi-Fi (box.yaml `metered`, docs/ota.md §1): the owner's fact - a phone hotspot or a capped
+// plan - so the radio never downloads in the background. Older software has no such key: no row.
+function meteredRow(s){
+  if (typeof s.metered !== 'boolean') return null;
+  return h('div', {class:'li'},
+    h('label', {class:'switch', for:'metered', style:'flex:1'},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'This Wi-Fi is a phone hotspot or capped'),
+        h('span', {class:'li-sub'}, 'Updates are only downloaded when you ask, never in the background')),
+      h('input', {type:'checkbox', role:'switch', id:'metered', checked: !!s.metered, disabled: swBusy, onchange: e => swMetered(e.target.checked, true)})));
+}
+async function swMetered(on, undoable){
+  try {
+    const r = await api('PUT', '/api/software/settings', {metered: on}, {retry:0});
+    if (r.ok){
+      if (software && !software.missing && !software.err) software.metered = on;
+      toast(on ? 'Updates download only when you ask' : 'Updates download in the background again', undoable ? {undo: () => swMetered(!on, false)} : null);
+    } else { toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that') + '.', true); rerender(); }
+  } catch (_) { toast(NET_ERR, true); rerender(); }
+}
+// Debian security updates (box.yaml `os_updates`): the maker's switch, under Maker tools.
+function osUpdatesRow(){
+  const s = software;
+  if (!s || s.missing || s.err || !s.os_updates) return h('div', {class:'li'}, h('span', {class:'li-sub'},
+    !s ? 'Checking…' : s.missing ? 'Updates aren’t set up on this radio yet.' : s.err ? s.err : 'Security updates aren’t installed on this radio.'));
+  const os = s.os_updates;
+  return h('div', {class:'li'},
+    h('label', {class:'switch', for:'osUpd', style:'flex:1'},
+      h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Security updates'),
+        h('span', {class:'li-sub'}, 'Debian’s security fixes at night, in standby, taken back if anything is worse afterwards'
+          + (os.last_upgrade ? ' · last: ' + os.last_upgrade.count + ' on ' + day(os.last_upgrade.at) : '') + (os.paused ? ' · paused after a problem' : ''))),
+      h('input', {type:'checkbox', role:'switch', id:'osUpd', checked: !!os.enabled, disabled: swBusy, onchange: e => swOsUpdates(e.target.checked, true)})));
+}
+async function swOsUpdates(on, undoable){
+  try {
+    const r = await api('PUT', '/api/software/settings', {os_updates: on}, {retry:0});
+    if (r.ok){
+      if (software && software.os_updates) software.os_updates.enabled = on;
+      toast(on ? 'Security updates on' : 'Security updates off', undoable ? {undo: () => swOsUpdates(!on, false)} : null);
+    } else { toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that') + '.', true); rerender(); }
+  } catch (_) { toast(NET_ERR, true); rerender(); }
+}
 function swMode(mode, from){
   swAction(async () => {
     const r = await api('PUT', '/api/software/settings', {update_mode:mode}, {retry:0});
@@ -8472,6 +8653,7 @@ function renderSoftwareUpdates(panel){
       onclick: () => { if (k !== s.update_mode) swMode(k, s.update_mode); }}, l));
   rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Updates'),
     h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
+  const mt = meteredRow(s); if (mt) rows.push(mt);
   const cseg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Update channel'});
   CHANNELS.forEach(([k, name, l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
     onclick: () => { if (k !== s.channel) swChannel(k); },
@@ -8659,6 +8841,13 @@ function knobCurveGroup(){
     h('p', {class:'hint', style:'padding:0 4px'}, 'Each knob’s raw reading is mapped to 0–100 by a curve.'));
 }
 const knobTag = k => k.source === 'box' ? 'Calibrated' : 'Standard';
+// The drift detector's word (/api/knobs drift: past_end | wander; panel/controls.py), as a hint.
+function driftNote(k){
+  if (!k.drift) return null;
+  return h('p', {class:'note-warn', style:'margin:0'}, k.drift === 'past_end'
+    ? 'This knob reads past its calibration — calibrate it.'
+    : 'The reading wanders while the knob is still — a loose contact? Calibrate it; if it comes back, tell the makers.');
+}
 function knobCard(k, maker){
   const id = kid(k.id), s = liveOf(k), sel = isSel(k), box = k.source === 'box';
   const gauge = () => sel
@@ -8670,10 +8859,12 @@ function knobCard(k, maker){
   const num = h('span', {class:'kn-num', id:'knv-' + id}, knobText(k, s ? s.value : k.value));
   if (!maker){
     queueMicrotask(() => paintKnobLive(k.id));
+    // "Back to as shipped" once it says Calibrated: reversible, so no key press.
     return h('div', {class:'li kn'}, h('div', {class:'kn-head', style:'cursor:default'}, txt, num),
-      h('div', {class:'kn-body', id:'knb-' + id}, gauge(),
+      h('div', {class:'kn-body', id:'knb-' + id}, gauge(), driftNote(k),
         h('div', {class:'acts', style:'align-items:center'},
-          h('button', {type:'button', class:'btn small', 'aria-label':'Calibrate ' + (k.label || k.id), onclick: () => openWizard(k)}, 'Calibrate'))));
+          h('button', {type:'button', class:'btn small', 'aria-label':'Calibrate ' + (k.label || k.id), onclick: () => openWizard(k)}, 'Calibrate'),
+          box ? h('button', {type:'button', class:'link', 'aria-label':'Put ' + (k.label || k.id) + ' back to as shipped', onclick: () => resetKnob(k)}, 'Back to as shipped') : null)));
   }
   const open = knobUi.open.has(k.id);
   const head = h('button', {type:'button', class:'kn-head', 'aria-expanded': String(open), 'aria-controls':'knb-' + id,
@@ -8684,6 +8875,7 @@ function knobCard(k, maker){
     kids.push(h('div', {class:'kn-body', id:'knb-' + id},
       gauge(),
       h('p', {class:'kn-raw', id:'knr-' + id}, rawLine(k)),
+      driftNote(k),
       curveSvg(k, k.curve, {dot:'knd-' + id}),
       h('div', {class:'acts', style:'align-items:center'},
         h('button', {type:'button', class:'btn small', onclick: () => openWizard(k)}, 'Calibrate'),

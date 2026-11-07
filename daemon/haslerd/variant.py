@@ -46,6 +46,12 @@ class Variant:
     # What the cabinet is called on the web page ("Hasler HM · Bern 1964");
     # the descriptor's ``title:``, else its variant name.
     title: str = ""
+    # The cabinet's audio facts (``audio:``): ``speakers`` (1 = mono by
+    # default, audio.mono_default), ``volume_limit_max`` (the maker's cap on
+    # the owner's ceiling), ``volume_limit_default``, ``volume_floor_default``
+    # (MoodeConfig's seeds, main.moode_config) and ``card`` (the amp's ALSA
+    # id). Empty for an older descriptor: the code's bench-HM constants stand.
+    audio: dict[str, Any] = field(default_factory=dict)
 
     def pin_names(self) -> list[str]:
         """Every logical pin the descriptor references, in `d0..dN` order."""
@@ -88,6 +94,7 @@ def load_variant(path: str | Path) -> Variant:
         combos=list(data.get("combos") or []),
         path=path,
         title=str(data.get("title") or ""),
+        audio=dict(data.get("audio") or {}) if isinstance(data.get("audio"), dict) else {},
     )
 
 
@@ -163,6 +170,32 @@ def open_backends(
     return digital, analog
 
 
+def describe_backends(digital: Any, analog: Any) -> dict:
+    """What ``open_backends`` opened, for Diagnostics (web/diagnostics.py):
+    ``{"digital": {"backend", "addr", "absent", "reason", "pins"},
+    "analog": {"backend", "addr"}}`` - each key only where it applies. The
+    address is what the chip was found at (``0x20``; ``addr: auto`` resolved),
+    so the maker can tell the stripboard's 0x27 from the HAT's 0x20. Never
+    opens the bus itself."""
+    def one(backend: Any) -> dict:
+        name = type(backend).__name__
+        words = {"FakeDigital": "fake", "FakeAnalog": "fake", "NullAnalog": "none", "AbsentDigital": "absent",
+                 "GpioDigital": "gpio", "Mcp23017Digital": "mcp23017", "Ads1115Analog": "ads1115"}
+        doc: dict[str, Any] = {"backend": words.get(name, name)}
+        addr = getattr(backend, "addr", None)
+        if isinstance(addr, int) and not isinstance(addr, bool):
+            doc["addr"] = f"0x{addr:02x}"
+        if getattr(backend, "absent", False):
+            doc["absent"] = True
+            doc["reason"] = str(getattr(backend, "reason", "") or "")
+        pins = getattr(backend, "mapping", None)
+        if isinstance(pins, dict):
+            doc["pins"] = {str(k): v for k, v in pins.items()}
+        return doc
+
+    return {"digital": one(digital), "analog": one(analog)}
+
+
 # What Panel.apply_specs may change on a running control. Not the pins or
 # the channel (the backends were opened for those) and not a key's repeat,
 # which the key page owns (keymap.tune_repeat).
@@ -198,6 +231,8 @@ class Panel:
         self._hush_until = 0.0
         self._hushed: set[str] = set()
         self._downs: list[Event] = []       # press hints, until take_downs
+        # What the backends are (describe_backends), for /api/diagnostics.
+        self.backends = describe_backends(digital, analog)
 
     @classmethod
     def from_variant(cls, variant: Variant, fake: bool = False) -> "Panel":

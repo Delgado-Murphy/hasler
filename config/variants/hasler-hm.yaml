@@ -8,6 +8,23 @@
 variant: hasler-hm
 title: "Hasler HM · Bern 1964"
 
+# The cabinet's audio facts (haslerd/audio.py, player/moode.py MoodeConfig,
+# bootresume.FirstSound). One 16 ohm elliptical cone on the Amp4 Pro's left
+# channel: ~10 W available, 1-3 W safe (docs/hardware.md "The speaker").
+#   speakers              1 = mono by default (the owner may switch it off)
+#   volume_limit_max      the maker's cap on the owner's volume ceiling: the
+#                         Sound slider stops here; raising it is file-only
+#                         (box.yaml moode.volume_limit_max lowers it per radio)
+#   volume_limit_default  the ceiling a new radio starts with
+#   volume_floor_default  mixer % at the knob's first step (28 = -74.5 dB)
+#   card                  the amp's ALSA id (first-sound line, amixer -c)
+audio:
+  speakers: 1
+  volume_limit_max: 90
+  volume_limit_default: 70
+  volume_floor_default: 28
+  card: sndrpihifiberry
+
 io:
   digital:
     backend: mcp23017
@@ -41,6 +58,10 @@ io:
     pins: {red: 17, green: 22, blue: 27}   # header pins 11, 15, 13 - cabinet wires 13, 15, 16
     common: anode        # metered 2026-10-12: red probe on the long leg lights it
     frequency_hz: 800
+    # The LED part the floors and balance below were measured on: a frosted
+    # 5 mm common-anode RGB on 220/100/100 ohm. The Lamp check stamps it into
+    # `calibrated`, so a check made for another part shows as such.
+    led: "frosted-5mm-cA-220-100-100"
     # To try: `pwm_hz: 400` (wins over frequency_hz) - each lit pulse twice as
     # long, so the lowest duties draw more reliably; still far above flicker.
     # The boot breath follows it from the next boot (lamp-period).

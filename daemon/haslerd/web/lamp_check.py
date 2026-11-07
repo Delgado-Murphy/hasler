@@ -213,12 +213,24 @@ def cpu_temp_c(path: Path | None = None) -> float | None:
         return None
 
 
-def stamp(cal: dict, temp: float | None, now: float | None = None) -> dict:
-    """``cal`` with its ``calibrated`` block: the save time (local, ISO) and temperature."""
+def stamp(cal: dict, temp: float | None, now: float | None = None, led: str | None = None) -> dict:
+    """``cal`` with its ``calibrated`` block: the save time (local, ISO), the
+    temperature and, when the descriptor names one (``io.lamp.led``), the LED
+    part the check was made on - a changed part shows as such (``led_changed``
+    in GET /api/lamp/calibration)."""
     at = time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime(now if now is not None else time.time()))
     if len(at) > 5 and at[-5] in "+-":
         at = at[:-2] + ":" + at[-2:]            # +0100 -> +01:00
-    return {**cal, "calibrated": {"at": at, "cpu_temp_c": temp, "version": VERSION}}
+    block: dict = {"at": at, "cpu_temp_c": temp, "version": VERSION}
+    if led:
+        block["led"] = str(led)
+    return {**cal, "calibrated": block}
+
+
+def led_of(lamp: Any) -> str | None:
+    """The LED part id a descriptor's ``io.lamp`` names, or None."""
+    led = lamp.get("led") if isinstance(lamp, dict) else None
+    return str(led) if isinstance(led, str) and led.strip() else None
 
 
 def saved_from(lamp: Any) -> dict:

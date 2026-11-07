@@ -390,8 +390,11 @@ tell the colours apart.
 - PWM: kernel `pwm-gpio` overlays on GPIO 17/22/27 at about 800 Hz, so there is
   no flicker at night. `backend: gpio` (software PWM) is only a fallback.
   Never pigpio: its DMA timing uses the PCM block that the amp's I2S needs.
-- Night = sunset to sunrise for the box's location (computed locally; HA's
-  sun entity when connected).
+- Night = sunset to sunrise for the box's location, computed locally
+  (lamp/night.py: NOAA's equations, DST-aware, the poles handled) from the
+  Settings page's location - a city, exact coordinates or the phone's. Nothing
+  is asked of Home Assistant. Without a location the radio assumes Madrid
+  until someone sets one; the Pilot lamp page nudges.
 
 ## On the HAT
 

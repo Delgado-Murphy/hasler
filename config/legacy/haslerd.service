@@ -28,7 +28,7 @@ Restart=always
 RestartSec=3
 User=pi
 # GPIO and I2C access without running as root.
-SupplementaryGroups=gpio i2c audio
+SupplementaryGroups=gpio i2c audio systemd-journal
 # /var/lib/haslerd, owned by User=. Holds state.json (last preset, resumed on boot).
 StateDirectory=haslerd
 

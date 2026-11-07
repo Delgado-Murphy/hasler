@@ -507,7 +507,7 @@ class TestSoftware:
 
     def test_settings_write_box_yaml(self, box):
         sw, _, _, _, paths = box
-        assert sw.put_settings({"update_mode": "auto"}) == {"update_mode": "auto", "channel": "stable"}
+        assert sw.put_settings({"update_mode": "auto"}) == {"update_mode": "auto", "channel": "stable", "metered": False, "os_updates": True}
         doc = yaml.safe_load(paths.box_file.read_text())
         assert doc["update_mode"] == "auto" and doc["variant"] == "hasler-hm" and doc["schema"] == 1
         with pytest.raises(ValueError):
@@ -519,12 +519,12 @@ class TestSoftware:
         sw, _, _, _, paths = box
         paths.box_file.write_text("schema: 1\nvariant: hasler-hm\nchannel: beta\nupdate_mode: ask\n")
         with caplog.at_level(logging.WARNING, logger="haslerd.web.software"):
-            assert sw.box_settings() == {"update_mode": "ask", "channel": "stable"}
+            assert sw.box_settings() == {"update_mode": "ask", "channel": "stable", "metered": False, "os_updates": True}
             assert sw.box_settings()["channel"] == "stable"
         assert sum("treating it as stable" in r.getMessage() for r in caplog.records) == 1
         # A new radio's box.yaml without update_mode: auto by default.
         paths.box_file.write_text("schema: 1\nvariant: hasler-hm\n")
-        assert sw.box_settings() == {"update_mode": "auto", "channel": "stable"}
+        assert sw.box_settings() == {"update_mode": "auto", "channel": "stable", "metered": False, "os_updates": True}
 
     def test_hand_written_off_is_off_not_ask(self, box):
         # PyYAML reads a bare ``off`` / ``no`` as False; the updater reads the word.
@@ -536,7 +536,7 @@ class TestSoftware:
     def test_writing_drops_a_retired_channel_for_stable(self, box):
         sw, _, _, _, paths = box
         paths.box_file.write_text("schema: 1\nvariant: hasler-hm\nchannel: beta\nupdate_mode: ask\n")
-        assert sw.put_settings({"update_mode": "off"}) == {"update_mode": "off", "channel": "stable"}
+        assert sw.put_settings({"update_mode": "off"}) == {"update_mode": "off", "channel": "stable", "metered": False, "os_updates": True}
         doc = yaml.safe_load(paths.box_file.read_text())
         assert doc["channel"] == "stable" and doc["update_mode"] == "off"
 

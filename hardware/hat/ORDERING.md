@@ -177,6 +177,13 @@ pads (the drill files and Gerbers share the board's bottom-left origin).
    October 2026). (The daemon only arms the end-switch shutdown after the switch has read on for a
    debounce time, so an unplugged ribbon doesn't halt the Pi.)
    Run `scripts/panel-probe.py --variant config/variants/hasler-hm-hat.yaml`.
+   (A left-over `io.digital.addr` in the overlay is ignored with a warning when the descriptor
+   pins its own, since 1.5.0, but remove it anyway; Diagnostics → Copy support bundle shows the
+   descriptor in use and the address the panel chips were found at.)
+   Then the **Lamp check** (key page, Maker tools → Lamp colours), once, in a dim room after
+   20 minutes of playing: the shipped standard is the bench LED's, and the HAT's 3V3A changes
+   nothing about the LED's own spread. The Maker tools row says *Lamp never checked on this
+   radio* until it is done.
 6. Support J2 with a finger when you push the IDC plug in: the board is held along its header
    edge only, ~30 mm away. A ~6–7 mm silicone bumper glued under the HAT's far end (around the
    power column), resting on the Pi's USB-jack shells, stops it flexing.

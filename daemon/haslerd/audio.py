@@ -25,7 +25,18 @@ log = logging.getLogger(__name__)
 
 HELPER = "/usr/local/sbin/hasler-audio-mono"
 OVERRIDE = Path("/etc/alsa/conf.d/.hasler-mono")   # the helper's mono marker
-DEFAULT = True          # one speaker: mono unless the owner says otherwise
+# One speaker: mono unless the owner says otherwise. The bench HM's fact; a
+# descriptor's ``audio.speakers`` decides for its own cabinet (mono_default).
+DEFAULT = True
+
+
+def mono_default(audio: Any = None) -> bool:
+    """Mono by default for this cabinet: one speaker (``audio.speakers: 1``)
+    is; two or more aren't; a descriptor that doesn't say keeps DEFAULT."""
+    speakers = (audio or {}).get("speakers") if isinstance(audio, dict) else None
+    if isinstance(speakers, bool) or not isinstance(speakers, int) or speakers < 1:
+        return DEFAULT
+    return speakers == 1
 
 
 class MonoError(RuntimeError):

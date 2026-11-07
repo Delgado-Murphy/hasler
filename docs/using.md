@@ -450,12 +450,12 @@ Tap the gear. Each row opens its own page.
 
 | Row | What you find there |
 |---|---|
-| **Sound** | The **volume ceiling**, the loudest the knob can go (30 to 100; above 95 the old speaker can rattle and distort). The **quietest step**: the knob's first click. **Mono**: left and right mixed into the one speaker, so nothing is lost (on to start). **What the tone knob does**, with **Try it**. |
+| **Sound** | The **volume ceiling**, the loudest the knob can go (from 30 up to a top the maker set for this speaker, 90 on the Hasler HM; the slider says so). The **quietest step**: the knob's first click. **Mono**: left and right mixed into the one speaker, so nothing is lost (on to start). **What the tone knob does**, with **Try it**. |
 | **Phones & casting** | Spotify (and **Guests on your Wi-Fi can play**), AirPlay, Bluetooth and other music apps (UPnP), each on or off. Bluetooth: what is playing and its codec, your phones, **Pair a phone**, **Reconnect to the last phone**. **Back to the radio when a phone stops**. **Use the room name on phones**. |
 | **Rooms** | **Play in several rooms**, what the keys do while this radio follows another, and which key joins from this radio. The **other Haslers at home**, each with **Identify**: its lamp taps HI in Morse, in green, so you know which radio is which (the page says when that radio has no lamp, or needs a software update first). |
 | **Pilot lamp** | **Now**: what the lamp says right now, in words. **What the lamp means**, grouped, each with its rhythm and **Show me** (it plays on the radio's lamp), and **Show me everything**. **Brightness**: low, normal or bright. **Key replies**: the lamp brightens when you press a key (on to start). **Geek mode** and its callsign (off to start). When the lamp dims at night (*by the sun*, *fixed hours* or *never*), and, for *by the sun*, **where the radio stands**, so it knows when the sun sets. Lamp colours are set by the makers. |
-| **Keys & knobs** | **What the source key (PU) steps through**, and in what order. Each knob, live, with **Calibrate**: turn the knob to a few positions and the radio learns them. |
-| **This radio** | The **room name** (with **Remove**) and the radio's address. **Identify this radio**: its lamp taps HI in Morse, in green. **Wi-Fi**. **Updates**. **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
+| **Keys & knobs** | **What the source key (PU) steps through**, and in what order. Each knob, live, with **Calibrate**: turn the knob to a few positions and the radio learns them. A calibrated knob also has **Back to as shipped**. If a knob reads past its calibration, or its reading wanders while nobody touches it, the card says so: calibrate it. |
+| **This radio** | The **room name** (with **Remove**) and the radio's address. **Identify this radio**: its lamp taps HI in Morse, in green. **Wi-Fi**. **Updates**. **How the radio is**: in plain words, its Wi-Fi and signal, whether the internet answers, how warm it is inside, the memory card's free space, how it was last switched off (and how often the power was cut this month), how long it has been running, whether the player and the sound card answer, and the last update - with **Restart the radio** (a press on the radio confirms it). **Home Assistant**. Your **YouTube Music** account (sign in for your Liked songs and private playlists; the page shows how). At the bottom, [Help from the makers](#help-from-the-makers). |
 
 The version number is at the bottom of Settings.
 
@@ -465,14 +465,16 @@ in several things, a bar shows **Not saved** with **Cancel** and **Save**;
 nothing changes until you press **Save**.
 
 **Maker tools.** There is one more page, for the person who built the radio:
-lamp colours, knob curves, the player underneath (moOde) and diagnostics. It
-stays hidden; tap the version number seven times to show it. You won't need it.
+lamp colours, knob curves, the player underneath (moOde), the security
+updates switch and diagnostics, with **Copy support bundle** (one file for
+the makers: no passwords, tokens or cookies). It stays hidden; tap the
+version number seven times to show it. You won't need it.
 
 ### "Press any key on the radio"
 
 Some buttons change a lot: installing an update from the page (**Install
 tonight**, **Install now**), going back to an older version, changing the update channel, changing Wi-Fi, resetting the keys,
-signing Spotify in or out, letting the makers help. For
+signing Spotify in or out, letting the makers help, restarting the radio. For
 these the page asks you to **press any key on the radio within 30 seconds**.
 That proves someone is standing next to the radio, not just anyone on the
 Wi-Fi.
@@ -605,7 +607,11 @@ Good to know:
   back**, then press a key on the radio. The radio restarts on that version.
 - Debian's **security updates** install the same way, at night in standby,
   and are taken back if anything is worse afterwards (Updates shows "Security
-  updates: 3 on 21 Oct"; `os_updates: off` in box.yaml turns them off).
+  updates: 3 on 21 Oct"; the switch is under Maker tools, or `os_updates: off`
+  in box.yaml).
+- **This Wi-Fi is a phone hotspot or capped**: switch it on under Updates and
+  the radio never downloads anything in the background; it still tells you when
+  there is an update, and downloads it when you press **Check now**.
 
 **Update channel.** Radios follow **Stable**: each version is tried on the
 makers' own radio first. The other channel, **Test versions** (*Bench*), is
@@ -631,6 +637,10 @@ What changed in each version: the
 - A radio that was following another room comes back quiet, on its own.
 - If the music can't come back (no internet, say), the lamp glows red,
   then dim amber. Press a key to try again.
+- The radio counts power cuts. **Settings → This radio → How the radio is**
+  says how it was last switched off and how often the power went this month;
+  if that is often (a plug timer? a wall switch?), the tone knob is the kinder
+  way: off for 5 seconds, wait for the lamp to go dark, then unplug if you must.
 
 ## When something is wrong
 
@@ -656,7 +666,15 @@ Check your router. Bluetooth from a phone still works.
 
 **The lamp taps out red Morse (SOS).** Something inside needs the person who
 built your radio (for example the memory card is full, or the panel board
-isn't answering). Tell them.
+isn't answering). The page says what: at the top of Settings, on the Pilot
+lamp page's **Now** line, and under **This radio → How the radio is**. Tell
+them. When it clears, Settings says so once.
+
+**A quick look inside.** **Settings → This radio → How the radio is** says in
+plain words how the radio is doing: Wi-Fi and signal, internet, temperature,
+memory card, how it was last switched off, how long it has run, and whether
+the player answers. **Restart the radio** is there too, for when something
+feels stuck: like unplugging it, but tidier. It asks for a press on the radio.
 
 **Stations work, but YouTube Music or Spotify don't.**
 
