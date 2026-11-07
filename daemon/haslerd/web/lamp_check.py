@@ -53,7 +53,7 @@ CONTRACT = KEYS + ("calibrated",)
 PALETTE_KEYS = ("amber", "ember", "blue")
 VERSION = 1
 
-MIN_DUTY_MAX = 0.05       # a floor above 5 % duty is a broken LED, not a calibration
+MIN_DUTY_MAX = 0.10       # a floor above 10 % duty is a broken LED, not a calibration
 BALANCE_RANGE = (0.05, 4.0)
 GAIN_RANGE = (0.1, 4.0)
 LEVEL_RANGE = (0.01, 1.0)
@@ -63,59 +63,57 @@ CPU_TEMP_FILE = Path("/sys/class/thermal/thermal_zone0/temp")
 # What the check shows, the engine draws: every sample but the raw floors and
 # balance is a scratch engine (lamp/scratch.py) with the page's draft
 # calibration, so the check can never drift from the engine again.
-COLOURS = ("amber", "ember", "blue")
 
-
-def _attr(name: str) -> Callable[[Any], Any]:
-    return lambda policy: getattr(policy, name, None)
-
-
-def _boot(stage: str) -> Callable[[Any], Any]:
-    def look(policy: Any) -> Any:
-        table = getattr(policy, "BOOT", None)
-        return table.get(stage) if isinstance(table, dict) else None
-    return look
-
-
-def _asking(policy: Any) -> Any:
-    """A confirm request over ready: the beckon in the colour on show."""
-    fn, ready = getattr(policy, "confirm_look", None), getattr(policy, "READY", None)
-    return fn((ready, 0.0)) if callable(fn) and ready is not None else None
-
-
-# The verification sweep, by day and at night: the policy's Looks as they are
-# today, then the behaviours drawn over them. (id, what the owner calls it,
-# what to watch for, the Look, events (at s, "reply" word | "show" Look), the
-# scene's length - 0 for a Look on its own, which repeats by itself).
-SWEEP: tuple = (
-    ("playing", "Playing", "steady", _attr("PLAYING"), (), 0.0),
-    ("ready", "Ready", "steady", _attr("READY"), (), 0.0),
-    ("loading", "Tuning in", "breath", _attr("LOADING"), (), 0.0),
-    ("boot", "Starting up", "breath", _boot("network"), (), 0.0),
-    ("standby", "Standby", "steady", _attr("STANDBY"), (), 0.0),
-    ("boot_standby", "Starting in standby", "breath", _attr("BOOT_STANDBY"), (), 0.0),
-    ("busy", "Shutting down or updating", "breath", _attr("SHUTTING_DOWN"), (), 0.0),
-    ("casting", "A phone playing", "steady", _attr("CASTING"), (), 0.0),
-    ("cast_paused", "A phone paused", "steady", _attr("CAST_PAUSED"), (), 0.0),
-    ("pairing", "Bluetooth pairing", "breath", _attr("PAIRING"), (), 0.0),
-    ("hotspot", "Wi-Fi setup", "beckon", _attr("HOTSPOT"), (), 0.0),
-    ("asking", "Asking for a key press", "beckon", _asking, (), 0.0),
-    ("kick", "A key heard", "kick", _attr("PLAYING"), ((0.6, "reply", "kick"),), 2.0),
-    ("refuse", "Can’t do that", "sag", _attr("READY"), ((0.6, "reply", "refuse"),), 3.5),
-    ("swell", "Another radio joins", "swell", _attr("PLAYING"), ((0.6, "reply", "swell"),), 3.0),
-    ("hue", "A phone takes over, then lets go", "hue", _attr("READY"),
-     ((1.0, "show", _attr("CASTING")), (4.0, "show", _attr("READY"))), 7.0),
-)
+# The verification sweep is found at run time, never listed here: every Look
+# the policy module exposes (an UPPER_CASE Look, or a table of them like
+# BOOT), the confirm beckon, the engine's own "show me" looks, every reply the
+# engine draws (over a Look), and a hue change to each colour of another
+# family - so a new light language brings its own sweep. These tables only
+# give the owner's words for what they know.
+NAMES = {
+    "playing": "Playing", "ready": "Ready", "loading": "Tuning in", "standby": "Standby",
+    "boot_standby": "Starting in standby", "shutting_down": "Shutting down or updating",
+    "updating": "Installing an update", "busy": "Busy - don\u2019t unplug",
+    "casting": "A phone playing", "cast_paused": "A phone paused", "pairing": "Bluetooth pairing",
+    "hotspot": "Wi-Fi setup", "setup": "Wi-Fi setup", "asking": "Asking for a key press",
+    "identify": "Which radio? (Identify)", "phone": "A phone playing", "asleep": "Standby",
+    "boot_firmware": "Starting up", "boot_early": "Starting up", "boot_daemon": "Starting up, the radio\u2019s software running",
+    "boot_network": "Starting up, network found",
+    "kick": "A key heard", "refuse": "Can\u2019t do that", "swell": "Another radio joins",
+}
+# A reply is drawn over this Look (policy name); anything else over READY.
+REPLY_OVER = {"kick": "PLAYING", "swell": "PLAYING"}
+# Replies that are another count or a variant of one already in the sweep.
+REPLY_SKIP = ("refuse1", "refuse3", "stop")
+WARM = ("amber", "ember")         # one family: no hue change between them
 # What the page asks the owner to watch, by kind of item.
 WATCH = {
     "steady": "Watch it for a few seconds: it should not flicker or change colour.",
     "breath": "It breathes. Watch for the colour jumping or flickering as it gets faint.",
     "beckon": "Two quick flashes, then a rest. The colour should stay the same in the flashes.",
+    "pattern": "It flashes a pattern. The colour should stay the same in every flash.",
     "kick": "Every couple of seconds it jumps up once and cools down. Same colour all the way?",
-    "sag": "It dips down twice and comes back. Watch the colour at the bottom of the dip.",
+    "refuse": "It dips down and comes back. Watch the colour at the bottom of the dip.",
     "swell": "It swells up and back. The colour should not change.",
-    "hue": "It dims, turns blue, then back to amber. Watch for a pink or purple moment in between.",
+    "reply": "It answers once over the glow, then settles. The colour should not change.",
+    "hue": "It dims, changes colour at the bottom, then comes back. Watch for a mixed colour in between.",
 }
+
+
+def colours() -> tuple[str, ...]:
+    """The colours the engine draws (its palette), the check's three first."""
+    from ..lamp import engine
+    names = [n for n in getattr(engine, "DEFAULT_PALETTE", {}) if n != "off"]
+    return PALETTE_KEYS + tuple(n for n in names if n not in PALETTE_KEYS)
+
+
+def extra_colours() -> tuple[str, ...]:
+    """Palette colours beyond amber, ember and blue (a newer language's green, red)."""
+    return colours()[len(PALETTE_KEYS):]
+
+
+def _name(lid: str) -> str:
+    return NAMES.get(lid) or lid.replace("_", " ").capitalize()
 
 def number(raw: Any, name: str, lo: float, hi: float) -> float:
     if isinstance(raw, bool) or not isinstance(raw, (int, float)):
@@ -156,29 +154,53 @@ def duty_from(raw: Any) -> list[float]:
     return [number(v, "duty", 0.0, 1.0) for v in raw]
 
 
-def check(body: Any) -> dict:
+def _keys(raw: Any, name: str, required: tuple[str, ...], optional: tuple[str, ...] = ()) -> dict:
+    """``raw`` with all of ``required``, any of ``optional``, nothing else."""
+    if not isinstance(raw, dict):
+        raise ValueError(f"{name} must be {{{', '.join(required)}}}")
+    _exact({k: v for k, v in raw.items() if k not in optional}, name, required)
+    return raw
+
+
+def _palette_entry(raw: Any, name: str) -> Any:
+    if isinstance(raw, dict):
+        both = _exact(raw, name, ("day", "night"))
+        return {"day": _colour(both["day"], name + ".day"), "night": _colour(both["night"], name + ".night")}
+    return _colour(raw, name)
+
+
+def check(body: Any, extras: tuple[str, ...] | None = None) -> dict:
     """The page's calibration, validated: exactly the contract's keys but
-    ``calibrated`` (the server's own; ignored if sent). Raises ValueError."""
+    ``calibrated`` (the server's own; ignored if sent). Raises ValueError.
+
+    ``palette`` and ``level_gain`` may also carry the engine's extra colours
+    (``extras``, default ``extra_colours()``: a newer language's green, red).
+    """
+    extras = extra_colours() if extras is None else tuple(extras)
     if not isinstance(body, dict):
         raise ValueError("expected {" + ", ".join(KEYS) + "}")
     body = {k: v for k, v in body.items() if k != "calibrated"}
     _exact(body, "calibration", KEYS)
     md = _exact(body["min_duty"], "min_duty", CHANNELS)
     bal = _exact(body["balance"], "balance", CHANNELS)
-    pal = _exact(body["palette"], "palette", PALETTE_KEYS)
+    pal = _keys(body["palette"], "palette", PALETTE_KEYS, extras)
     amber = _exact(pal["amber"], "palette.amber", ("day", "night"))
-    gain = _exact(body["level_gain"], "level_gain", GAINS)
+    gain = _keys(body["level_gain"], "level_gain", GAINS, extras)
     lv = _exact(body["levels"], "levels", LEVELS)
+    palette = {
+        "amber": {"day": _colour(amber["day"], "palette.amber.day"),
+                  "night": _colour(amber["night"], "palette.amber.night")},
+        "ember": _colour(pal["ember"], "palette.ember"),
+        "blue": _colour(pal["blue"], "palette.blue"),
+    }
+    for extra in extras:
+        if extra in pal:
+            palette[extra] = _palette_entry(pal[extra], f"palette.{extra}")
     return {
         "min_duty": {c: number(md[c], f"min_duty.{c}", 0.0, MIN_DUTY_MAX) for c in CHANNELS},
         "balance": {c: number(bal[c], f"balance.{c}", *BALANCE_RANGE) for c in CHANNELS},
-        "palette": {
-            "amber": {"day": _colour(amber["day"], "palette.amber.day"),
-                      "night": _colour(amber["night"], "palette.amber.night")},
-            "ember": _colour(pal["ember"], "palette.ember"),
-            "blue": _colour(pal["blue"], "palette.blue"),
-        },
-        "level_gain": {g: number(gain[g], f"level_gain.{g}", *GAIN_RANGE) for g in GAINS},
+        "palette": palette,
+        "level_gain": {g: number(gain[g], f"level_gain.{g}", *GAIN_RANGE) for g in GAINS + extras if g in gain},
         "levels": {k: number(lv[k], f"levels.{k}", *LEVEL_RANGE) for k in LEVELS},
     }
 
@@ -206,7 +228,7 @@ def saved_from(lamp: Any) -> dict:
     out = {k: lamp[k] for k in ("min_duty", "balance", "level_gain", "levels", "calibrated") if k in lamp}
     pal = lamp.get("palette")
     if isinstance(pal, dict):
-        mine = {k: pal[k] for k in PALETTE_KEYS if k in pal}
+        mine = {k: pal[k] for k in colours() if k in pal}
         if mine:
             out["palette"] = mine
     return out
@@ -234,7 +256,7 @@ def save_patch(current_lamp: Any, cal: dict) -> dict:
     for key in CONTRACT:
         if key == "palette":
             old = current.get("palette") if isinstance(current.get("palette"), dict) else {}
-            lamp["palette"] = {k: _replace(old.get(k), cal["palette"][k]) for k in PALETTE_KEYS}
+            lamp["palette"] = {k: _replace(old.get(k), v) for k, v in cal["palette"].items()}
         else:
             lamp[key] = _replace(current.get(key), cal[key])
     return {"io": {"lamp": lamp}}
@@ -243,7 +265,7 @@ def save_patch(current_lamp: Any, cal: dict) -> dict:
 def clear_patch() -> dict:
     """The overlay patch for "Back to standard": the contract's keys gone."""
     lamp: dict = {k: None for k in CONTRACT if k != "palette"}
-    lamp["palette"] = {k: None for k in PALETTE_KEYS}
+    lamp["palette"] = {k: None for k in colours()}
     return {"io": {"lamp": lamp}}
 
 
@@ -284,37 +306,79 @@ def standard(engine: Any, lamp: Any = None) -> dict:
     }
 
 
+def _looks(policy: Any) -> list[tuple[str, Any]]:
+    """(id, Look) for every Look the policy module exposes, in its order, once each."""
+    from ..lamp.contract import Look
+
+    found: list[tuple[str, Any]] = []
+    seen: list[Any] = []
+
+    def add(lid: str, look: Any) -> None:
+        if isinstance(look, Look) and look.colour != "off" and look.level > 0 and look not in seen:
+            seen.append(look)
+            found.append((lid, look))
+
+    for attr, value in list(vars(policy).items()):
+        if not attr.isupper() or attr.startswith("_"):
+            continue
+        if isinstance(value, dict):
+            for key, look in value.items():
+                add(f"{attr}_{key}".lower(), look)
+        else:
+            add(attr.lower(), value)
+    asking = None
+    fn, ready = getattr(policy, "confirm_look", None), getattr(policy, "READY", None)
+    if callable(fn) and ready is not None:
+        try:
+            asking = fn((ready, 0.0))
+        except Exception:
+            asking = None
+    add("asking", asking)
+    from ..lamp import engine
+    taken = {lid for lid, _ in found}
+    for name, look in (getattr(engine, "PREVIEW_LOOKS", None) or {}).items():
+        add(name if name not in taken else f"show_{name}", look)
+    return found
+
+
 def scenes(policy: Any) -> dict:
-    """Sweep id -> lamp/scratch.Scene, from the policy's Looks as they are now
-    (an item whose Look the policy no longer has is left out)."""
+    """Sweep id -> (the owner's name, kind, lamp/scratch.Scene), in sweep order:
+    the policy's Looks, the engine's replies over a Look, the hue changes."""
+    from ..lamp import engine
+    from ..lamp.contract import canonical
     from ..lamp.scratch import Scene
 
-    out = {}
-    for lid, _name, _kind, source, events, length in SWEEP:
-        look = source(policy)
-        if look is None:
+    out: dict = {}
+    looks = _looks(policy)
+    for lid, look in looks:
+        kind = {"solid": "steady", "breath": "breath", "beckon": "beckon"}.get(look.motion, "pattern")
+        out[lid] = (_name(lid), kind, Scene(look))
+    base = getattr(policy, "READY", None) or (looks[0][1] if looks else None)
+    if base is None:
+        return out
+    replies = getattr(engine, "REPLY_S", None) or {}
+    for word, seconds in replies.items():
+        if word in REPLY_SKIP or word in out:
             continue
-        evs = []
-        for at, what, arg in events:
-            if callable(arg):
-                arg = arg(policy)
-                if arg is None:
-                    break
-            evs.append((at, what, arg))
-        else:
-            out[lid] = Scene(look, tuple(evs), length)
+        over = getattr(policy, REPLY_OVER.get(word, "READY"), None) or base
+        length = 0.6 + float(seconds) * 1.5 + 0.8     # night stretches some replies
+        kind = word if word in WATCH else "reply"
+        out[word] = (_name(word), kind, Scene(over, ((0.6, "reply", word),), round(length, 2)))
+    for lid, look in looks:
+        colour = canonical(look.colour) if canonical(look.colour) != "off" else str(look.colour)
+        hid = f"hue_{colour}"
+        if colour in WARM or colour == "off" or look.motion != "solid" or hid in out:
+            continue
+        out[hid] = (f"Amber to {colour} and back", "hue",
+                    Scene(base, ((1.0, "show", look), (4.0, "show", base)), 7.0))
     return out
 
 
 def sweep(policy: Any) -> list[dict]:
     """The verification sweep's items for the page: names, what to watch,
     and the base Look's colour and level (for a rough swatch only)."""
-    found = scenes(policy)
     out = []
-    for lid, name, kind, _source, _events, _length in SWEEP:
-        scene = found.get(lid)
-        if scene is None:
-            continue
+    for lid, (name, kind, scene) in scenes(policy).items():
         look = scene.look
         out.append({"id": lid, "name": name, "kind": kind, "watch": WATCH[kind],
                     "colour": str(look.colour), "level": float(look.level),
@@ -338,20 +402,24 @@ def draft_spec(body: Any, lamp: Any = None) -> dict:
     return cal
 
 
-def preview_target(body: dict) -> tuple:
-    """A draft preview's target: ("colour", name, level) or ("scene", id, night)."""
+def preview_target(body: dict, ids: Any = ()) -> tuple:
+    """A draft preview's target: ("colour", name, level) or ("scene", id, night).
+
+    ``ids``: the sweep's ids (``scenes(policy)``) a look must be one of.
+    """
     has_colour, has_scene = "colour" in body, ("look" in body or "scene" in body)
     if has_colour == has_scene:
         raise ValueError('a draft preview takes {"colour": name, "level": 0..1} '
                          'or {"look": sweep id, "night": bool}')
     if has_colour:
+        known = colours()
         colour = body["colour"]
-        if colour not in COLOURS:
-            raise ValueError("colour must be one of " + ", ".join(COLOURS))
+        if colour not in known:
+            raise ValueError("colour must be one of " + ", ".join(known))
         return "colour", colour, number(body.get("level", 1.0), "level", 0.0, 1.0)
     lid = body.get("look", body.get("scene"))
-    if lid not in {item[0] for item in SWEEP}:
-        raise ValueError("look must be one of " + ", ".join(item[0] for item in SWEEP))
+    if not isinstance(lid, str) or lid not in ids:
+        raise ValueError("look must be one of " + ", ".join(ids))
     night = body.get("night", False)
     if not isinstance(night, bool):
         raise ValueError("night must be true or false")

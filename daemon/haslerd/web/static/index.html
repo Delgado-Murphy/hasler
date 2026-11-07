@@ -6364,29 +6364,45 @@ document.addEventListener('visibilitychange', () => { if (document.hidden){ lchk
 const LCHK_KEY = 'hasler.lampcheck';
 const LCHK_ALT_MS = 1500;
 const LCHK_LOOK_MS = 10000;                          // a look plays on the radio; this keeps it alive
-const LCHK_FLOORS = [0.02, 0.01, 0.005, 0.0025];     // floor test duties, 2 % down to 0.25 %
+// Floor test duties, 0.25 % .. 8 %: the search starts at 2 % and goes down while it
+// stays steady, or up until it is (some LEDs need 3-5 %).
+const LCHK_FLOORS = [0.0025, 0.005, 0.01, 0.02, 0.03, 0.045, 0.06, 0.08];
+const LCHK_FLOOR_START = 3;                          // 2 %
+const LCHK_FLOOR_NONE = 0.096;                       // nothing steady even at 8 %: 8 % x 1.2
 const LCHK_WHITE = [1, 0.35, 0.06];                  // the warm-bulb mix (raw duty ratios) the balance is judged by
 const LCHK_WHITE_R = 0.6;                            // red duty of the balance samples
 const LCHK_GAIN = [0.5, 2];                          // a channel's balance stays within half and twice
 const LCHK_CH = ['red', 'green', 'blue'];
 const LCHK_CH_NAME = ['Red', 'Green', 'Blue'];
 const LCHK_BLUE_LEVEL = 0.55;                        // a phone playing: where the blue's tint is judged
-const LCHK_STEPS = ['Faintest light', 'Balance', 'Amber', 'Standby glow', 'Blue', 'Every look'];
-const LCHK_TASKS = [
-  {id:'floor-red', step:0, kind:'floor', ch:0},
-  {id:'floor-green', step:0, kind:'floor', ch:1},
-  {id:'floor-blue', step:0, kind:'floor', ch:2},
-  {id:'white-green', step:1, kind:'stair', delta:0.1, lo:LCHK_WHITE[1] * LCHK_GAIN[0], hi:LCHK_WHITE[1] * LCHK_GAIN[1], picks:4},
-  {id:'white-blue', step:1, kind:'stair', delta:0.02, lo:LCHK_WHITE[2] * LCHK_GAIN[0], hi:LCHK_WHITE[2] * LCHK_GAIN[1], picks:4},
-  {id:'amber-day', step:2, kind:'stair', delta:0.04, lo:0, hi:0.5, picks:4, level:1},
-  {id:'amber-night', step:2, kind:'stair', delta:0.03, lo:0, hi:0.5, picks:4, level:0.35},
-  {id:'ember-day', step:3, kind:'adjust', key:'ember_day'},
-  {id:'ember-night', step:3, kind:'adjust', key:'ember_night'},
-  {id:'blue-80', step:4, kind:'match', level:0.8},
-  {id:'blue-35', step:4, kind:'match', level:0.35},
-  {id:'blue-tint', step:4, kind:'tint'},
-  {id:'sweep', step:5, kind:'verify'},
+// Steps and tasks; a step for a colour the radio's lamp doesn't draw is left out (lchkTasks).
+const LCHK_STEPS = ['Faintest light', 'Balance', 'Amber', 'Standby glow', 'Blue', 'Green', 'Every look'];
+const LCHK_ALL_TASKS = [
+  {id:'floor-red', step:'Faintest light', kind:'floor', ch:0},
+  {id:'floor-green', step:'Faintest light', kind:'floor', ch:1},
+  {id:'floor-blue', step:'Faintest light', kind:'floor', ch:2},
+  {id:'white-green', step:'Balance', kind:'stair', delta:0.1, lo:LCHK_WHITE[1] * LCHK_GAIN[0], hi:LCHK_WHITE[1] * LCHK_GAIN[1], picks:4},
+  {id:'white-blue', step:'Balance', kind:'stair', delta:0.02, lo:LCHK_WHITE[2] * LCHK_GAIN[0], hi:LCHK_WHITE[2] * LCHK_GAIN[1], picks:4},
+  {id:'amber-day', step:'Amber', kind:'stair', delta:0.04, lo:0, hi:0.5, picks:4, level:1},
+  {id:'amber-night', step:'Amber', kind:'stair', delta:0.03, lo:0, hi:0.5, picks:4, level:0.35},
+  {id:'ember-day', step:'Standby glow', kind:'adjust', key:'ember_day'},
+  {id:'ember-night', step:'Standby glow', kind:'adjust', key:'ember_night'},
+  {id:'blue-80', step:'Blue', kind:'match', colour:'blue', level:0.8},
+  {id:'blue-35', step:'Blue', kind:'match', colour:'blue', level:0.35},
+  {id:'blue-tint', step:'Blue', kind:'tint'},
+  // A newer lamp's magic-eye green: as bright as amber at 0.55, starting near its own gain.
+  {id:'green-55', step:'Green', kind:'match', colour:'green', level:0.55, g0:0.57, f0:1.2, needs:'green'},
+  {id:'sweep', step:'Every look', kind:'verify'},
 ];
+// Does this radio's lamp draw ``colour`` (the engine says, and the draft can carry it)?
+function lchkHas(colour){
+  const d = lchk.data;
+  return !!(d && (d.colours || []).includes(colour) && d.standard && d.standard.palette && d.standard.palette[colour]);
+}
+function lchkTasks(){ return LCHK_ALL_TASKS.filter(t => !t.needs || lchkHas(t.needs)); }
+function lchkSteps(){ return LCHK_STEPS.filter(n => lchkTasks().some(t => t.step === n)); }
+function lchkStepNo(t){ return lchkSteps().indexOf(t.step) + 1; }
+const LCHK_COLOUR_NAME = {blue:'blue', green:'green'};
 const lchk = {data:null, loading:false, err:'', st:null, busy:false, timer:null, phase:0, t0:0, sent:0, arm:0};
 const r4 = x => Math.round(x * 1e4) / 1e4;
 const r6 = x => Math.round(x * 1e6) / 1e6;
@@ -6407,7 +6423,7 @@ async function lchkLoad(){
 function lchkRestore(){
   try {
     const st = JSON.parse(localStorage.getItem(LCHK_KEY) || 'null');
-    if (st && st.v === 1 && st.cal && LCHK_TASKS[st.task]){ st.running = false; return st; }
+    if (st && st.v === 1 && st.cal && lchkTasks()[st.task]){ st.running = false; return st; }
   } catch (_) {}
   return null;
 }
@@ -6429,15 +6445,15 @@ function lchkNew(){
     hist:[], done:false, running:false, began: new Date().toISOString(), temp: lchk.data.cpu_temp_c};
 }
 function lchkInit(st){
-  const t = LCHK_TASKS[st.task], c = st.cal;
-  if (t.kind === 'floor') return {i:0, low:null};
+  const t = lchkTasks()[st.task], c = st.cal;
+  if (t.kind === 'floor') return {i:LCHK_FLOOR_START, dir:0, low:null, n:0};
   if (t.kind === 'stair'){
     const center = {'white-green': st.white.g, 'white-blue': st.white.b,
       'amber-day': c.palette.amber.day[1], 'amber-night': c.palette.amber.day[1]}[t.id];
     return {c: clamp(center, t.lo, t.hi), d: t.delta, n:0};
   }
   if (t.kind === 'adjust') return {lv: c.levels[t.key], n:0};
-  if (t.kind === 'match') return {g:1, f:2, n:0};
+  if (t.kind === 'match') return {g: t.g0 || 1, f: t.f0 || 2, n:0};
   if (t.kind === 'tint') return {stage:0};
   return {i:0, tries:0};
 }
@@ -6451,7 +6467,9 @@ function lchkWith(cal, fn){ const c = lchkCopy(lchkPayload(cal)); if (fn) fn(c);
 // The screen can't show the lamp: a linear ratio at a perceptual level, for lchkCss only.
 function lchkTint(rgb, level){ const k = Math.pow(clamp(level, 0, 1), 2.2); return rgb.map(v => v * k); }
 function lchkRgbOf(colour, cal){
-  if (colour === 'ember' || colour === 'blue') return cal.palette[colour];
+  const p = cal.palette[colour];
+  if (Array.isArray(p)) return p;
+  if (p && Array.isArray(p.day)) return p.day;
   return cal.palette.amber.day;
 }
 function lchkItems(){
@@ -6467,13 +6485,14 @@ function lchkStairVals(t, ts){
 }
 function lchkWhite(g, b){ return [LCHK_WHITE_R, LCHK_WHITE_R * g, LCHK_WHITE_R * b]; }
 function lchkScene(){
-  const st = lchk.st, t = LCHK_TASKS[st.task], ts = st.ts, c = st.cal;
+  const st = lchk.st, t = lchkTasks()[st.task], ts = st.ts, c = st.cal;
   // body: what goes to the lamp; swatch: a rough picture of it for the screen.
   const one = (body, swatch, name, sub) => ({body, swatch, name, sub});
   const raw = duty => one({duty: duty.map(r6)}, duty);
   if (t.kind === 'floor'){
+    if (ts.i == null || ts.dir == null){ ts.i = LCHK_FLOOR_START; ts.dir = 0; ts.n = ts.n || 0; }   // a check saved by an older page
     const pct = LCHK_FLOORS[ts.i] * 100, duty = [0, 0, 0]; duty[t.ch] = LCHK_FLOORS[ts.i];
-    return {mode:'pulse', q: LCHK_CH_NAME[t.ch] + ' alone, very faint (' + pct + ' %). Is it steady, shimmering, or gone?',
+    return {mode:'pulse', q: LCHK_CH_NAME[t.ch] + ' alone, very faint (' + (Math.round(pct * 100) / 100) + ' %). Is it steady, shimmering, or gone?',
       help:'It blinks on and off so you can find it. Look at the lamp, not the phone.',
       cards:[Object.assign(raw(duty), {name: LCHK_CH_NAME[t.ch] + ' at ' + pct + ' %', sub:'on for 1.5 s, off for 1.5 s'})],
       answers:[['steady', 'Steady'], ['shimmer', 'Shimmering'], ['gone', 'Gone']]};
@@ -6505,13 +6524,15 @@ function lchkScene(){
       answers:[['up', 'Too dim'], ['ok', 'Just right'], ['down', 'Too bright']]};
   }
   if (t.kind === 'match'){
+    const col = t.colour || 'blue', word = LCHK_COLOUR_NAME[col] || col, Word = capFirst(word);
     const amber = one({draft: lchkWith(c), colour:'amber', level: t.level}, lchkTint(c.palette.amber[t.level < 0.5 ? 'night' : 'day'], t.level), 'Amber', 'stays the same');
-    const blue = one({draft: lchkWith(c, x => { x.level_gain.blue = r4(ts.g); }), colour:'blue', level: t.level},
-      lchkTint(c.palette.blue, t.level * ts.g), 'Blue', 'changes as you answer');
-    return {mode:'alt', q:'Which is brighter — the amber or the blue?',
-      help:'Ignore the colour, only how much light. ' + (t.level < 0.5 ? 'This is the dimmed, night brightness.' : 'This is the brightness of a phone playing.'),
-      cards:[amber, blue],
-      answers:[['amber', 'The amber'], ['same', 'About the same'], ['blue', 'The blue']]};
+    const other = one({draft: lchkWith(c, x => { x.level_gain[col] = r4(ts.g); }), colour: col, level: t.level},
+      lchkTint(lchkRgbOf(col, c), t.level * ts.g), Word, 'changes as you answer');
+    return {mode:'alt', q:'Which is brighter — the amber or the ' + word + '?',
+      help:'Ignore the colour, only how much light. ' + (col === 'green' ? 'Green is the lamp’s “all good” flash — it should be as bright as the amber, not brighter.'
+        : t.level < 0.5 ? 'This is the dimmed, night brightness.' : 'This is the brightness of a phone playing.'),
+      cards:[amber, other],
+      answers:[['amber', 'The amber'], ['same', 'About the same'], [col, 'The ' + word]]};
   }
   if (t.kind === 'tint'){
     const A = ts.stage ? [0.03, 0, 1] : [0, 0, 1], B = ts.stage ? [0.05, 0, 1] : [0.04, 0, 1];
@@ -6532,14 +6553,14 @@ function lchkScene(){
 function lchkProgress(){
   const st = lchk.st; if (!st) return 0;
   if (st.done) return 1;
-  const t = LCHK_TASKS[st.task], ts = st.ts || {};
+  const t = lchkTasks()[st.task], ts = st.ts || {};
   let part = 0;
-  if (t.kind === 'floor') part = ts.i / LCHK_FLOORS.length;
+  if (t.kind === 'floor') part = Math.min(ts.n || 0, 4) / 5;
   else if (t.kind === 'stair' || t.kind === 'match') part = ts.n / 4;
   else if (t.kind === 'adjust') part = Math.min(ts.n, 4) / 5;
   else if (t.kind === 'tint') part = ts.stage / 2;
   else part = ts.i / Math.max(1, lchkItems().length);
-  return (st.task + part) / LCHK_TASKS.length;
+  return (st.task + part) / lchkTasks().length;
 }
 
 /* the lamp: alternate A and B (or blink, or hold, or let the radio play a look) */
@@ -6588,19 +6609,25 @@ async function lchkJump(){
 }
 function lchkPick(k, jump){
   const st = lchk.st; if (!st || !st.running || st.done) return;
-  if (k === 'jump' && jump === undefined && LCHK_TASKS[st.task].kind === 'verify'){ lchkJump(); return; }
+  if (k === 'jump' && jump === undefined && lchkTasks()[st.task].kind === 'verify'){ lchkJump(); return; }
   lchk.live = '';
   st.hist.push(JSON.stringify({task: st.task, ts: st.ts, cal: st.cal, white: st.white, blue: st.blue, notes: st.notes}));
   if (st.hist.length > 300) st.hist.shift();
-  const t = LCHK_TASKS[st.task], ts = st.ts, c = st.cal;
+  const t = lchkTasks()[st.task], ts = st.ts, c = st.cal;
   let fin = false;
   if (t.kind === 'floor'){
-    if (k === 'steady'){ ts.low = LCHK_FLOORS[ts.i]; ts.i++; }
-    fin = k !== 'steady' || ts.i >= LCHK_FLOORS.length;
+    // Down from 2 % while it stays steady, up until it is: the lowest steady duty.
+    ts.n++;
+    if (k === 'steady'){
+      ts.low = LCHK_FLOORS[ts.i];
+      if (ts.dir > 0 || ts.i === 0) fin = true; else { ts.dir = -1; ts.i--; }
+    } else if (ts.dir < 0 || ts.i + 1 >= LCHK_FLOORS.length) fin = true;
+    else { ts.dir = 1; ts.i++; }
     if (fin){
       const ch = LCHK_CH[t.ch];
       if (ts.low == null && !st.notes.none.includes(ch)) st.notes.none.push(ch);
-      c.min_duty[ch] = r6(ts.low == null ? 0.03 : Math.min(0.05, 1.5 * ts.low));
+      // A safety margin over the lowest steady duty: half again for a tiny floor, a fifth once it is high.
+      c.min_duty[ch] = r6(ts.low == null ? LCHK_FLOOR_NONE : Math.min(0.1, ts.low * (ts.low <= 0.01 ? 1.5 : 1.2)));
     }
   } else if (t.kind === 'stair'){
     const [a, b] = lchkStairVals(t, ts);
@@ -6629,7 +6656,10 @@ function lchkPick(k, jump){
     if (k === 'amber' && atCap) fin = true;
     else if (k !== 'same'){ ts.g = k === 'amber' ? Math.min(cap, ts.g * ts.f) : ts.g / ts.f; ts.f = Math.sqrt(ts.f); ts.n++; }
     fin = fin || k === 'same' || ts.n >= 4;
-    if (fin){
+    if (fin && t.colour && t.colour !== 'blue'){
+      c.level_gain[t.colour] = r4(clamp(ts.g, 0.1, 4));
+      if (k === 'amber' && atCap) st.notes['capped_' + t.colour] = true;
+    } else if (fin){
       st.blue[t.level] = {g: ts.g, cap: k === 'amber' && atCap};
       if (t.id === 'blue-35'){
         const hi = st.blue[0.8] || {g: 1, cap: false}, lo = st.blue[0.35];
@@ -6654,7 +6684,7 @@ function lchkPick(k, jump){
     fin = ts.i >= items.length;
   }
   if (fin){
-    if (st.task + 1 >= LCHK_TASKS.length){ st.done = true; st.running = false; clearTimeout(lchk.timer); lcalEnd(); }
+    if (st.task + 1 >= lchkTasks().length){ st.done = true; st.running = false; clearTimeout(lchk.timer); lcalEnd(); }
     else { st.task++; st.ts = lchkInit(st); }
   }
   lchkKeep(); rerender();
@@ -6741,8 +6771,9 @@ function lchkSummary(){
       row(lchkTint(c.palette.amber.night, 0.35), 'Amber, at night', 'yellow ' + c.palette.amber.night[1]),
       row(lchkTint(c.palette.ember, c.levels.ember_day), 'Standby glow, by day', Math.round(c.levels.ember_day * 100) + ' %'),
       row(lchkTint(c.palette.ember, c.levels.ember_night), 'Standby glow, at night', Math.round(c.levels.ember_night * 100) + ' %'),
-      row(lchkTint(c.palette.blue, Math.min(1, LCHK_BLUE_LEVEL * c.level_gain.blue)), 'Blue', '×' + c.level_gain.blue + (c.palette.blue[0] ? ' · red ' + c.palette.blue[0] : ' · pure'))),
-    st.notes.none.length ? h('p', {class:'note-warn'}, 'No steady faint ' + st.notes.none.join(' or ') + ' at all — its floor is set high (3 %). If that looks wrong, check the LED and its wiring.') : null,
+      row(lchkTint(c.palette.blue, Math.min(1, LCHK_BLUE_LEVEL * c.level_gain.blue)), 'Blue', '×' + c.level_gain.blue + (c.palette.blue[0] ? ' · red ' + c.palette.blue[0] : ' · pure')),
+      lchkHas('green') && c.palette.green && c.level_gain.green != null ? row(lchkTint(lchkRgbOf('green', c), 0.55 * c.level_gain.green), 'Green', '×' + c.level_gain.green) : null),
+    st.notes.none.length ? h('p', {class:'note-warn'}, 'No steady faint ' + st.notes.none.join(' or ') + ' even at 8 % — its floor is set high (9.6 %). If that looks wrong, check the LED and its wiring.') : null,
     st.notes.capped ? h('p', {class:'note-warn'}, 'Blue couldn’t quite match the amber even at full power, so it runs as bright as it can.') : null,
     raised.length ? h('p', {class:'hint'}, 'Raised during the check: ' + raised.join(', ') + '.') : null,
     h('p', {class:'hint'}, 'The swatches are only a guide — your screen can’t show the lamp. Save keeps it on this radio; nothing has changed until then.'),
@@ -6757,9 +6788,9 @@ function lchkSummary(){
   ];
 }
 function lchkRun(){
-  const st = lchk.st, t = LCHK_TASKS[st.task], sc = lchkScene(), p = lchkProgress();
+  const st = lchk.st, t = lchkTasks()[st.task], sc = lchkScene(), p = lchkProgress();
   return [
-    h('div', {class:'lk-step'}, h('span', {id:'lchkStep'}, 'Step ' + (t.step + 1) + ' of ' + LCHK_STEPS.length + ' · ' + LCHK_STEPS[t.step]), h('span', null, Math.round(p * 100) + ' %')),
+    h('div', {class:'lk-step'}, h('span', {id:'lchkStep'}, 'Step ' + lchkStepNo(t) + ' of ' + lchkSteps().length + ' · ' + t.step), h('span', null, Math.round(p * 100) + ' %')),
     h('div', {class:'kn-bar', role:'progressbar', 'aria-label':'Lamp check progress', 'aria-valuemin':'0', 'aria-valuemax':'100', 'aria-valuenow': String(Math.round(p * 100))},
       h('div', {class:'kn-fill', style:'width:' + (p * 100) + '%'})),
     h('p', {class:'lk-q', id:'lchkQ'}, sc.q),
@@ -6778,7 +6809,7 @@ function lchkRun(){
 }
 function lchkIntro(){
   const d = lchk.data, st = lchk.st, s = d.saved || {}, cal = s.calibrated;
-  const t = st && LCHK_TASKS[st.task];
+  const t = st && lchkTasks()[st.task];
   return [
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Lamp check'),
       h('span', {class:'li-sub', id:'lchkState'}, cal && cal.at ? 'Checked by eye on ' + lchkWhen(cal.at) + (cal.cpu_temp_c != null ? ' (radio at ' + Math.round(cal.cpu_temp_c) + ' °C)' : '') : 'Standard settings — never checked on this lamp')),
@@ -6787,7 +6818,7 @@ function lchkIntro(){
     !d.lamp ? h('p', {class:'note-warn'}, 'No lamp on this radio — you can walk through the steps, but there is nothing to look at.') : null,
     !d.can_save ? h('p', {class:'note-warn'}, 'This radio has no place to keep a calibration, so the result can’t be saved.') : null,
     h('div', {class:'acts'},
-      st ? h('button', {type:'button', class:'btn primary', id:'lchkResume', onclick: () => lchkBegin(false)}, 'Carry on — step ' + (t.step + 1) + ' of ' + LCHK_STEPS.length) : null,
+      st ? h('button', {type:'button', class:'btn primary', id:'lchkResume', onclick: () => lchkBegin(false)}, 'Carry on — step ' + lchkStepNo(t) + ' of ' + lchkSteps().length) : null,
       h('button', {type:'button', class:'btn' + (st ? ' small' : ' primary'), id:'lchkStart', onclick: () => lchkBegin(true)}, st ? 'Start again' : 'Start the lamp check'),
       s.calibrated || s.min_duty ? h('button', {type:'button', class:'btn small', id:'lchkStd', disabled: lchk.busy, onclick: lchkStandard},
         Date.now() - lchk.arm < 4000 ? 'Tap again to confirm' : 'Back to standard') : null),

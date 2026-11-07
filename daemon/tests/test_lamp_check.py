@@ -218,7 +218,7 @@ def _set(doc, path, value):
 
 class TestValidation:
     @pytest.mark.parametrize("path,value", [
-        (("min_duty", "red"), 0.06),
+        (("min_duty", "red"), 0.11),
         (("min_duty", "red"), -0.001),
         (("min_duty", "green"), KeyError),
         (("min_duty", "white"), 0.01),
@@ -249,6 +249,28 @@ class TestValidation:
             app.put_lamp_calibration(body)
         assert not overlay_file(app).exists()
 
+    def test_extra_colours_the_engine_draws_join_the_contract(self, app, monkeypatch):
+        monkeypatch.setitem(eng.DEFAULT_PALETTE, "green", (0.1, 1.0, 0.05))
+        assert lamp_check.colours() == ("amber", "ember", "blue", "green")
+        body = copy.deepcopy(CAL)
+        body["palette"]["green"] = [0.1, 1.0, 0.05]
+        body["level_gain"]["green"] = 0.57
+        app.put_lamp_calibration(body)
+        lamp = overlay(app)["io"]["lamp"]
+        assert lamp["palette"]["green"] == [0.1, 1.0, 0.05] and lamp["level_gain"]["green"] == 0.57
+        assert app.lamp_calibration()["saved"]["palette"]["green"] == [0.1, 1.0, 0.05]
+        app.delete_lamp_calibration()
+        assert "palette" not in (overlay(app).get("io") or {}).get("lamp", {})
+        app.put_lamp_calibration(copy.deepcopy(CAL))                # extras stay optional
+        bad = copy.deepcopy(CAL)
+        bad["palette"]["purple"] = [1, 0, 1]                        # not a colour the engine draws
+        with pytest.raises(ValueError):
+            app.put_lamp_calibration(bad)
+        bad = copy.deepcopy(CAL)
+        bad["level_gain"]["red"] = 1.0
+        with pytest.raises(ValueError):
+            app.put_lamp_calibration(bad)
+
     @pytest.mark.parametrize("bad", [None, [], "x", {}])
     def test_rejects_non_documents(self, app, bad):
         with pytest.raises(ValueError):
@@ -277,8 +299,8 @@ class TestGet:
         from haslerd.lamp import policy
         assert looks["playing"]["level"] == policy.PLAYING.level == 0.80
         assert looks["hotspot"]["motion"] == "beckon"                   # setup beckons now, never steady
-        assert looks["busy"]["period_s"] == policy.SHUTTING_DOWN.period_s
-        assert {"asking", "kick", "refuse", "swell", "hue"} <= set(looks)    # the behaviours too
+        assert looks["shutting_down"]["period_s"] == policy.SHUTTING_DOWN.period_s
+        assert {"asking", "kick", "refuse", "swell", "hue_blue"} <= set(looks)    # the behaviours too
         assert "offline" not in looks                                   # no red breath any more
         assert all(lk["watch"] for lk in looks.values())
 
@@ -437,20 +459,44 @@ class TestDraftPreview:
         cal["palette"]["blue"] = [0.0, 0.0, 1.0]                     # pure blue: any red is the mix
         spec = lamp_check.check(cal)
         scenes = lamp_check.scenes(policy)
-        frames = sc.SceneFrames(spec, scenes["hue"]).sample()
+        frames = sc.SceneFrames(spec, scenes["hue_blue"][2]).sample()
         assert any(f[2] > 0.1 for f in frames) and any(f[0] > 0.05 and f[2] == 0 for f in frames)
         assert not any(f[0] > 0.02 and f[2] > 0.02 for f in frames)    # down, swap, up - never both
-        kick = sc.SceneFrames(spec, scenes["kick"]).sample()
+        kick = sc.SceneFrames(spec, scenes["kick"][2]).sample()
         assert max(f[0] for f in kick) > kick[0][0] * 1.3
 
     def test_every_sweep_item_renders_by_day_and_night(self, app):
         from haslerd.lamp import policy, scratch as sc
         spec = lamp_check.check(copy.deepcopy(CAL))
-        for lid, scene in lamp_check.scenes(policy).items():
+        for lid, (_name, _kind, scene) in lamp_check.scenes(policy).items():
             for night in (False, True):
                 frames = sc.SceneFrames(spec, scene, night=night).sample(fps=10)
                 assert frames and max(max(f) for f in frames) > 0, (lid, night)
-        assert set(lamp_check.scenes(policy)) == {item[0] for item in lamp_check.SWEEP}
+
+    def test_the_sweep_is_found_at_run_time(self, monkeypatch):
+        """A newer language's Looks, colours and replies join the sweep by themselves."""
+        import types
+        from haslerd.lamp import contract, policy
+        from haslerd.lamp import engine as eng_mod
+        fake = types.SimpleNamespace(
+            READY=policy.READY, PLAYING=policy.PLAYING,
+            MAGIC_EYE=contract.steady("green", 0.5),
+            SETUP=contract.Look("amber", 0.3, "morse", 4.0),
+            ALIAS=policy.READY,                                     # the same Look twice: once
+            TABLE={"a": policy.LOADING, "b": policy.LOADING},
+            lower_case=policy.STANDBY,                              # not a policy Look name
+        )
+        monkeypatch.setattr(eng_mod, "PREVIEW_LOOKS", {"identify": contract.beckoning("green", 0.4), "ready": policy.READY})
+        monkeypatch.setitem(eng_mod.REPLY_S, "wink", 0.5)
+        found = lamp_check.scenes(fake)
+        assert list(found)[:5] == ["ready", "playing", "magic_eye", "setup", "table_a"]
+        assert "alias" not in found and "table_b" not in found and "lower_case" not in found
+        assert found["setup"][1] == "pattern" and found["magic_eye"][1] == "steady"
+        assert "identify" in found and found["identify"][0].startswith("Which radio")
+        assert found["wink"][1] == "reply" and found["wink"][2].events == ((0.6, "reply", "wink"),)
+        assert {"kick", "refuse", "swell"} <= set(found) and "refuse3" not in found
+        assert found["hue_green"][2].events[0][2] == fake.MAGIC_EYE   # a hue change to each other family
+        assert "hue_blue" not in found                              # (this policy has no steady blue)
 
     @pytest.mark.parametrize("body", [
         {"colour": "white", "level": 1},

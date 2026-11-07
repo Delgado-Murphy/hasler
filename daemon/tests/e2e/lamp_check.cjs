@@ -26,7 +26,7 @@ let failed = 0, passed = 0;
 
 // What the scripted picks below must save (see the comments at each pick).
 const EXPECT = {
-  min_duty: {red: 0.015, green: 0.005625, blue: 0.03},
+  min_duty: {red: 0.015, green: 0.005625, blue: 0.054},
   balance: {red: 1, green: 1.25, blue: 0.6667},
   palette: {amber: {day: [1, 0.185, 0], night: [1, 0.155, 0]}, ember: [1, 0.06, 0], blue: [0.05, 0, 1]},
   level_gain: {amber: 1, ember: 1, blue: 1.6818},
@@ -128,7 +128,11 @@ function near(a, b, path = ''){
       assert((await q(page)).includes('Green alone'), await q(page));
       await pick(page, 'steady', 4);                 // green steady to 0.25 %: 0.375 %
       assert((await q(page)).includes('Blue alone'), await q(page));
-      await pick(page, 'gone');                      // blue gone at 2 %: floor set high, 3 %
+      await pick(page, 'gone');                      // blue gone at 2 % ...
+      assert((await q(page)).includes('3 %'), 'the search goes up: ' + await q(page));
+      await pick(page, 'shimmer');                   // ... shimmers at 3 % ...
+      assert((await q(page)).includes('4.5 %'), await q(page));
+      await pick(page, 'steady');                    // ... steady at 4.5 %: x 1.2 = 5.4 %
     });
 
     await check('step 2, balance: A/B staircase, named in plain words', async () => {
@@ -193,7 +197,7 @@ function near(a, b, path = ''){
     await check('summary: what was chosen, swatches only a guide, nothing saved yet', async () => {
       const txt = await page.textContent('#lchk');
       assert(txt.includes('only a guide') && txt.includes('Save'), txt);
-      assert(txt.includes('No steady faint blue'), 'no warning about blue: ' + txt);
+      assert(txt.includes('B 5.4 %') && !txt.includes('No steady faint'), 'blue found by searching up: ' + txt);
       assert(txt.includes('couldn’t quite match'), 'no word about the blue cap');
       assert(txt.includes('Back to standard'), 'no Back to standard');
       const saved = await getJson(radio.base, '/api/lamp/calibration');
@@ -226,7 +230,7 @@ function near(a, b, path = ''){
       assert(drafts.every(b => JSON.stringify(Object.keys(b.draft).sort()) === JSON.stringify(keys)), 'a draft with odd keys');
       assert(drafts.every(b => (b.colour && typeof b.level === 'number' && b.look === undefined) || (b.look && typeof b.night === 'boolean')), 'a bad draft preview');
       const looks = new Set(drafts.filter(b => b.look).map(b => b.look));
-      for (const id of ['standby', 'playing', 'loading', 'hotspot', 'asking', 'kick', 'refuse', 'swell', 'hue'])
+      for (const id of ['standby', 'playing', 'loading', 'hotspot', 'asking', 'kick', 'refuse', 'swell', 'hue_blue', 'shutting_down'])
         assert(looks.has(id), 'the sweep never showed ' + id + ': ' + [...looks]);
       assert(drafts.some(b => b.colour === 'amber' && b.level === 1) && drafts.some(b => b.colour === 'blue'), 'no colour samples');
       assert(previews.some(b => b.rgb === null), 'the preview was never ended');
@@ -250,6 +254,46 @@ function near(a, b, path = ''){
       const text = fs.readFileSync(path.join(radio.tmp, 'etc', 'variant.d', 'hasler-hm.yaml'), 'utf8');
       assert(text.includes('frequency_hz: 600') && text.includes('white') && !text.includes('min_duty'), text);
       await until(async () => (await page.textContent('#lchkState')).includes('Standard'), 5000, 'standard state');
+    });
+
+    await check('a lamp with a magic-eye green gets a green brightness step (only then)', async () => {
+      const ctx = await browser.newContext({viewport: {width: 390, height: 844}});
+      await ctx.addInitScript(() => { try { localStorage.setItem('hasler.maker', '1'); } catch (_) {} });
+      await ctx.route('**/api/lamp/calibration', async route => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const res = await route.fetch(), doc = await res.json();
+        doc.colours = ['amber', 'ember', 'blue', 'green'];
+        doc.standard.palette.green = [0.1, 1, 0.05]; doc.standard.level_gain.green = 1;
+        await route.fulfill({response: res, json: doc});
+      });
+      const sent = [];
+      const g = await ctx.newPage();
+      g.on('pageerror', e => errors.push(e.message));
+      g.on('request', r => { if (r.url().endsWith('/api/lamp/preview') && r.method() === 'POST'){ try { sent.push(JSON.parse(r.postData() || '{}')); } catch (_) {} } });
+      await g.goto(radio.base + '/#settings/maker');
+      await g.waitForSelector('#lchkStart', {timeout: 8000});
+      await g.click('#lchkStart');
+      assert((await g.textContent('#lchkStep')).includes('of 7'), 'no Green step: ' + await g.textContent('#lchkStep'));
+      await g.click('#lchkStop');
+      // Jump to the green step: a check saved just before it.
+      await g.evaluate(() => {
+        const st = JSON.parse(localStorage.getItem('hasler.lampcheck'));
+        st.task = 12; st.ts = null; st.running = false;   // green-55: the 13th task when green is there
+        localStorage.setItem('hasler.lampcheck', JSON.stringify(st));
+      });
+      await g.reload();
+      await g.waitForSelector('#lchkResume', {timeout: 8000});
+      await g.click('#lchkResume');
+      assert((await g.textContent('#lchkStep')).includes('Green'), await g.textContent('#lchkStep'));
+      assert((await g.textContent('#lchkQ')).includes('the green'), await g.textContent('#lchkQ'));
+      await until(async () => sent.some(b => b.draft && b.colour === 'green' && b.level === 0.55 && Math.abs(b.draft.level_gain.green - 0.57) < 1e-9), 4000, 'a green sample at 0.55, gain 0.57');
+      await g.click('#lchkAns-green');               // too bright: 0.57 / 1.2
+      await g.click('#lchkAns-same');
+      assert((await g.textContent('#lchkStep')).includes('Every look'), await g.textContent('#lchkStep'));
+      const st = await g.evaluate(() => JSON.parse(localStorage.getItem('hasler.lampcheck')));
+      assert(Math.abs(st.cal.level_gain.green - 0.475) < 1e-4, 'green gain ' + st.cal.level_gain.green);
+      await g.click('#lchkStop');
+      await ctx.close();
     });
 
     if (SHOTS) await check('desktop screenshots', async () => {

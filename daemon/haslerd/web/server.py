@@ -1367,9 +1367,11 @@ class WebApp:
         its frames streamed for PREVIEW_S after the last identical request
         (which only extends it), with ``jump``: the channel to blame.
         """
+        from ..lamp import policy
         lamp = self.lamp
         spec = lamp_check.draft_spec(body["draft"], lamp)
-        kind, name, arg = lamp_check.preview_target(body)
+        found = lamp_check.scenes(policy)
+        kind, name, arg = lamp_check.preview_target(body, tuple(found))
         hold = getattr(lamp_engine, "PREVIEW_S", 30.0)
         if kind == "colour":
             self._lamp_stage.stop()
@@ -1377,10 +1379,7 @@ class WebApp:
             exact = self._show_duty(lamp, duty, hold) if lamp is not None else False
             return {"lamp": lamp is not None, "showing": lamp is not None, "raw": exact,
                     "duty": [round(d, 6) for d in duty], "expires_s": hold}
-        from ..lamp import policy
-        scene = lamp_check.scenes(policy).get(name)
-        if scene is None:
-            raise ValueError(f"the lamp has no {name!r} look any more")
+        scene = found[name][2]
         key = (json.dumps(spec, sort_keys=True), name, arg)
         cached = self._lamp_scene_info if self._lamp_scene_key == key else None
         if cached is None:
@@ -1414,6 +1413,8 @@ class WebApp:
             # The sweep; the page sends {"draft", "look": id, "night"} and
             # the engine draws it (there is no model of the engine on the page).
             "looks": lamp_check.sweep(policy),
+            # The colours this engine draws: a step per extra colour (a newer lamp's green).
+            "colours": list(lamp_check.colours()),
             "preview_s": getattr(lamp_engine, "PREVIEW_S", 30.0),
             "cpu_temp_c": lamp_check.cpu_temp_c(self.cpu_temp_file),
         }
