@@ -222,7 +222,7 @@ button{cursor:pointer}
 @keyframes lm-eye{0%,100%{opacity:.25}50%{opacity:1}}
 @keyframes lm-alert{0%,2.5%,6%,100%{opacity:.1}1%,4%{opacity:1}}
 .lm-rhythm{display:block;font-family:ui-monospace,Menlo,monospace;font-size:12px;color:var(--brass);letter-spacing:.06em;margin-top:2px}
-.lm-group{margin:14px 4px 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2)}
+.lm-group{margin:14px 16px 4px}
 .lm-now{display:flex;align-items:center;padding:12px 4px 4px}
 .lm-now b{color:var(--brass);font-weight:600}
 .lm-tour{min-height:1.4em}
@@ -623,7 +623,16 @@ dialog.stsheet,dialog.fsheet{max-height:min(88vh,760px);overflow:auto;overscroll
 .li-sub{color:var(--muted);font-size:13px;line-height:18px;overflow-wrap:anywhere}
 .li-act{flex:none;color:var(--brass);font:600 13px/16px var(--sans);background:none;border:0;min-height:44px;padding:0 4px;text-decoration:none;display:inline-flex;align-items:center;gap:4px}
 .li-act:hover{color:#E0BC78}
+.li-act[aria-pressed="true"]{color:var(--amber)}
+.li-act.danger{color:var(--red-text)}
+/* "Checking…" as two shimmering bars, the same height as the row that replaces them */
+.li.skel{pointer-events:none;flex-direction:column;align-items:stretch;justify-content:center}
+.li.skel i{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,#20160E,#2A1D13,#20160E);background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+.li.skel i:first-child{width:45%;margin-bottom:8px}.li.skel i+i{width:70%}
 .li.col{flex-direction:column;align-items:stretch}
+/* inside a .li.col: a title line with its control or value on the right, never wrapped under */
+.li-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0}
+.li-row > .li-txt{flex:1;min-width:0}
 .li-val{color:var(--brass);font:13px/16px var(--mono);font-variant-numeric:tabular-nums}
 .pair{display:flex;gap:10px;min-width:0}
 .pair > .field{flex:1 1 0;min-width:0}
@@ -671,7 +680,7 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .ent{display:flex;align-items:center;gap:10px;padding:10px 16px;min-height:60px;border-top:1px solid var(--line)}
 .ent-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .ent-name{color:var(--cream);font:600 14px/18px var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ent-sub{color:var(--muted);font:9.5px/12px var(--mono);letter-spacing:.06em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ent-sub{color:var(--muted);font:11px/14px var(--mono);letter-spacing:.06em;text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ent .btn.small{min-height:44px;padding:8px 12px;font-size:13px}
 .area-h{padding:14px 16px 6px;color:var(--brass);font:600 15px/20px var(--serif);border-top:1px solid var(--line)}
 .list .area-h:first-child{border-top:0}
@@ -685,11 +694,12 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .kn{display:block;padding:0;min-height:0}
 .kn-head{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:12px 16px;border:0;background:none;text-align:left;color:inherit}
 .kn-head:hover{background:rgba(201,161,90,.04)}
-.kn-head .chev{transition:transform .15s}
-.kn-head[aria-expanded="true"] .chev{transform:rotate(90deg)}
+/* A row that opens in place points down (and up once open); a row that goes somewhere keeps › */
+.kn-head .chev{transform:rotate(90deg);transition:transform .15s}
+.kn-head[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .kn-txt{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
 .kn-name{color:var(--cream);font:600 16px/20px var(--serif)}
-.kn-tag{padding:2px 6px;border-radius:4px;border:1px solid var(--line2);color:var(--muted);font:9px/12px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
+.kn-tag{padding:2px 6px;border-radius:4px;border:1px solid var(--line2);color:var(--muted);font:11px/14px var(--mono);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap}
 .kn-tag.box{border-color:rgba(255,178,56,.45);color:var(--amber)}
 .kn-num{margin-left:auto;color:var(--brass);font:600 20px/24px var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .kn-body{display:flex;flex-direction:column;gap:12px;padding:0 16px 16px}
@@ -755,7 +765,7 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .fx-opt:has(input:checked){border-color:rgba(255,178,56,.55);background:rgba(255,178,56,.06)}
 .fx-ot{display:flex;flex-direction:column;gap:2px;min-width:0}
 .fx-ol{color:var(--cream);font:600 14px/18px var(--sans)}
-.fx-ol small{margin-left:6px;color:var(--muted);font:9px/12px var(--mono);letter-spacing:.12em;text-transform:uppercase}
+.fx-ol small{margin-left:6px;color:var(--muted);font:11px/14px var(--mono);letter-spacing:.12em;text-transform:uppercase}
 .fx-od{color:var(--muted);font:12.5px/17px var(--sans)}
 .fx-par{display:flex;flex-direction:column;gap:0}
 .fx-ph{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
@@ -786,12 +796,18 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .wz-pts .link{min-height:44px;padding:8px 10px}
 .wz-try{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .wz-try b{color:var(--amber);font:600 34px/38px var(--mono);font-variant-numeric:tabular-nums}
+/* Cancel / Save stay in reach under a long points list */
+.wz .acts{position:sticky;bottom:calc(-18px - env(safe-area-inset-bottom));margin:0 -18px calc(-18px - env(safe-area-inset-bottom));padding:12px 18px calc(18px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(31,20,13,.9),#1F150D 30%)}
 
 /* ---------- sources & casting ---------- */
 .src-row{display:flex;align-items:center;gap:6px;padding:4px 8px 4px 4px;min-height:60px;border-top:1px solid var(--line)}
 .src-row:first-child{border-top:0}
 .src-chk{flex:1;min-width:0;display:flex;align-items:center;gap:12px;min-height:52px;padding-left:10px;cursor:pointer}
-.src-chk input,.lp-row input{flex:none;width:22px;height:22px;margin:0;accent-color:var(--amber);cursor:pointer}
+.lp-row input{flex:none;width:22px;height:22px;margin:0;accent-color:var(--amber);cursor:pointer}
+/* the source cycle's ticks: the page's own square box, a tick in amber when on */
+.src-chk input{appearance:none;-webkit-appearance:none;flex:none;width:22px;height:22px;margin:0;border:1.5px solid var(--line2);border-radius:6px;background:none;cursor:pointer}
+.src-chk input:checked{border-color:var(--amber);background:var(--amber) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3 7.2l2.6 2.6L11 4.4' fill='none' stroke='%231A1208' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat}
+.src-chk input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
 .src-pos{flex:none;width:22px;color:var(--amber);font:600 13px/16px var(--mono);text-align:center}
 .src-row.off .src-pos{color:transparent}
 .src-row.na .li-title{color:var(--text2)}
@@ -847,8 +863,8 @@ details.how[open] summary::before{transform:rotate(90deg)}
 .rooms-sub{color:var(--muted);font-size:12.5px;line-height:16px;overflow-wrap:anywhere}
 .rooms-btn{flex:none;display:inline-flex;align-items:center;gap:4px;min-height:44px;padding:0 10px;border:0;background:none;color:var(--brass);font:600 13px/16px var(--sans)}
 .rooms-btn:hover{color:#E0BC78}
-.rooms-btn .chev{color:inherit;transition:transform .15s}
-.rooms-btn[aria-expanded="true"] .chev{transform:rotate(90deg)}
+.rooms-btn .chev{color:inherit;transform:rotate(90deg);transition:transform .15s}
+.rooms-btn[aria-expanded="true"] .chev{transform:rotate(-90deg)}
 .rooms-body{display:flex;flex-direction:column;gap:2px;padding:0 14px 12px;border-top:1px solid var(--line)}
 .rooms-body .hint{padding:10px 0 4px}
 .room{display:flex;align-items:center;gap:10px;min-height:56px;border-top:1px solid var(--line)}
@@ -901,6 +917,9 @@ dialog::backdrop{background:rgba(10,6,3,.62)}
 @media (min-width:600px){ dialog{margin:auto;border:1px solid var(--line2);border-radius:18px} }
 dialog h2{margin:0 0 4px;color:var(--title);font:600 22px/28px var(--serif)}
 dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
+/* a sheet's buttons: in a row on a desk, stacked (the main one on top) on a phone */
+.dlg-acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;margin-top:14px}
+@media (max-width:599px){ .dlg-acts{flex-direction:column-reverse} .dlg-acts .btn{width:100%} }
 .toast{position:fixed;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));z-index:50;transform:translate(-50%,20px);opacity:0;pointer-events:none;
   max-width:calc(100vw - 32px);padding:11px 16px;border-radius:12px;border:1px solid var(--line2);background:#2A1C12;color:var(--cream);font:600 14px/18px var(--sans);
   box-shadow:0 10px 30px rgba(0,0,0,.5);transition:opacity .2s,transform .2s;text-align:center}
@@ -926,13 +945,18 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .attn{border-color:rgba(233,179,92,.45);background:linear-gradient(180deg,#2A1D10,#21160D)}
 .attn .set-row .li-title{color:#F3CF8C}
 .attn-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px rgba(255,178,56,.6)}
+/* the same dot on the front page's gear while Settings has something that needs attention */
+.gear-dot{position:absolute;right:6px;top:6px;width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 2px var(--ground),0 0 8px rgba(255,178,56,.6)}
+#pageTitle:focus{outline:none}
+.page-note{padding:0 4px;margin:-4px 0 0}
+#lampEgg{min-width:44px;justify-content:center}
 .ver{background:none;border:0;padding:6px 8px;min-height:32px;color:var(--muted);font:12px/16px var(--mono);letter-spacing:.04em;cursor:default;-webkit-user-select:none;user-select:none}
 .ver:focus-visible{outline-offset:0}
 .ro-line{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ro-line .li-sub{flex:1 1 200px}
 .help-url{font:13px/18px var(--mono);letter-spacing:0;color:var(--cream);text-overflow:ellipsis}
 .help-v{font:600 13px/18px var(--mono);letter-spacing:0;overflow-wrap:anywhere;text-align:right}
-/* "A maker is connected now (…)" vs "Connected - waiting for a maker": the line the owner looks for */
+/* "A maker is connected now (…)" vs "Connected — waiting for a maker": the line the owner looks for */
 .help-now{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;color:var(--cream);font:600 16px/22px var(--sans)}
 .help-now .hn-dot{flex:0 0 10px;width:10px;height:10px;border-radius:50%;background:var(--brass)}
 .help-now.on{border-color:#4E7A57;background:rgba(93,187,99,.10)}
@@ -949,7 +973,7 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .app[data-view="settings"] .panel > .title-row{position:sticky;top:0;z-index:15;margin:0 -16px;padding:6px 16px;background:var(--ground)}
 @media (min-width:960px){ .app[data-view="settings"] .panel > .title-row{margin:0;padding:6px 0} }
 .savebar{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;gap:10px;margin:8px -16px 0;padding:12px 16px calc(12px + env(safe-area-inset-bottom));
-  border-top:1px solid var(--line2);background:rgba(31,20,13,.97);box-shadow:0 -10px 24px rgba(0,0,0,.45)}
+  border-top:1px solid var(--line2);background:var(--sheet);box-shadow:0 -10px 24px rgba(0,0,0,.45)}
 .savebar[hidden]{display:none !important}
 .savebar .sb-txt{flex:1;min-width:0;color:#F3CF8C;font:600 14px/18px var(--sans)}
 .savebar .sb-txt small{display:block;color:var(--muted);font-weight:400;font-size:12px;line-height:16px}
@@ -1062,6 +1086,7 @@ html.has-bar .toast,html.has-actions .toast{bottom:calc(92px + env(safe-area-ins
         </button>
         <button type="button" class="round" id="goSettings" aria-label="Settings" title="Settings">
           <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          <span class="gear-dot" id="gearDot" hidden></span>
         </button>
       </div>
     </header>
@@ -1217,6 +1242,15 @@ function hostLink(host, msgId, again, back){
     const f = $(msgId) || (back && $(back));
     if (f){ if (!f.hasAttribute('tabindex') && !/^(BUTTON|A|INPUT|SELECT|TEXTAREA)$/.test(f.tagName)) f.tabIndex = -1; f.focus({preventScroll:true}); }
   }}, 'Allow this address');
+}
+// The radio said no to a change: say so. Refused only for the page's address (after Not now),
+// the toast carries Allow - the offer again, then `again()` (the change) once allowed. Any
+// other answer is `fallback` (or the radio's own words), with Try again when `again` is given.
+function failToast(r, fallback, again){
+  const host = hostOf(r);
+  if (host){ toast(hostWords(host), {bad:true, action:'Allow', run: async () => { if (await allowHost(host, true) && again) again(); }}); return; }
+  const msg = capFirst((r && r.json && r.json.error) || fallback || 'The radio didn’t take that').replace(/\.?$/, '.');
+  toast(msg, again ? {bad:true, action:'Try again', run: again} : true);
 }
 async function apiOnce(method, url, body, opts = {}){
   // Every change goes as JSON: the radio refuses anything else (its CSRF guard).
@@ -2061,14 +2095,18 @@ const replaceRaw = history.replaceState.bind(history);
 history.replaceState = (st, title, url) => replaceRaw(st == null ? {hidx: hIdx} : st, title, url);
 history.replaceState(null, '');
 // Settings: #settings (the list), #settings/<page>[/<section>], two sub-pages under This radio.
-// Old addresses still work and are rewritten in place.
+// Old addresses still work and are rewritten in place: SET_ALIAS for a page, SET_SEC_ALIAS
+// for a section that moved to another page (1.5.0: the room name to Rooms, YouTube Music to
+// Music accounts, knob calibration to Sound).
 const SET_ALIAS = {sources:'phones', multiroom:'rooms', about:'radio', knobs:'keys'};
+const SET_SEC_ALIAS = {'radio/name':'rooms/name', 'radio/ytm':'accounts/ytm', 'keys/knobs':'sound/knobs', 'updates/music':'accounts/ytm'};
 const SET_SUBS = {radio:['updates', 'ha']};
 function parseHash(){
   let p = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   let fixed = false;
   if (p[0] === 'ha'){ p = ['settings', 'radio', 'ha']; fixed = true; }
   if (p[0] === 'settings' && SET_ALIAS[p[1]]){ p[1] = SET_ALIAS[p[1]]; fixed = true; }
+  if (p[0] === 'settings' && p[2] && SET_SEC_ALIAS[p[1] + '/' + p[2]]){ p = ['settings'].concat(SET_SEC_ALIAS[p[1] + '/' + p[2]].split('/')); fixed = true; }
   if (fixed) history.replaceState(null, '', '#' + p.join('/'));
   return {view: ['edit','browse','settings','print'].includes(p[0]) ? p[0] : 'remote', arg: p[1] || null, arg2: p[2] || null};
 }
@@ -2094,12 +2132,36 @@ function askLeave(what){
     const pick = a => () => { answer = a; dlg.close(); };
     dlg.append(h('h2', {id:'dlgTitle'}, 'Save your changes?'),
       h('p', {class:'sub'}, what ? 'Not saved yet: ' + what + '.' : 'Some changes here aren’t saved yet.'),
-      h('div', {style:'display:flex;flex-wrap:wrap;justify-content:flex-end;gap:10px;margin-top:14px'},
+      h('div', {class:'dlg-acts'},
         h('button', {type:'button', class:'btn small', id:'leaveKeep', onclick: pick('keep')}, 'Keep editing'),
         h('button', {type:'button', class:'btn small', id:'leaveDiscard', onclick: pick('discard')}, 'Discard'),
         h('button', {type:'button', class:'btn small primary', id:'leaveSave', onclick: pick('save')}, 'Save and close')));
     // A close event that comes late, from whatever #dlg showed before, finds it open again: not this one's.
     dlg.onclose = () => { if (dlg.open) return; dlg.onclose = null; resolve(answer); };
+    dlg.onclick = null;
+    dlg.showModal();
+  });
+}
+// One question in the page's own sheet, where a browser confirm() used to be: resolves true
+// for `ok`, false for Cancel (or Escape, or a sheet already open). `danger` paints the ok
+// button red; `cancel` names the way out ("Keep it"). Focus goes back where it came from.
+function ask({title, sub, ok = 'OK', cancel = 'Cancel', danger = false, id = 'askOk'}){
+  return new Promise(resolve => {
+    const dlg = $('dlg');
+    if (dlg.open){ resolve(false); return; }
+    const from = document.activeElement;
+    dlg.textContent = '';
+    let yes = false;
+    dlg.append(h('h2', {id:'dlgTitle'}, title), sub ? h('p', {class:'sub'}, sub) : null,
+      h('div', {class:'dlg-acts'},
+        h('button', {type:'button', class:'btn small', id:'askCancel', onclick: () => dlg.close()}, cancel),
+        h('button', {type:'button', class:'btn small' + (danger ? ' danger-btn' : ' primary'), id, onclick: () => { yes = true; dlg.close(); }}, ok)));
+    dlg.onclose = () => {
+      if (dlg.open) return;
+      dlg.onclose = null;
+      if (from && from.isConnected && from.focus) from.focus({preventScroll:true});
+      resolve(yes);
+    };
     dlg.onclick = null;
     dlg.showModal();
   });
@@ -2149,6 +2211,7 @@ function onRoute(){
   route = next; prevHash = location.hash; view = next.view;
   if (toKey === 'maker' && !makerOn()){ history.replaceState(null, '', '#settings'); route = {view:'settings', arg:null, arg2:null}; prevHash = location.hash; }
   setUi.wantSec = toKey && next.arg2 && !(SET_SUBS[next.arg] || []).includes(next.arg2) ? next.arg2 : null;
+  setUi.arrive = setUi.wantSec;     // the section arrived at, for a page that opens something on arrival (it clears it)
   $('app').dataset.view = view;
   if (view === 'edit'){
     ed.key = next.arg === 'reset' || next.arg === 'combos' ? null : next.arg && cfg && cfg.keys.some(k => k.id === next.arg) ? next.arg : (changed ? null : ed.key);
@@ -2159,7 +2222,7 @@ function onRoute(){
     edArrive = sl && next.arg ? {key: next.arg, slot: sl, until: Date.now() + 8000} : null;
   }
   renderPanel();
-  if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); }
+  if (view === 'remote'){ stripSig = ''; renderRemote(); if (changed) pollSoon(); paintGearDot(); }
   if (changed && (view === 'remote' || view === 'settings')) loadGroup().then(() => { paintGroup(); grpSchedule(); });
   if (pageChanged) watchGroup();
   if (pageChanged && view === 'settings'){ const pg = SET_PAGE[curPage()]; if (pg && pg.load) pg.load(); }
@@ -4288,7 +4351,7 @@ async function ytSaveExplicit(on, undoable){
       settings = Object.assign(settings || {}, {ytm:{hide_explicit:on}});
       ytForget(); for (const m in ytSt){ ytSt[m].res = null; ytSt[m].resFor = ''; ytSt[m].more = {}; }
       toast(on ? 'Explicit songs are hidden' : 'Explicit songs show, marked E', undoable ? {undo: () => ytSaveExplicit(!on, false)} : null);
-    } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t change that') + '. Try again.', true);
+    } else failToast(r, 'The radio didn’t change that', () => ytSaveExplicit(on, undoable));
   } catch (_) { toast(NET_ERR, true); }
   const b = $('ytExplicit'); if (b){ b.disabled = false; b.checked = !!(settings && settings.ytm && settings.ytm.hide_explicit); }
 }
@@ -5273,7 +5336,7 @@ async function loadSettings(){
 }
 let limitTimer = null, limitFrom = null;
 /* ---- the Settings shell: a short list of pages (SET_PAGES), each with render / load / leave ---- */
-const setUi = {backTo:null, wantSec:null, taps:0, tapT:0, diag:null, diagErr:'', diagBusy:false};
+const setUi = {backTo:null, wantSec:null, arrive:null, taps:0, tapT:0, diag:null, diagErr:'', diagBusy:false};
 const MAKER_KEY = 'hasler.maker';
 let makerFlag = (() => { try { return localStorage.getItem(MAKER_KEY) === '1'; } catch (_) { return false; } })();
 const makerOn = () => makerFlag;
@@ -5301,13 +5364,17 @@ function setRow(id, title, sub, href, lead, extra){
 const setIc = markup => h('span', {class:'set-ic', 'aria-hidden':'true'}, icon('<g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">' + markup + '</g>', 16, 16));
 const SET_ICONS = {
   sound: '<path d="M2.5 6v4h2.5l3.5 3V3L5 6z"/><path d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8"/>',
+  keys: '<circle cx="8" cy="8" r="5.5"/><path d="M8 8l2.6-3.4"/><path d="M2.2 12.6l1-1M13.8 12.6l-1-1"/>',
   phones: '<rect x="4.5" y="1.5" width="7" height="13" rx="1.6"/><path d="M7 12.5h2"/>',
+  accounts: '<circle cx="8" cy="5.5" r="2.8"/><path d="M2.8 14a5.4 5.4 0 0 1 10.4 0"/>',
   rooms: '<rect x="1.5" y="5" width="6" height="8" rx="1.3"/><rect x="9" y="3" width="5.5" height="10" rx="1.3"/>',
   lamp: '<circle cx="8" cy="7" r="3.2"/><path d="M8 1.2v1.2M3 7H1.8M14.2 7H13M4.3 3.3l-.8-.8M11.7 3.3l.8-.8M6.5 12.5h3M7 14.5h2"/>',
-  keys: '<rect x="1.5" y="4" width="13" height="8" rx="1.5"/><path d="M5 4v5M8 4v5M11 4v5"/>',
   radio: '<rect x="1.5" y="5" width="13" height="8.5" rx="1.6"/><path d="M4.5 5l7-3.5"/><circle cx="10.8" cy="9.2" r="1.8"/><path d="M4 8.2h2.5M4 10.5h2.5"/>',
   maker: '<path d="M9.8 2.2a3.2 3.2 0 0 0-3.9 4.1L2 10.2 4 12.2l3.9-3.9a3.2 3.2 0 0 0 4.1-3.9l-1.9 1.9-1.6-.5-.5-1.6z"/>',
 };
+// A list still being asked for: n shimmering rows, the height of the rows they stand in for.
+const skel = (n = 2) => h('div', {class:'list', 'aria-busy':'true', 'aria-label':'Checking…'}, Array.from({length:n}, () => h('div', {class:'li skel'}, h('i'), h('i'))));
+const skelRow = () => h('div', {class:'li skel', 'aria-busy':'true'}, h('i'), h('i'));
 // Deep links (#settings/<page>/<section>): scroll to the section once it is on screen.
 function setDeepLink(){
   if (!setUi.wantSec || view !== 'settings') return;
@@ -5319,41 +5386,74 @@ function setDeepLink(){
 const nameAnd = xs => xs.length <= 1 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
 const swVer = () => (software && software.version) || (settings && settings.version ? String(settings.version).replace(/^haslerd /, '') : '');
 
-/* summaries: what each page holds now, in a few words */
+/* summaries: what each page holds now, in a few words (the static line until the radio has answered) */
+const SET_STATIC = {
+  sound:'How loud it goes, the first click, and what the tone knob does',
+  keys:'What each key plays, and what the source key steps through',
+  phones:'AirPlay, Bluetooth and Spotify from a phone, and what phones call the radio',
+  accounts:'Spotify and YouTube Music — the accounts the keys play from',
+  rooms:'This room’s name, and playing in step with the other Haslers',
+  lamp:'How bright, when it dims, and what each colour means',
+  radio:'Wi-Fi, updates, Home Assistant, and help from the makers',
+};
 function soundSummary(){
-  if (!settings) return 'Checking…';
+  if (!settings) return SET_STATIC.sound;
   const lim = settings.volume_limit, fl = settings.volume_floor, bits = [];
-  if (lim != null) bits.push('Loudest ' + lim);
-  if (fl != null) bits.push('quietest ' + fl);
+  if (lim != null) bits.push('Ceiling ' + lim);
+  if (fl != null) bits.push('quietest step ' + fl);
   const tk = fx && fx.knobs && fx.knobs.find(k => k.assignable);
   if (tk && fxEffect(tk.effect)) bits.push(fxName(tk).toLowerCase() + ' knob: ' + fxSayWhat(tk));
   if (settings.mono && settings.mono.available && settings.mono.on) bits.push('mono');
-  return bits.join(' · ') || 'Volume and tone';
+  return bits.join(' · ') || SET_STATIC.sound;
 }
+// "Bill’s iPhone playing over Bluetooth · AirPlay, Spotify on": the live thing first.
 function phonesSummary(){
-  if (!castDoc) return srcDoc && (srcDoc.err || srcDoc.missing) ? 'AirPlay, Bluetooth, Spotify' : 'Checking…';
-  const ts = castDoc.targets || [];
-  if (!ts.some(t => t.available)) return 'Not available right now';
-  const on = ts.filter(t => t.available && (t.on || t.read_only)).map(t => t.id === 'upnp' || t.id === 'dlna' ? 'other music apps' : t.label);
-  const dev = btDoc && (btDoc.devices || []).find(d => d.connected);
-  return (on.length ? nameAnd(on) + ' on' : 'All off') + (dev ? ' · ' + (dev.name || 'a phone') + ' connected' : '');
+  if (!castDoc) return SET_STATIC.phones;
+  const ts = castDoc.targets || [], bits = [];
+  const now = castDoc.now;
+  if (now && now.casting) bits.push((now.device || 'A phone') + ' playing over ' + (SRC_NAMES[now.source] || now.source));
+  else { const dev = btDoc && (btDoc.devices || []).find(d => d.connected); if (dev) bits.push((dev.name || 'A phone') + ' connected'); }
+  if (!ts.some(t => t.available)) bits.push('Not available right now');
+  else {
+    const on = ts.filter(t => t.available && (t.on || t.read_only)).map(t => t.id === 'upnp' || t.id === 'dlna' ? 'other music apps' : t.label);
+    bits.push(on.length ? nameAnd(on) + ' on' : 'All off');
+  }
+  return bits.join(' · ');
+}
+// "Spotify: bi····ll · YouTube Music: not signed in" - a name is shown by its ends only.
+const maskName = s => { s = String(s || ''); return s.length >= 6 ? s.slice(0, 2) + '····' + s.slice(-2) : s; };
+function spotifyAcct(){ const t = castDoc && (castDoc.targets || []).find(x => x.id === 'spotify'); return t && t.available && t.account && t.account.available ? t.account : null; }
+function accountsSummary(){
+  if (!castDoc && ytm.available === null) return SET_STATIC.accounts;
+  const bits = [], a = spotifyAcct();
+  if (a){
+    if (a.flow_state === 'waiting') bits.push('Spotify: a code is waiting for you');
+    else if (a.signed_in) bits.push('Spotify: ' + maskName(a.user || 'signed in'));
+    else bits.push('Spotify: not signed in' + (sourceKeys('spotify').length ? ' — Spotify keys are quiet' : ''));
+  }
+  if (ytm.available === false) bits.push('YouTube Music isn’t on this radio');
+  else if (music && music.working === false && sourceKeys('ytm').length) bits.push('YouTube Music helper isn’t working right now');
+  else if (ytm.available) bits.push('YouTube Music: ' + (ytm.signed_in ? maskName(ytm.name || 'signed in') : 'not signed in'));
+  return bits.join(' · ') || SET_STATIC.accounts;
 }
 function roomsSummary(){
-  if (!grp) return 'Checking…';
-  if (grp.missing) return 'Not on this radio';
-  if (!grp.enabled) return 'Off · this room only';
-  if (grp.role === 'follow') return 'Playing with ' + roomName(grp.leader);
+  const r = settings && settings.room, name = r && r.custom ? r.name : 'Not named yet';
+  if (!grp || !settings) return SET_STATIC.rooms;
+  if (grp.missing) return name;
+  if (grp.role === 'follow') return name + ' · playing with ' + roomName(grp.leader);
   const m = grpRooms();
-  if (m.length) return 'Also playing in ' + nameList(m);
+  if (m.length) return name + ' · also playing in ' + nameList(m);
   const n = (grp.others || []).length;
-  return 'On · ' + (n ? (n === 1 ? '1 other Hasler' : n + ' other Haslers') + ' at home' : 'no other Haslers found yet');
+  return name + ' · ' + (n ? (n === 1 ? '1 other Hasler' : n + ' other Haslers') + ' at home' : 'this room only');
 }
 function lampSummary(){
-  if (!settings) return 'Checking…';
-  const loc = settings.location;
-  if ((settings.night || 'sun') === 'off') return 'Never dims at night';
-  if (!loc && (settings.night || 'sun') === 'sun') return 'Choose where the radio stands';
-  return (tonightText(settings.tonight) || 'Dims at night') + (loc && loc.name ? ' · ' + loc.name : '');
+  if (!settings) return SET_STATIC.lamp;
+  const loc = settings.location, lp = lampPrefs();
+  const lead = lp.brightness && lp.brightness !== 'normal' ? capFirst(lp.brightness) + ' · ' : '';
+  if ((settings.night || 'sun') === 'off') return lead + 'never dims at night';
+  if (!loc && (settings.night || 'sun') === 'sun') return lead + 'choose where the radio stands';
+  const t = tonightText(settings.tonight) || 'Dims at night';
+  return lead + (lead ? t.charAt(0).toLowerCase() + t.slice(1) : t) + (loc && loc.name ? ' · ' + loc.name : '');
 }
 // A radio with no source key (the Excelsior has no PU) gets no source-key section at all.
 function hasSourceKey(){
@@ -5363,51 +5463,123 @@ function hasSourceKey(){
   // Not asked yet: a key bound to "Next source" (the Excelsior's PU plays the phone instead).
   return cfg && Array.isArray(cfg.keys) ? !noSourceKey() : true;
 }
+// "1 Swiss Classics · 2 Swiss Jazz · …": the keys' names, cut short after about 60 characters.
 function keysSummary(){
-  if (!hasSourceKey()) return 'Knob calibration · reset keys';
-  if (!srcDoc) return 'Checking…';
-  if (srcDoc.err || !srcDoc.cycle) return 'The source key and the knobs';
-  return 'Source key: ' + srcDoc.cycle.map(id => stopOf(id).label).join(', ');
-}
-function radioSummary(){
-  if (!settings) return 'Checking…';
-  const r = settings.room, w = settings.wifi, bits = [];
-  const hs = helpSummary(); if (hs) bits.push(hs);
-  bits.push(r && r.custom ? r.name : 'Not named yet');
-  if (w) bits.push(w.hotspot ? 'Wi-Fi setup mode' : w.ssid ? 'On ' + w.ssid : 'No Wi-Fi');
-  const v = swVer(); if (v) bits.push('version ' + v);
-  return bits.join(' · ');
-}
-function setAttention(){
-  const out = [];
-  const s = software, a = s && !s.missing && !s.err ? s.available : null;
-  if (a && !s.busy && !(s.approved && s.approved.version === a.version))
-    out.push({id:'attn-update', title:'Update ready: ' + a.version, sub: a.kind === 'major' || a.requires_migration ? 'A bigger update — it waits for you' : 'Install it tonight, or now', href:'#settings/radio/updates'});
-  const miss = ((haState && haState.missing) || []).length;
-  if (miss) out.push({id:'attn-ha', title: miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention', sub:'They point to things Home Assistant doesn’t have', href:'#settings/radio/ha'});
-  if (help && help.available && help.state === 'waiting')
-    out.push({id:'attn-help', title:'Remote help is waiting', sub:'Send the link to the makers' + (help.approve_by ? ' · it works until ' + helpWhen(help.approve_by) : ''), href:'#settings/radio/help'});
-  if (settings && settings.wifi && settings.wifi.hotspot) out.push({id:'attn-wifi', title:'Wi-Fi not set up yet', sub:'The radio is in setup mode — put it on your home Wi-Fi', href:'/wifi'});
+  const plain = hasSourceKey() ? SET_STATIC.keys : 'What each key plays, and the way back to the built-in stations';
+  if (!cfg || !Array.isArray(cfg.keys)) return plain;
+  const fixed = new Set(fixedKeys());
+  const names = cfg.keys.filter(k => k.id !== 'pu' && !fixed.has(k.id)).map(k => k.label + ' ' + slotSummaryCfg(k, 'tap'));
+  if (!names.length) return plain;
+  let out = '';
+  for (const n of names){
+    const next = out ? out + ' · ' + n : n;
+    if (next.length > 64){ out = out ? out + ' · …' : n.slice(0, 60) + '…'; break; }
+    out = next;
+  }
   return out;
 }
+// The keys whose tap plays from a source ("spotify", "ytm"): their labels, for "Keys 2 and 5".
+function sourceKeys(src){
+  if (!cfg || !Array.isArray(cfg.keys)) return [];
+  return cfg.keys.filter(k => verbOf(k.tap) === 'preset' && (presetIn(cfg, k.tap.n) || {}).source === src).map(keyLabel);
+}
+// The keys with a Home Assistant job (tap or hold): "key 3 hold", for "Keys 3 and 4 hold".
+function haKeys(){
+  if (!cfg || !Array.isArray(cfg.keys)) return [];
+  const out = [];
+  for (const k of cfg.keys) for (const s of ['tap', 'hold']) if (isHa(verbOf(k[s]))) out.push(keyLabel(k) + (s === 'hold' ? ' hold' : ''));
+  return out;
+}
+const keysAnd = labels => (labels.length === 1 ? labels[0] : nameAnd(labels.map(l => l.replace(/^Key /, ''))).replace(/^/, 'Keys '));
+// "On HomeNet · version 1.4.0 · up to date". A radio reached without a Wi-Fi name is on a cable: "Wired".
+function radioSummary(){
+  if (!settings) return SET_STATIC.radio;
+  const w = settings.wifi, bits = [];
+  const hs = helpSummary(); if (hs) bits.push(hs);
+  if (w) bits.push(w.hotspot ? 'Wi-Fi setup mode' : w.ssid ? 'On ' + w.ssid : 'Wired');
+  const v = swVer(); if (v) bits.push('version ' + v);
+  const s = software;
+  if (s && !s.missing && !s.err && !s.busy) bits.push(s.available ? s.available.version + ' ready' : 'up to date');
+  return bits.join(' · ');
+}
+/* Needs attention: each entry looks at what the page has loaded and gives a row, or null.
+   Later pages push their own into ATTENTION; setAttention() is the list as it stands. */
+function attnUpdate(){
+  const s = software, a = s && !s.missing && !s.err ? s.available : null;
+  if (!a || s.busy || (s.approved && s.approved.version === a.version)) return null;
+  return {id:'attn-update', title:'Update ready: ' + a.version, sub: a.kind === 'major' || a.requires_migration ? 'A bigger update — it waits for you' : 'Install it tonight, or now', href:'#settings/radio/updates'};
+}
+// The last update didn't take and the radio went back: shown until the Updates page has been seen for that version.
+const rolledBack = () => { const r = software && !software.missing && !software.err && software.last_result; return r && r.ok === false && r.version ? r : null; };
+const seenRollback = () => (settings && settings.dismissed && settings.dismissed.rollback) || '';
+function attnRollback(){
+  const r = rolledBack();
+  if (!r || seenRollback() === r.version) return null;
+  return {id:'attn-rollback', title: r.version + ' didn’t work here', sub:'The radio went back to ' + (r.back_to || 'the version before') + ' — tell the makers if it happens again', href:'#settings/radio/updates'};
+}
+function attnHaMissing(){
+  const miss = ((haState && haState.missing) || []).length;
+  return miss ? {id:'attn-ha', title: miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention', sub:'They point to things Home Assistant doesn’t have', href:'#settings/radio/ha'} : null;
+}
+function attnHaLost(){
+  if (!haState || !haState.configured || haState.connected) return null;
+  const ks = haKeys(); if (!ks.length) return null;
+  return {id:'attn-halost', title:'Can’t reach Home Assistant', sub: keysAnd(ks) + (ks.length === 1 ? ' does' : ' do') + ' nothing until it answers', href:'#settings/radio/ha'};
+}
+function attnHelp(){
+  if (!(help && help.available && help.state === 'waiting')) return null;
+  return {id:'attn-help', title:'Remote help is waiting', sub:'Send the link to the makers' + (help.approve_by ? ' · it works until ' + helpWhen(help.approve_by) : ''), href:'#settings/radio/help'};
+}
+function attnWifi(){
+  return settings && settings.wifi && settings.wifi.hotspot ? {id:'attn-wifi', title:'Wi-Fi not set up yet', sub:'The radio is in setup mode — put it on your home Wi-Fi', href:'/wifi'} : null;
+}
+function attnSpotify(){
+  const a = spotifyAcct(); if (!a) return null;
+  if (a.flow_state === 'waiting'){
+    const at = Date.parse(a.expires_at || '');
+    return {id:'attn-spotify', title:'Spotify is waiting for you', sub:'Enter the code at spotify.com/pair' + (at ? ' · it works until ' + helpWhen(at / 1000) : ''), href:'#settings/accounts/spotify'};
+  }
+  const ks = sourceKeys('spotify');
+  if (a.signed_in || !ks.length) return null;
+  return {id:'attn-spotify', title:'Spotify isn’t signed in', sub: keysAnd(ks) + (ks.length === 1 ? ' plays' : ' play') + ' Spotify and ' + (ks.length === 1 ? 'stays' : 'stay') + ' quiet until it is', href:'#settings/accounts/spotify'};
+}
+function attnYtm(){
+  if (!(music && music.working === false) || !sourceKeys('ytm').length) return null;
+  return {id:'attn-ytm', title:'YouTube Music isn’t working right now', sub:'The radio is looking for a helper that works · keys play what they played last', href:'#settings/accounts/ytm'};
+}
+const ATTENTION = [attnUpdate, attnRollback, attnSpotify, attnYtm, attnHaMissing, attnHaLost, attnHelp, attnWifi];
+function setAttention(){ return ATTENTION.map(f => f()).filter(Boolean); }
+// The front page's gear carries a dot while the list has rows.
+function paintGearDot(){ const d = $('gearDot'); if (d) d.hidden = !setAttention().length; }
+// What the dot needs, asked once at start (each is a small read; nothing polls from here).
+function loadAttention(){ Promise.all([loadSoftware(), loadHelp(), loadMusic()]).then(paintGearDot).catch(() => {}); }
 
-/* the list */
-function renderSetHome(panel){
-  panel.append(screenTop('Settings'));
+/* the list: sections in order, so a later page can add one (SET_HOME.splice) */
+function setHomeAttention(panel){
   const attn = setAttention();
-  if (attn.length) panel.append(h('section', {class:'grp-sec', 'aria-labelledby':'attnH'}, h('h3', {class:'mono grp-lbl', id:'attnH'}, 'Needs attention'),
+  if (attn.length) panel.append(h('section', {class:'grp-sec', id:'sec-attention', 'aria-labelledby':'attnH'}, h('h3', {class:'mono grp-lbl', id:'attnH'}, 'Needs attention'),
     h('div', {class:'set-list attn'}, attn.map(a => setRow(a.id, a.title, a.sub, a.href, h('span', {class:'attn-dot', 'aria-hidden':'true'}))))));
+}
+function setHomeRows(panel){
   const rows = SET_PAGES.filter(p => p.summary && (!p.shown || p.shown()));
-  panel.append(h('nav', {class:'set-list', 'aria-label':'Settings'}, rows.map(p => setRow(p.id, p.title, p.summary(), '#settings/' + p.id, setIc(SET_ICONS[p.id] || '')))));
+  panel.append(h('nav', {class:'set-list', id:'setRows', 'aria-label':'Settings'}, rows.map(p => setRow(p.id, p.title, p.summary(), '#settings/' + p.id, setIc(SET_ICONS[p.id] || '')))));
+}
+function setHomeAbout(panel){
   const v = swVer();
   panel.append(h('div', {class:'about'},
     h('p', null, modelLine()),
     h('button', {type:'button', class:'ver', id:'verBtn', onclick: verTap}, v ? 'Version ' + v : 'Version —'),
     h('p', {class:'mark'}, 'Delgado ', h('span', {class:'amp'}, '&'), ' Murphy')));
 }
+const SET_HOME = [setHomeAttention, setHomeRows, setHomeAbout];
+function renderSetHome(panel){
+  panel.append(screenTop('Settings'));
+  for (const section of SET_HOME) section(panel);
+  paintGearDot();
+}
 function loadSetHome(){
   const again = () => { if (onPage('home')) rerender(); };
-  loadSettings().then(again); loadSources().then(again); loadGroup().then(again);
+  loadSettings().then(again); loadSources().then(again); loadGroup().then(again); loadAccount().then(again); loadMusic().then(again);
   loadSoftware(); refreshHa(); loadFx(); loadHelp();
 }
 
@@ -5417,6 +5589,8 @@ function renderSettings(){
   if (pg.id === 'home') renderSetHome(panel);
   else {
     panel.append(screenTop(pg.title, pg.parent ? 'settings/' + pg.parent : 'settings', previewPill()));
+    // One line per page on how its changes are kept (the registry's `note`), in the same place on every page.
+    if (pg.note) panel.append(h('p', {class:'hint page-note', id:'pageNote'}, pg.note));
     pg.render(panel);
     if (pg.dirty) panel.append(saveBar(pg));
   }
@@ -5494,56 +5668,60 @@ setInterval(paintPreview, 1000);
 /* shared: one sheet for "press any key on the radio" */
 function radioConfirm({action, args, title, sub}){ return pressToConfirm(action, args || {}, title, sub); }
 
-/* ---- 1 · Sound ---- */
+/* ---- 1 · Sound: volume, the tone knob, and (last) calibration for a knob that feels off ---- */
+const volText = v => v + ' of 100';
 function renderSound(panel){
   const lim = settings && settings.volume_limit != null ? +settings.volume_limit : (status && status.volume_limit != null ? +status.volume_limit : null);
   const mono = settings && settings.mono;
   const range = h('input', {type:'range', id:'limit', min:'30', max:'100', step:'1', value: String(lim ?? 90), 'aria-describedby':'limitHint', disabled: lim == null,
-    style:'--pct:' + (((lim ?? 90) - 30) / 70 * 100) + '%',
+    'aria-valuetext': lim == null ? 'not known yet' : volText(lim), style:'--pct:' + (((lim ?? 90) - 30) / 70 * 100) + '%',
     oninput: e => {
-      const v = +e.target.value; e.target.style.setProperty('--pct', ((v - 30) / 70 * 100) + '%');
-      $('limitVal').textContent = v; $('limitWarn').hidden = v < 95;
+      const v = +e.target.value; e.target.style.setProperty('--pct', ((v - 30) / 70 * 100) + '%'); e.target.setAttribute('aria-valuetext', volText(v));
+      $('limitVal').textContent = v; $('limitWarn').hidden = v < 95; $('limitErr').textContent = '';
       if (limitFrom == null && settings) limitFrom = settings.volume_limit;
       clearTimeout(limitTimer); limitTimer = setTimeout(() => { const from = limitFrom; limitFrom = null; saveLimit(v, from); }, 350);
     }});
   panel.append(setGroup('volume', 'Volume', h('div', {class:'list'},
     h('div', {class:'li col'},
-      h('div', {style:'display:flex;justify-content:space-between;align-items:center;gap:12px'},
+      h('div', {style:'display:flex;justify-content:space-between;align-items:flex-start;gap:12px'},
         h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'limit'}, 'Volume ceiling'), h('span', {class:'li-sub', id:'limitHint'}, 'Protects the 1964 speaker — the knob stops here')),
-        h('span', {class:'li-val', id:'limitVal', 'aria-hidden':'true'}, lim ?? '—')),
+        h('span', {class:'li-val', id:'limitVal', 'aria-hidden':'true', style:'padding-top:2px'}, lim ?? '—')),
       range,
-      h('p', {class:'note-bad', id:'limitWarn', hidden: !(lim >= 95)}, 'Above 95 the old speaker can rattle and distort. Go gently.')),
+      h('p', {class:'note-bad', id:'limitWarn', hidden: !(lim >= 95)}, 'Above 95 the old speaker can rattle and distort. Go gently.'),
+      h('p', {class:'err', id:'limitErr', role:'alert'})),
     floorItem(),
-    mono && mono.available ? h('div', {class:'li'},
+    mono && mono.available ? h('div', {class:'li col', style:'gap:4px'},
       h('label', {class:'switch', for:'mono', style:'flex:1'},
         h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Mono'),
           h('span', {class:'li-sub'}, 'One speaker: left and right mixed together, so nothing is lost')),
-        h('input', {type:'checkbox', role:'switch', id:'mono', checked: !!mono.on, onchange: e => saveMono(e.target.checked, true)}))) : null)));
+        h('input', {type:'checkbox', role:'switch', id:'mono', checked: !!mono.on, onchange: e => saveMono(e.target.checked, true)})),
+      h('p', {class:'err', id:'monoErr', role:'alert'})) : null)));
   const fxs = fxSection();
   if (fxs){
     const tune = (fx.knobs || []).filter(k => k.assignable);
     panel.append(setGroup('tone', tune.length === 1 ? 'What the ' + fxName(tune[0]).toLowerCase() + ' knob does' : 'What the knobs do', fxs,
-      h('p', {class:'hint', style:'padding:0 4px'}, 'Changes apply at once, with Undo — turn the knob on the radio to hear them.')));
-  } else if (!fx) panel.append(h('p', {class:'loading'}, 'Checking…'));
+      h('p', {class:'hint', style:'padding:0 4px'}, 'Turn the knob on the radio to hear the difference.')));
+  } else if (!fx) panel.append(setGroup('tone', 'What the tone knob does', skel(1)));
+  const kn = knobLiveGroup(); if (kn) panel.append(kn);
 }
 function loadSound(){
   loadSettings().then(() => { if (onPage('sound')) rerender(); });
-  loadFx(); if (!knobs) loadKnobs();
+  loadFx(); loadKnobs();
 }
 function leaveSound(){ fxFlushAll(); }
 
-/* ---- 2 · Phones & casting ---- */
+/* ---- 3 · Phones: playing from one, your phones, what happens when it stops, what phones call the radio ---- */
 function renderPhones(panel){
-  if (!castDoc && !(srcDoc && (srcDoc.err || srcDoc.missing))){ panel.append(h('p', {class:'loading'}, 'Checking…')); return; }
+  if (!castDoc && !(srcDoc && (srcDoc.err || srcDoc.missing))){ panel.append(setGroup('play', 'Play from a phone', skel(3))); return; }
   if (!castDoc && srcDoc && srcDoc.err){
     panel.append(h('div', {class:'card-box warn'}, h('p', {class:'body'}, srcDoc.err),
       h('div', null, h('button', {type:'button', class:'btn small inline', onclick: async () => { srcDoc = null; rerender(); await loadSources(); rerender(); }}, 'Try again'))));
     return;
   }
-  const castList = h('div', {class:'list', id:'castBox'});
-  fillCast(castList);
-  panel.append(setGroup('play', 'Play from a phone', castList,
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Switches apply at once. A new name waits for Save at the bottom.')));
+  panel.append(setGroup('play', 'Play from a phone', h('div', {class:'list', id:'castBox'})));
+  // Your phones: the Bluetooth block (what plays, the paired phones, pairing, reconnecting), on a radio that has it.
+  panel.append(setGroup('bt', 'Your phones', h('div', {class:'list', id:'btBox'})));
+  fillCast();
   if (srcDoc && !srcDoc.missing && !srcDoc.err)
     panel.append(setGroup('back', 'When a phone stops', h('div', {class:'list'}, h('div', {class:'li'},
       h('label', {class:'switch', for:'resume', style:'flex:1'},
@@ -5551,33 +5729,75 @@ function renderPhones(panel){
           h('span', {class:'li-sub'}, 'When a phone stops playing, the radio goes back to its station by itself')),
         h('input', {type:'checkbox', role:'switch', id:'resume', checked: !!srcDoc.resume_after_cast,
           onchange: e => setResume(e.target.checked, true)}))))));
-  if (settings && settings.room) panel.append(setGroup('names', 'Names on phones', h('div', {class:'list', id:'roomCastBox'}, roomCastRow())));
+  panel.append(setGroup('names', 'What phones call the radio', h('div', {class:'list', id:'castNameBox'}, castNameRow())));
 }
 function loadPhones(){
   const again = () => { if (onPage('phones')) rerender(); };
   loadSettings().then(again); loadSources().then(again);
   castSchedule();
 }
-function leavePhones(){ clearTimeout(castTimer); castTimer = null; btSoonT.forEach(clearTimeout); btSoonT = []; }
+// One name for every way a phone plays to the radio; the per-service names under "A different name for one of them".
+function castNameNow(){
+  const r = settings && settings.room;
+  if (r && r.casting_names) return r.casting_name || 'Hasler';
+  const names = [...new Set(((castDoc && castDoc.targets) || []).filter(t => t.available && !t.read_only).map(t => (t.name || '').trim() || 'Hasler'))];
+  return names.length === 1 ? names[0] : names.length ? names.join(' / ') : 'Hasler';
+}
+function castNameRow(){
+  const r = settings && settings.room;
+  if (!castDoc || !r) return skelRow();
+  const follows = !!r.casting_names, name = castNameNow();
+  const ts = (castDoc.targets || []).filter(t => t.available && !t.read_only);
+  const line = follows ? ['It follows the room name — change that in ', h('a', {href:'#settings/rooms/name', id:'castNameRooms', style:'color:var(--brass);text-underline-offset:3px'}, 'Rooms'), '.']
+    : r.custom ? ['Use the room name (“' + r.casting_name + '”) instead in ', h('a', {href:'#settings/rooms/name', id:'castNameRooms', style:'color:var(--brass);text-underline-offset:3px'}, 'Rooms'), ' — handy with more than one Hasler.']
+    : [h('a', {href:'#settings/rooms/name', id:'castNameRooms', style:'color:var(--brass);text-underline-offset:3px'}, 'Name the room in Rooms'), ' to use that name on phones — handy with more than one Hasler.'];
+  return h('div', {class:'li col', style:'gap:10px'},
+    h('div', {class:'li-row'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'What phones call the radio'),
+        h('span', {class:'li-sub'}, 'AirPlay, Bluetooth, Spotify and other apps all show this name.')),
+      h('span', {class:'li-val', id:'castNameNow', style:'font-size:15px;flex:none;max-width:40%;overflow-wrap:anywhere;text-align:right'}, name)),
+    h('p', {class:'li-sub', style:'margin:0'}, ...line),
+    r.apply && r.apply.state !== 'idle' ? roomApplyLine(r.apply) : null,
+    !follows && ts.length ? h('details', {class:'how', id:'castNamesMore', open: castUi.more ? true : null, ontoggle: e => { castUi.more = e.target.open; }},
+      h('summary', null, 'A different name for one of them'),
+      h('div', {style:'display:flex;flex-direction:column;gap:10px;margin-top:6px'}, ts.map(castNameField))) : null);
+}
+function castNameField(t){
+  const nameVal = castUi.names[t.id] ?? t.name ?? '', busy = !!castUi.busy[t.id];
+  return h('div', {class:'field'}, h('label', {for:'cn-' + t.id}, castLabel(t)),
+    h('div', {class:'cast-name'},
+      h('input', {type:'text', id:'cn-' + t.id, value: nameVal, placeholder:'Hasler', maxlength:'40', autocomplete:'off', disabled: busy,
+        oninput: e => { castUi.names[t.id] = e.target.value; paintSaveBar(); },
+        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); if (castNamesDirty().length) castSaveNames(); }
+          else if (e.key === 'Escape'){ delete castUi.names[t.id]; e.target.value = t.name || ''; paintSaveBar(); } }})));
+}
 function setResume(on, undoable){
   putSources({resume_after_cast: on}, on ? 'The radio comes back when a phone stops' : 'The radio stays quiet when a phone stops',
     undoable ? () => setResume(!on, false) : null);
 }
 
-/* ---- 3 · Rooms ---- */
-function renderRooms(panel){
-  if (!grp){ panel.append(h('p', {class:'loading'}, 'Checking…')); return; }
-  if (grp.missing){ panel.append(h('div', {class:'empty'}, h('h2', null, 'Not on this radio yet'), h('p', null, 'This radio’s software can’t play in several rooms yet. Updating it adds that.'))); return; }
+/* ---- 5 · Rooms: this room (its name, Identify), several rooms, the other Haslers ---- */
+// This room: the name (a draft the bar at the bottom saves), the switch that puts it on phones, Identify.
+function roomGroup(){
   const r = settings && settings.room;
-  // The name is edited in one place (This radio → Name and address); a room without one is nudged there.
-  if (r && !r.custom)
-    panel.append(setGroup('name', 'First, name this room', h('div', {class:'set-list'},
-      setRow('roomname', 'Name this room', 'The other rooms see this radio by its name. Set it in This radio.', '#settings/radio/name', null,
-        {onclick: () => Object.assign(roomUi, {edit:true, val:'', err:''})}))));
+  // #settings/rooms/name opens the field straight away (a nudge from another page, moving the radio).
+  if (r && setUi.arrive === 'name'){ setUi.arrive = null; if (!roomUi.edit) Object.assign(roomUi, {edit:true, val: r.custom ? r.name : '', err:''}); }
+  return setGroup('name', 'This room', roomList(), r ? h('div', {class:'list', id:'roomCastBox', style:'margin-top:8px'}, roomCastRow()) : null, identifyRow());
+}
+function multiroomGroup(){
+  if (!grp) return setGroup('multiroom', 'Several rooms', skel(1));
+  if (grp.missing) return setGroup('multiroom', 'Several rooms', h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'Not on this radio yet'),
+    h('span', {class:'li-sub'}, 'This radio’s software can’t play in several rooms yet. ',
+      h('a', {href:'#settings/radio/updates', id:'mrUpdateLink', style:'color:var(--brass);text-underline-offset:3px'}, 'Updating it'), ' adds that.')))));
   const box = h('div', {class:'list', id:'mrBox'});
   mrSig = '';
   fillMr(box);
-  panel.append(setGroup('multiroom', 'Several rooms', box));
+  return setGroup('multiroom', 'Several rooms', box);
+}
+function renderRooms(panel){
+  panel.append(roomGroup());
+  panel.append(multiroomGroup());
   const others = otherRadiosGroup(); if (others) panel.append(others);
 }
 function loadRooms(){
@@ -5585,12 +5805,13 @@ function loadRooms(){
   loadGroup().then(again); loadSettings().then(again);
 }
 
-/* ---- 4 · Pilot lamp ---- */
+/* ---- 6 · Pilot lamp: the everyday settings first, the glossary folded, Geek mode last ---- */
 function renderLamp(panel){
-  if (!settings){ panel.append(h('p', {class:'loading'}, 'Checking…')); return; }
-  lampMeanings(panel);
+  if (!settings){ panel.append(setGroup('glow', 'Brightness', skel(2))); return; }
   lampGlow(panel);
   lampSettings(panel);
+  lampMeanings(panel);
+  panel.append(lampGeek());
   panel.append(h('p', {class:'hint', id:'lampMakers', style:'padding:0 4px'}, 'Lamp colours are set by the makers',
     makerOn() ? [' — ', h('a', {href:'#settings/maker/colours', id:'lampMakersLink', style:'color:var(--brass);text-underline-offset:3px'}, 'change them in Maker tools')] : null, '.'));
 }
@@ -5642,7 +5863,7 @@ const LAMP_MEANS = [
   ['Replies', 'reply', 'no', 'No', 'What you asked for didn’t work. Try again in a moment', 'red', 'eye', 'a red glow that holds, then fades'],
   ['Needs you', 'look', 'asking', 'Press a key on the radio', 'This page is asking you to confirm on the radio itself', 'amber', 'beckon', 'two flashes and a rest, in the colour on show'],
   ['Needs you', 'look', 'setup', 'Set me up', 'The radio needs your Wi-Fi details', 'amber', 'morse:CQ', morseCaption('CQ')],
-  ['Needs you', 'reply', 'hello', 'It’s me', 'Identify (This radio, Rooms): so you can tell which radio this is', 'green', 'morse:HI', morseCaption('HI') + ', three times'],
+  ['Needs you', 'reply', 'hello', 'It’s me', 'Identify (in Rooms): so you can tell which radio this is', 'green', 'morse:HI', morseCaption('HI') + ', three times'],
   ['Problems', 'look', 'no_internet', 'No internet', 'Only while the radio is awake and idle', 'red', 'alert', 'two red flashes every 6 seconds, over dim amber'],
   ['Problems', 'look', 'fault', 'Something needs a maker', 'A fault the radio can’t fix itself — ask the makers', 'red', 'morse:SOS', morseCaption('SOS')],
   ['Problems', 'none', 'dark', 'Dark', 'Off: safe to unplug', 'off', 'steady', 'no light at all'],
@@ -5671,8 +5892,10 @@ function lampNowWords(){
   return {m, words: LAMP_WORDS[m] || m.replace(/_/g, ' ')};
 }
 function lampNowRow(){
-  const now = lampNowWords();
+  const now = lampNowWords(), lp = lampPrefs();
   const row = LAMP_MEANS.find(r => r[2] === (now && ({offline:'no_internet', off:'dark'}[now.m] || now.m)));
+  // No lamp fitted: say so in the Now: slot rather than leave it empty.
+  if (!now && !lp.present) return h('div', {class:'lm-now', id:'lampNow', 'data-m':''}, h('span', null, 'This radio has no lamp.'));
   return h('div', {class:'lm-now', id:'lampNow', 'data-m': now ? now.m : '', hidden: !now},
     row ? lampSwatch(row[5], row[6]) : null, h('span', null, 'Now: ', h('b', null, now ? now.words : '')));
 }
@@ -5687,7 +5910,7 @@ function lampMeanings(panel){
   const list = h('div', {class:'list', id:'lampMeans'});
   let group = '';
   for (const [g, kind, id, title, sub, colour, motion, rhythm] of LAMP_MEANS){
-    if (g !== group){ group = g; list.append(h('div', {class:'lm-group', role:'heading', 'aria-level':'4'}, g)); }
+    if (g !== group){ group = g; list.append(h('div', {class:'mono lm-group', role:'heading', 'aria-level':'4'}, g)); }
     const on = lampLook.showing === id, can = lampCan(kind, id);
     const tip = id === 'hello' && lampV2() ? 'Identify taps HI in Morse, in green, so you can tell which radio this is' : sub;
     list.append(h('div', {class:'li', 'data-mean':id},
@@ -5698,8 +5921,10 @@ function lampMeanings(panel){
         'aria-pressed': String(on), onclick: () => lampShow(kind, id, title)}, on ? 'Showing…' : 'Show me') : null));
   }
   const tourOn = !!lampLook.tour;
-  panel.append(lampNowRow());
-  panel.append(setGroup('means', 'What the lamp means', list,
+  // The glossary is read once, so it stays folded; Now: and Show me everything stay in view.
+  panel.append(setGroup('means', 'What the lamp means', lampNowRow(),
+    h('details', {class:'how', id:'lampMeansBox', open: lampLook.open || tourOn || lampLook.showing ? true : null, ontoggle: e => { lampLook.open = e.target.open; }},
+      h('summary', null, 'Every colour and rhythm' + (lp.present ? ', with Show me' : '')), list),
     lp.present ? h('div', {class:'acts', style:'padding:8px 4px 0'},
       h('button', {type:'button', class:'btn small', id:'lampTourBtn', 'aria-pressed': String(tourOn), onclick: lampTour}, tourOn ? 'Stop' : 'Show me everything')) : null,
     h('p', {class:'hint lm-tour', id:'lampTour', 'aria-live':'polite', style:'padding:0 4px'}, lampLook.caption || ''),
@@ -5778,9 +6003,7 @@ function lampGlow(panel){
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Key replies'),
         h('span', {class:'li-sub'}, 'The lamp brightens when you press a key')),
       h('input', {type:'checkbox', role:'switch', id:'lampKeys', checked: !!lp.key_replies, disabled: lampLook.busy,
-        onchange: e => saveLampPrefs({key_replies: e.target.checked}, {key_replies: !e.target.checked})})))),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'These apply at once, with Undo.')));
-  panel.append(lampGeek());
+        onchange: e => saveLampPrefs({key_replies: e.target.checked}, {key_replies: !e.target.checked})}))))));
 }
 // Geek mode: off by default. The callsign is what Identify taps (and the 73 at a shutdown).
 function lampGeek(){
@@ -5828,7 +6051,7 @@ async function saveLampPrefs(change, undoTo){
         : 'callsign' in change ? 'Callsign: ' + (lp.callsign || 'H')
         : lp.key_replies ? 'The lamp brightens for key presses' : 'The lamp stays still when you press a key';
       toast(msg, undoTo ? {undo: () => saveLampPrefs(undoTo)} : null);
-    } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that').replace(/\.?$/, '.'), true);
+    } else failToast(r, 'The radio didn’t take that', () => saveLampPrefs(change, undoTo));
   } catch (_) { toast(NET_ERR, true); }
   lampLook.busy = false;
   if (onPage('lamp')){
@@ -5877,7 +6100,10 @@ function otherRadiosGroup(){
     if (!r || !r.id || r.id === me || seen.has(r.id)) continue;
     seen.add(r.id); rooms.push(r);
   }
-  if (!rooms.length) return null;
+  // None found yet: say the radio is looking, and what the other one needs.
+  if (!rooms.length) return setGroup('radios', 'The other Haslers', h('div', {class:'empty', id:'otherRadiosEmpty'},
+    h('p', {style:'margin:0'}, grp.enabled ? 'No other Haslers found yet. Switch on Play in several rooms on the other radio too, then give it half a minute.'
+      : 'No other Haslers found yet. Switch on Play in several rooms here and on the other radio, then give it half a minute.')));
   const list = h('div', {class:'list', id:'otherRadios'});
   for (const r of rooms){
     const k = 'peer-' + rid(r.id), busy = !!identUi.busy[k];
@@ -5887,38 +6113,54 @@ function otherRadiosGroup(){
       h('button', {type:'button', class:'li-act', id:'ident-' + rid(r.id), disabled: busy || r.online === false,
         'aria-label':'Identify ' + roomName(r), onclick: () => identify(r.id, k, roomName(r))}, busy ? 'Signalling…' : 'Identify')));
   }
-  return setGroup('radios', 'Other Haslers at home', list);
+  return setGroup('radios', 'The other Haslers', list);
 }
 
-/* ---- 5 · Source key & knobs (Keys & knobs before) ---- */
-// What each key plays is in Edit keys; this page holds the source key's list, knob calibration and the way back to defaults.
+/* ---- 2 · Keys (Source key & knobs before 1.5.0) ---- */
+// What each key plays is in Edit keys; this page points there, holds the source key's list and the way back to defaults.
+function keysEditGroup(){
+  return setGroup('keys', 'What the keys play', h('div', {class:'set-list'},
+    setRow('editkeys', 'What each key plays', 'Stations, playlists and what holding a key does, in Edit keys', '#edit'),
+    setRow('combos', 'Key combinations', 'Two keys held together: sleep, standby, a station', '#edit/combos')),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Stations and playlists, and what holding a key does, are in Edit keys.'));
+}
+function keysResetGroup(){
+  return setGroup('reset', 'Starting over', h('div', {class:'set-list'},
+    setRow('reset', 'Reset keys to defaults', 'Every key back to the built-in stations', '#edit/reset')),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Every key back to the built-in stations. The radio asks for a key press first.'));
+}
 function renderKeysPage(panel){
+  panel.append(keysEditGroup());
   const src = hasSourceKey() ? sourcesGroup() : null; if (src) panel.append(src);
-  const kn = knobLiveGroup(); if (kn) panel.append(kn);
-  panel.append(setGroup('reset', 'The keys', h('div', {class:'set-list'},
-    setRow('editkeys', 'What each key plays', 'Change stations and playlists in Edit keys', '#edit'),
-    setRow('reset', 'Reset keys to defaults', 'Every key back to the built-in stations', '#edit/reset'))));
+  panel.append(keysResetGroup());
 }
 function loadKeysPage(){
   loadSources().then(() => { if (onPage('keys')) rerender(); });
-  loadKnobs();
 }
 
-/* ---- 6 · This radio ---- */
-function renderRadio(panel){
+/* ---- 7 · This radio: Wi-Fi, software, Home Assistant, help; the allowed addresses folded at the end ---- */
+// Each group is its own function so a later page can add one between them.
+function radioWifiGroup(){
   const w = settings && settings.wifi;
-  panel.append(setGroup('name', 'Name and address', roomList(), identifyRow()));
-  panel.append(setGroup('wifi', 'Wi-Fi', h('div', {class:'set-list'},
-    setRow('wifi', 'Wi-Fi', !w ? 'Checking…' : w.hotspot ? 'Setup mode — not on your home Wi-Fi' : w.ssid ? 'On ' + w.ssid : 'Not connected', '/wifi'),
-    setupNetRow())));
-  panel.append(setGroup('software', 'Software', h('div', {class:'set-list'},
-    setRow('updates', 'Updates', updatesSummary(), '#settings/radio/updates'))));
+  return setGroup('wifi', 'Wi-Fi', h('div', {class:'set-list'},
+    setRow('wifi', 'Wi-Fi', !w ? 'Checking…' : w.hotspot ? 'Setup mode — not on your home Wi-Fi' : w.ssid ? 'On ' + w.ssid : 'Wired — no Wi-Fi name', '/wifi'),
+    setupNetRow()));
+}
+function radioSoftwareGroup(){
+  return setGroup('software', 'Software', h('div', {class:'set-list'},
+    setRow('updates', 'Updates', updatesSummary(), '#settings/radio/updates')));
+}
+function radioHaGroup(){
   const miss = ((haState && haState.missing) || []).length;
-  panel.append(setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
-    setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha'))));
-  panel.append(setGroup('ytm', 'YouTube Music', accountCard(), ytExplicitRow()));
-  const og = hostsGroup(); if (og) panel.append(og);
-  const hg = helpGroup(); if (hg) panel.append(hg);   // last: rarely needed
+  return setGroup('home', 'Home Assistant', h('div', {class:'set-list'},
+    setRow('ha', 'Home Assistant', haSummary() + (miss ? ' · ' + miss + (miss === 1 ? ' key needs' : ' keys need') + ' attention' : ''), '#settings/radio/ha')));
+}
+function renderRadio(panel){
+  panel.append(radioWifiGroup());
+  panel.append(radioSoftwareGroup());
+  panel.append(radioHaGroup());
+  const hg = helpGroup(); if (hg) panel.append(hg);
+  const og = hostsGroup(); if (og) panel.append(og);   // last, folded: a maker's concern more than an owner's
 }
 // The setup network (GET /api/wifi .setup): what the radio opens when it can't join the home Wi-Fi.
 // The password is there only when Hasler set it; one set on the player's own page is stored as a key.
@@ -5936,7 +6178,7 @@ function setupNetRow(){
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Setup network'),
       h('span', {class:'li-sub'}, 'If the radio can’t join your Wi-Fi, it opens this network so a phone can set it up again. Worth writing down.')),
     h('div', null, kv('Name', s.ssid),
-      kv('Password', pw === null ? 'None (open network)' : !pw ? 'Not shown here' : setupUi.show ? pw : '••••••••',
+      kv('Password', pw === null ? 'None — it’s an open network' : !pw ? 'Not shown here' : setupUi.show ? pw : '••••••••',
         pw ? h('button', {type:'button', class:'li-act', id:'setupPwShow', 'aria-label': (setupUi.show ? 'Hide' : 'Show') + ' the setup password',
           onclick: () => { setupUi.show = !setupUi.show; rerender(); }}, setupUi.show ? 'Hide' : 'Show') : null)),
     pw === '' ? h('p', {class:'hint', style:'margin:0'}, 'It was set on the player’s own page, so the radio can’t show it.') : null);
@@ -5958,9 +6200,9 @@ function haSummary(){
 }
 function loadRadio(){
   const again = () => { if (onPage('radio')) rerender(); };
-  loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadAccount(); loadHelp(); loadHosts();
+  loadSettings().then(again); loadSetupNet().then(again); loadSoftware(); refreshHa(); loadHelp(); loadHosts();
 }
-function loadUpdates(){ loadSoftware(); loadMusic(); if (!help) loadHelp(); }
+function loadUpdates(){ loadSoftware(); loadSettings().then(() => { if (onPage('radio/updates')) rerender(); }); if (!help) loadHelp(); }
 function leaveUpdates(){ clearTimeout(swTimer); swTimer = null; }
 
 /* ---- This radio → Help from the makers: remote help for 24 h (web/help_api.py, docs/remote-help.md) ---- */
@@ -6053,7 +6295,7 @@ function helpGroup(){
 function helpBody(){
   const d = help, busy = helpUi.busy, st = busy || (d && d.state);
     const err = (helpUi.err || (d && d.error)) ? h('p', {class:'note-bad', role:'alert'}, helpUi.err || d.error) : null;
-  if (!d) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'));
+  if (!d) return skelRow();
   if (d.err) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Couldn’t check remote help'), h('span', {class:'li-sub'}, d.err)),
     h('button', {type:'button', class:'li-act', id:'helpRetry', onclick: () => { help = null; paintHelp(); loadHelp(); }}, 'Try again'));
   if (!d.available) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Remote help isn’t on this radio yet. The makers can add it — mention it next time you’re in touch.'));
@@ -6073,7 +6315,7 @@ function helpBody(){
         h('button', {type:'button', class:'btn small primary', id:'helpCopy', disabled: !url, onclick: helpCopy}, 'Copy link'),
         navigator.share ? h('button', {type:'button', class:'btn small', id:'helpShare', disabled: !url, onclick: helpShare}, 'Share…') : null,
         stopBtn()),
-      h('p', {class:'hint', id:'helpWaitNote'}, 'Waiting for approval' + (d.approve_by ? ' — the link works until ' + helpWhen(d.approve_by) : '') + '. Stop makes the link useless.'),
+      h('p', {class:'hint', id:'helpWaitNote'}, 'Waiting for the makers' + (d.approve_by ? ' — the link works until ' + helpWhen(d.approve_by) : '') + '. Stop cancels it.'),
       err);
   }
   if (st === 'connected'){
@@ -6081,7 +6323,7 @@ function helpBody(){
     const makers = Array.isArray(d.peers_active) && d.peers_active.length > 0;
     return h('div', {class:'li col', style:'gap:10px'},
       h('div', {class:'help-now' + (makers ? ' on' : ''), id:'helpNow'}, h('span', {class:'hn-dot', 'aria-hidden':'true'}),
-        h('span', null, d.status_text || (makers ? 'A maker is connected now.' : 'Connected - waiting for a maker.'))),
+        h('span', null, d.status_text || (makers ? 'A maker is connected now.' : 'Connected — waiting for a maker.'))),
       h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Connected to ' + (d.network || 'the makers’ network') + (d.expires_at ? ' until ' + helpWhen(d.expires_at) : '')),
         d.expires_at ? h('span', {class:'li-sub', id:'helpLeft'}, helpLeft(d.expires_at)) : null),
       h('div', null, kv('Address', d.address), kv('Name there', d.hostname), kv('Network', d.tailnet)),
@@ -6151,6 +6393,7 @@ function renderMaker(panel){
     h('details', {class:'how lc-adv', id:'lcAdv', open: lcal.open, ontoggle: e => { lcal.open = e.target.open; }},
       h('summary', null, 'Advanced: every colour by hand'), lampColours()))));
   const kn = knobCurveGroup(); if (kn) panel.append(kn);
+  const mg = musicMakerGroup(); if (mg) panel.append(mg);
   const moode = (settings && settings.moode_url) || (location.protocol + '//' + location.hostname + '/');
   panel.append(setGroup('player', 'Inside the player (moOde)', h('div', {class:'list'},
     h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Inside the player (moOde)'), h('span', {class:'li-sub'}, 'Library, queue and the audio set-up underneath the radio')),
@@ -6163,7 +6406,7 @@ function renderMaker(panel){
 function loadMaker(){
   if (!lcal.data && !lcal.loading) lcalLoad();
   if (!lchk.data && !lchk.loading) lchkLoad();
-  loadKnobs(); loadDiag();
+  loadKnobs(); loadDiag(); loadMusic();
   loadSettings().then(() => { if (onPage('maker')) rerender(); });
 }
 function leaveMaker(){ lchkPause(false); lcalStop(false); lcalEnd(); }
@@ -6179,7 +6422,7 @@ async function loadDiag(){
 const CHECK_NAMES = {mpd:'Player (MPD)', audio_card:'Sound card', panel:'Key panel', lamp:'Pilot lamp', web:'This page'};
 function diagBox(){
   const d = setUi.diag;
-  if (!d) return h('div', {class:'list'}, h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…')));
+  if (!d) return skel(2);
   const hl = d.health || {}, info = d.info || {};
   const checks = hl.checks && typeof hl.checks === 'object' ? Object.entries(hl.checks) : [];
   const up = +hl.uptime_s || 0;
@@ -6201,24 +6444,35 @@ function diagBox(){
         h('button', {type:'button', class:'btn small', disabled: setUi.diagBusy, onclick: () => { setUi.diag = null; rerender(); loadDiag(); }}, 'Check again'))));
 }
 
-/* the registry: the order is the order of the list */
+/* the registry: the order is the order of the list. Each page: title, summary (the row's second
+   line), note (how its changes are kept, shown under the title), render / load / leave, and for
+   a page with a draft: dirty / discard / save / busy / what (the save bar). */
+const NOTE_INSTANT = 'Changes apply at once, with Undo.';
 const SET_PAGES = [
   {id:'home', render: renderSetHome, load: loadSetHome},
-  {id:'sound', title:'Sound', summary: soundSummary, render: renderSound, load: loadSound, leave: leaveSound},
-  {id:'phones', title:'Phones & casting', summary: phonesSummary, render: renderPhones, load: loadPhones, leave: leavePhones,
+  {id:'sound', title:'Sound', summary: soundSummary, note: NOTE_INSTANT, render: renderSound, load: loadSound, leave: leaveSound},
+  {id:'keys', title:'Keys', summary: keysSummary, note: NOTE_INSTANT, render: renderKeysPage, load: loadKeysPage},
+  {id:'phones', title:'Phones', summary: phonesSummary, note:'Switches apply at once, with Undo. A new name waits for Save at the bottom.',
+    render: renderPhones, load: loadPhones, leave: leavePhones,
     dirty: () => castNamesDirty().length > 0, discard: () => { castUi.names = {}; }, save: castSaveNames, busy: () => !!castUi.saving,
     what: () => nameAnd(castNamesDirty().map(castLabel)) + (castNamesDirty().length === 1 ? ' name' : ' names')},
-  {id:'rooms', title:'Rooms', summary: roomsSummary, render: renderRooms, load: loadRooms, shown: () => !(grp && grp.missing)},
-  {id:'lamp', title:'Pilot lamp', summary: lampSummary, render: renderLamp, load: loadLamp, leave: leaveLamp,
-    dirty: lampDirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
-  {id:'keys', get title(){ return hasSourceKey() ? 'Source key & knobs' : 'Knobs & keys'; }, summary: keysSummary, render: renderKeysPage, load: loadKeysPage},
-  {id:'radio', title:'This radio', summary: radioSummary, render: renderRadio, load: loadRadio, leave: leaveHelp,
+  {id:'accounts', title:'Music accounts', summary: accountsSummary, note:'Signing Spotify in or out asks for a press on the radio.',
+    render: renderAccounts, load: loadAccounts, leave: leaveAccounts},
+  {id:'rooms', title:'Rooms', summary: roomsSummary, note:'Switches apply at once, with Undo. The room name waits for Save at the bottom.',
+    render: renderRooms, load: loadRooms,
     dirty: () => roomDirty(), discard: roomDiscard, save: roomSaveDraft, busy: () => roomUi.busy, what: () => 'Room name'},
+  {id:'lamp', title:'Pilot lamp', summary: lampSummary, note:'Changes apply at once, with Undo. A new place waits for Save at the bottom.',
+    render: renderLamp, load: loadLamp, leave: leaveLamp,
+    dirty: lampDirty, discard: () => { lampUi.dirty = false; lampUi.err = ''; }, save: saveLocation, busy: () => lampUi.busy, what: () => 'Where the radio stands'},
+  {id:'radio', title:'This radio', summary: radioSummary, note:'Letting the makers help, or allowing an address, asks for a press on the radio.',
+    render: renderRadio, load: loadRadio, leave: leaveHelp},
   {id:'maker', title:'Maker tools', summary: () => 'Lamp colours, knob curves, the player, diagnostics', shown: makerOn,
+    note:'Lamp colours wait for Save at the bottom; everything else applies at once.',
     render: renderMaker, load: loadMaker, leave: leaveMaker,
     dirty: () => !!(lcal.data && lcalDirty()), discard: () => { lcalAdopt(); lcalStop(false); lcalEnd(); }, save: lcalSave, busy: () => lcal.busy, what: () => 'Lamp colours'},
-  {id:'radio/updates', title:'Updates', parent:'radio', render: renderUpdates, load: loadUpdates, leave: leaveUpdates},
-  {id:'radio/ha', title:'Home Assistant', parent:'radio', render: renderHa, load: () => refreshHa()},
+  {id:'radio/updates', title:'Updates', parent:'radio', note:'Installing, going back or switching channel asks for a press on the radio, so nobody else on the Wi-Fi can do it.',
+    render: renderUpdates, load: loadUpdates, leave: leaveUpdates},
+  {id:'radio/ha', title:'Home Assistant', parent:'radio', note: NOTE_INSTANT, render: renderHa, load: () => refreshHa()},
 ];
 const SET_PAGE = Object.fromEntries(SET_PAGES.map(p => [p.id, p]));
 /* ---- pilot lamp: night = sunset..sunrise where the radio stands (lamp/night.py) ---- */
@@ -6288,13 +6542,11 @@ function lampSettings(panel){
       h('div', {class:'field'}, h('label', {for:'lampLat'}, 'Latitude'), h('input', {type:'number', id:'lampLat', inputmode:'decimal', step:'any', min:'-90', max:'90', value: lampUi.lat, oninput: edit('lat')})),
       h('div', {class:'field'}, h('label', {for:'lampLon'}, 'Longitude'), h('input', {type:'number', id:'lampLon', inputmode:'decimal', step:'any', min:'-180', max:'180', value: lampUi.lon, oninput: edit('lon')})))),
     lampUi.err ? h('p', {class:'err', role:'alert'}, lampUi.err) : null,
-    h('p', {class:'hint', style:'margin:0'}, 'A new place waits for Save at the bottom.'),
     navigator.geolocation ? h('div', {class:'acts'},
       h('button', {type:'button', class:'btn small', disabled: lampUi.busy, onclick: useHere}, 'Use this phone’s location')) : null);
   // The place sets sunset and sunrise: only By the sun needs it (a draft being typed stays in view).
   const showPlace = kind === 'sun' || lampDirty();
-  panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box, showPlace ? place : null),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'The night choices apply at once.')));
+  panel.append(setGroup('night', 'At night', h('div', {class:'list'}, box, showPlace ? place : null)));
 }
 function useHere(){
   lampUi.busy = true; lampUi.err = ''; rerender();
@@ -6327,7 +6579,8 @@ async function saveLamp(body, undoTo){
       const msg = body.location ? 'Place saved: ' + (r.json.location.name || coordText(r.json.location.lat, r.json.location.lon))
         : r.json.night === 'off' ? 'The lamp won’t dim at night' : /^\d\d:\d\d-/.test(r.json.night || '') ? 'Dims from ' + r.json.night.replace('-', ' to ') : 'Dims by the sun' + (r.json.tonight && r.json.tonight.from ? ' — tonight from ' + r.json.tonight.from : '');
       toast(msg, undoTo && undoTo !== r.json.night ? {undo: () => saveLamp({night: undoTo})} : null);
-    } else { lampUi.busy = false; lampUi.err = capFirst((r.json && r.json.error) || 'The radio didn’t take that') + '. Check it and save again.'; }
+    } else if (hostOf(r)){ lampUi.busy = false; failToast(r, 'The radio didn’t take that', () => saveLamp(body, undoTo)); }
+    else { lampUi.busy = false; lampUi.err = capFirst((r.json && r.json.error) || 'The radio didn’t take that') + '. Check it and save again.'; }
   } catch (_) { lampUi.busy = false; toast(NET_ERR, true); }
   if (view === 'settings') rerender();
 }
@@ -7004,6 +7257,16 @@ document.addEventListener('keydown', e => {
   if (b){ e.preventDefault(); b.click(); }
 });
 // `from`: the value before this change, for the toast's Undo (none when this *is* the undo).
+// The radio said no to an instant change: the words go next to the control (`errId`) and the
+// control goes back to what the radio holds. A refusal for the page's address gets the Allow toast.
+function soundNo(r, errId, fallback, again){
+  if (hostOf(r)){ failToast(r, fallback, again); rereadSound(); return; }
+  const el = $(errId);
+  const msg = capFirst((r.json && r.json.error) || fallback) + '. It’s back where it was.';
+  if (el) el.textContent = msg; else toast(msg, true);
+  rereadSound();
+}
+const wasText = (from, now) => from != null && +from !== +now ? ' (was ' + from + ')' : '';
 async function saveLimit(v, from){
   try {
     const r = await api('PUT', '/api/settings', {volume_limit:v});
@@ -7011,11 +7274,11 @@ async function saveLimit(v, from){
       settings = Object.assign(settings || {}, r.json && r.json.volume_limit != null ? r.json : {volume_limit:v}); K.limit = +settings.volume_limit; paintKnob();
       // A lower ceiling can pull the quietest step down with it.
       const was = floorShown; paintFloor(); paintLimit();
-      toast('Volume ceiling ' + settings.volume_limit + (was != null && settings.volume_floor != null && +settings.volume_floor < was ? ' · quietest step now ' + settings.volume_floor : ''),
+      toast('Volume ceiling ' + settings.volume_limit + wasText(from, settings.volume_limit) + (was != null && settings.volume_floor != null && +settings.volume_floor < was ? ' · quietest step now ' + settings.volume_floor : ''),
         from != null && +from !== +settings.volume_limit ? {undo: () => saveLimit(+from)} : null);
     }
-    else { toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that ceiling') + '. It’s back where it was.', true); rereadSound(); }
-  } catch (_) { toast(NET_ERR, true); }
+    else soundNo(r, 'limitErr', 'The radio didn’t take that ceiling', () => saveLimit(v, from));
+  } catch (_) { toast(NET_ERR, true); rereadSound(); }
 }
 /* ---- the quietest step: mixer % at the knob's first click (volume_floor) ---- */
 let floorTimer = null, floorShown = null, floorFrom = null;
@@ -7027,31 +7290,32 @@ function floorItem(){
   floorShown = fl;
   const v = Math.max(lo, Math.min(hi, fl ?? lo));
   return h('div', {class:'li col'},
-    h('div', {style:'display:flex;justify-content:space-between;align-items:center;gap:12px'},
+    h('div', {style:'display:flex;justify-content:space-between;align-items:flex-start;gap:12px'},
       h('div', {class:'li-txt'}, h('label', {class:'li-title', for:'floor'}, 'Quietest step'),
         h('span', {class:'li-sub', id:'floorHint'}, 'The first click of the volume knob — raise it if the first step is silent')),
-      h('span', {class:'li-val', id:'floorVal', 'aria-hidden':'true'}, fl ?? '—')),
+      h('span', {class:'li-val', id:'floorVal', 'aria-hidden':'true', style:'padding-top:2px'}, fl ?? '—')),
     h('input', {type:'range', id:'floor', min:String(lo), max:String(hi), step:'1', value:String(v), 'aria-describedby':'floorHint', disabled: fl == null,
-      style:'--pct:' + ((v - lo) / ((hi - lo) || 1) * 100) + '%',
+      'aria-valuetext': fl == null ? 'not known yet' : volText(fl), style:'--pct:' + ((v - lo) / ((hi - lo) || 1) * 100) + '%',
       oninput: e => {
-        const n = +e.target.value; e.target.style.setProperty('--pct', ((n - lo) / ((hi - lo) || 1) * 100) + '%');
-        $('floorVal').textContent = n;
+        const n = +e.target.value; e.target.style.setProperty('--pct', ((n - lo) / ((hi - lo) || 1) * 100) + '%'); e.target.setAttribute('aria-valuetext', volText(n));
+        $('floorVal').textContent = n; $('floorErr').textContent = '';
         if (floorFrom == null && settings) floorFrom = settings.volume_floor;
         clearTimeout(floorTimer); floorTimer = setTimeout(() => { const from = floorFrom; floorFrom = null; saveFloor(n, from); }, 350);
-      }}));
+      }}),
+    h('p', {class:'err', id:'floorErr', role:'alert'}));
 }
 // Both sound sliders from `settings`, in place (a re-render would drop a slider mid-drag).
 function paintFloor(){
   const el = $('floor'); if (!el || !settings) return;
   const fr = settings.volume_floor_range || [0, 90], fl = settings.volume_floor;
   el.min = String(fr[0]); el.max = String(fr[1]);
-  if (fl != null){ el.disabled = false; el.value = String(fl); $('floorVal').textContent = fl; floorShown = +fl; }
+  if (fl != null){ el.disabled = false; el.value = String(fl); $('floorVal').textContent = fl; floorShown = +fl; el.setAttribute('aria-valuetext', volText(fl)); }
   el.style.setProperty('--pct', ((+el.value - fr[0]) / ((fr[1] - fr[0]) || 1) * 100) + '%');
 }
 function paintLimit(){
   const el = $('limit'); if (!el || !settings || settings.volume_limit == null) return;
   const v = +settings.volume_limit;
-  el.value = String(v); el.disabled = false; el.style.setProperty('--pct', ((v - 30) / 70 * 100) + '%');
+  el.value = String(v); el.disabled = false; el.style.setProperty('--pct', ((v - 30) / 70 * 100) + '%'); el.setAttribute('aria-valuetext', volText(v));
   $('limitVal').textContent = v; $('limitWarn').hidden = v < 95;
 }
 async function rereadSound(){
@@ -7061,9 +7325,9 @@ async function saveFloor(v, from){
   try {
     const r = await api('PUT', '/api/settings', {volume_floor:v});
     if (r.ok && r.json){ settings = Object.assign(settings || {}, r.json); paintFloor();
-      toast('Quietest step ' + settings.volume_floor, from != null && +from !== +settings.volume_floor ? {undo: () => saveFloor(+from)} : null); }
-    else { toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that step') + '. It’s back where it was.', true); rereadSound(); }
-  } catch (_) { toast(NET_ERR, true); }
+      toast('Quietest step ' + settings.volume_floor + wasText(from, settings.volume_floor), from != null && +from !== +settings.volume_floor ? {undo: () => saveFloor(+from)} : null); }
+    else soundNo(r, 'floorErr', 'The radio didn’t take that step', () => saveFloor(v, from));
+  } catch (_) { toast(NET_ERR, true); rereadSound(); }
 }
 
 /* ---- sources & casting (web/sources_api.py) ---- */
@@ -7113,16 +7377,15 @@ function boundKeys(){
 let srcSaveT = null, srcUndoFrom = null;
 function sourcesGroup(){
   if (srcDoc && srcDoc.missing) return null;
-  if (!srcDoc) return setGroup('pu', 'What the source key steps through', h('div', {class:'list'}, h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'))));
+  if (!srcDoc) return setGroup('pu', 'What the source key steps through', skel(3));
   if (srcDoc.err) return setGroup('pu', 'What the source key steps through', h('div', {class:'card-box warn'}, h('p', {class:'body'}, srcDoc.err),
       h('div', null, h('button', {type:'button', class:'btn small inline', onclick: async () => { srcDoc = null; rerender(); await loadSources(); rerender(); }}, 'Try again'))));
   const bound = boundKeys();
   const list = h('div', {class:'list'});
-  list.append(h('div', {class:'li col', style:'gap:6px'},
-    h('span', {class:'li-sub'}, 'Tick the ones you use and put them in order. Changes apply at once. A source that can’t play right now is skipped.'),
-    h('div', {class:'ro-line'},
-      h('span', {class:'li-sub'}, bound.length ? ['Source key: ', h('b', {style:'color:var(--cream);font-weight:600'}, bound.map(b => b.text).join(', '))] : 'No key does this yet.'),
-      h('button', {type:'button', class:'link', onclick: () => go(bound.length === 1 ? 'edit/' + bound[0].kid : 'edit')}, bound.length ? 'Change in Edit keys' : 'Choose a key in Edit keys'))));
+  list.append(h('div', {class:'li', style:'min-height:0'},
+    h('span', {class:'li-txt'}, h('span', {class:'li-sub'}, 'Tick the ones you use and put them in order. A source that can’t play right now is skipped.'),
+      h('span', {class:'li-sub'}, bound.length ? ['Source key: ', h('b', {style:'color:var(--cream);font-weight:600'}, bound.map(b => b.text).join(', '))] : 'No key does this yet.')),
+    h('button', {type:'button', class:'li-act', onclick: () => go(bound.length === 1 ? 'edit/' + bound[0].kid : 'edit')}, bound.length ? 'Change' : 'Choose a key')));
   const n = srcDraft.length;
   let pos = 0;
   srcDraft.forEach((s, i) => {
@@ -7157,8 +7420,9 @@ function srcChanged(){
     const from = srcUndoFrom; srcUndoFrom = null;
     const want = draftCycle();
     if (!want.length || JSON.stringify(want) === JSON.stringify(srcDoc.cycle)) return;
-    putSources({cycle: want}, 'Source key: ' + want.map(id => stopOf(id).label).join(', '),
-      from ? () => putSources({cycle: from}, 'Back to ' + from.map(id => stopOf(id).label).join(', ')) : null);
+    const say = ids => ids.map(id => stopOf(id).label).join(', ');
+    putSources({cycle: want}, 'Source key: ' + say(want) + (from ? ' (was ' + say(from) + ')' : ''),
+      from ? () => putSources({cycle: from}, 'Back to ' + say(from)) : null);
   }, 700);
 }
 function moveStop(i, d){
@@ -7182,7 +7446,8 @@ async function putSources(body, okMsg, undo){
       if (srcSaveT){ srcDoc = r.json; if (r.json.casting) adoptCasting(r.json.casting); } else adoptSources(r.json);
       toast(okMsg, undo ? {undo} : null);
     }
-    else { srcMsg = {text: capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. Try again.', bad:true}; if (srcDoc && srcDoc.cycle) adoptSources(srcDoc); toast(srcMsg.text, true); }
+    else if (hostOf(r)){ if (srcDoc && srcDoc.cycle) adoptSources(srcDoc); failToast(r, 'The radio didn’t take that', () => putSources(body, okMsg, undo)); }
+    else { srcMsg = {text: capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. It’s back where it was.', bad:true}; if (srcDoc && srcDoc.cycle) adoptSources(srcDoc); }
   } catch (_) { srcBusy = false; srcMsg = {text: NET_ERR, bad:true}; toast(NET_ERR, true); }
   if (view === 'settings') rerender();
 }
@@ -7213,8 +7478,12 @@ function castRow(t){
   if (t.read_only){
     row.append(h('div', {class:'cast-head'}, title));
     row.append(h('p', {class:'li-sub'}, (t.name ? 'Shows as “' + t.name + '”. ' : '') + (t.note || '')));
-    // The radio's own Spotify account (web/spotify_account_api.py).
-    if (t.id === 'spotify' && t.available && t.account && t.account.available) row.append(spAccount(t.account));
+    // The radio's own Spotify account lives in Music accounts (spAccount); a line here points there.
+    if (t.id === 'spotify' && t.available && t.account && t.account.available){
+      const a = t.account;
+      row.append(h('p', {class:'li-sub', id:'spAcctLine'}, a.signed_in ? 'Spotify keys play from ' + (a.user || 'the radio’s account') + ' — ' : 'The radio isn’t signed in to Spotify — ',
+        h('a', {href:'#settings/accounts/spotify', style:'color:var(--brass);text-underline-offset:3px'}, a.signed_in ? 'change it in Music accounts' : 'sign in under Music accounts'), '.'));
+    }
     // Spotify for guests (settings.json spotify_guests -> go-librespot zeroconf).
     if (t.id === 'spotify' && t.available && settings && typeof settings.spotify_guests === 'boolean'){
       const on = settings.spotify_guests;
@@ -7230,14 +7499,7 @@ function castRow(t){
   row.append(h('label', {class:'switch', for:'cast-' + t.id},
     title, h('input', {type:'checkbox', role:'switch', id:'cast-' + t.id, checked: !!t.on, disabled: dis, 'aria-label':castLabel(t),
       onchange: e => putCast(t.id, {on: e.target.checked}, {on: !e.target.checked})})));
-  // The name is typed text: a draft that the bar at the bottom saves (the switch above applies at once).
-  const nameVal = castUi.names[t.id] ?? t.name ?? '';
-  row.append(h('div', {class:'field'}, h('label', {for:'cn-' + t.id}, 'Name on phones'),
-    h('div', {class:'cast-name'},
-      h('input', {type:'text', id:'cn-' + t.id, value: nameVal, placeholder:'Hasler', maxlength:'40', autocomplete:'off', disabled: dis,
-        oninput: e => { castUi.names[t.id] = e.target.value; paintSaveBar(); },
-        onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); if (castNamesDirty().length) castSaveNames(); }
-          else if (e.key === 'Escape'){ delete castUi.names[t.id]; e.target.value = t.name || ''; paintSaveBar(); } }}))));
+  // The name a phone sees is typed under "What phones call the radio" (castNameRow), a draft the bar at the bottom saves.
   return row;
 }
 // Phones → the save bar: the names typed but not saved yet.
@@ -7253,23 +7515,26 @@ async function castSaveNames(){
   castUi.saving = false;
   if (onPage('phones')) rerender();
 }
-function fillCast(box){
+// Phones: the ways a phone plays to the radio (#castBox) and, on a radio with /api/bluetooth,
+// the Bluetooth block under its own heading (#btBox: what plays, the paired phones, pairing,
+// reconnecting). An older radio keeps just the pairing row, in the list. Music accounts: the
+// Spotify account (#spAcctBox). Each box that is on the page is filled from castDoc.
+function fillCast(){
+  const box = $('castBox'), btBox = $('btBox'), spBox = $('spAcctBox');
+  if (spBox){ spBox.textContent = ''; spBox.append(spAccountRows()); }
+  if (!box) return;
   box.textContent = '';
   if (castErr){
     box.append(h('div', {class:'li col', role:'alert'}, h('p', {class:'err'}, castErr.msg),
       h('div', null, h('button', {type:'button', class:'btn small inline', id:'castRetry', onclick: () => { const f = castErr.retry; castErr = null; f(); }}, 'Try again'))));
   }
-  if (!castDoc){ box.append(h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'))); return; }
+  if (!castDoc){ box.append(skelRow()); if (btBox) btBox.closest('section').hidden = true; return; }
   const nl = nowLine(); if (nl) box.append(nl);
   const bt = (castDoc.targets || []).find(t => t.id === 'bluetooth');
-  // A radio with /api/bluetooth gets its phones, what's playing and the key options right under
-  // the Bluetooth row, with the pairing window among the phones. An older one keeps just the pairing row.
-  const btFull = btShown(bt);
+  const btFull = btShown(bt) && !!btBox;
   const ORDER = ['airplay', 'bluetooth', 'spotify', 'upnp', 'dlna'], rank = t => { const i = ORDER.indexOf(t.id); return i < 0 ? 9 : i; };
-  for (const t of (castDoc.targets || []).slice().sort((a, b) => rank(a) - rank(b))){
-    box.append(castRow(t));
-    if (t.id === 'bluetooth' && btFull) btFill(box, t);
-  }
+  for (const t of (castDoc.targets || []).slice().sort((a, b) => rank(a) - rank(b))) box.append(castRow(t));
+  if (btBox){ btBox.textContent = ''; btBox.closest('section').hidden = !btFull; if (btFull) btFill(btBox, bt); }
   if (!btFull) box.append(pairRow(bt));
 }
 // Bluetooth pairing window
@@ -7278,24 +7543,25 @@ function pairRow(bt){
   const left = Math.max(0, Math.round((castUi.pairEnd - Date.now()) / 1000));
   const pairing = left > 0;
   return h('div', {class:'li col', style:'gap:8px'},
-    h('span', {class:'li-title'}, 'A new phone'),
+    h('h3', {class:'bt-h'}, 'A new phone'),
     pairing ? h('p', {class:'li-sub', id:'pairLeft'}, pairText(left, bt))
       : h('span', {class:'li-sub'}, btOff ? 'Turn Bluetooth on above first.' : 'Opens Bluetooth so a phone can find the radio. Phones that paired before connect on their own.'),
     castUi.pairMsg ? h('p', {class:'err', role:'alert'}, castUi.pairMsg) : null,
     h('div', null, h('button', {type:'button', class:'btn small inline', id:'pairBtn', disabled: pairing || btOff || !!castUi.busy.pair, onclick: pairPhone},
-      castUi.busy.pair ? 'Opening…' : pairing ? 'Ready to pair' : 'Pair a phone (2 min)')));
+      castUi.busy.pair ? 'Opening…' : pairing ? 'Pairing…' : 'Pair a phone (2 min)')));
 }
 function pairText(left, bt){
   const m = Math.floor(left / 60), s = String(left % 60).padStart(2, '0');
-  return 'Ready for ' + m + ':' + s + '. On the phone, open Bluetooth and choose “' + ((bt && bt.name) || 'Hasler') + '”.';
+  return m + ':' + s + ' left. On your phone, open Bluetooth and choose “' + ((bt && bt.name) || 'Hasler') + '”.';
 }
-// Repaint the casting list from castDoc - unless someone is typing a name in it.
+// Repaint the casting boxes from castDoc - unless someone is typing a name in one.
 function paintCast(){
-  const box = $('castBox'); if (!box) return;
-  const a = document.activeElement;
-  if (a && box.contains(a) && a.tagName === 'INPUT' && a.type === 'text') return;
-  const id = a && box.contains(a) ? a.id : null;
-  fillCast(box);
+  const boxes = ['castBox', 'btBox', 'spAcctBox', 'castNameBox'].map($).filter(Boolean); if (!boxes.length) return;
+  const a = document.activeElement, inBox = a && boxes.find(b => b.contains(a));
+  if (inBox && (a.tagName === 'INPUT' && a.type === 'text' || a.tagName === 'TEXTAREA')) return;
+  const id = inBox ? a.id : null;
+  fillCast();
+  const nb = $('castNameBox'); if (nb){ nb.textContent = ''; nb.append(castNameRow()); }
   const f = id && $(id); if (f) f.focus({preventScroll:true});
 }
 // `back`: the change that undoes this one (offered in the toast), or null.
@@ -7309,17 +7575,33 @@ async function putCast(id, change, back){
       const t = r.json.targets.find(x => x.id === id);
       toast(t ? (change.name ? castLabel(t) + ': phones now see “' + t.name + '”' : castLabel(t) + (t.on ? ' on' : ' off')) : 'Saved',
         back ? {undo: () => putCast(id, back, null)} : null);
-    } else if (r.status === 503){
-      castErr = {msg: capFirst((r.json && r.json.error) || 'The player is busy') + '. Wait a moment, then try again.', retry: () => putCast(id, change, back)};
-    } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. Try again.', true);
+    } else if (hostOf(r)){ failToast(r, 'The radio didn’t take that', () => putCast(id, change, back)); }
+    else castErr = {msg: capFirst((r.json && r.json.error) || (r.status === 503 ? 'The player is busy' : 'The radio didn’t take that (error ' + r.status + ')')) + '. It’s back where it was.', retry: () => putCast(id, change, back)};
   } catch (_) { castErr = {msg:NET_ERR, retry: () => putCast(id, change)}; }
   delete castUi.busy[id];
   paintCast();
   return ok;
 }
+// Music accounts → Spotify: the radio's own account (web/spotify_account_api.py), from the casting doc.
+function spAccountRows(){
+  if (!castDoc) return skelRow();
+  const t = (castDoc.targets || []).find(x => x.id === 'spotify');
+  if (!t || !t.available) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Spotify isn’t on this radio'),
+    h('span', {class:'li-sub'}, (t && t.reason ? capFirst(t.reason).replace(/\.?$/, '. ') : '') + 'The makers can add it.')));
+  if (!t.account) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Spotify'),
+    h('span', {class:'li-sub'}, 'This radio’s software can’t sign in to Spotify by itself yet. Updating it adds that.')));
+  if (!t.account.available) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Spotify isn’t set up on this radio'),
+    h('span', {class:'li-sub'}, (t.account.error && !/isn.t set up/.test(t.account.error) ? capFirst(t.account.error).replace(/\.?$/, '. ') : '') + 'The makers can add it.')));
+  return spAccount(t.account);
+}
+async function spCopyCode(){
+  const code = (spotifyAcct() || {}).code; if (!code) return;
+  try { await navigator.clipboard.writeText(code); toast('Code copied'); }
+  catch (_) { const c = $('spCode'); if (c){ const s = getSelection(), rg = document.createRange(); rg.selectNodeContents(c); s.removeAllRanges(); s.addRange(rg); } toast('Selected — copy it from there'); }
+}
 // Spotify account: signed in as…, or a pairing code to enter at spotify.com/pair.
 function spAccount(a){
-  const busy = castUi.busy.spacct, box = h('div', {class:'li col', id:'spAcct', style:'gap:8px;padding-left:0;padding-right:0'});
+  const busy = castUi.busy.spacct, box = h('div', {class:'li col', id:'spAcct', style:'gap:8px'});
   const btn = (id, label, fn, primary) => h('button', {type:'button', class:'btn small' + (primary ? ' primary' : ''), id, disabled: !!busy, onclick: fn}, label);
   const err = castUi.spErr ? h('p', {class:'err', role:'alert'}, castUi.spErr) : '';
   const st = a.flow_state;
@@ -7329,7 +7611,8 @@ function spAccount(a){
     if (st === 'waiting') box.append(
       h('p', {class:'li-sub'}, 'On your phone or computer, go to ', h('a', {href:url, target:'_blank', rel:'noopener', style:'color:var(--brass);font-weight:600'}, 'spotify.com/pair'),
         ', sign in with the radio’s Spotify Premium account and enter this code:'),
-      h('p', {style:'margin:0'}, h('b', {id:'spCode', style:'font-size:1.6em;letter-spacing:.08em;font-variant-numeric:tabular-nums;user-select:all'}, a.code || '')),
+      h('div', {class:'hstack'}, h('b', {id:'spCode', style:'font-size:1.6em;letter-spacing:.08em;font-variant-numeric:tabular-nums;user-select:all'}, a.code || ''),
+        a.code ? h('button', {type:'button', class:'li-act', id:'spCopy', onclick: spCopyCode}, 'Copy code') : null),
       h('p', {class:'hint'}, 'The radio signs in by itself once you approve it. A new code appears if this one runs out.'));
     else if (st === 'starting') box.append(h('p', {class:'li-sub', 'aria-live':'polite'}, 'Asking Spotify for a code…'));
     else box.append(h('p', {class:'err', role:'alert'}, a.error || 'No code yet.'));
@@ -7343,8 +7626,10 @@ function spAccount(a){
         btn('spOut', busy === 'out' ? 'Signing out…' : 'Sign out', spSignOut)), err);
     return box;
   }
+  const ks = sourceKeys('spotify');
   box.append(h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Not signed in'),
-    h('span', {class:'li-sub'}, 'Spotify keys need the radio signed in to a Spotify Premium account. You’ll get a code to enter at spotify.com/pair.')),
+    h('span', {class:'li-sub'}, (ks.length ? keysAnd(ks) + (ks.length === 1 ? ' plays' : ' play') + ' Spotify and ' + (ks.length === 1 ? 'stays' : 'stay') + ' quiet until the radio is signed in. ' : 'Spotify keys need the radio signed in to a Spotify Premium account. ')
+      + 'You’ll get a code to enter at spotify.com/pair.')),
     st === 'failed' && a.error ? h('p', {class:'hint'}, a.error) : '',
     h('div', {class:'acts'}, btn('spIn', busy === 'start' ? 'Starting…' : 'Sign in', () => spSignIn(false), true)), err);
   return box;
@@ -7387,7 +7672,7 @@ async function setGuests(want, undoable){
       settings = Object.assign(settings || {}, {spotify_guests: r.json.spotify_guests});
       toast(r.json.spotify_guests ? 'Guests on your Wi-Fi can play Spotify on the radio' : 'Spotify only for the radio’s own account',
         undoable ? {undo: () => setGuests(!want, false)} : null);
-    } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. Try again.', true);
+    } else failToast(r, 'The radio didn’t take that', () => setGuests(want, undoable));
   } catch (_) { toast(NET_ERR, true); }
   delete castUi.busy.spguests; paintCast();
 }
@@ -7469,6 +7754,7 @@ function btSoon(){
   btSoonT.forEach(clearTimeout);
   btSoonT = [800, 2500, 6000].map(ms => setTimeout(async () => { if (!onPage('phones') || document.hidden) return; await loadBt(); paintCast(); }, ms));
 }
+function leavePhones(){ clearTimeout(castTimer); castTimer = null; btSoonT.forEach(clearTimeout); btSoonT = []; }
 function btIcon(kind){
   const k = String(kind || '');
   const g = k.startsWith('phone') ? '<rect x="5" y="1.5" width="8" height="15" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M8 13.5h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
@@ -7505,6 +7791,7 @@ function btFill(box, t){
     return;
   }
   const off = !t.on || btDoc.on === false;
+  if (off && !(btDoc.devices || []).length) box.append(h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Bluetooth is off. Turn it on above to pair a phone.')));
   if (btDoc.playing && !off) box.append(btPlaying(btDoc.playing));
   const sec = h('div', {class:'bt-sec', role:'group', 'aria-labelledby':'btPhonesH'}, h('h3', {class:'bt-h', id:'btPhonesH', tabindex:'-1'}, 'Paired phones'));
   if (btUi.err) sec.append(btErrRow('btRetry', btUi.err.msg, () => { const f = btUi.err.retry; btUi.err = null; paintCast(); f(); }));
@@ -7560,9 +7847,10 @@ async function btAct(kind, d){
       const now = btDoc && (btDoc.devices || []).find(x => x.address === d.address);
       toast(kind === 'forget' ? name + ' forgotten' : kind === 'disconnect' ? name + ' disconnected'
         : now && now.connected ? 'Connected to ' + name : 'Connecting to ' + name + '…');
-    } else {
+    } else if (hostOf(r)) failToast(r, BT_FAIL[kind], () => btAct(kind, d));
+    else {
       const msg = capFirst((r.json && r.json.error) || BT_FAIL[kind] + ' (error ' + r.status + ')') + '.';
-      btUi.err = {msg, retry: () => btAct(kind, d)}; toast(msg, true);
+      btUi.err = {msg, retry: () => btAct(kind, d)};
     }
   } catch (_) { btUi.err = {msg:NET_ERR, retry: () => btAct(kind, d)}; toast(NET_ERR, true); }
   delete btUi.busy[d.address];
@@ -7570,9 +7858,9 @@ async function btAct(kind, d){
   if (ok && kind === 'forget'){ const hd = $('btPhonesH'); if (hd) hd.focus({preventScroll:true}); }
   if (ok) btSoon();
 }
-function btForget(d){
-  if (!confirm('Forget ' + (d.name || 'this phone') + '? You’ll need to pair it again.')) return;
-  btAct('forget', d);
+async function btForget(d){
+  const ok = await ask({title:'Forget ' + (d.name || 'this phone') + '?', sub:'It won’t connect by itself any more. Pair it again any time.', ok:'Forget', cancel:'Keep it', danger:true});
+  if (ok) btAct('forget', d);
 }
 function btSwitch(id, title, sub, on, change){
   return h('label', {class:'switch', for:id},
@@ -7614,7 +7902,7 @@ function btSettings(s){
   const k = s.keys || {}, rc = s.reconnect || {};
   const sec = h('div', {class:'bt-sec', role:'group', 'aria-labelledby':'btSetH'}, h('h3', {class:'bt-h', id:'btSetH'}, 'Phone and radio keys'));
   sec.append(btKeyLine(k));
-  sec.append(h('span', {class:'li-title', style:'margin-top:8px'}, 'Reconnect to the last phone'));
+  sec.append(h('h3', {class:'bt-h', style:'margin-top:8px'}, 'Reconnect to the last phone'));
   sec.append(btSwitch('bt-rsel', 'When I switch to Bluetooth', 'The radio calls the phone you used last', rc.on_select, v => btPutSet({reconnect:{on_select:v}}, true)));
   sec.append(btSwitch('bt-rwake', 'When the radio wakes up', 'Out of standby, the last phone connects by itself', rc.on_wake, v => btPutSet({reconnect:{on_wake:v}}, true)));
   sec.append(btSwitch('bt-pvol', 'Phone volume controls the radio', s.phone_volume !== false ? 'The phone’s volume is the radio’s; the knob moves it too' : 'The phone’s volume works on top of the radio’s', s.phone_volume !== false, v => btPutSet({phone_volume:v}, true)));
@@ -7632,7 +7920,7 @@ function btKeyOptions(wrap){
     box.append(btSeg('Press again', 'bt-again', opts(['next', 'none'], k.again), k.again, v => btPutSet({keys:{again:v}}, true)));
     box.append(btSeg('Hold', 'bt-hold', opts(['pause', 'none'], k.hold), k.hold, v => btPutSet({keys:{hold:v}}, true)));
   }
-  box.append(h('p', {class:'hint', style:'margin:0'}, 'These apply at once — no need to press Save.'));
+  box.append(h('p', {class:'hint', style:'margin:0'}, 'These apply at once, with Undo — they aren’t part of the key’s Save.'));
   if (btUi.err) box.append(btErrRow('btRetry', btUi.err.msg, () => { const f = btUi.err.retry; btUi.err = null; rerender(); f(); }));
   wrap.append(box);
 }
@@ -7663,9 +7951,11 @@ async function btPutSet(patch, undoable){
     if (r.ok && r.json && r.json.ok !== false){
       if (Array.isArray(r.json.devices)) adoptBt(r.json); else if (r.json.settings) btDoc.settings = r.json.settings;
       toast(btSetMsg(patch), undoable ? {undo: () => btPutSet(back, false)} : null);
-    } else fail = capFirst((r.json && r.json.error) || 'Not saved (error ' + r.status + ')') + '.';
+    } else if (hostOf(r)){ btDoc.settings = old; failToast(r, 'Not saved', () => btPutSet(patch, undoable)); }
+    else fail = capFirst((r.json && r.json.error) || 'Not saved (error ' + r.status + ')') + '.';
   } catch (_) { btUi.saving--; if (seq !== btSetSeq) return; fail = NET_ERR; }
-  if (fail){ btDoc.settings = old; btUi.err = {msg: fail, retry: () => btPutSet(patch)}; toast(fail, true); }
+  // The radio said no: the words sit by the switches and they go back; only a lost answer is toasted.
+  if (fail){ btDoc.settings = old; btUi.err = {msg: fail, retry: () => btPutSet(patch)}; if (fail === NET_ERR) toast(fail, true); }
   paintCast(); if (view === 'edit') rerender();
 }
 async function pollCasting(){
@@ -7678,15 +7968,14 @@ async function pollCasting(){
   await btP;
   paintCast();
 }
-// Ask every 3 s, only while the casting list is on screen.
-// Ask every 3 s, only on Phones & casting while the list is on screen.
+// Ask every 3 s, only on Phones (the list) or Music accounts (the Spotify sign-in) while that box is on screen.
 function castSchedule(){
   clearTimeout(castTimer); castTimer = null;
-  if (!onPage('phones') || document.hidden) return;
-  castTimer = setTimeout(async () => { if (castVisible && onPage('phones') && !document.hidden) await pollCasting(); castSchedule(); }, 3000);
+  if (!onPage('phones', 'accounts') || document.hidden) return;
+  castTimer = setTimeout(async () => { if (castVisible && onPage('phones', 'accounts') && !document.hidden) await pollCasting(); castSchedule(); }, 3000);
 }
 function watchCasting(){
-  const box = $('castBox');
+  const box = $('castBox') || $('spAcctBox');
   if (!('IntersectionObserver' in window)){ castVisible = !!box; return; }
   if (!castObs) castObs = new IntersectionObserver(es => { for (const e of es) castVisible = e.isIntersecting; });
   castObs.disconnect();
@@ -7694,12 +7983,14 @@ function watchCasting(){
 }
 async function saveMono(on, undoable){
   const box = $('mono'); if (box) box.disabled = true;
+  const err = $('monoErr'); if (err) err.textContent = '';
   try {
     const r = await api('PUT', '/api/settings', {mono:on});
     if (r.ok && r.json && r.json.mono){
       settings = Object.assign(settings || {}, r.json);
       toast(r.json.mono.on ? 'Mono — both channels on the one speaker' : 'Stereo', undoable ? {undo: () => saveMono(!on, false)} : null);
-    } else toast(capFirst((r.json && r.json.error) || 'The radio didn’t switch') + '. Try again.', true);
+    } else if (hostOf(r)) failToast(r, 'The radio didn’t switch', () => saveMono(on, undoable));
+    else { const msg = capFirst((r.json && r.json.error) || 'The radio didn’t switch') + '. It’s back where it was.'; if ($('monoErr')) $('monoErr').textContent = msg; else toast(msg, true); }
   } catch (_) { toast(NET_ERR, true); }
   const b = $('mono'); if (b){ b.disabled = false; b.checked = !!(settings && settings.mono && settings.mono.on); }
 }
@@ -7903,7 +8194,7 @@ function fillMr(box){
   const on = !!grp.enabled, fk = grp.follower_keys === 'leave' ? 'leave' : 'group', busy = grpUi.mrBusy;
   box.append(h('div', {class:'li'}, h('label', {class:'switch', for:'mrOn', style:'flex:1'},
     h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Play in several rooms'),
-      h('span', {class:'li-sub'}, on ? 'This radio can play along with other Haslers at home, in step. Add rooms from the front page.'
+      h('span', {class:'li-sub'}, on ? ['This radio can play along with other Haslers at home, in step. Add rooms from the ', h('a', {href:'#', id:'mrFront', style:'color:var(--brass);text-underline-offset:3px'}, 'front page'), '.']
         : 'Let this radio play the same music as other Haslers at home, in step.')),
     h('input', {type:'checkbox', role:'switch', id:'mrOn', checked: on, disabled: busy, onchange: e => saveMr({enabled: e.target.checked}, e.target, true)}))));
   const er = grpErrRow('mrRetry'); if (er) box.append(h('div', {class:'li col', style:'min-height:0'}, er));
@@ -7939,9 +8230,11 @@ function paintMr(){
 }
 async function saveMr(change, box, undoable){
   const was = {enabled: !!grp.enabled, follower_keys: grp.follower_keys === 'leave' ? 'leave' : 'group'};
-  if (change.enabled === false && (grp.role === 'lead' && grpRooms().length || grp.role === 'follow')
-      && !confirm(grp.role === 'follow' ? 'This radio stops playing with ' + roomName(grp.leader) + '. Switch off Play in several rooms?'
-        : 'The other rooms stop playing along. Switch off Play in several rooms?')){ if (box) box.checked = true; return; }
+  if (change.enabled === false && (grp.role === 'lead' && grpRooms().length || grp.role === 'follow')){
+    const ok = await ask({title:'Switch off Play in several rooms?', ok:'Switch off', cancel:'Keep playing together',
+      sub: grp.role === 'follow' ? 'This radio stops playing with ' + roomName(grp.leader) + '.' : 'The other rooms stop playing along — ' + nameList(grpRooms()) + (grpRooms().length === 1 ? ' goes' : ' go') + ' quiet.'});
+    if (!ok){ if (box) box.checked = true; return; }
+  }
   const want = Object.assign({}, was, change);
   const act = document.activeElement;
   grpUi.mrFocus = act && act.id && $('mrBox') && $('mrBox').contains(act) ? act.id : null;
@@ -7990,7 +8283,7 @@ function offerHost(host, done){
   dlg.append(h('h2', {id:'dlgTitle'}, 'Allow changes from this address?'),
     h('p', {class:'sub'}, 'You opened the radio at ', h('b', null, host), '. It only takes changes through its own addresses, '
       + 'so a page somewhere else can’t change your keys. If this is your own dashboard or address, allow it once with a key press on the radio.'),
-    h('div', {style:'display:flex;justify-content:flex-end;gap:10px;margin-top:14px'},
+    h('div', {class:'dlg-acts'},
       h('button', {type:'button', class:'btn small', onclick: () => dlg.close()}, 'Not now'),
       h('button', {type:'button', class:'btn small primary', id:'hostAllow', onclick: () => { go = true; dlg.close(); }}, 'Allow this address')));
   dlg.onclose = async () => {
@@ -8024,10 +8317,22 @@ async function removeHost(host){
   try {
     const r = await api('DELETE', '/api/hosts/' + encodeURIComponent(host));
     if (r.ok) toast(host + ' can’t make changes any more.');
-    else toast((r.json && r.json.error) || 'The radio didn’t take that.', true);
+    else failToast(r, 'The radio didn’t take that');
   } catch (_) { toast(NET_ERR, true); }
   loadHosts();
 }
+// Remove is one small button: the first tap arms it ("Tap again to confirm"), a second within 4 s removes.
+function hostRemoveBtn(host){
+  const armed = hostUi.arm === host;
+  return h('button', {type:'button', class:'li-act' + (armed ? ' danger' : ''), id:'rmHost-' + btKey(host), 'aria-label':(armed ? 'Tap again to remove ' : 'Remove ') + host,
+    onclick: () => {
+      clearTimeout(hostUi.armT);
+      if (hostUi.arm === host){ hostUi.arm = null; removeHost(host); return; }
+      hostUi.arm = host; rerender(); const b = $('rmHost-' + btKey(host)); if (b) b.focus({preventScroll:true});
+      hostUi.armT = setTimeout(() => { if (hostUi.arm === host){ hostUi.arm = null; if (onPage('radio')) rerender(); } }, 4000);
+    }}, armed ? 'Tap again to confirm' : 'Remove');
+}
+// Other addresses: folded at the bottom of This radio (a dashboard's address is a maker's concern more than an owner's).
 function hostsGroup(){
   const d = hosts;
   if (!d || d.missing || d.err) return null;
@@ -8035,7 +8340,7 @@ function hostsGroup(){
   for (const it of d.saved || []) rows.push(h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, it.host),
       h('span', {class:'li-sub'}, (it.host === d.this ? 'This page · ' : '') + 'allowed ' + (day(new Date(it.added * 1000).toISOString()) || 'with a key press'))),
-    h('button', {type:'button', class:'li-act', 'aria-label':'Remove ' + it.host, onclick: () => removeHost(it.host)}, 'Remove')));
+    hostRemoveBtn(it.host)));
   for (const b of d.box || []) rows.push(h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, b), h('span', {class:'li-sub'}, 'Allowed by the makers'))));
   if (!rows.length && !d.this_allowable) rows.push(h('div', {class:'li'}, h('span', {class:'li-sub'},
@@ -8043,7 +8348,10 @@ function hostsGroup(){
   if (d.this_allowable) rows.push(h('div', {class:'li'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, d.this), h('span', {class:'li-sub'}, 'This page’s address · can’t make changes yet')),
     h('button', {type:'button', class:'li-act', onclick: () => allowHost(d.this, true)}, 'Allow')));
-  return setGroup('hosts', 'Other addresses', h('div', {class:'list'}, ...rows));
+  if (setUi.arrive === 'hosts'){ setUi.arrive = null; hostUi.open = true; }   // a deep link opens the fold
+  return h('section', {class:'grp-sec', id:'sec-hosts', tabindex:'-1'},
+    h('details', {class:'how', id:'hostsBox', open: hostUi.open ? true : null, ontoggle: e => { hostUi.open = e.target.open; }},
+      h('summary', null, 'Other addresses that may change this radio'), h('div', {class:'list', style:'margin-top:8px'}, ...rows)));
 }
 
 /* ---------- a press on the radio (web/confirm.py) ---------- */
@@ -8077,7 +8385,7 @@ function pressToConfirm(action, args, title, sub){
       h('div', {class:'cf'}, ring, h('div', {class:'cf-txt'},
         h('span', {class:'li-title'}, 'Press any key on the radio'),
         h('span', {class:'li-sub'}, 'The pilot lamp brightens twice, again and again, while it waits. That press only confirms — it won’t change the station.'))),
-      h('div', {style:'display:flex;justify-content:flex-end;margin-top:14px'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
+      h('div', {class:'dlg-acts'}, h('button', {type:'button', class:'btn small', onclick: () => finish(null)}, 'Cancel')));
     dlg.onclose = () => {
       if (dlg.open) return;
       done = true; clearTimeout(timer);
@@ -8159,7 +8467,7 @@ function swMode(mode, from){
     const r = await api('PUT', '/api/software/settings', {update_mode:mode}, {retry:0});
     if (r.ok) toast(mode === 'auto' ? 'Small updates install by themselves' : mode === 'ask' ? 'The radio asks before updating' : 'Updates are off',
       from && from !== mode ? {undo: () => swMode(from)} : null);
-    else toast(capFirst((r.json && r.json.error) || 'The radio didn’t take that') + '. Try again.', true);
+    else failToast(r, 'The radio didn’t take that', () => swMode(mode, from));
   });
 }
 // Channels (docs/ota.md §5). The updater only installs a release whose seq is
@@ -8204,7 +8512,7 @@ function paintBrand(){
 function roomSchedule(){
   clearTimeout(roomTimer);
   const r = settings && settings.room;
-  if (!r || !r.apply || r.apply.state !== 'applying' || !onPage('radio', 'rooms', 'phones') || document.hidden) return;
+  if (!r || !r.apply || r.apply.state !== 'applying' || !onPage('rooms', 'phones') || document.hidden) return;
   roomTimer = setTimeout(async () => {
     try { const x = await api('GET', '/api/settings'); if (x.ok && x.json && x.json.room){ settings = Object.assign(settings || {}, {room: x.json.room}); paintRoom(); } } catch (_) {}
     roomSchedule();
@@ -8226,7 +8534,7 @@ function roomApplyLine(a){
 // The room name is a draft (the bar at the bottom saves it); the casting-name switch applies at once.
 function roomNameRows(first){
   const r = settings && settings.room;
-  if (!r) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'));
+  if (!r) return skelRow();
   return h('div', {class:'li col', style:'gap:10px'},
     first ? null : h('div', {class:'sw-row'},
       h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'roomName'}, r.custom ? r.name : 'Room not named yet'),
@@ -8241,19 +8549,20 @@ function roomNameRows(first){
       h('input', {type:'text', id:'roomInp', value: roomUi.val, placeholder:'Kitchen', maxlength:'32', autocomplete:'off', 'aria-describedby':'roomHint',
         oninput: e => { roomUi.val = e.target.value; roomUi.err = ''; paintSaveBar(); },
         onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); if (roomDirty()) roomSaveDraft(); } else if (e.key === 'Escape' && !first){ roomDiscard(); paintRoom(); paintSaveBar(); } }}),
-      h('p', {class:'hint', id:'roomHint'}, first ? 'The other rooms see this radio by this name, and so do you on the front page. You can change it later in This radio.'
-        : 'Shown in the rooms list, in Home Assistant and on this page. Leave it empty to go back to “' + r.default + '”. The address doesn’t change. Save at the bottom keeps it.')) : null,
+      h('p', {class:'hint', id:'roomHint'}, first ? 'The other rooms see this radio by this name, and so do you on the front page. You can change it later in Rooms.'
+        : 'Shown on the front page, in the rooms list and in Home Assistant. Leave it empty to go back to “' + r.default + '”. The address doesn’t change. Save at the bottom keeps it.')) : null,
     roomUi.edit && roomUi.err ? h('p', {class:'err', role:'alert'}, roomUi.err) : null);
 }
+// Rooms → This room: the switch that puts the room name on phones (Phones shows the result).
 function roomCastRow(){
-  const r = settings && settings.room; if (!r) return h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…'));
+  const r = settings && settings.room; if (!r) return skelRow();
   const cast = r.custom ? r.casting_name : 'Hasler';
   const applying = r.apply && r.apply.state === 'applying';
   return h('div', {class:'li col', style:'gap:10px'},
     h('label', {class:'switch', for:'roomCast'},
       h('span', {class:'li-txt'}, h('span', {class:'li-title'}, 'Use the room name on phones'),
         h('span', {class:'li-sub'}, r.casting_names ? 'Phones see “' + cast + '” in AirPlay, Bluetooth, Spotify and other music apps'
-          : 'Phones see “Hasler”' + (r.custom ? '. On, they see “' + r.casting_name + '”' : '. Name the room first, in This radio → Name and address') + ' — handy with more than one Hasler')),
+          : 'Phones see “Hasler”' + (r.custom ? '. On, they see “' + r.casting_name + '”' : '. Name the room first') + ' — handy with more than one Hasler')),
       h('input', {type:'checkbox', role:'switch', id:'roomCast', checked: !!r.casting_names, disabled: roomUi.busy || (!r.custom && !r.casting_names),
         onchange: e => saveRoom({casting_names: e.target.checked}, {casting_names: !e.target.checked})})),
     applying || (r.apply && r.apply.state !== 'idle') ? roomApplyLine(r.apply) : null);
@@ -8265,7 +8574,7 @@ function roomSaveDraft(){ return saveRoom({name: roomUi.val.trim()}); }
 function paintRoom(){
   paintBrand();
   const a = document.activeElement;
-  for (const [bid, fill] of [['roomBox', () => roomNameRows(false)], ['roomCastBox', roomCastRow]]){
+  for (const [bid, fill] of [['roomBox', () => roomNameRows(false)], ['roomCastBox', roomCastRow], ['castNameBox', castNameRow]]){
     const box = $(bid); if (!box) continue;
     const id = a && box.contains(a) ? a.id : null;
     if (id === 'roomInp') continue;     // don't repaint under someone typing
@@ -8286,7 +8595,8 @@ async function saveRoom(change, back){
       const n = r.json.room;
       toast('name' in change ? (n.custom ? 'This radio is now “' + n.name + '”' : 'Room name cleared')
         : n.casting_names ? 'Phones will see “' + n.casting_name + '”' : 'Phones will see “Hasler”', back ? {undo: () => saveRoom(back)} : null);
-    } else { roomUi.err = capFirst((r.json && r.json.error) || 'The radio didn’t take that name') + '. Change it and save again.'; if (!('name' in change)) toast(roomUi.err, true); }
+    } else if (hostOf(r)) failToast(r, 'The radio didn’t take that', () => saveRoom(change, back));
+    else { roomUi.err = capFirst((r.json && r.json.error) || 'The radio didn’t take that name') + '. Change it and save again.'; if (!('name' in change)) toast(roomUi.err, true); }
   } catch (_) { toast(NET_ERR, true); }
   roomUi.busy = false;
   const keep = roomUi.edit;
@@ -8307,7 +8617,7 @@ async function loadMusic(){
     const c = r.ok && r.json && r.json.components && r.json.components['yt-dlp'];
     music = c ? c : {missing:true};
   } catch (_) { music = {err:NET_ERR}; }
-  if (onPage('radio/updates')) rerender();
+  if (onPage('accounts', 'maker', 'home')) rerender();
 }
 async function musicAction(fn){
   if (musicBusy) return; musicBusy = true; rerender();
@@ -8331,39 +8641,45 @@ function musicBack(v){
     else toast((r.json && r.json.error) || 'Couldn’t go back.', true);
   });
 }
-function renderMusic(panel){
-  if (!music || music.missing) return;
-  const m = music, rows = [];
-  if (m.err){ rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'YouTube Music helper'), h('span', {class:'li-sub'}, m.err)))); }
-  else {
-    const state = m.working === true ? 'working' : m.working === false ? 'not working right now' : 'not checked yet';
-    rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'},
-      h('span', {class:'li-title'}, 'YouTube Music helper ' + (m.version || '') + (m.channel === 'nightly' ? ' (nightly)' : '')),
-      h('span', {class:'li-sub'}, (m.last_check ? 'checked ' + ago(m.last_check) + ' · ' : '') + state
-        + (m.probation_until ? ' · settling in' : '')),
-      m.working === false || m.last_result === 'error'
-        ? h('span', {class:'note-warn'}, m.last_error ? 'Last check: ' + m.last_error : 'The radio is looking for a version that works.') : null)));
-    if (makerOn()){
-      const ev = (m.events_recent || []).slice().reverse().map(e => (e.at ? ago(e.at) + ': ' : '') + e.event
-        + (e.version ? ' ' + e.version : '') + (e.to ? ' → ' + e.to : '') + (e.result ? ' ' + e.result : '') + (e.why ? ' (' + e.why + ')' : ''));
-      rows.push(h('div', {class:'li col', style:'gap:10px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Maker tools'),
-          h('span', {class:'li-sub'}, (m.previous ? 'The one before: ' + m.previous : 'Nothing to go back to')
-            + (m.canary && m.canary.result ? ' · last canary ' + m.canary.result + (m.canary.via === 'local' ? ' (without cookies)' : '') : '')),
-          ev.length ? h('span', {class:'li-sub', style:'white-space:pre-line'}, ev.join('\n')) : null),
-        h('div', {class:'acts'},
-          h('button', {type:'button', class:'btn small', disabled: musicBusy || !m.previous, onclick: () => musicBack(m.previous)}, 'Go back'),
-          h('button', {type:'button', class:'btn small primary', disabled: musicBusy, onclick: musicUpdate}, 'Update now'))));
-    }
-  }
-  panel.append(setGroup('music', 'Music services', h('div', {class:'list'}, rows),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'YouTube changes often. The radio checks for a newer helper every few hours and only switches when the new one plays a test track.')));
+// Music accounts → YouTube Music: how the helper is doing, one row. Maker tools: Go back / Update now.
+function ytmHelperRow(){
+  const m = music;
+  if (!m || m.missing) return null;
+  if (m.err) return h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'YouTube Music helper'), h('span', {class:'li-sub'}, m.err)));
+  const state = m.working === true ? 'working' : m.working === false ? 'not working right now' : 'not checked yet';
+  return h('div', {class:'li', id:'ytmHelper'}, h('div', {class:'li-txt'},
+    h('span', {class:'li-title'}, 'YouTube Music helper ' + (m.version || '') + (m.channel === 'nightly' ? ' (nightly)' : '')),
+    h('span', {class:'li-sub'}, (m.last_check ? 'checked ' + ago(m.last_check) + ' · ' : '') + state + (m.probation_until ? ' · settling in' : '')),
+    m.working === false || m.last_result === 'error'
+      ? h('span', {class:'note-warn'}, (m.last_error ? 'Last check: ' + m.last_error + '. ' : '') + 'The radio is looking for a version that works; keys play what they played last.') : null));
 }
-function renderUpdates(panel){ renderSoftwareUpdates(panel); renderMusic(panel); }
+function musicMakerGroup(){
+  const m = music;
+  if (!m || m.missing || m.err) return null;
+  const ev = (m.events_recent || []).slice().reverse().map(e => (e.at ? ago(e.at) + ': ' : '') + e.event
+    + (e.version ? ' ' + e.version : '') + (e.to ? ' → ' + e.to : '') + (e.result ? ' ' + e.result : '') + (e.why ? ' (' + e.why + ')' : ''));
+  return setGroup('music', 'YouTube Music helper', h('div', {class:'list'}, ytmHelperRow(),
+    h('div', {class:'li col', style:'gap:10px'}, h('div', {class:'li-txt'},
+        h('span', {class:'li-sub'}, (m.previous ? 'The one before: ' + m.previous : 'Nothing to go back to')
+          + (m.canary && m.canary.result ? ' · last canary ' + m.canary.result + (m.canary.via === 'local' ? ' (without cookies)' : '') : '')),
+        ev.length ? h('span', {class:'li-sub', style:'white-space:pre-line'}, ev.join('\n')) : null),
+      h('div', {class:'acts'},
+        h('button', {type:'button', class:'btn small', id:'ytmBack', disabled: musicBusy || !m.previous, onclick: () => musicBack(m.previous)}, 'Go back'),
+        h('button', {type:'button', class:'btn small', id:'ytmUpdate', disabled: musicBusy, onclick: musicUpdate}, 'Update now')))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'YouTube changes often. The radio checks for a newer helper every few hours and only switches when the new one plays a test track.'));
+}
+function renderUpdates(panel){ renderSoftwareUpdates(panel); }
+// The Updates page has been seen with "didn't work here" on it: the attention row for that version can go.
+let rollbackMarked = '';
+function markRollbackSeen(){
+  const r = rolledBack(); if (!r || !settings || seenRollback() === r.version || rollbackMarked === r.version) return;
+  rollbackMarked = r.version;
+  api('PUT', '/api/settings', {dismissed: {rollback: r.version}}).then(x => { if (x.ok && x.json) settings = Object.assign(settings || {}, x.json); paintGearDot(); }).catch(() => {});
+}
 function renderSoftwareUpdates(panel){
   const wrap = (...kids) => panel.append(setGroup('version', 'This radio’s software', ...kids));
   const ver = settings && settings.version ? settings.version.replace(/^haslerd /, '') : '';
-  if (!software) return wrap(h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
-    h('span', {class:'li-title'}, 'Software'), h('span', {class:'li-sub'}, 'Checking…')))));
+  if (!software) return wrap(skel(2));
   if (software.missing) return wrap(h('div', {class:'list'}, h('div', {class:'li col', style:'gap:10px'},
     h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version' + (ver ? ' ' + ver : '')),
       h('span', {class:'li-sub'}, 'Updates aren’t set up on this radio yet, so it stays on this version. It keeps working as it is.')),
@@ -8394,23 +8710,25 @@ function renderSoftwareUpdates(panel){
       mine
         ? h('div', {class:'sw-row'}, h('span', {class:'li-sub'}, ap.when === 'now' ? 'Installs as soon as the radio rests in standby.' : 'Installs tonight, between 2 and 5.'),
             h('button', {type:'button', class:'link quiet', disabled: swBusy, onclick: swPutOff}, 'Put off'))
+        // Two equal choices: the sheet that follows is the real commitment.
         : h('div', {class:'acts'},
             h('button', {type:'button', class:'btn small', disabled: swBusy || !a.staged, onclick: () => swInstall(a.version, 'tonight')}, 'Install tonight'),
-            h('button', {type:'button', class:'btn small primary', disabled: swBusy || !a.staged, onclick: () => swInstall(a.version, 'now')}, 'Install now'))));
+            h('button', {type:'button', class:'btn small', disabled: swBusy || !a.staged, onclick: () => swInstall(a.version, 'now')}, 'Install now'))));
   }
   if (res && res.ok !== null){
     rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Last update'),
       h('span', {class:'li-sub'}, res.ok
         ? res.version + (res.manual ? ' — went back by hand' : ' installed') + (res.at ? ', ' + day(res.at) : '') + (res.probation ? ' · settling in' : '')
-        : res.version + ' didn’t work here, so the radio went back to ' + (res.back_to || 'the version before') + (res.at ? ' (' + day(res.at) + ')' : '') + '.'),
+        : res.version + ' didn’t work here, so the radio went back to ' + (res.back_to || 'the version before') + (res.at ? ' (' + day(res.at) + ')' : '') + '. Tell the makers if it happens again.'),
       !res.ok && res.reason ? h('span', {class:'li-sub sw-why'}, 'Why: ' + res.reason) : null)));
+    if (!res.ok) markRollbackSeen();
   }
   const os = s.os_updates; if (os && os.enabled && (os.last_upgrade || os.paused)) rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Security updates'), h('span', {class:'li-sub'}, (os.last_upgrade ? os.last_upgrade.count + ' on ' + day(os.last_upgrade.at) : 'None yet') + (os.paused ? ' · paused after a problem' : '') + (os.reboot_advisable ? ' · finished at the next power-on' : '')))));
   const seg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Updates'});
   for (const [k, l] of [['auto','Automatic'], ['ask','Ask'], ['off','Off']])
     seg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.update_mode === k), tabindex: s.update_mode === k ? '0' : '-1', disabled: swBusy,
       onclick: () => { if (k !== s.update_mode) swMode(k, s.update_mode); }}, l));
-  rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Updates'),
+  rows.push(h('div', {class:'li col', style:'gap:12px'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'When updates install'),
     h('span', {class:'li-sub'}, MODE_TEXT[s.update_mode] || '')), seg));
   const cseg = h('div', {class:'seg', role:'radiogroup', 'aria-label':'Update channel'});
   CHANNELS.forEach(([k, name, l], i) => cseg.append(h('button', {type:'button', role:'radio', 'aria-checked': String(s.channel === k), tabindex: s.channel === k ? '0' : '-1', disabled: swBusy || s.busy,
@@ -8424,13 +8742,13 @@ function renderSoftwareUpdates(panel){
     sw ? h('div', {class:'sw-row'}, h('span', {class:'li-sub', style:'flex:1 1 200px'}, 'The next check looks at ' + chName(sw.channel) + '.'
         + (sw.behind ? ' If it’s behind ' + sw.version + ', the radio stays on ' + sw.version + ' until ' + chName(sw.channel) + ' catches up.' : '')),
       h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: swCheck}, 'Check now')) : null));
+  // A version that didn't work here is listed, but not offered.
   for (const r of (s.releases || []).filter(r => r.status !== 'running'))
     rows.push(h('div', {class:'li'}, h('div', {class:'li-txt'}, h('span', {class:'li-title'}, 'Version ' + r.version),
         h('span', {class:'li-sub'}, (r.status === 'bad' ? 'Didn’t work here' : r.status === 'previous' ? 'The one before' : 'Kept')
           + (r.installed_at ? ' · installed ' + day(r.installed_at) : ''))),
-      h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: () => swBack(r.version)}, 'Go back')));
-  wrap(h('div', {class:'list'}, rows),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Installing, going back or switching channel asks for a press on the radio, so nobody else on the Wi-Fi can do it.'));
+      r.status === 'bad' ? null : h('button', {type:'button', class:'li-act', disabled: swBusy || s.busy, onclick: () => swBack(r.version)}, 'Go back')));
+  wrap(h('div', {class:'list'}, rows));
 }
 
 /* ---------- knobs: live reading + guided calibration (/api/knobs) ---------- */
@@ -8488,9 +8806,9 @@ function adoptKnob(k){
 function knobPollIds(){
   if (document.hidden || !knobs || !knobs.knobs) return [];
   const want = new Set();
-  if (onPage('keys')) for (const k of knobs.knobs) want.add(k.id);   // every knob, live
-  if (onPage('maker')) for (const id of knobUi.open) want.add(id);   // open curve cards
-  if (onPage('sound')) for (const id of fxUi.open) want.add(id);     // the effect card's "knob now" bar
+  if (onPage('sound')) for (const k of knobs.knobs) want.add(k.id);   // every knob, live (If a knob feels off)
+  if (onPage('maker')) for (const id of knobUi.open) want.add(id);    // open curve cards
+  if (onPage('sound')) for (const id of fxUi.open) want.add(id);      // the effect card's "knob now" bar
   if (wiz && $('dlg').open) want.add(wiz.k.id);
   return knobs.knobs.filter(k => want.has(k.id)).map(k => k.id);
 }
@@ -8573,11 +8891,14 @@ function dialSvg(k, steps, i){
   return svg;
 }
 
-/* Source key & knobs: each knob live, with Calibrate. Maker tools: the curve, raw numbers, factory reset. */
+/* Sound → If a knob feels off: each knob live, with Calibrate. Maker tools: the curve, raw numbers, factory reset. */
+// The software is too old for this: the same words as KNOB_OLD, with Updates a link away.
+const knobOldLine = () => h('span', {class:'li-sub'}, 'Knob calibration needs a newer version of the radio’s software. Update it in ',
+  h('a', {href:'#settings/radio/updates', style:'color:var(--brass);text-underline-offset:3px'}, 'This radio → Updates'), '.');
 function knobState(){
-  if (!knobs) return h('div', {class:'list'}, h('div', {class:'li'}, h('span', {class:'li-sub'}, 'Checking…')));
+  if (!knobs) return skel(2);
   if (knobs.missing) return h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
-    h('span', {class:'li-title'}, 'Knob calibration'), h('span', {class:'li-sub'}, KNOB_OLD))));
+    h('span', {class:'li-title'}, 'Knob calibration'), knobOldLine())));
   if (knobs.err) return h('div', {class:'list'}, h('div', {class:'li'}, h('div', {class:'li-txt'},
     h('span', {class:'li-title'}, 'Knobs'), h('span', {class:'li-sub'}, knobs.err)),
     h('button', {type:'button', class:'li-act', onclick: () => { knobs = null; rerender(); loadKnobs(); }}, 'Try again')));
@@ -8585,11 +8906,10 @@ function knobState(){
 }
 function knobLiveGroup(){
   const st = knobState();
-  if (st) return setGroup('knobs', 'Knobs', st);
+  if (st) return setGroup('knobs', 'If a knob feels off', st);
   if (!knobs.knobs.length) return null;
-  return setGroup('knobs', 'Knob calibration', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
-    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If the radio and the knob disagree, calibrate it: a short guide where you turn it to a few positions. What the tone knob does is in ',
-      h('a', {class:'link', href:'#settings/sound/tone'}, 'Sound'), '.'));
+  return setGroup('knobs', 'If a knob feels off', h('div', {class:'list'}, knobs.knobs.map(k => knobCard(k, false))),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Turn a knob and watch its number. If the radio and the knob disagree, Calibrate walks you through it: a short guide where you turn it to a few positions.'));
 }
 function knobCurveGroup(){
   const st = knobState();
@@ -8656,7 +8976,8 @@ function paintKnobLive(knobId){
   moveDot('knd-' + id, raw, isSel(k) ? selIndex(k, v) : v);
 }
 async function resetKnob(k){
-  if (!confirm('Put ' + (k.label || k.id) + ' back to its curve as shipped?\n\nThis forgets the calibration made on this radio.')) return;
+  const ok = await ask({title:'Put ' + (k.label || k.id) + ' back to its curve as shipped?', sub:'This forgets the calibration made on this radio.', ok:'Back to as shipped', cancel:'Keep it', danger:true});
+  if (!ok) return;
   try {
     const r = await api('DELETE', knobUrl(k.id, '/calibration'));
     if (r.ok){ adoptKnob(r.json && r.json.id ? r.json : Object.assign({}, k, {source:'shipped'})); toast((k.label || k.id) + ' is back to its curve as shipped'); }
@@ -8850,7 +9171,8 @@ async function fxApply(k, want, undoTo){
       if (d && fxSame(d, want)) delete fxUi.draft[k.id];
       const nk = fxKnob(k.id) || k;
       toast(fxName(nk) + ' knob: ' + (sameEffect ? 'adjusted' : fxSayWhat(nk)), undoTo ? {undo: () => { delete fxUi.draft[k.id]; fxApply(k, undoTo, null); }} : null);
-    } else {
+    } else if (hostOf(r)){ delete fxUi.draft[k.id]; failToast(r, 'The radio didn’t take that', () => fxApply(k, want, undoTo)); }
+    else {
       fxUi.err[k.id] = capFirst((r.json && r.json.error) || 'The radio didn’t take that (error ' + r.status + ')') + '. It’s back to how it was.';
       delete fxUi.draft[k.id];
     }
@@ -8893,16 +9215,32 @@ function openWizard(k){
   wiz = {k, steps, i: 0, pts: steps.map(() => null), phase:'step', fit:null, err:'', busy:false, saving:false};
   const dlg = $('dlg');
   dlg.onclick = null;   // no backdrop dismiss: the owner is turning a knob with the other hand
-  dlg.oncancel = e => { if (!wizLeave()) e.preventDefault(); };
+  dlg.oncancel = e => { e.preventDefault(); wizClose(); };
   dlg.onclose = () => { if (dlg.open) return; wiz = null; dlg.oncancel = null; dlg.onclose = null; if (view === 'settings') rerender(); };
   renderWiz();
   if (!dlg.open) dlg.showModal();
   knobPoll(true);
 }
-function wizLeave(){
-  return !wiz || wiz.saving || !wiz.pts.some(Boolean) || confirm('Stop calibrating? The readings so far are thrown away and the knob keeps its current curve.');
+// Leaving with readings captured asks first. The question needs the sheet, so the wizard
+// steps aside (its own close event is ignored) and comes back if the answer is to go on.
+let wizAsking = false;
+async function wizClose(){
+  if (!wiz || wizAsking) return;
+  const dlg = $('dlg');
+  if (wiz.saving || !wiz.pts.some(Boolean)){ dlg.close(); return; }
+  const w = wiz, back = () => { if (dlg.open) return; dlg.oncancel = null; dlg.onclose = null; };
+  wizAsking = true;
+  const keep = dlg.onclose; dlg.onclose = back; dlg.oncancel = null;
+  dlg.close();
+  const stop = await ask({title:'Stop calibrating?', sub:'The readings so far are thrown away and the knob keeps its current curve.', ok:'Stop', cancel:'Keep going', danger:true});
+  wizAsking = false;
+  if (stop || wiz !== w){ wiz = null; if (view === 'settings') rerender(); return; }
+  dlg.oncancel = e => { e.preventDefault(); wizClose(); };
+  dlg.onclose = keep;
+  renderWiz();
+  if (!dlg.open) dlg.showModal();
+  knobPoll(true);
 }
-function wizClose(){ if (wizLeave()) $('dlg').close(); }
 function wizDirNote(k){
   return isSel(k)
     ? h('p', {class:'wz-note'}, 'Go through the positions in order. If the selector is wired the other way round, the radio works that out.')
@@ -8956,7 +9294,7 @@ function renderWiz(){
       h('p', {class:'kn-raw', id:'wzRawLine'}, '—'),
       warn.length || redo.length ? h('div', {class:'alert', role:'alert'},
         redo.length ? h('p', {style:'margin:0'}, redo.length === 1 ? 'One point looks off — redo the one marked in red.' : 'Some points look off — redo the ones marked in red.') : null,
-        warn.length ? h('ul', null, warn.map(w => h('li', null, w))) : null) : null,
+        warn.length ? h('ul', null, warn.map(w => h('li', null, capFirst(w)))) : null) : null,
       wizPoints(),
       wiz.err ? h('p', {class:'err', role:'alert'}, wiz.err) : null,
       h('div', {class:'acts'},
@@ -9008,11 +9346,11 @@ async function wizFit(){
     const r = await api('POST', knobUrl(w.k.id, '/fit'), {points: w.steps.map((s, i) => ({position: s.pos, raw: w.pts[i].raw})), direction:'auto'});
     if (wiz !== w) return;
     if (r.ok && r.json && Array.isArray(r.json.curve)){ w.fit = r.json; w.phase = 'review'; }
-    else w.err = r.status === 404 ? KNOB_OLD : (r.json && (r.json.error || (r.json.warnings || []).join(' '))) || 'Couldn’t fit a curve (error ' + r.status + ').';
+    else w.err = r.status === 404 ? KNOB_OLD : capFirst((r.json && (r.json.error || (r.json.warnings || []).map(capFirst).join(' '))) || 'Couldn’t fit a curve (error ' + r.status + ').');
     if (r.ok && r.json && !Array.isArray(r.json.curve) && Array.isArray(r.json.redo) && r.json.redo.length){
       // No usable curve: send the owner straight back to the first point to redo.
       w.fit = {curve:[], warnings:r.json.warnings || [], redo:r.json.redo}; w.i = r.json.redo[0]; w.phase = 'step';
-      w.err = (r.json.warnings || []).join(' ') || 'Some points need redoing.';
+      w.err = (r.json.warnings || []).map(capFirst).join(' ') || 'Some points need redoing.';
     }
   } catch (_) { if (wiz !== w) return; w.err = NET_ERR; }
   renderWiz();
@@ -9033,28 +9371,44 @@ async function wizSave(){
   w.saving = false; renderWiz();
 }
 
+/* ---- 4 · Music accounts: Spotify (the radio's own account) and YouTube Music ---- */
+function renderAccounts(panel){
+  panel.append(setGroup('spotify', 'Spotify', h('div', {class:'list', id:'spAcctBox'}),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Spotify keys play from this account. Guests on your Wi-Fi can still use their own.')));
+  fillCast();
+  panel.append(setGroup('ytm', 'YouTube Music', h('div', {class:'list', id:'ytmAcctBox'}, accountRows(), ytExplicitRow(), ytmHelperRow()),
+    h('p', {class:'hint', style:'padding:0 4px'}, 'Sign in for your Liked songs and private playlists. It takes a computer and a few technical steps — the makers can do it for you over ',
+      h('a', {href:'#settings/radio/help', style:'color:var(--brass);text-underline-offset:3px'}, 'remote help'), '.')));
+}
+function loadAccounts(){
+  const again = () => { if (onPage('accounts')) rerender(); };
+  loadSettings().then(again); loadSources().then(again); loadAccount(); loadMusic();
+  castSchedule();
+}
+function leaveAccounts(){ clearTimeout(castTimer); castTimer = null; }
 /* ---------- YouTube Music account (carried over) ---------- */
-function accountCard(){
-  const box = h('section', {class:'card-box', 'aria-labelledby':'acctH'});
-  if (ytm.available === null){ box.append(h('h3', {id:'acctH'}, 'Checking…')); return box; }
-  if (ytm.available === false){ box.append(h('h3', {id:'acctH'}, 'Not available'), h('p', {class:'body'}, 'This radio can’t search YouTube Music. You can still paste playlist links on a key.')); return box; }
-  const err = acctUi.err ? h('p', {class:'err', id:'acctErr', role:'alert'}, acctUi.err) : document.createDocumentFragment();
-  if (ytm.signed_in){
-    box.append(h('h3', {id:'acctH', tabindex:'-1'}, 'Signed in' + (ytm.name ? ' as ' + ytm.name : '')),
-      h('p', {class:'body'}, 'Your library shows in Browse → YouTube Music, and when you edit a key. The front screen can like the song playing.'),
-      h('div', null, h('button', {type:'button', class:'btn small inline', onclick: signOut}, 'Sign out')), err);
-    return box;
-  }
-  box.append(h('h3', {id:'acctH', tabindex:'-1'}, 'Not signed in'), h('p', {class:'body'}, 'Sign in to put your Liked songs and playlists on keys.'));
-  if (!acctUi.open){
-    box.append(h('div', null, h('button', {type:'button', class:'btn primary small inline', 'aria-expanded':'false',
-      onclick: () => { acctUi.open = true; acctUi.err = ''; rerender(); const t = $('acctHdr'); if (t) t.focus(); }}, 'Sign in')), err);
-    return box;
-  }
+// Rows, not a card: checking, not on this radio, signed in (Sign out), not signed in (Sign in opens the steps).
+function accountRows(){
+  if (ytm.available === null) return skelRow();
+  if (ytm.available === false) return h('div', {class:'li', id:'acctRow'}, h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'acctH'}, 'YouTube Music isn’t on this radio'),
+    h('span', {class:'li-sub'}, 'You can still paste playlist links on a key.')));
+  const err = acctUi.err ? h('p', {class:'err', id:'acctErr', role:'alert'}, acctUi.err) : null;
+  if (ytm.signed_in) return h('div', {class:'li col', id:'acctRow', style:'gap:6px'}, h('div', {class:'li-row'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'acctH', tabindex:'-1'}, 'Signed in' + (ytm.name ? ' as ' + ytm.name : '')),
+        h('span', {class:'li-sub'}, 'Your library shows in Browse → YouTube Music, and when you edit a key. The front screen can like the song playing.')),
+      h('button', {type:'button', class:'li-act', id:'acctOut', onclick: signOut}, 'Sign out')), err);
+  if (!acctUi.open) return h('div', {class:'li col', id:'acctRow', style:'gap:6px'}, h('div', {class:'li-row'},
+      h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'acctH', tabindex:'-1'}, 'Not signed in'),
+        h('span', {class:'li-sub'}, 'Sign in to put your Liked songs and playlists on keys.')),
+      h('button', {type:'button', class:'li-act', id:'acctIn', 'aria-expanded':'false',
+        onclick: () => { acctUi.open = true; acctUi.err = ''; rerender(); const t = $('acctHdr'); if (t) t.focus(); }}, 'Sign in')), err);
   const ta = h('textarea', {id:'acctHdr', rows:'6', autocomplete:'off', autocapitalize:'off', spellcheck:'false', placeholder:'accept: */*\ncookie: …',
     'aria-describedby':'acctNote' + (acctUi.err ? ' acctErr' : ''), 'aria-invalid': acctUi.err ? 'true' : 'false', oninput: e => { acctUi.text = e.target.value; }});
   ta.value = acctUi.text;
-  box.append(h('ol', {class:'steps'},
+  return h('div', {class:'li col', id:'acctRow', style:'gap:10px'},
+    h('div', {class:'li-txt'}, h('span', {class:'li-title', id:'acctH', tabindex:'-1'}, 'Signing in to YouTube Music'),
+      h('span', {class:'li-sub'}, 'It takes a computer and a few technical steps. The makers can do it for you over remote help.')),
+    h('ol', {class:'steps'},
       h('li', null, 'On a computer, open ', h('b', null, 'music.youtube.com'), ' and make sure you’re signed in.'),
       h('li', null, 'Open the browser’s developer tools (', h('b', null, 'F12'), ') → ', h('b', null, 'Network'), ' tab, and click anything on the page.'),
       h('li', null, 'Find a request named ', h('b', null, '“browse”'), ' → right-click → Copy → ', h('b', null, '“Copy request headers”'),
@@ -9065,7 +9419,6 @@ function accountCard(){
     h('div', {class:'hstack'},
       h('button', {type:'button', class:'btn primary small inline', disabled: acctUi.busy, onclick: signIn}, acctUi.busy ? 'Signing in…' : 'Sign in'),
       h('button', {type:'button', class:'link quiet', disabled: acctUi.busy, onclick: () => { Object.assign(acctUi, {open:false, text:'', err:''}); rerender(); }}, 'Cancel')));
-  return box;
 }
 function adoptAccount(acc){
   const was = ytm.signed_in;
@@ -9101,7 +9454,8 @@ async function signIn(){
   const ta = $('acctHdr'); if (ta) ta.focus();
 }
 async function signOut(){
-  if (!confirm('Sign out of YouTube Music on this radio?')) return;
+  const ok = await ask({title:'Sign out of YouTube Music?', sub:'Keys with your private playlists or Liked songs go quiet until you sign in again. Public playlists keep playing.', ok:'Sign out', cancel:'Stay signed in', danger:true});
+  if (!ok) return;
   acctUi.err = '';
   try {
     const r = await api('DELETE', '/api/ytm/account');
@@ -9136,7 +9490,7 @@ function loadEntities(refresh){
 }
 // Settings → This radio → Home Assistant (#settings/radio/ha; #ha still lands here).
 function renderHa(panel){
-  if (!haState){ panel.append(h('p', {class:'loading'}, 'Checking…')); return; }
+  if (!haState){ panel.append(skel(2)); return; }
   if (haState.unsupported){ panel.append(h('div', {class:'empty'}, h('h2', null, 'Not on this radio yet'), h('p', null, 'This radio’s software doesn’t include Home Assistant support.'))); return; }
   const miss = haState.missing || [];
   if (haState.previous_instance) panel.append(h('section', {class:'card-box'}, h('span', {class:'mono'}, 'A different home'),
@@ -9148,21 +9502,25 @@ function renderHa(panel){
 function missingCard(miss){
   const n = miss.length;
   const notConn = miss.every(m => m.reason === 'not connected');
+  // A short heading; the detail (what is missing, and where) is in the body and the rows.
   const box = h('section', {class:'card-box warn', 'aria-labelledby':'missH'},
-    h('h3', {id:'missH'}, n + (n === 1 ? ' key points' : ' keys point') + (notConn ? ' to Home Assistant, which isn’t connected' : ' to things this Home Assistant doesn’t have')),
-    h('p', {class:'body'}, 'They do nothing for now. Reassign them, or clear the missing ones.'));
+    h('h3', {id:'missH'}, n + (n === 1 ? ' key points' : ' keys point') + ' at something ' + (notConn ? 'out of reach' : 'missing')),
+    h('p', {class:'body'}, (notConn ? 'Home Assistant isn’t connected, so they do nothing for now.' : 'This Home Assistant doesn’t have what they point at, so they do nothing for now.') + ' Reassign them, or clear the missing ones.'));
   const list = h('div');
   for (const m of miss){
     const k = cfg && cfg.keys.find(x => x.id === m.key);
+    // The friendly name when the radio knows it; the entity id stays on the row as a title.
     list.append(h('div', {class:'miss-row'},
-      h('span', null, (k ? keyLabel(k) : m.key) + ' · ' + m.event + ' · ' + (m.entity || m.label || m.do)),
+      h('span', {title: m.entity || null}, (k ? keyLabel(k) : m.key) + ' · ' + m.event + ' · ' + (m.label || m.entity || m.do)),
       h('button', {type:'button', class:'link', onclick: () => go('edit/' + m.key + '/' + m.event)}, 'Reassign')));
   }
   box.append(list, h('div', null, h('button', {type:'button', class:'btn small inline', onclick: clearMissing}, 'Clear missing')));
   return box;
 }
 async function clearMissing(){
-  if (!confirm('Clear these key actions? Those keys will do nothing until you choose something new.')) return;
+  const n = ((haState && haState.missing) || []).length;
+  const ok = await ask({title:'Clear ' + (n === 1 ? 'that key’s job?' : 'those keys’ jobs?'), sub:(n === 1 ? 'That key does' : 'Those keys do') + ' nothing until you choose something new for ' + (n === 1 ? 'it' : 'them') + '.', ok:'Clear', cancel:'Keep them', danger:true});
+  if (!ok) return;
   try {
     const r = await api('POST', '/api/ha/clear-missing', {});
     if (r.ok && r.json){
@@ -9206,13 +9564,17 @@ function haSetup(panel){
     h('div', null, h('button', {type:'button', class:'btn small inline', disabled: haUi.finding, onclick: haDiscover}, haUi.finding ? [h('span', {class:'spin', 'aria-hidden':'true'}), ' Looking…'] : 'Find Home Assistant')),
     found,
     h('div', {class:'field'}, h('label', {for:'haUrl'}, 'Or enter its address'), urlInp, haUi.urlErr ? h('p', {class:'err', id:'haUrlErr', role:'alert'}, haUi.urlErr) : null)));
-  // step 2: token
-  const tok = h('input', {type:'password', id:'haTok', value:haUi.token, autocomplete:'off', autocapitalize:'off', spellcheck:'false', placeholder:'Long-lived access token',
+  // step 2: token (Show lets a long paste be checked)
+  const tok = h('input', {type: haUi.showTok ? 'text' : 'password', id:'haTok', value:haUi.token, autocomplete:'off', autocapitalize:'off', spellcheck:'false', placeholder:'Long-lived access token',
     'aria-invalid': haUi.tokErr ? 'true' : 'false', 'aria-describedby': haUi.tokErr ? 'haTokErr' : null, oninput: e => { haUi.token = e.target.value; },
     onkeydown: e => { if (e.key === 'Enter'){ e.preventDefault(); haConnect(); } }});
   panel.append(h('section', {class:'card-box'},
     h('span', {class:'mono'}, '2 · Let Hasler in'),
-    h('div', {class:'field'}, h('label', {for:'haTok'}, 'Access token'), tok, haUi.tokErr ? h('p', {class:'err', id:'haTokErr', role:'alert'}, haUi.tokErr) : null),
+    h('div', {class:'field'}, h('div', {class:'sub-lbl'}, h('label', {for:'haTok'}, 'Access token'),
+        h('button', {type:'button', class:'li-act', id:'haTokShow', style:'min-height:24px', 'aria-pressed': String(!!haUi.showTok), 'aria-controls':'haTok',
+          onclick: () => { haUi.showTok = !haUi.showTok; const i = $('haTok'); if (i) i.type = haUi.showTok ? 'text' : 'password'; $('haTokShow').textContent = haUi.showTok ? 'Hide' : 'Show'; $('haTokShow').setAttribute('aria-pressed', String(!!haUi.showTok)); }},
+          haUi.showTok ? 'Hide' : 'Show')),
+      tok, haUi.tokErr ? h('p', {class:'err', id:'haTokErr', role:'alert'}, haUi.tokErr) : null),
     h('details', {class:'how'}, h('summary', null, 'How do I get a token?'),
       h('ol', {class:'steps', style:'margin-top:8px'},
         h('li', null, 'Open Home Assistant and click ', h('b', null, 'your profile'), ' (bottom-left).'),
@@ -9252,7 +9614,9 @@ async function haConnect(){
   const f = $(haUi.tokErr ? 'haTok' : 'haUrl'); if (f) f.focus();
 }
 async function haDisconnect(){
-  if (!confirm('Disconnect Home Assistant? Keys that use it will do nothing until you connect again.')) return;
+  const ks = haKeys();
+  const ok = await ask({title:'Disconnect Home Assistant?', sub:(ks.length ? keysAnd(ks) + (ks.length === 1 ? ' does' : ' do') + ' nothing' : 'Keys that use it do nothing') + ' until you connect again. The token is forgotten.', ok:'Disconnect', cancel:'Stay connected', danger:true});
+  if (!ok) return;
   try {
     const r = await api('DELETE', '/api/ha');
     if (r.ok){ haState = r.json && typeof r.json === 'object' && 'connected' in r.json ? r.json : {configured:false, connected:false}; haEnts = null; toast('Disconnected'); refreshHa(); }
@@ -9276,7 +9640,7 @@ function haConnected(panel){
     haMovedLine(haState.moved),
     haState.lost ? h('p', {class:'err'}, haState.lost) : null,
     h('label', {class:'switch', for:'haPub'}, h('span', null, 'Show the radio in Home Assistant', h('br'), h('small', {class:'li-sub'}, 'What’s playing, as sensor.hasler_radio')),
-      h('input', {type:'checkbox', role:'switch', id:'haPub', checked: !!haState.publish, onchange: e => haPublish(e.target.checked)})),
+      h('input', {type:'checkbox', role:'switch', id:'haPub', checked: !!haState.publish, onchange: e => haPublish(e.target.checked, true)})),
     h('div', {class:'hstack'}, h('button', {type:'button', class:'link', onclick: () => { haUi.editing = true; haUi.url = haState.url || ''; rerender(); const u = $('haUrl'); if (u) u.focus(); }}, 'Change address'),
       h('button', {type:'button', class:'link danger', onclick: haDisconnect}, 'Disconnect'))));
   const head = h('div', {class:'shelf-head', style:'display:flex;justify-content:space-between;align-items:end;gap:10px;margin-top:6px'},
@@ -9304,11 +9668,12 @@ function haConnected(panel){
   }
   panel.append(list);
 }
-async function haPublish(on){
+// Applies at once, with Undo (the switch is cheap to reverse).
+async function haPublish(on, undoable){
   try {
     const r = await api('PATCH', '/api/ha', {publish:on});
-    if (r.ok && r.json){ haState = Object.assign(haState || {}, r.json); toast(on ? 'Sharing what’s playing with Home Assistant' : 'Stopped sharing'); }
-    else { toast((r.json && r.json.error) || 'Couldn’t change that.', true); rerender(); }
+    if (r.ok && r.json){ haState = Object.assign(haState || {}, r.json); toast(on ? 'Sharing what’s playing with Home Assistant' : 'Stopped sharing', undoable ? {undo: () => { haPublish(!on, false); const b = $('haPub'); if (b) b.checked = !on; }} : null); }
+    else { failToast(r, 'Couldn’t change that', () => haPublish(on, undoable)); rerender(); }
   } catch (_) { toast(NET_ERR, true); rerender(); }
 }
 async function haTry(verb, e, btn){
@@ -9527,9 +9892,9 @@ onRoute();
 poll().then(schedule);
 loadConfig();
 loadAccount();
-loadSoftware();
 loadSettings().then(() => { if (view === 'settings') rerender(); if (settings && settings.volume_limit != null){ K.limit = +settings.volume_limit; paintKnob(); } });
 refreshHa();
+setTimeout(loadAttention, 1500);     // after the first paint: what the gear's dot needs
 loadGroup().then(() => { paintGroup(); watchGroup(); grpSchedule(); if (view === 'settings' && grp && !grp.missing) rerender(); });
 })();
 </script>

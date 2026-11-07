@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Settings -> Pilot lamp for the owner: what the lamp means with Show me, brightness
 // with Undo, key replies, the night choices (the place only for By the sun, the Save
-// bar only for a new place), Identify on This radio, and the front page's
+// bar only for a new place), Identify on Rooms, and the front page's
 // "Lamp: asleep" line. Runs the page against the fake radio (haslerd --fake, with
 // HASLER_FAKE_LAMP=1: a lamp engine that draws to nowhere) in Chrome.
 //
@@ -108,6 +108,11 @@ async function until(fn, ms, what){
 
       await check(name + ': the meanings list v2, grouped, with rhythms and Show me where the lamp knows it', async () => {
         await page.goto(radio.base + '/#settings/lamp');
+        // The glossary is folded under "What the lamp means" (1.5.0); Now: and Show me everything stay out.
+        await until(() => page.isVisible('#lampMeansBox'), 5000, 'the folded meanings');
+        assert(await page.isVisible('#lampNow') && await page.isVisible('#lampTourBtn'), 'Now: or Show me everything folded away');
+        assert(!(await page.isVisible('#lampMeans')), 'the glossary open by default');
+        await page.click('#lampMeansBox summary');
         await until(() => page.isVisible('#lampMeans'), 5000, 'the meanings');
         const rows = await page.$$eval('#lampMeans [data-mean]', els => els.map(e => e.dataset.mean));
         assert(rows.join() === 'playing,ready,asleep,phone,starting,pairing,busy,heard,ok,no,asking,setup,hello,no_internet,fault,dark', 'rows: ' + rows.join());
@@ -198,7 +203,7 @@ async function until(fn, ms, what){
         await until(() => page.isVisible('#lampName'), 5000, 'the place');
         assert(!(await page.$('#sec-place')), 'a separate "Where the radio stands" section');
         const heads = await page.$$eval('#panel h3', hs => hs.map(x => x.textContent.trim().toLowerCase()));
-        assert(heads.join() === 'what the lamp means,brightness,geek mode,at night', 'headings: ' + heads.join());
+        assert(heads.join() === 'brightness,at night,what the lamp means,geek mode', 'headings: ' + heads.join());
         await page.click('#sec-night .seg button:has-text("Never")');
         await until(async () => !(await page.isVisible('#lampName')), 3000, 'the place to hide for Never');
         await page.click('.toast-undo');
@@ -227,14 +232,14 @@ async function until(fn, ms, what){
         await page.evaluate(() => localStorage.removeItem('hasler.maker'));
       });
 
-      await check(name + ': Identify this radio posts identify', async () => {
+      await check(name + ': Identify this radio (on Rooms since 1.5.0) posts identify', async () => {
         posts.length = 0;
-        await page.goto(radio.base + '/#settings/radio');
+        await page.goto(radio.base + '/#settings/rooms');
         await until(() => page.isVisible('#identSelf'), 5000, 'Identify');
         await page.click('#identSelf');
         await until(() => posts.some(p => p[0] === '/api/lamp/identify'), 3000, 'the identify post');
         await until(async () => /Look for the lamp/.test(await page.textContent('#toast')), 3000, 'the toast');
-        await shot(page, name + '-this-radio');
+        await shot(page, name + '-rooms');
       });
 
       if (name === 'phone') await check('the key card has the lamp legend (this lamp speaks v2), not for a v1 lamp', async () => {
