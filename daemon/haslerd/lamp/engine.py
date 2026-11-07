@@ -68,7 +68,9 @@ COUNTDOWN_RESTORE_S = 0.4       # knob back on: snap back to the Look
 
 # -- the behaviours (docs/lamp.md "Behaviours") ---------------------------------
 
-KICK_GAIN, KICK_MIN = 1.4, 0.5  # to +40 % of the level, at least 50 % absolute ...
+KICK_GAIN, KICK_MIN = 1.4, 0.5
+# At night the kick's absolute floor is lower: a 50 % flash is glaring in a dark bedroom.
+KICK_MIN_NIGHT = 0.30  # to +40 % of the level, at least 50 % absolute ...
 KICK_ATTACK_S = 0.03            # ... in 30 ms ...
 KICK_DECAY_S = 0.35             # ... then the filament cools, exponentially
 KICK_K = 4.0
@@ -204,8 +206,8 @@ def kick_len(decay_s: float = KICK_DECAY_S) -> float:
     return KICK_ATTACK_S + decay_s
 
 
-def kick_peak(level: float) -> float:
-    return min(1.0, max(level * KICK_GAIN, KICK_MIN))
+def kick_peak(level: float, night: bool = False) -> float:
+    return min(1.0, max(level * KICK_GAIN, KICK_MIN_NIGHT if night else KICK_MIN))
 
 
 def sag_shape(t: float, times: int = 1) -> float:
@@ -414,6 +416,22 @@ class LampEngine:
             self.base_palette = dict(self.palette)
             self.base_palette_night = dict(self.palette_night)
             self._wake()
+
+    def set_calibration(self, cal: dict | None) -> None:
+        """The Lamp check's name for ``calibrate`` (web/lamp_check.py)."""
+        self.calibrate(cal)
+
+    def calibration_defaults(self) -> dict:
+        """The uncalibrated values in the Lamp check's contract shape."""
+        pal = {n: list(DEFAULT_PALETTE[n]) for n in HUES}
+        return {
+            "min_duty": dict(zip(CHANNELS, DEFAULT_MIN_DUTY)),
+            "balance": {c: 1.0 for c in CHANNELS},
+            "palette": {"amber": {"day": pal["amber"], "night": list(pal["amber"])},
+                        "ember": pal["ember"], "blue": pal["blue"]},
+            "level_gain": {n: 1.0 for n in HUES},
+            "levels": {"ember_day": EMBER_LEVEL, "ember_night": EMBER_NIGHT},
+        }
 
     def calibration(self) -> dict:
         """The calibration in force, in io.lamp's shape (for the calibration page)."""
@@ -984,7 +1002,7 @@ class LampEngine:
         return KICK_DECAY_S * (NIGHT_SLOW if self._night else 1.0)
 
     def _beckon_level(self, level: float, k: float) -> float:
-        top = kick_peak(level)
+        top = kick_peak(level)          # beckon must stay visible: halved at night, not floored lower
         if self._night:
             top = level + (top - level) * NIGHT_BECKON
         return level + (top - level) * k
@@ -1035,7 +1053,7 @@ class LampEngine:
             if start <= LIT or base.level <= LIT:
                 return base         # nothing to kick: the lamp is dark
             k = kick_shape(t + KICK_LEAD_S, KICK_DECAY_S * self._reply_slow)
-            return Frame(base.w, min(1.0, base.level + (kick_peak(start) - start) * k), base.env)
+            return Frame(base.w, min(1.0, base.level + (kick_peak(start, self._night) - start) * k), base.env)
         if name in ("refuse", "refuse1", "refuse3"):
             f = sag_shape(t, REFUSE_TIMES[name])
             # The colour is judged at the sagged level: deep in a sag amber

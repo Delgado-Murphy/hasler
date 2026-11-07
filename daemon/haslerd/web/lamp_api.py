@@ -43,7 +43,8 @@ def _palette_rgb(lamp: Any, colour: str) -> Any:
     if isinstance(palette, dict) and colour in palette:
         return palette[colour]
     from ..lamp import engine as lamp_engine
-    return lamp_engine.DEFAULT_PALETTE.get(colour, (1.0, 0.15, 0.0))
+    # Colours the palette no longer has (the old warm white) show as amber.
+    return lamp_engine.DEFAULT_PALETTE.get(colour) or lamp_engine.DEFAULT_PALETTE["amber"]
 
 
 def preview_named(lamp: Any, body: dict) -> dict:

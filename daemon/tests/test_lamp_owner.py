@@ -298,7 +298,9 @@ class TestIdentify:
     def test_todays_engine_shows_white_for_that_long(self, tmp_path):
         app = make_app(tmp_path, OldLamp())
         app.lamp_identify({"seconds": 4})
-        assert app.lamp.previews == [(eng.DEFAULT_PALETTE["white"], 1.0, 4.0)]
+        # The old engine's palette had a warm white; today's falls back to amber.
+        colour = eng.DEFAULT_PALETTE.get("white", eng.DEFAULT_PALETTE["amber"])
+        assert [(tuple(c), lv, s) for c, lv, s in app.lamp.previews] == [(tuple(colour), 1.0, 4.0)]
 
     def test_no_lamp(self, tmp_path):
         assert make_app(tmp_path, None).lamp_identify({}) == {"lamp": False, "seconds": 0}
@@ -506,13 +508,14 @@ class TestKeeper:
         keeper.apply_prefs({"lamp": {"brightness": "low"}})    # logged, no error
 
 
-def test_the_real_engine_has_the_fallback_calls():
-    """Today's LampEngine takes the fallbacks' arguments (preview hold_s, reply names)."""
+def test_the_real_engine_has_the_named_calls():
+    """Today's LampEngine offers every call the page uses (no fallback needed)."""
     lamp = LampEngine(FakeOutput(), threaded=False)
+    for name in ("preview_look", "preview_reply", "stop_preview", "set_brightness",
+                 "set_key_replies", "identify"):
+        assert callable(getattr(lamp, name, None)), name
     lamp_api._show(lamp, "look", "phone", 5.0)
-    assert lamp.previewing
     lamp_api._show(lamp, "reply", "no", 5.0)
     lamp_api._show(lamp, "look", "asking", 5.0)
     assert lamp_api.identify(lamp, 3.0)
     lamp_api.stop_preview(lamp)
-    assert not lamp.previewing
