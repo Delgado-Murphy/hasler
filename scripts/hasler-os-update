@@ -29,7 +29,10 @@ way back. In short:
   can't go alone is held back and reported.
 * Before: a ``dpkg-query -W`` snapshot (``pre-<date>.list``) and a .deb of
   every version about to be replaced, rebuilt from the installed files (as
-  dpkg-repack does) unless apt's cache still has it. Units of those packages
+  dpkg-repack does) unless apt's cache still has it - a path the package has
+  files below is a directory in the .deb even where merged /usr has a symlink
+  (``/lib``). A package whose version can't be saved is held back for the
+  night, with whatever needs it, and the rest goes ahead. Units of those packages
   that are not running are masked for the install (``--runtime``: gone at the
   next boot anyway) so a postinst can't start what must stay off.
 * ``apt-get install --only-upgrade`` of exactly that set; confold; never a
@@ -51,18 +54,20 @@ Stdlib only, run as root. HASLER_ROOT prefixes every path (tests).
 from __future__ import annotations
 
 import argparse
+import errno
 import fcntl
 import fnmatch
 import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 EX_DEFERRED = 75
 WINDOW = (2, 5)                     # local hours, as the updater's apply
@@ -147,6 +152,47 @@ def read_json(path: Path, default=None):
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return default
+
+
+def clear(path: Path) -> None:
+    """Nothing at ``path`` afterwards: a file or symlink is unlinked (never
+    followed), a directory removed with what is in it."""
+    try:
+        st = os.lstat(path)
+    except FileNotFoundError:
+        return
+    if stat.S_ISDIR(st.st_mode):
+        shutil.rmtree(path)
+    else:
+        os.unlink(path)
+
+
+def fresh_dir(path: Path, mode: int = 0o755) -> None:
+    """An empty real directory at ``path``, whatever was there before."""
+    clear(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.mkdir(path, mode)
+    os.chmod(path, mode)
+
+
+def real_dir(top: Path, d: Path, mode: int | None = None) -> None:
+    """``d`` and every directory between ``top`` and it as real directories.
+    Whatever stands in the way - a symlink, a file - is replaced, so nothing
+    is ever written through a link: on merged /usr, ``/lib`` is a symlink to
+    ``usr/lib`` and a copy of it in a build tree dangles (2026-11-11)."""
+    cur = top
+    for part in d.relative_to(top).parts:
+        cur = cur / part
+        try:
+            st = os.lstat(cur)
+        except FileNotFoundError:
+            os.mkdir(cur, 0o755)
+            continue
+        if not stat.S_ISDIR(st.st_mode):
+            os.unlink(cur)
+            os.mkdir(cur, 0o755)
+    if mode is not None:
+        os.chmod(d, mode)
 
 
 # Debian version comparison (deb-version(7)), so the candidate set needs no
@@ -511,8 +557,8 @@ class Box:
     def repack(self, name: str, version: str, arch: str, dest: Path) -> Path:
         q = name if arch == "all" else f"{name}:{arch}"
         tree = dest.parent / f".tree-{name}"
-        shutil.rmtree(tree, ignore_errors=True)
-        (tree / "DEBIAN").mkdir(parents=True)
+        fresh_dir(tree)                    # a leftover from a killed run, even a file or a link
+        real_dir(tree, tree / "DEBIAN")
         try:
             status = self.run(["dpkg-query", "-s", q], timeout=60, check=True).stdout
             if f"\nVersion: {version}\n" not in "\n" + status:
@@ -525,10 +571,14 @@ class Box:
                     control.append(line)
             (tree / "DEBIAN" / "control").write_text("\n".join(control) + "\n")
             diverted = self._diversions(name)
-            files = self.run(["dpkg-query", "-L", q], timeout=60, check=True).stdout.splitlines()
+            files = [p for p in self.run(["dpkg-query", "-L", q], timeout=60, check=True).stdout.splitlines()
+                     if p.startswith("/") and p != "/."]
+            # A path the package has files below is a directory in the package,
+            # whatever the disk has there: on merged /usr, /lib is a symlink to
+            # usr/lib, while Tailscale's package still ships /lib/systemd/system/
+            # (dpkg keeps the disk's symlink when the .deb goes back in).
+            dirs = {str(PurePosixPath(p).parent) for p in files}
             for path in files:
-                if not path.startswith("/") or path == "/.":
-                    continue
                 real = diverted.get(path, path)
                 src = self.p(real)
                 dst = tree / path.lstrip("/")
@@ -536,13 +586,21 @@ class Box:
                     st = os.lstat(src)
                 except OSError:
                     continue
-                dst.parent.mkdir(parents=True, exist_ok=True)
-                if os.path.islink(src):
+                if path in dirs:
+                    try:
+                        st = os.stat(src)
+                    except OSError:
+                        pass
+                    real_dir(tree, dst, st.st_mode & 0o7777 if stat.S_ISDIR(st.st_mode) else 0o755)
+                elif stat.S_ISLNK(st.st_mode):
+                    real_dir(tree, dst.parent)
+                    clear(dst)
                     os.symlink(os.readlink(src), dst)
-                elif src.is_dir():
-                    dst.mkdir(exist_ok=True)
-                    os.chmod(dst, st.st_mode & 0o7777)
-                elif src.is_file():
+                elif stat.S_ISDIR(st.st_mode):
+                    real_dir(tree, dst, st.st_mode & 0o7777)
+                elif stat.S_ISREG(st.st_mode):
+                    real_dir(tree, dst.parent)
+                    clear(dst)                 # never write through a link left there
                     shutil.copy2(src, dst)
                 else:
                     continue
@@ -567,10 +625,14 @@ class Box:
                 if (tree / "DEBIAN" / cf).exists():
                     os.chmod(tree / "DEBIAN" / cf, 0o755)
             os.chmod(tree / "DEBIAN", 0o755)
+            clear(dest)
             self.run(["dpkg-deb", "--nocheck", "-Zgzip", "-z1", "--build", str(tree), str(dest)],
                      timeout=900, check=True)
         finally:
-            shutil.rmtree(tree, ignore_errors=True)
+            try:
+                clear(tree)
+            except OSError:
+                pass
         return dest
 
     def _diversions(self, name: str) -> dict[str, str]:
@@ -692,6 +754,14 @@ class AlreadyDone(Deferred):
     pass
 
 
+class CannotKeep(Exception):
+    """The installed version of one package could not be saved to go back to."""
+
+    def __init__(self, change: dict, why: Exception) -> None:
+        super().__init__(f"{change['name']} {change['old']}: {why}")
+        self.change, self.why = change, why
+
+
 def tail(cp: subprocess.CompletedProcess, n: int = 3) -> str:
     lines = [ln for ln in ((cp.stderr or "") + "\n" + (cp.stdout or "")).splitlines() if ln.strip()]
     errs = [ln for ln in lines if ln.startswith(("E:", "Err", "dpkg:", "W:"))]
@@ -772,9 +842,11 @@ class Lane:
 
     # -- planning ----------------------------------------------------------------------------
 
-    def plan(self) -> tuple[list[dict], list[str], list[str]]:
-        """(changes [{name, arch, old, new}], requested names, held back ["name (why)"])."""
+    def plan(self, skip: dict[str, str] | None = None) -> tuple[list[dict], list[str], list[str]]:
+        """(changes [{name, arch, old, new}], requested names, held back ["name (why)"]).
+        ``skip``: {name: why} kept out tonight (an old version that couldn't be saved)."""
         b = self.box
+        skip = skip or {}
         inst, avail = b.installed(), b.available()
         holds = b.holds()
         bad = set(self.st.get("bad") or [])
@@ -793,6 +865,8 @@ class Lane:
                 why = "Raspberry Pi / moOde build"
             elif f"{name}={new}" in bad:
                 why = "failed here before"
+            elif name in skip:
+                why = skip[name]
             if why:
                 held.append(f"{name} ({why})")
             else:
@@ -811,7 +885,7 @@ class Lane:
                 arch = next((a for (n, a) in inst if n == c["name"]), None)
                 old = inst.get((c["name"], arch)) if arch else None
                 if c["name"] in holds or denied(c["name"]) or (old and FOREIGN_VERSION.search(old)) \
-                        or f"{c['name']}={c['new']}" in bad:
+                        or f"{c['name']}={c['new']}" in bad or c["name"] in skip:
                     return False, [], f"would also change {c['name']}"
             return True, changes, ""
 
@@ -908,16 +982,28 @@ class Lane:
         write_atomic(b.state / f"pre-{stamp}.list", b.snapshot().encode(), 0o644)
         for old in sorted(b.state.glob("pre-*.list"))[:-KEEP_SNAPSHOTS]:
             old.unlink(missing_ok=True)
-        shutil.rmtree(b.saved, ignore_errors=True)
-        b.saved.mkdir(parents=True, mode=0o700)     # copies of conffiles: root only
-        os.chmod(b.saved, 0o700)
-        saved = []
-        for c in changes:
-            if c["old"]:
-                try:
-                    saved.append(str(b.save_deb(c["name"], c["old"], c["arch"], b.saved)))
-                except (OSError, OSUpdateError) as e:
-                    raise OSUpdateError(f"could not keep {c['name']} {c['old']} to go back to: {e}")
+        fresh_dir(b.saved, 0o700)     # copies of conffiles: root only
+        # Every replaced version is saved first. One that can't be (a package
+        # laid out in a way the repack doesn't know) stays out tonight, with
+        # whatever needs it, instead of holding back every other fix.
+        skip: dict[str, str] = {}
+        kept: dict[tuple[str, str], str] = {}
+        while True:
+            try:
+                saved = self._keep(changes, kept)
+                break
+            except CannotKeep as e:
+                if isinstance(e.why, OSError) and e.why.errno in (errno.ENOSPC, errno.EDQUOT, errno.EROFS):
+                    raise OSUpdateError(f"could not keep {e}") from None
+                c = e.change
+                skip[c["name"]] = f"could not keep {c['old']} to go back to: {e.why}"[:240]
+                self.event("kept-out", package=c["name"], reason=skip[c["name"]])
+                changes, names, held = self.plan(skip)
+                self.st["held_back"] = held
+                if not changes:
+                    b.apt_clean()
+                    self.result("none", "nothing to install", night=True, upgraded=[])
+                    return 0
         write_atomic(b.saved / "plan.json", json.dumps({"at": iso(b.now()), "changes": changes,
                                                           "debs": saved}, indent=2).encode(), 0o644)
         b.busy(True)
@@ -938,6 +1024,17 @@ class Lane:
         if ok:
             return self._done(changes)
         return self._back(changes, saved, baseline, why)
+
+    def _keep(self, changes: list[dict], kept: dict[tuple[str, str], str]) -> list[str]:
+        """A .deb of every version about to be replaced; ``kept`` remembers them across re-plans."""
+        b = self.box
+        for c in changes:
+            if c["old"] and (c["name"], c["old"]) not in kept:
+                try:
+                    kept[(c["name"], c["old"])] = str(b.save_deb(c["name"], c["old"], c["arch"], b.saved))
+                except (OSError, OSUpdateError) as e:
+                    raise CannotKeep(c, e) from None
+        return [kept[(c["name"], c["old"])] for c in changes if c["old"]]
 
     def _done(self, changes: list[dict]) -> int:
         b = self.box

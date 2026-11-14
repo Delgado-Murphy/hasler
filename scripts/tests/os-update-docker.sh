@@ -164,4 +164,43 @@ mkdir -p /etc/hasler; printf 'schema: 1\nos_updates: off\n' > /etc/hasler/box.ya
 run --now
 st 'last_result' | grep -qx off || fail "not off"
 
+say "9. a package with files under /lib on merged /usr (Tailscale's layout, 2026-11-11): saved and put back"
+[[ -L /lib ]] || fail "this image has no merged /usr"
+mk() {   # mk VERSION -> /tmp/mu/hasler-mu_VERSION_all.deb shipping /lib/systemd/system + /usr/bin
+  local d=/tmp/mu/pkg-$1
+  rm -rf "$d"; mkdir -p "$d/DEBIAN" "$d/lib/systemd/system" "$d/usr/bin" "$d/etc/default"
+  printf 'Package: hasler-mu\nVersion: %s\nArchitecture: all\nMaintainer: t <t@t>\nDescription: t\n' "$1" > "$d/DEBIAN/control"
+  printf '/etc/default/hasler-mu\n' > "$d/DEBIAN/conffiles"
+  printf '[Unit]\nDescription=v%s\n' "$1" > "$d/lib/systemd/system/hasler-mu.service"
+  printf '#!/bin/sh\necho %s\n' "$1" > "$d/usr/bin/hasler-mu"; chmod 755 "$d/usr/bin/hasler-mu"
+  ln -s hasler-mu "$d/usr/bin/hasler-mu-link"
+  printf 'V=%s\n' "$1" > "$d/etc/default/hasler-mu"
+  dpkg-deb -Zgzip --build "$d" "/tmp/mu/hasler-mu_$1_all.deb" >/dev/null
+}
+mkdir -p /tmp/mu; mk 1.0; mk 1.1
+dpkg -i /tmp/mu/hasler-mu_1.0_all.deb >/dev/null
+dpkg-query -L hasler-mu | grep -qx /lib || fail "test package doesn't list /lib"
+echo "V=1.0-local" > /etc/default/hasler-mu       # the owner's edit of a conffile
+rm -rf /tmp/mu/saved; mkdir -p /tmp/mu/saved/.tree-hasler-mu/lib   # a killed run's leftover
+python3 - <<'EOF'
+import importlib.machinery, importlib.util
+l = importlib.machinery.SourceFileLoader("u", "/usr/local/sbin/hasler-os-update")
+s = importlib.util.spec_from_loader("u", l); u = importlib.util.module_from_spec(s); l.exec_module(u)
+from pathlib import Path
+print(u.Box().save_deb("hasler-mu", "1.0", "all", Path("/tmp/mu/saved")))
+EOF
+dpkg-deb -c /tmp/mu/saved/hasler-mu_1.0_all.deb
+dpkg-deb -c /tmp/mu/saved/hasler-mu_1.0_all.deb | grep -q '^d.* \./lib/$' || fail "/lib is not a directory in the saved .deb"
+dpkg-deb -c /tmp/mu/saved/hasler-mu_1.0_all.deb | grep -q '\./lib/systemd/system/hasler-mu.service$' || fail "unit missing"
+dpkg-deb -c /tmp/mu/saved/hasler-mu_1.0_all.deb | grep -q '\./usr/bin/hasler-mu-link -> hasler-mu$' || fail "package symlink lost"
+dpkg --force-confold -i /tmp/mu/hasler-mu_1.1_all.deb >/dev/null    # as the lane: confold
+[[ "$(ver hasler-mu)" == 1.1 ]] || fail "1.1 not installed"
+dpkg --force-confnew --force-downgrade -i /tmp/mu/saved/hasler-mu_1.0_all.deb >/dev/null
+[[ "$(ver hasler-mu)" == 1.0 ]] || fail "saved 1.0 not put back"
+grep -q 'v1.0' /lib/systemd/system/hasler-mu.service || fail "unit not back at 1.0"
+[[ "$(cat /etc/default/hasler-mu)" == "V=1.0-local" ]] || fail "conffile not the one that was on disk"
+[[ -L /lib && "$(readlink /lib)" == usr/lib ]] || fail "/lib is no longer the merged-/usr symlink"
+dpkg --audit | grep . && fail "dpkg left something half-done"
+dpkg -P hasler-mu >/dev/null
+
 say "ALL PASSED"

@@ -379,6 +379,208 @@ def test_an_interrupted_run_is_finished_first(box):
     assert events(box)[0]["event"] == "interrupted-run-finished"
 
 
+# --- keeping the old versions ---------------------------------------------------------------
+
+
+def _cannot_keep(box, failing: dict[str, Exception]):
+    real = box.save_deb
+
+    def save_deb(name, version, arch, out):
+        if name in failing:
+            raise failing[name]
+        return real(name, version, arch, out)
+    box.save_deb = save_deb
+
+
+def test_a_version_that_cannot_be_kept_is_held_back_and_the_rest_goes_in(box):
+    """2026-11-11: Tailscale's old version couldn't be saved, and that one
+    package held back every Debian fix on the radio, night after night."""
+    _cannot_keep(box, {"libfoo1": U.OSUpdateError("dpkg-deb failed")})
+    rc, st = run(box)
+    assert rc == 0 and st["last_result"] == "ok"
+    assert box.inst[("libfoo1", "arm64")] == "1.0-1"
+    assert box.inst[("openssl", "arm64")] == "3.5.1-1+deb13u1"
+    assert names(box, "install")[-1] == ("install", ("libssl3t64", "openssl"))
+    assert "libfoo1 (could not keep 1.0-1 to go back to: dpkg-deb failed)" in st["held_back"]
+    assert "python3.13 (held)" in st["held_back"], "the other reasons are still listed"
+    plan = json.loads((box.saved / "plan.json").read_text())
+    assert [c["name"] for c in plan["changes"]] == ["libssl3t64", "openssl"]
+    assert [e["event"] for e in events(box)] == ["kept-out", "upgrading", "upgraded"]
+
+
+def test_what_needs_a_kept_out_package_stays_out_too(box):
+    _cannot_keep(box, {"libssl3t64": OSError(17, "File exists")})
+    rc, st = run(box)
+    assert rc == 0 and box.inst[("openssl", "arm64")] == "3.5.1-1"
+    assert box.inst[("libfoo1", "arm64")] == "1.0-1+deb13u1"
+    held = " ".join(st["held_back"])
+    assert "libssl3t64 (could not keep 3.5.1-1" in held and "openssl (would also change libssl3t64" in held
+
+
+def test_nothing_left_to_install_is_a_quiet_night(box):
+    _cannot_keep(box, {n: U.OSUpdateError("x") for n in ("libfoo1", "libssl3t64", "openssl")})
+    rc, st = run(box)
+    assert rc == 0 and st["last_result"] == "none" and not names(box, "install")
+    assert st["last_night"] == U.night_key(T0) and len([h for h in st["held_back"] if "could not keep" in h]) >= 2
+
+
+def test_a_full_disk_is_still_an_error(box):
+    import errno
+
+    _cannot_keep(box, {"libfoo1": OSError(errno.ENOSPC, "No space left on device")})
+    rc, st = run(box)
+    assert rc == 1 and st["last_result"] == "error" and not names(box, "install")
+    assert "No space left" in st["reason"]
+
+
+def test_a_link_where_the_rollback_folder_goes_is_replaced(box, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("x")
+    box.state.mkdir(parents=True)
+    box.saved.symlink_to(outside)
+    rc, st = run(box)
+    assert rc == 0 and st["last_result"] == "ok"
+    assert box.saved.is_dir() and not box.saved.is_symlink()
+    assert box.saved.stat().st_mode & 0o777 == 0o700
+    assert sorted(p.name for p in outside.iterdir()) == ["keep.txt"], "nothing written through the link"
+
+
+# --- the repack (dpkg-repack's way) on merged /usr ---------------------------------------------
+
+
+TS_FILES = """/.
+/etc
+/etc/default
+/etc/default/tailscaled
+/lib
+/lib/systemd
+/lib/systemd/system
+/lib/systemd/system/tailscale-online.target
+/lib/systemd/system/tailscale-wait-online.service
+/lib/systemd/system/tailscaled.service
+/usr
+/usr/bin
+/usr/bin/tailscale
+/usr/bin/ts
+/usr/sbin
+/usr/sbin/tailscaled
+"""
+
+
+class RepackBox(U.Box):
+    """dpkg-query / dpkg-deb answered from a fake merged-/usr root (the radio's
+    tailscale 1.104.2 file list, 2026-11-14); dpkg-deb --build records the tree."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(str(root))
+        self.built: dict[str, tuple[str, str]] = {}
+        for d in ("etc/default", "usr/lib/systemd/system", "usr/bin", "usr/sbin", "var/lib/dpkg/info"):
+            (root / d).mkdir(parents=True, exist_ok=True)
+        for d in ("lib", "bin", "sbin"):
+            (root / d).symlink_to(f"usr/{d}")              # merged /usr, relative like Debian's
+        (root / "etc/default/tailscaled").write_text("PORT=41641\n")
+        for unit in ("tailscale-online.target", "tailscale-wait-online.service", "tailscaled.service"):
+            (root / "usr/lib/systemd/system" / unit).write_text(f"[Unit]\n# {unit}\n")
+        (root / "usr/bin/tailscale").write_bytes(b"\x7fELF tailscale")
+        (root / "usr/bin/ts").symlink_to("tailscale")       # a real symlink of the package
+        (root / "usr/sbin/tailscaled").write_bytes(b"\x7fELF tailscaled")
+        (root / "var/lib/dpkg/info/tailscale.postinst").write_text("#!/bin/sh\nexit 0\n")
+        (root / "var/lib/dpkg/info/tailscale.conffiles").write_text("/etc/default/tailscaled\n")
+
+    def run(self, argv, timeout=1800, check=False):
+        import subprocess
+
+        out = ""
+        if argv[:2] == ["dpkg-query", "-s"]:
+            out = ("Package: tailscale\nStatus: install ok installed\nPriority: extra\nArchitecture: arm64\n"
+                   "Version: 1.104.2\nConffiles:\n /etc/default/tailscaled abc\nDescription: x\n")
+        elif argv[:2] == ["dpkg-query", "-L"]:
+            out = TS_FILES
+        elif argv[:2] == ["dpkg-query", "--control-list"]:
+            out = "postinst\nconffiles\n"
+        elif argv[:2] == ["dpkg-query", "--control-path"]:
+            out = f"/var/lib/dpkg/info/tailscale.{argv[3]}\n"
+        elif argv[:1] == ["dpkg-deb"] and "--build" in argv:
+            tree, dest = Path(argv[-2]), Path(argv[-1])
+            for p in sorted(tree.rglob("*")):
+                rel = str(p.relative_to(tree))
+                if p.is_symlink():
+                    self.built[rel] = ("link", os.readlink(p))
+                elif p.is_dir():
+                    self.built[rel] = ("dir", "")
+                else:
+                    self.built[rel] = ("file", p.read_text(errors="replace"))
+            dest.write_bytes(b"!<arch>\n")
+        return subprocess.CompletedProcess(argv, 0, out, "")
+
+
+@pytest.fixture
+def rbox(tmp_path):
+    return RepackBox(tmp_path / "root")
+
+
+def test_repack_keeps_lib_a_directory_on_merged_usr(rbox, tmp_path):
+    """The night of 2026-11-11: [Errno 17] File exists: '.../.tree-tailscale/lib'."""
+    out = tmp_path / "rollback"
+    out.mkdir()
+    deb = rbox.save_deb("tailscale", "1.104.2", "arm64", out)
+    assert deb == out / "tailscale_1.104.2_arm64.deb" and deb.is_file()
+    b = rbox.built
+    assert b["lib"] == ("dir", "") and b["lib/systemd/system"] == ("dir", "")
+    assert b["lib/systemd/system/tailscaled.service"] == ("file", "[Unit]\n# tailscaled.service\n")
+    assert b["usr/bin/tailscale"][0] == "file" and b["usr/bin/ts"] == ("link", "tailscale")
+    assert "usr/lib" not in b, "nothing lands under usr/lib through the disk's /lib link"
+    assert b["DEBIAN/conffiles"] == ("file", "/etc/default/tailscaled\n")
+    assert "Status:" not in b["DEBIAN/control"][1] and "Version: 1.104.2" in b["DEBIAN/control"][1]
+    assert not (out / ".tree-tailscale").exists()
+
+
+@pytest.mark.parametrize("leftover", ["dir", "file", "link"])
+def test_repack_over_whatever_a_killed_run_left(rbox, tmp_path, leftover):
+    out = tmp_path / "rollback"
+    out.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    tree = out / ".tree-tailscale"
+    if leftover == "dir":
+        (tree / "lib").mkdir(parents=True)
+        (tree / "usr").symlink_to(outside)          # a stale link inside the old tree, too
+    elif leftover == "file":
+        tree.write_text("junk")
+    else:
+        tree.symlink_to(outside)
+    (out / "tailscale_1.104.2_arm64.deb").symlink_to(outside / "deb")
+    rbox.save_deb("tailscale", "1.104.2", "arm64", out)
+    assert rbox.built["usr/sbin/tailscaled"][0] == "file"
+    assert list(outside.iterdir()) == [], "nothing written through a leftover link"
+    assert not (out / "tailscale_1.104.2_arm64.deb").is_symlink()
+    assert not os.path.lexists(tree)
+
+
+def test_repack_twice_in_a_row(rbox, tmp_path):
+    out = tmp_path / "rollback"
+    out.mkdir()
+    rbox.save_deb("tailscale", "1.104.2", "arm64", out)
+    first = dict(rbox.built)
+    rbox.built.clear()
+    rbox.save_deb("tailscale", "1.104.2", "arm64", out)
+    assert rbox.built == first
+
+
+def test_real_dir_never_follows_a_link(tmp_path):
+    top, outside = tmp_path / "top", tmp_path / "outside"
+    top.mkdir()
+    outside.mkdir()
+    (top / "a").symlink_to(outside)
+    (top / "f").write_text("x")
+    U.real_dir(top, top / "a" / "b" / "c")
+    U.real_dir(top, top / "f" / "g", 0o750)
+    assert (top / "a").is_dir() and not (top / "a").is_symlink() and (top / "a/b/c").is_dir()
+    assert (top / "f/g").is_dir() and (top / "f/g").stat().st_mode & 0o777 == 0o750
+    assert list(outside.iterdir()) == []
+
+
 # --- pieces ---------------------------------------------------------------------------------
 
 

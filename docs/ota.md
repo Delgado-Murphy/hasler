@@ -586,7 +586,12 @@ package that can't go alone is held back and listed in `held_back`.
 **How.** `pre-<date>.list` (`dpkg-query -W`, the last 10 kept); a .deb of
 every version about to be replaced, from apt's cache or rebuilt from the
 installed files the way dpkg-repack does (`/var/lib/hasler-os/rollback/`,
-root only, kept until the next run); download first, then `apt-get install
+root only, kept until the next run). A path a package has files below goes in
+as a directory even where merged /usr has a symlink (`/lib` -> `usr/lib`:
+Tailscale still ships `/lib/systemd/system/`; 2026-11-11 the copied link made
+every night fail). A version that can't be saved keeps that package, and
+whatever needs it, out for the night (`held_back`: "could not keep ..."); the
+rest goes ahead. Download first, then `apt-get install
 --only-upgrade` of exactly the set, confold, no recommends. Never a
 dist-upgrade, never a reboot. Units of those packages that aren't running are
 masked `--runtime` for the install, so a postinst can't start what must stay
