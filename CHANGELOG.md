@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.7.6 - 2026-11-14
+
+- Security updates for the system underneath install at night again. Since
+  11 November one package (Tailscale, for remote help) had stopped them.
+- The music player and the sound processor answer only the radio itself: no
+  other device on the Wi-Fi can turn it past its volume ceiling.
+
+For makers
+- The night OS lane now saves packages that ship `/lib/...` on merged /usr,
+  and holds back one it can't save instead of stopping the whole run.
+- MPD (6600) and CamillaDSP (1234) bind 127.0.0.1 (`hasler-local-only`);
+  `/api/health` lists any still open in `exposed_controls`.
+
 ## 1.7.5 - 2026-11-07
 
 Write to the makers
