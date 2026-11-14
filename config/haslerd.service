@@ -52,6 +52,10 @@ ExecStartPost=-+/usr/bin/systemctl stop hasler-lamp-boot.service
 # The radio's own files back to its user if an older updater left them root's
 # (scripts/hasler-own-state; a no-op normally).
 ExecStartPre=-+/usr/local/sbin/hasler-own-state
+# MPD and CamillaDSP on 127.0.0.1 only (scripts/hasler-local-only; MPD's own
+# drop-in does it at every MPD start). Right after a release install, an MPD
+# that started before it is restarted - only if stopped or paused.
+ExecStartPre=-+/usr/local/sbin/hasler-local-only apply --restart-mpd
 # Between two haslerds (a restart, a crash, an update) the boot script
 # breathes on from the LED's last frame - never dark, which means unplug.
 # Not at a shutdown: haslerd left a steady ember for the halt hook.

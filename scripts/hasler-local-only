@@ -1,0 +1,294 @@
+#!/usr/bin/python3 -I
+"""MPD and CamillaDSP answer this radio only, never the network.
+
+    hasler-local-only apply [--restart-mpd]   # root: the two bind settings, idempotent
+    hasler-local-only check                   # anyone: what listens where (JSON), 1 = exposed
+
+Why (2026-11-14): moOde lets MPD listen on 0.0.0.0:6600 and CamillaDSP's
+websocket on 0.0.0.0:1234, without a password. Anyone on the Wi-Fi could set
+the volume past haslerd's ceiling - the ceiling that protects an old speaker
+(CamillaDSP's volume even goes to +50 dB). Nothing of the radio needs them
+from outside: haslerd, moOde's PHP, upmpdcli, mpd2cdspvolume, CamillaGUI's
+backend and hasler-dsp all connect on the radio itself; Home Assistant uses
+haslerd's API, multiroom uses Snapcast and haslerd's API.
+
+* MPD: ``bind_to_address "127.0.0.1"`` in /etc/mpd.conf. moOde rewrites that
+  file from its database (cfg_mpd says "any") whenever its MPD settings are
+  saved, and restarts MPD; so this runs before **every** MPD start
+  (mpd.service.d/hasler-bind-local.conf, ``ExecStartPre=-+``) and puts the
+  line back. Only top-level lines: a ``bind_to_address`` inside an
+  ``audio_output { }`` block (the httpd stream) is moOde's business. A
+  socket path (``/run/mpd/socket``) is left as it is. moOde's database is
+  never written.
+* CamillaDSP: moOde's ALSA plugin (/etc/alsa/conf.d/camilladsp.conf, put
+  there at moOde's install) starts one CamillaDSP per stream with ``-a
+  "0.0.0.0"``; that becomes ``-a "127.0.0.1"``, nothing else in the file
+  changes (moOde's own log-level switch edits the ``-v`` line). Players read
+  ALSA's config again at their next open only if alsa.conf's time changed, so
+  that is bumped (as hasler-audio-mono does); the CamillaDSP running now keeps
+  its socket until its stream closes.
+* ``--restart-mpd`` (haslerd.service, ``ExecStartPre=-+``, so right after a
+  release is installed): an MPD started before this existed still listens on
+  the network - it is restarted, but only while it is stopped or paused (its
+  state file brings the queue and position back); a playing MPD is left
+  alone and changes at its next start.
+
+Prints one JSON line. Exit 0 unless ``check`` finds something exposed: a
+failure here must never keep MPD or haslerd from starting. Stdlib only.
+HASLER_ROOT prefixes every path (tests).
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import stat
+import sys
+
+ROOT = os.environ.get("HASLER_ROOT") or "/"
+MPD_CONF = "/etc/mpd.conf"
+CDSP_CONF = "/etc/alsa/conf.d/camilladsp.conf"
+ALSA_TOP = "/usr/share/alsa/alsa.conf"
+LOCAL = "127.0.0.1"
+PORTS = {"mpd": 6600, "camilladsp": 1234}
+
+TOP_BIND = re.compile(r'^\s*bind_to_address\s+("?)([^"#\s]*)\1\s*(#.*)?$')
+CDSP_ADDR = re.compile(r'(^|\s)(-a|--address)(\s+|=)("?)([^"\s]+)\4(?=\s|$)')
+CDSP_PORT = re.compile(r'(^|\s)(-p|--port)(\s+|=)"?[0-9]+"?(?=\s|$)')
+
+
+def p(path: str) -> str:
+    return os.path.join(ROOT, path.lstrip("/"))
+
+
+# --- the two files ----------------------------------------------------------------------------
+
+
+def mpd_text(text: str) -> str:
+    """mpd.conf with exactly one top-level TCP bind, to 127.0.0.1."""
+    out, depth, done, port_at = [], 0, False, None
+    for line in text.splitlines(keepends=True):
+        bare = re.sub(r'"[^"]*"', '""', line).split("#", 1)[0]
+        if depth == 0:
+            m = TOP_BIND.match(line.rstrip("\r\n"))
+            if m and not m.group(2).startswith(("/", "@", "~")):
+                if not done:
+                    out.append(f'bind_to_address "{LOCAL}"\n')
+                    done = True
+                continue                    # a second TCP bind would fail with "address in use"
+            if port_at is None and re.match(r"^\s*port\s", bare):
+                port_at = len(out)
+        depth = max(0, depth + bare.count("{") - bare.count("}"))
+        out.append(line)
+    if not done:                            # no line at all means MPD's default: every address
+        line = f'bind_to_address "{LOCAL}"\n'
+        if port_at is not None:
+            out.insert(port_at, line)
+        else:
+            if out and not out[-1].endswith("\n"):
+                out[-1] += "\n"
+            out.append(line)
+    return "".join(out)
+
+
+def cdsp_text(text: str) -> str:
+    """camilladsp.conf with every live ``-a ADDR`` set to 127.0.0.1 (and one added
+    after ``-p`` when there is none, so nothing rests on CamillaDSP's default)."""
+    out, has_addr, port_at = [], False, None
+    for line in text.splitlines(keepends=True):
+        body = line.rstrip("\r\n")
+        if not body.lstrip().startswith("#"):
+            # keep its quoting: in ALSA's syntax --address="x" would be two words
+            body, n = CDSP_ADDR.subn(lambda m: f"{m[1]}{m[2]}{m[3]}{m[4]}{LOCAL}{m[4]}", body)
+            has_addr = has_addr or bool(n)
+            if port_at is None and CDSP_PORT.search(body):
+                port_at = len(out)
+            line = body + line[len(line.rstrip("\r\n")):]
+        out.append(line)
+    if not has_addr and port_at is not None:
+        indent = re.match(r"^(\s*)", out[port_at]).group(1)
+        if not out[port_at].endswith("\n"):
+            out[port_at] += "\n"
+        out.insert(port_at + 1, f'{indent}-a "{LOCAL}"\n')
+    return "".join(out)
+
+
+def complete(text: str, anchor: str) -> bool:
+    """Looks whole: ``anchor`` in it and every block closed. A file caught
+    half-written (moOde writes mpd.conf in place) is left alone, never cut short."""
+    bare = re.sub(r'"[^"]*"', '""', text)
+    bare = "\n".join(line.split("#", 1)[0] for line in bare.splitlines())
+    return anchor in text and bare.count("{") == bare.count("}")
+
+
+def rewrite(path: str, fix, anchor: str) -> bool | None:
+    """Apply ``fix`` to the file (its target, if a link): True changed, False
+    already right (or not whole), None not there. Same owner and mode; atomic."""
+    real = os.path.realpath(p(path))
+    try:
+        with open(real, encoding="utf-8", errors="surrogateescape") as f:
+            old = f.read()
+        st = os.stat(real)
+    except FileNotFoundError:
+        return None
+    if not complete(old, anchor):
+        raise ValueError("looks incomplete, left alone")
+    new = fix(old)
+    if new == old:
+        return False
+    # A dot name not ending in .conf: ALSA's conf.d loader never reads it.
+    tmp = os.path.join(os.path.dirname(real), f".{os.path.basename(real)}.hasler-tmp")
+    try:
+        os.unlink(tmp)                      # left by a power cut; never written through
+    except FileNotFoundError:
+        pass
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(fd, new.encode("utf-8", errors="surrogateescape"))
+        try:
+            os.fchown(fd, st.st_uid, st.st_gid)
+        except PermissionError:
+            pass                            # tests, as a user: the owner is ours anyway
+        os.fchmod(fd, stat.S_IMODE(st.st_mode))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    os.replace(tmp, real)
+    return True
+
+
+# --- what listens where -------------------------------------------------------------------
+
+
+def _addr(hexaddr: str) -> str:
+    """/proc/net/tcp{,6}'s address (little-endian words) as text; v4-mapped as IPv4."""
+    import ipaddress
+
+    if len(hexaddr) == 8:
+        return str(ipaddress.IPv4Address(bytes.fromhex(hexaddr)[::-1]))
+    raw = b"".join(bytes.fromhex(hexaddr[i:i + 8])[::-1] for i in range(0, 32, 8))
+    a = ipaddress.IPv6Address(raw)
+    return str(a.ipv4_mapped) if a.ipv4_mapped else str(a)
+
+
+def loopback(addr: str) -> bool:
+    return addr.startswith("127.") or addr == "::1"
+
+
+def listening(ports=PORTS) -> dict[str, list[str]]:
+    """{name: [addresses listening on its port]} from /proc/net/tcp{,6}."""
+    want = {port: name for name, port in ports.items()}
+    out: dict[str, list[str]] = {name: [] for name in ports}
+    for table in ("/proc/net/tcp", "/proc/net/tcp6"):
+        try:
+            with open(p(table)) as f:
+                rows = f.read().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            cols = row.split()
+            if len(cols) < 4 or cols[3] != "0A":       # LISTEN
+                continue
+            hexaddr, _, hexport = cols[1].partition(":")
+            try:
+                name = want.get(int(hexport, 16))
+                a = _addr(hexaddr) if name else ""
+            except ValueError:
+                continue
+            if name and a not in out[name]:
+                out[name].append(a)
+    return out
+
+
+def exposed(found: dict[str, list[str]]) -> list[str]:
+    """``["mpd 0.0.0.0:6600"]`` - the same words as haslerd's /api/health ``exposed_controls``."""
+    return [f"{name} {a}:{PORTS[name]}" if ":" not in a else f"{name} [{a}]:{PORTS[name]}"
+            for name, addrs in found.items() for a in addrs if not loopback(a)]
+
+
+# --- MPD's restart ------------------------------------------------------------------------
+
+
+def mpd_state(timeout: float = 3.0) -> str | None:
+    """MPD's player state (play, pause, stop) over 127.0.0.1, or None."""
+    import socket
+
+    try:
+        with socket.create_connection(("127.0.0.1", PORTS["mpd"]), timeout=timeout) as s:
+            f = s.makefile("rwb")
+            if not f.readline().startswith(b"OK MPD"):
+                return None
+            f.write(b"status\n")
+            f.flush()
+            state = None
+            for line in f:
+                if line.startswith(b"state: "):
+                    state = line[7:].strip().decode()
+                if line.startswith((b"OK", b"ACK")):
+                    break
+            return state
+    except (OSError, ValueError):
+        return None
+
+
+def restart_mpd() -> str:
+    import subprocess
+
+    try:
+        cp = subprocess.run(["systemctl", "try-restart", "mpd.service"], capture_output=True, text=True,
+                            timeout=25, check=False)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return f"restart failed: {e}"
+    return "restarted" if cp.returncode == 0 else f"restart failed: {(cp.stderr or cp.stdout).strip()[:200]}"
+
+
+# --- commands -----------------------------------------------------------------------------
+
+
+def apply(restart: bool) -> dict:
+    doc: dict = {"ok": True, "changed": []}
+    for name, path, fix, anchor in (("mpd", MPD_CONF, mpd_text, "audio_output"),
+                                    ("camilladsp", CDSP_CONF, cdsp_text, "pcm.camilladsp")):
+        try:
+            changed = rewrite(path, fix, anchor)
+        except (OSError, ValueError) as e:
+            doc["ok"] = False
+            doc.setdefault("errors", []).append(f"{path}: {e}")
+            continue
+        if changed:
+            doc["changed"].append(path)
+            if name == "camilladsp":
+                try:
+                    os.utime(p(ALSA_TOP), None)     # players re-read ALSA's config at their next open
+                except OSError:
+                    pass
+    if restart and not any(e.startswith(MPD_CONF) for e in doc.get("errors", [])):
+        found = listening({"mpd": PORTS["mpd"]})
+        if exposed(found):
+            state = mpd_state()
+            if state in ("stop", "pause"):
+                doc["mpd"] = restart_mpd()
+            else:
+                doc["mpd"] = f"left alone ({state or 'not answering'}): local from its next start"
+    doc["exposed"] = exposed(listening())
+    return doc
+
+
+def main(argv: list[str]) -> int:
+    import json
+
+    cmd = argv[1] if len(argv) > 1 else ""
+    if cmd == "check":
+        found = listening()
+        bad = exposed(found)
+        print(json.dumps({"ok": not bad, "listening": found, "exposed": bad}))
+        return 1 if bad else 0
+    if cmd == "apply":
+        print(json.dumps(apply(restart="--restart-mpd" in argv[2:])))
+        return 0
+    print(__doc__.split("\n\n")[1], file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

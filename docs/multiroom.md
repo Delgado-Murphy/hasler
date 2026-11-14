@@ -262,6 +262,8 @@ install steps (HACS) are in
   software started.
 - **Not the MPD integration.** HA may offer *Music Player Daemon* for the radio.
   Skip it: the radio drives MPD itself, and a second controller fights it.
+  Since 1.7.6 it can't connect anyway: MPD listens on 127.0.0.1 only
+  (`scripts/hasler-local-only`).
 - Keys that run HA scenes, scripts or lights are a separate thing, set up from
   the key page; see [build guide, Phase 5](build-guide.md#phase-5--home-assistant).
 

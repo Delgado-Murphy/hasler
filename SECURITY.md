@@ -29,7 +29,9 @@ want it.
 The key page has no login by design: it trusts the home network, like
 moOde's own pages. A report that only says "the page has no password" is
 known; one that reaches past the home network, or past the press on the radio
-that risky changes ask for, is very welcome.
+that risky changes ask for, is very welcome. MPD and CamillaDSP have no
+password either, so they answer the radio itself only (127.0.0.1); either
+one reachable from the network is a bug.
 
 ## Supported versions
 

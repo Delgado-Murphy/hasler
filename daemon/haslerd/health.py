@@ -177,6 +177,53 @@ def _components(app: Any) -> dict:
     return {"yt-dlp": doc} if isinstance(doc, dict) else {}
 
 
+# Controls with no password: MPD and CamillaDSP's websocket. On the network they
+# would let anyone turn the volume past the ceiling; scripts/hasler-local-only
+# keeps them on 127.0.0.1 (MPD's drop-in and haslerd.service run it).
+CONTROL_PORTS = {"mpd": 6600, "camilladsp": 1234}
+PROC_NET = Path("/proc/net")
+
+
+def _hexaddr(h: str) -> str:
+    """/proc/net/tcp{,6}'s address (little-endian words) as text."""
+    import ipaddress
+
+    if len(h) == 8:
+        return str(ipaddress.IPv4Address(bytes.fromhex(h)[::-1]))
+    raw = b"".join(bytes.fromhex(h[i:i + 8])[::-1] for i in range(0, 32, 8))
+    a = ipaddress.IPv6Address(raw)
+    return str(a.ipv4_mapped) if a.ipv4_mapped else str(a)
+
+
+def _exposed() -> list[str]:
+    """``["mpd 0.0.0.0:6600"]``: a control listening beyond the radio itself; [] = all local.
+    Never part of ``ok`` or ``checks``: a trial must not roll back over it (an MPD
+    started before the fix keeps its socket until it restarts)."""
+    names = {port: name for name, port in CONTROL_PORTS.items()}
+    out: list[str] = []
+    for table in ("tcp", "tcp6"):
+        try:
+            rows = (PROC_NET / table).read_text().splitlines()[1:]
+        except OSError:
+            continue
+        for row in rows:
+            cols = row.split()
+            if len(cols) < 4 or cols[3] != "0A":         # LISTEN
+                continue
+            hexaddr, _, hexport = cols[1].partition(":")
+            try:
+                name = names.get(int(hexport, 16))
+                addr = _hexaddr(hexaddr) if name else ""
+            except ValueError:
+                continue
+            if name and not (addr.startswith("127.") or addr == "::1"):
+                item = f"{name} {addr}:{CONTROL_PORTS[name]}" if ":" not in addr \
+                    else f"{name} [{addr}]:{CONTROL_PORTS[name]}"
+                if item not in out:
+                    out.append(item)
+    return out
+
+
 def health_report(app: Any, now: float | None = None) -> dict:
     """The /api/health document for ``app`` (a WebApp, or anything shaped like one)."""
     now = time.monotonic() if now is None else now
@@ -237,6 +284,8 @@ def health_report(app: Any, now: float | None = None) -> dict:
         "components": _components(app),
         # Debian security updates (web/software.py Software.os_updates; None = not on this radio).
         "os_updates": _os_updates(app),
+        # MPD / CamillaDSP listening beyond the radio (no password: past the volume ceiling); [] = fine.
+        "exposed_controls": _exposed(),
         # The last 24 hours, counted (haslerd/daycounters.py; None without them): the check-in's
         # stalls, MPD and haslerd restarts, fault words, hottest reading, undervoltage, yt-dlp failures.
         "day": _day(app),

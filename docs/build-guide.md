@@ -398,7 +398,7 @@ last key (`cat /var/lib/haslerd/state.json` shows it).
 - [ ] Tapping a key while a phone is connected takes the radio back from the phone.
 - [ ] The **tone knob** is a *tilt*: left warmer, right brighter, flat in the
       middle, pivoting at 800 Hz. `haslerd` hands it to `hasler-dsp`, which
-      sets CamillaDSP live over its websocket (`:1234`) and never lets the
+      sets CamillaDSP live over its websocket (`127.0.0.1:1234`) and never lets the
       sound get louder than flat. The details, and the other effects a knob can
       have, are in [sound.md](sound.md).
 - [ ] The pilot lamp, on the Pi's GPIO: see below.
@@ -490,6 +490,7 @@ HA the house has is connected from the key page, with no file editing.*
       "play"/"stop" behind the radio's back confuses it. The radio announces
       itself on the network as `_hasler._tcp` for the Hasler integration for
       HA instead (`GET http://hasler.local:8080/api/info` answers who it is).
+      Since 1.7.6 HA couldn't reach MPD anyway: it answers the radio itself only.
 - [ ] **Make a token:** in HA, click your user (bottom left) → **Security** →
       *Long-lived access tokens* → **Create token**. Name it "Hasler radio" and
       copy it (HA shows it only once).

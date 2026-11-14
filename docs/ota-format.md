@@ -261,8 +261,14 @@ matches spaces). The updater checks the instance name again.
  "idle": true, "standby": true, "playing": false, "last_play_s": 1234,
  "recovering": false, "recovering_reason": null, "stalled_s": null,
  "mpd": {"unresponsive_s": null, "restarts_last_hour": 0, "recovering": false},
- "stream_events_recent": []}
+ "stream_events_recent": [], "exposed_controls": []}
 ```
+
+`exposed_controls` (1.7.6): MPD or CamillaDSP listening beyond the radio,
+`["mpd 0.0.0.0:6600"]`; `[]` when both answer 127.0.0.1 only. Neither has a
+password, so one on the network gets past the volume ceiling. Informational:
+never part of `checks` or `ok`, so it can't roll a release back (an MPD started
+before 1.7.6 keeps its socket until it restarts).
 
 `recovering` / `stalled_s`: MPD stopped a preset by itself, or stopped
 answering altogether, and haslerd's stream watchdog

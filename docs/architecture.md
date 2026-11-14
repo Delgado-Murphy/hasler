@@ -138,6 +138,14 @@ page is dispatched as the same event the panel would send.
   moOde's nginx so **port 80** (`http://hasler.local`) reaches haslerd and
   moOde's pages move to **:8081**. Every ten minutes haslerd checks that port 80 still reaches it, and puts the
   site back after a moOde update (`web/front.py`).
+- **MPD and CamillaDSP answer the radio only.** moOde lets MPD (6600) and
+  CamillaDSP's websocket (1234) listen on every address, with no password -
+  anyone on the Wi-Fi could turn the volume past the ceiling.
+  `scripts/hasler-local-only` puts both on 127.0.0.1 before every MPD start (a
+  drop-in for `mpd.service`) and at haslerd's start; `/api/health` lists any
+  still reachable from the network in `exposed_controls`. Nothing of the radio
+  used them from outside: haslerd, moOde's pages, UPnP and CamillaGUI talk to
+  them on the radio itself.
 - **Wi-Fi setup.** With no known network at boot, moOde starts the "Hasler"
   hotspot; a captive portal (`config/captive/`) sends the phone to haslerd's
   `/wifi` page, and `scripts/hasler-wifi-join` joins the network.

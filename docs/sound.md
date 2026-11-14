@@ -35,7 +35,8 @@ upgraded at the first knob move: the file, and the running CamillaDSP once
 (with its own devices). Both audio paths read the same file: moOde's
 per-stream CamillaDSP (multiroom off), and `camilladsp-hasler` while grouped
 (`hasler-multiroom tone-config` copies the file at its start); both listen on
-port 1234.
+port 1234 of 127.0.0.1 only - moOde's plugin is set to `-a "127.0.0.1"` by
+`scripts/hasler-local-only`.
 
 ```
 hasler-dsp set '{"replace": true, "filters": {"Tilt low": {"gain": -4}, "Tilt high": {"gain": 4}}}'
