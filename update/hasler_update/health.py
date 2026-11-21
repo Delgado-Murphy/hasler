@@ -17,6 +17,12 @@ says it is bringing MPD back (``mpd.recovering``), is neither a pass nor a
 failure: the wait goes on (the hold starts again once MPD answers), for at
 most ``MPD_GRACE_S`` in all. A release that keeps MPD down longer than that,
 or whose haslerd doesn't see it, fails as before.
+
+moOde's own page is moOde's, not haslerd's: after a reboot its worker keeps
+starting for about a minute and the page can miss one answer (2026-11-21:
+the healthy 1.7.8 rolled back on one slow ``GET /``). A lost moOde UI counts
+only once it has stayed lost for ``MOODE_UI_GRACE_S``; a release that really
+breaks it stays broken through the hold and fails as before.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ BOOT_APPEAR_S = 300.0   # a trial judged after a reboot: moOde starts MPD late (
 HOLD_S = 60.0
 INTERVAL_S = 5.0
 MPD_GRACE_S = 120.0     # MPD being restarted by haslerd/systemd: this long at most, per judgement
+MOODE_UI_GRACE_S = 30.0  # moOde's page missing answers this long in a row before it counts as lost
 
 
 def _good(key: str, value) -> bool:
@@ -188,12 +195,20 @@ class HealthChecker:
         last: list[str] = ["no sample"]
         grace = 0.0                     # spent waiting out an MPD recovery
         grace_at: float | None = None
+        ui_lost_at: float | None = None  # moOde's page stopped answering (MOODE_UI_GRACE_S)
         while True:
             sample = self.probe()
             if restarts0 is None and sample.get("haslerd"):
                 restarts0 = sample.get("restarts", 0)
             last = self.problems(sample, baseline, version, restarts0 if restarts0 is not None else 1 << 30)
             now = self.clock()
+            if "moode_ui lost" in last:
+                if ui_lost_at is None:
+                    ui_lost_at = now
+                if now - ui_lost_at < MOODE_UI_GRACE_S:
+                    last = [p for p in last if p != "moode_ui lost"]
+            else:
+                ui_lost_at = None
             if last and self.mpd_recovery_only(sample, last):
                 if grace_at is not None:
                     grace += now - grace_at

@@ -65,6 +65,27 @@ def test_wait_pass_hold_and_fail():
     assert not good and "within 90s" in why
 
 
+def test_moode_page_missing_one_answer_at_boot_is_not_a_regression():
+    # 2026-11-21: the healthy 1.7.8 passed, then moOde (still starting after the
+    # reboot) missed one GET / and the trial rolled back. A short miss is waited out.
+    blip = [sample()] * 3 + [sample(moode_ui=False)] * 2 + [sample()] * 20
+    good, why = checker(blip).wait("1.1.0", sample())
+    assert good, why
+
+
+def test_moode_page_really_gone_still_fails():
+    gone = [sample()] * 3 + [sample(moode_ui=False)] * 30
+    good, why = checker(gone).wait("1.1.0", sample())
+    assert not good and "during hold" in why and "moode_ui lost" in why
+
+
+def test_moode_page_grace_is_per_outage_not_per_judgement():
+    # Two short misses with answers between: each is waited out on its own.
+    seq = [sample()] * 2 + ([sample(moode_ui=False)] * 3 + [sample()]) * 6 + [sample()] * 20
+    good, why = checker(seq).wait("1.1.0", sample())
+    assert good, why
+
+
 def mpd_out(recovering=True, **checks):
     """haslerd fine, MPD hung (2026-10-25) and haslerd bringing it back."""
     api = {**GOOD_API, "ok": False, "checks": {**GOOD_API["checks"], "mpd": False, **checks},

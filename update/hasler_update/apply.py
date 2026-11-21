@@ -288,6 +288,11 @@ def keep_owners(work: Path, before: Path) -> None:
                 os.chown(path, st.st_uid, st.st_gid)
 
 
+def _in_flight(name: str) -> bool:
+    """haslerd's half-written file (``tempfile.mkstemp(prefix=".hasler-")``): never copied, never removed."""
+    return name.startswith(".hasler-")
+
+
 def sync_tree(src: Path, dst: Path, exclude: tuple[str, ...] = ()) -> None:
     """Make ``dst`` hold what ``src`` holds (files atomically, extras removed)."""
     dst.mkdir(parents=True, exist_ok=True)
@@ -300,7 +305,7 @@ def sync_tree(src: Path, dst: Path, exclude: tuple[str, ...] = ()) -> None:
             (dst / rel_dir / d).mkdir(exist_ok=True)
         for f in files:
             rel = (rel_dir / f).as_posix()
-            if rel in exclude:
+            if rel in exclude or _in_flight(f):
                 continue
             seen.add(rel)
             s, d = Path(dirpath) / f, dst / rel
@@ -317,8 +322,10 @@ def sync_tree(src: Path, dst: Path, exclude: tuple[str, ...] = ()) -> None:
             continue
         for f in files:
             rel = (rel_dir / f).as_posix()
-            if rel not in seen and rel not in exclude:
-                (Path(dirpath) / f).unlink()
+            if rel not in seen and rel not in exclude and not _in_flight(f):
+                # haslerd may still be writing here: its temp file can be renamed
+                # away between the walk and the unlink (2026-11-21 rollback).
+                (Path(dirpath) / f).unlink(missing_ok=True)
         for d in dirs:
             rel = (rel_dir / d).as_posix()
             if rel not in seen and rel not in exclude:
