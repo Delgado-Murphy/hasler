@@ -22,12 +22,14 @@ from haslerd.player.sources.ytm import YtmSource
 from test_ytm import IDS, FakeMPD, fetch, wait_for
 
 CHUNK = 64 * 1024
+M4A_HEAD = b"\x00\x00\x00\x18ftypM4A "
 
 
 def track(vid: str, size: int = 5 * CHUNK + 1234) -> bytes:
-    """Deterministic, distinct bytes per video id."""
+    """Deterministic, distinct bytes per video id, starting like an M4A."""
     seed = sum(vid.encode())
-    return bytes((seed + i * 7 + (i >> 8)) % 256 for i in range(size))
+    body = bytes((seed + i * 7 + (i >> 8)) % 256 for i in range(size))
+    return (M4A_HEAD + body[len(M4A_HEAD):])[:size]
 
 
 class FakeGoogleVideo:
@@ -303,3 +305,113 @@ def test_build_sources_streams_through_the_state_dir(tmp_path):
     sources = build_sources(MoodeConfig(spotify={"enabled": False}, ytm={"catalog": False}), tmp_path)
     assert sources["ytm"]._stream_dir == tmp_path / "ytm-stream"
     assert os.path.basename(ytm.STREAM_DIR) == "ytm-stream"
+
+
+# -- the power cut of 21 Nov 2026: empty tracks must never pin the radio -----
+
+@pytest.mark.parametrize("bad", [b"", b"<html>not audio at all</html>"])
+def test_an_empty_or_garbled_track_from_the_last_run_is_fetched_again(make, gv, tmp_path, monkeypatch, bad):
+    monkeypatch.setattr(ytm, "STREAM_READY_S", 30)
+    cache = tmp_path / "ytm-stream"
+    cache.mkdir()
+    (cache / f"{IDS[0]}.m4a").write_bytes(bad)
+    src = make()
+    assert not (cache / f"{IDS[0]}.m4a").exists()        # deleted on load
+    started = time.monotonic()
+    assert get(src.prefix + IDS[0])[2] == track(IDS[0])
+    assert time.monotonic() - started < 5                # no blind wait
+    assert src.runner.calls == [IDS[0]]
+
+
+def test_a_finished_download_whose_file_went_empty_starts_again(make, gv):
+    src = make()
+    assert get(src.prefix + IDS[0])[2] == track(IDS[0])
+    final = src._stream_dir / f"{IDS[0]}.m4a"
+    assert wait_for(final.is_file)
+    final.write_bytes(b"")                               # as the card left it
+    started = time.monotonic()
+    assert get(src.prefix + IDS[0])[2] == track(IDS[0])
+    assert time.monotonic() - started < 5
+    assert src.runner.calls.count(IDS[0]) == 1           # link still cached
+    assert len(gv.ranges(IDS[0])) == 12                  # but fetched twice
+
+
+def test_wait_ready_does_not_wait_for_a_done_empty_download(tmp_path):
+    dl = ytm._Download(IDS[0], tmp_path / "x.m4a")
+    dl.done, dl.size, dl.have = True, 0, 0
+    src = YtmSource(mpd=lambda: FakeMPD(), port=0)
+    try:
+        started = time.monotonic()
+        assert src._wait_ready(dl, 30) is False
+        assert time.monotonic() - started < 1
+    finally:
+        src.close()
+
+
+def test_an_empty_answer_never_finishes_a_track(make, gv, monkeypatch):
+    monkeypatch.setattr(ytm, "fetch_range", lambda url, first, last, **kw: (b"", None, "audio/mp4"))
+    src = make()
+    status, location = fetch(src.prefix + IDS[0])
+    assert status == 302                                 # redirected, not served empty
+    assert list(src._stream_dir.iterdir()) == []
+    assert IDS[0] not in src._streams
+
+
+def test_a_track_is_fsynced_once_with_its_directory(make, gv, monkeypatch):
+    synced = []
+    real = os.fsync
+
+    def spy(fd):
+        synced.append(fd)
+        return real(fd)
+
+    monkeypatch.setattr(ytm.os, "fsync", spy)
+    src = make()
+    assert get(src.prefix + IDS[0])[2] == track(IDS[0])
+    assert wait_for(lambda: finished(src, IDS[0]))
+    assert wait_for(lambda: len(synced) >= 2)
+    time.sleep(0.2)
+    assert len(synced) == 2                              # 6 chunks, one file sync + one dir sync
+
+
+def test_forget_drops_the_track_and_marks_it_dead(make, gv, tmp_path):
+    src = make()
+    assert get(src.prefix + IDS[0])[2] == track(IDS[0])
+    assert wait_for(lambda: finished(src, IDS[0]))
+    assert src.forget(IDS[0]) is True
+    assert not finished(src, IDS[0]) and IDS[0] not in src._streams
+    assert src._is_dead(IDS[0]) and src.resolve(IDS[0]) is None
+    assert src.stream("/ytm/" + IDS[0]) is None
+    assert src.forget(IDS[0]) is False                   # nothing left to drop
+    assert src.forget("../etc") is False
+    src._dead[IDS[0]] = 0                                # the mark runs out
+    assert get(src.prefix + IDS[0])[2] == track(IDS[0])
+    assert src.runner.calls == [IDS[0], IDS[0]]          # resolved afresh
+
+
+def test_forget_stops_a_running_download(make, gv):
+    gv.range_delay = 0.3
+    src = make()
+    dl = src._ensure_download(IDS[0])
+    assert src._wait_ready(dl, 5)
+    assert src.forget(IDS[0]) is True
+    assert wait_for(lambda: dl.failed)
+    time.sleep(0.8)
+    assert list(src._stream_dir.iterdir()) == []
+    assert len(gv.ranges(IDS[0])) < 6
+
+
+def test_a_link_from_a_new_address_drops_the_old_ones(tmp_path):
+    seq = iter(["1.2.3.4", "5.6.7.8"])
+
+    def runner(cmd, **kwargs):
+        vid = cmd[-1].rsplit("=", 1)[1]
+        return subprocess.CompletedProcess(cmd, 0, f"https://gv.example/{vid}?ip={next(seq)}\n", "")
+
+    src = YtmSource(mpd=lambda: FakeMPD(), port=0, runner=runner)
+    try:
+        src.resolve(IDS[0])
+        src.resolve(IDS[1])
+        assert IDS[0] not in src._urls and IDS[1] in src._urls
+    finally:
+        src.close()

@@ -849,9 +849,14 @@ class YtmSource:
             stamp = _expire_stamp(url)
             if stamp is not None:
                 expires = min(expires, stamp - EXPIRY_MARGIN_S)
+            # Links are bound to the address that resolved them (ip=). A fresh
+            # one with another address - the router got a new one, say after a
+            # power cut - means the saved ones would only be refused: drop them.
+            ip = _url_ip(url)
             with self._cache_lock:
                 now = time.time()
-                for key in [k for k, (exp, _) in self._urls.items() if exp <= now]:
+                for key in [k for k, (exp, old) in self._urls.items()
+                            if exp <= now or (ip and _url_ip(old) not in (None, ip))]:
                     del self._urls[key]
                 self._urls[vid] = (expires, url)
             return url
@@ -1112,6 +1117,17 @@ class YtmSource:
             for uri, name in (data.get("files") or {}).items():
                 if isinstance(name, str) and valid(name.split(".", 1)[0]) and "/" not in name:
                     self._files[uri] = name
+        # An opener left empty or garbled by a power cut would be served as
+        # the boot's first song: delete it; the next standby fetches it again.
+        assert self._cache_dir is not None
+        for name in set(self._files.values()):
+            path = self._cache_dir / name
+            if path.is_file() and not _audio_file_ok(path):
+                log.warning("ytm boot cache: %s is empty or not audio; deleting it", name)
+                path.unlink(missing_ok=True)
+                with self._cache_lock:
+                    for uri in [u for u, n in self._files.items() if n == name]:
+                        del self._files[uri]
         last = data.get("last")
         self._last_uri = last if isinstance(last, str) else None
         log.info("ytm state: %d playlist(s), %d stream URL(s), %d cached opener(s) from %s",
@@ -1199,7 +1215,10 @@ class YtmSource:
                 return None
             final = self._cache_dir / (vid + done[0].suffix)
             os.chmod(done[0], 0o644)
+            with open(done[0], "rb") as fh:
+                os.fsync(fh.fileno())       # see _fsync_dir
             os.replace(done[0], final)
+            _fsync_dir(self._cache_dir)
             return final
         except subprocess.TimeoutExpired:
             log.warning("yt-dlp took too long downloading %s", vid)
@@ -1218,8 +1237,11 @@ class YtmSource:
             names = [n for n in self._files.values() if n.split(".", 1)[0] == vid]
         for name in names:
             path = self._cache_dir / name
-            if path.is_file():
-                return path
+            try:
+                if path.is_file() and path.stat().st_size > 0:
+                    return path
+            except OSError:
+                pass
         return None
 
     def _forget_files(self, uris: set[str]) -> None:
@@ -1285,11 +1307,63 @@ class YtmSource:
         self._prefetch_after(vid)
         return dl
 
+    def forget(self, vid: str) -> bool:
+        """Drop a track that won't play, so the next try starts from nothing.
+
+        For the watchdog: a ytm track stalled mid-playlist is skipped, and
+        this makes sure it can't come straight back. It
+        - marks ``vid`` dead for ``DEAD_OTHER_S`` (a longer mark is kept), so
+          the proxy answers 502 for it meanwhile and MPD skips it;
+        - forgets its cached stream link;
+        - stops its download if one is running (readers give up at once) and
+          deletes its file in the stream dir and in the boot cache.
+        Any thread, never raises; a no-op for anything but a video id.
+        True if a file or a download was dropped.
+        """
+        if not isinstance(vid, str) or not VIDEO_ID.match(vid):
+            return False
+        with self._cache_lock:
+            self._dead[vid] = max(self._dead.get(vid, 0.0), time.monotonic() + DEAD_OTHER_S)
+            self._urls.pop(vid, None)
+            gone = [u for u, n in self._files.items() if n.split(".", 1)[0] == vid]
+            for uri in gone:
+                del self._files[uri]
+        dropped = False
+        with self._stream_lock:
+            dl = self._streams.pop(vid, None)
+        if dl is not None:
+            dropped = True
+            with dl.cond:
+                dl.failed = True            # _fetch_stream stops at its next chunk
+                dl.cond.notify_all()
+                path = dl.path
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        for folder in (self._stream_dir, self._cache_dir):
+            if folder is None:
+                continue
+            try:
+                for path in folder.glob(vid + ".*"):
+                    if path.is_file():
+                        path.unlink(missing_ok=True)
+                        dropped = True
+            except OSError:
+                log.debug("could not clear %s from %s", vid, folder, exc_info=True)
+        if gone:
+            self.save_state()
+        log.info("ytm: forgot %s for %d s%s", vid, DEAD_OTHER_S, "" if dropped else " (nothing on disk)")
+        return dropped
+
     def _wait_ready(self, dl: _Download, timeout: float) -> bool:
-        """Wait until the size and the first bytes are known. False if it failed."""
+        """Wait until the size and the first bytes are known. False if it failed,
+        or if it is done with nothing in it (no point waiting for those bytes)."""
         deadline = time.monotonic() + timeout
         with dl.cond:
             while not (dl.have > 0 and dl.size is not None) and not dl.failed:
+                if dl.done:
+                    return False
                 left = deadline - time.monotonic()
                 if left <= 0:
                     return False
@@ -1335,8 +1409,8 @@ class YtmSource:
             dl = self._streams.pop(vid, None)
             if dl is not None and dl.failed:
                 dl = None
-            if dl is not None and dl.done and not dl.path.is_file():
-                dl = None                   # deleted behind our back
+            if dl is not None and dl.done and not self._done_ok(dl):
+                dl = None                   # deleted behind our back, or empty
             fresh = dl is None
             if fresh:
                 dl = _Download(vid, self._stream_dir / (TMP_PREFIX + vid))
@@ -1345,6 +1419,16 @@ class YtmSource:
             threading.Thread(target=self._download_stream, args=(dl,),
                              name="ytm-stream", daemon=True).start()
         return dl
+
+    @staticmethod
+    def _done_ok(dl: _Download) -> bool:
+        """A finished download still worth serving: its file is there, not
+        empty, and as long as the download said."""
+        try:
+            size = dl.path.stat().st_size
+        except OSError:
+            return False
+        return dl.have > 0 and size > 0 and size == dl.size
 
     def _download_stream(self, dl: _Download) -> None:
         vid = dl.vid
@@ -1383,8 +1467,8 @@ class YtmSource:
         with open(dl.path, "wb") as fh:
             pos, size, tries = 0, clen, 0
             while size is None or pos < size:
-                if self._warm_stop.is_set():
-                    return False            # shutting down
+                if self._warm_stop.is_set() or dl.failed:
+                    return False            # shutting down, or forget() dropped it
                 last = pos + STREAM_CHUNK - 1
                 if size is not None:
                     last = min(last, size - 1)
@@ -1436,14 +1520,24 @@ class YtmSource:
                     dl.size = size
                     dl.have = pos
                     dl.cond.notify_all()
+            if pos == 0:
+                # Never a finished empty track: one would be served (and
+                # reloaded at every start) as a song that never plays.
+                log.warning("ytm stream %s: no bytes at all", vid)
+                return False
+            fh.flush()
+            os.fsync(fh.fileno())           # once per track; see _fsync_dir
         final = self._stream_dir / (vid + CTYPE_EXT.get(dl.ctype, ".bin"))
         with dl.cond:
+            if dl.failed:
+                return False
             os.chmod(dl.path, 0o644)
             os.replace(dl.path, final)
             dl.path = final
             dl.size = dl.have
             dl.done = True
             dl.cond.notify_all()
+        _fsync_dir(self._stream_dir)
         log.info("ytm stream %s: %d kB in %.1f s", vid, dl.have // 1024, time.monotonic() - started)
         self._prune_streams()
         return True
@@ -1478,7 +1572,8 @@ class YtmSource:
             pass
 
     def _load_streams(self) -> None:
-        """Pick up finished tracks from the last run; drop half-written ones."""
+        """Pick up finished tracks from the last run; drop half-written ones,
+        and any a power cut left empty or garbled (see _fsync_dir)."""
         if self._stream_dir is None:
             return
         try:
@@ -1489,6 +1584,10 @@ class YtmSource:
             vid, ext = path.stem, path.suffix
             ctype = next((c for c, e in CTYPE_EXT.items() if e == ext), None)
             if path.name.startswith(TMP_PREFIX) or not VIDEO_ID.match(vid) or ctype is None:
+                path.unlink(missing_ok=True)
+                continue
+            if not _audio_file_ok(path):
+                log.warning("ytm stream: %s is empty or not audio; deleting it", path.name)
                 path.unlink(missing_ok=True)
                 continue
             dl = _Download(vid, path)
@@ -1825,11 +1924,49 @@ def _write_atomic(path: Path, data: bytes) -> None:
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())   # on the card before the rename can be
         os.chmod(tmp, 0o600)     # signed stream URLs: the daemon's business only
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+    _fsync_dir(path.parent)
+
+
+def _fsync_dir(path: Path) -> None:
+    """Make a rename in ``path`` survive a power cut. Never raises.
+
+    The power cut of 21 Nov 2026: tracks renamed into place whose bytes were
+    still in the page cache came back as empty files (the card holds new data
+    for up to 30 s). So the file is fsync'ed before its rename, and the
+    directory after it.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def _audio_file_ok(path: Path) -> bool:
+    """A finished track worth keeping: not empty, and it starts like audio."""
+    try:
+        with open(path, "rb") as fh:
+            head = fh.read(16)
+    except OSError:
+        return False
+    return bool(head) and looks_like_audio(head)
+
+
+def _url_ip(url: str) -> str | None:
+    """googlevideo's ``ip=`` (the address the link is bound to), if the URL has one."""
+    return (parse_qs(urlparse(url).query).get("ip") or [""])[0] or None
 
 
 CANARY_NET = re.compile(r"Temporary failure in name resolution|Name or service not known|Network is unreachable|"

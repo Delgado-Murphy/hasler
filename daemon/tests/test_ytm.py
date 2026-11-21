@@ -5,6 +5,7 @@ the 302/404/502 contract with MPD is the part most worth pinning down.
 """
 
 import json
+import os
 import subprocess
 import time
 import urllib.error
@@ -13,6 +14,7 @@ import urllib.request
 import pytest
 
 from haslerd.player.base import Preset
+from haslerd.player.sources import ytm as ytm_mod
 from haslerd.player.sources.ytm import YtmError, YtmSource
 
 IDS = ["aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc"]
@@ -911,6 +913,31 @@ def test_prepare_for_boot_caches_the_opener_and_the_proxy_serves_it(mpd, tmp_pat
         assert fetch(mpd2.queue[1])[0] == 502          # the rest wait for the network
     finally:
         booted.close()
+
+
+def test_an_opener_left_empty_by_a_power_cut_is_deleted_at_start(mpd, tmp_path):
+    preset = Preset(n=1, name="Jazz", uri=PLAYLIST, source="ytm")
+    src = YtmSource(mpd=lambda: mpd, port=0, runner=DownloadRunner(), state_dir=tmp_path)
+    src.warm_once(preset)
+    assert src.prepare_for_boot(preset, wait_s=5) is True
+    src.close()
+    cached = tmp_path / "ytm-cache" / f"{IDS[0]}.m4a"
+    cached.write_bytes(b"")                            # what the card kept
+    booted = YtmSource(mpd=lambda: mpd, port=0, runner=DownloadRunner(), state_dir=tmp_path)
+    try:
+        assert not cached.exists() and booted._files == {}
+        assert booted._disk_path(IDS[0]) is None
+        assert booted.local_file("/ytm/" + IDS[0]) is None
+    finally:
+        booted.close()
+
+
+def test_the_state_file_is_fsynced(tmp_path, monkeypatch):
+    synced = []
+    real = os.fsync
+    monkeypatch.setattr("haslerd.player.sources.ytm.os.fsync", lambda fd: (synced.append(fd), real(fd)))
+    ytm_mod._write_atomic(tmp_path / "s.json", b"{}")
+    assert len(synced) == 2                            # the file, then its directory
 
 
 def test_shuffle_keeps_the_cached_opener_through_warm_rounds(mpd, tmp_path, monkeypatch):
