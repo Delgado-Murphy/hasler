@@ -201,7 +201,7 @@ def test_sudoers_source_is_todays_rules():
 def test_configtxt_block_matches_the_legacy_install(tmp_path):
     """The bench box's install.sh block has the same lines, so re-marking it needs no reboot."""
     block = (ROOT / "config/configtxt/hasler.block").read_text()
-    assert block.splitlines() == ["[all]", "gpio=17,22,27=op,dh", "dtoverlay=pwm-gpio,gpio=17",
+    assert block.splitlines() == ["[all]", "gpio=17=ip,pd", "gpio=22,27=op,dh", "dtoverlay=pwm-gpio,gpio=17",
                                   "dtoverlay=pwm-gpio,gpio=22", "dtoverlay=pwm-gpio,gpio=27"]
     b, e = integ.LEGACY_BLOCKS[0]
     legacy = "arm_64bit=1\n" + b + "\n" + block + e + "\n"
