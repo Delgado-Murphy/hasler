@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Early-boot pilot lamp: fade into an amber breath until haslerd takes over.
+"""Early-boot pilot lamp: from the firmware's ember into an amber breath until haslerd takes over.
 
 docs/lamp.md "Boot and shutdown", stage "~3-5 s". Started by
 hasler-lamp-boot.service as soon as udev has loaded the pwm-gpio driver; it
@@ -7,8 +7,13 @@ stops itself when haslerd asks for the LED (/run/hasler-lamp/takeover, below)
 and haslerd.service's ExecStartPost stops it anyway (SIGTERM) for a haslerd
 too old to ask.
 
-What it shows: a slow 2 s fade from dark up to a clearly visible amber, then
-the light language's busy breath, 22 % -> 70 % (perceptual), 2.8 s period,
+What it shows: a cold start begins at stage 0's ember (EMBER, a faint steady
+red) and grows it over a slow 2 s blend into the light language's busy
+breath. With the ember block in config.txt (gpio=17=ip,pd: the red pin an
+input on its weak pull-down, a faint glow through a common-anode LED; green
+and blue held dark) the firmware already shows that glow, so the breath grows
+out of it; with the older block (all three op,dh: dark until here) the lamp
+simply lights at the ember and grows from there. The breath: 22 % -> 70 % (perceptual), 2.8 s period,
 raised cosine. Perceptual -> linear with gamma 2.2, then the amber balance R
 1.0 / G 0.15 / B 0. Starting is busy whatever the tone knob says (v2: asleep
 never moves), so it is always amber. haslerd's own warm-up carries this very
@@ -36,7 +41,9 @@ GPIO17, green GPIO22, blue GPIO27, GPIO LOW = lit. Each pin is its own
 pwm-gpio chip (dtoverlay=pwm-gpio,gpio=N in config.txt), channel pwm0. We set
 the channel's polarity to "inversed", so duty_cycle is the *lit* time and a
 disabled channel idles HIGH = dark (the driver drives the idle level from the
-polarity). No manual duty inversion anywhere.
+polarity). No manual duty inversion anywhere. The driver drives that idle
+level the moment polarity or enable is written, so a cold start writes the
+first frame (the ember) before it enables: the glow never drops out.
 
 PWM period: the one haslerd configured (io.lamp.pwm_hz), which it leaves in
 /var/lib/haslerd/lamp-period; 800 Hz without that file. A channel that is
@@ -96,7 +103,15 @@ GROUP = "gpio"                    # haslerd's SupplementaryGroups
 GPIOS = (17, 22, 27)              # red, green, blue - overlay declaration order
 PERIOD_NS = 1_250_000             # 800 Hz, unless haslerd left another (PERIOD_FILE)
 GAMMA = 2.2
-FADE_S = 2.0                      # a slow, visible fade up (the owner likes it slow)
+FADE_S = 2.0                      # a cold start's slow, visible blend up (the owner likes it slow)
+# Stage 0's ember as linear duties: what the red pin's pull-down glow
+# (config.txt gpio=17=ip,pd, ~50 kOhm against the 220 Ohm resistor, ~0.5 %)
+# looks like on this LED - matched by eye to that glow on a cold boot. It sits
+# at red's smallest reliable duty (the variants' min_duty), so the hand-over
+# from the firmware to the PWM is not a step (and with the older, dark block a
+# cold start just lights at this faint glow).
+EMBER_RED = 0.0075
+EMBER = (EMBER_RED, 0.0, 0.0)
 FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU
 WAIT_CHIPS_S = 10.0               # udev may still be loading pwm-gpio
 # haslerd never took the LED (a crash loop, a dead card): after this long the
@@ -122,9 +137,6 @@ LOOKS = {
     # (v2: busy is never ember; the mode keeps its old name in the note).
     "ember": {"floor": 0.22, "peak": 0.70, "period_s": 2.8, "balance": (1.0, 0.15, 0.0)},
 }
-FLOOR, PEAK = LOOKS["amber"]["floor"], LOOKS["amber"]["peak"]
-BREATH_S = LOOKS["amber"]["period_s"]
-BALANCE = LOOKS["amber"]["balance"]
 
 running = True
 
@@ -206,7 +218,7 @@ def discover() -> list[str] | None:
 # --- one channel ------------------------------------------------------------
 
 class Channel:
-    def __init__(self, chip: str, period: int):
+    def __init__(self, chip: str, period: int, first: float = 0.0):
         self.dir = os.path.join(chip, "pwm0")
         self.duty = -1
         if not os.path.isdir(self.dir):
@@ -236,7 +248,9 @@ class Channel:
             write(f("period"), period)
         self.period = period
         if not enabled:
-            write(f("duty_cycle"), 0)
+            # The first frame before enable: enabling drives the pin at once, so
+            # a cold start goes straight from the firmware's ember to the PWM's.
+            write(f("duty_cycle"), round(max(0.0, min(1.0, first)) * period))
             write(f("enable"), 1)
         self.duty = int(read(f("duty_cycle")) or 0)
 
@@ -258,15 +272,6 @@ def breath_at(phase: float, floor: float, peak: float) -> float:
     return floor + (peak - floor) * (1 + math.cos(2 * math.pi * phase)) / 2
 
 
-def level_at(t: float) -> float:
-    """Perceptual level t seconds after start: fade up to the peak, then breathe
-    down and up again - so the first thing anyone sees is a clear glow."""
-    if t < FADE_S:
-        x = t / FADE_S
-        return PEAK * x * x * (3 - 2 * x)       # smoothstep 0 -> peak
-    return breath_at((t - FADE_S) / BREATH_S, FLOOR, PEAK)
-
-
 def sos_level(t: float) -> float:
     """The SOS's perceptual red level ``t`` seconds into it (repeats every SOS_CYCLE_S)."""
     t = t % SOS_CYCLE_S
@@ -278,19 +283,21 @@ def sos_level(t: float) -> float:
     return SOS_GLOW                              # the rest between repeats
 
 
-def continue_at(t: float, start: float, look: dict) -> float:
-    """A handover: from ``start`` (what the LED showed) into ``look``'s breath.
+def continue_at(t: float, start: float, look: dict, blend_s: float = CONTINUE_S) -> float:
+    """From ``start`` (what the LED shows: a handover's frame, or a cold
+    start's ember) into ``look``'s breath.
 
-    The breath starts at the point nearest ``start`` (on its way down), and a
-    CONTINUE_S smoothstep blends the two, so a level outside the breath's
-    range glides in instead of jumping."""
+    The breath starts at the point nearest ``start`` (on its way down; below
+    the floor, at the floor on its way up), and a ``blend_s`` smoothstep blends
+    the two, so a level outside the breath's range glides in instead of
+    jumping."""
     floor, peak, period = look["floor"], look["peak"], look["period_s"]
     x = (min(peak, max(floor, start)) - floor) / (peak - floor)
     phase0 = math.acos(max(-1.0, min(1.0, 2 * x - 1))) / (2 * math.pi)
     target = breath_at(phase0 + t / period, floor, peak)
-    if t >= CONTINUE_S:
+    if t >= blend_s:
         return target
-    w = t / CONTINUE_S
+    w = t / blend_s
     w = w * w * (3 - 2 * w)
     return start + (target - start) * w
 
@@ -320,37 +327,26 @@ def boot_table(mode: str) -> dict | None:
 
 
 class TablePlayer:
-    """Plays a table's frames, looping. Cold (``start`` None): a FADE_S fade up
-    from dark to the breath's brightest frame, then on from there. A handover:
-    from the LED's duties (``start``) into the frame nearest them, blended
-    over CONTINUE_S - no dark frame, no jump."""
+    """Plays a table's frames, looping: from the LED's duties (``start``: a
+    handover's frame, or a cold start's EMBER) into the frame nearest them,
+    blended over ``blend_s`` (CONTINUE_S; a cold start's slow FADE_S) - no
+    dark frame, no jump."""
 
-    def __init__(self, table: dict, start: list | None) -> None:
+    def __init__(self, table: dict, start: list, blend_s: float = CONTINUE_S) -> None:
         self.frames, self.fps = table["frames"], table["fps"]
-        self.start = start
-        if start is None:
-            self.i0 = max(range(len(self.frames)), key=lambda i: max(self.frames[i]))
-            self.lead = FADE_S
-        else:
-            p = [c ** (1.0 / GAMMA) for c in start]
-            self.i0 = min(range(len(self.frames)), key=lambda i: sum(
-                abs(c ** (1.0 / GAMMA) - q) for c, q in zip(self.frames[i], p)))
-            self.lead = 0.0
+        self.start, self.blend_s = list(start), blend_s
+        p = [c ** (1.0 / GAMMA) for c in self.start]
+        self.i0 = min(range(len(self.frames)), key=lambda i: sum(
+            abs(c ** (1.0 / GAMMA) - q) for c, q in zip(self.frames[i], p)))
 
     def frame(self, t: float) -> list:
         return self.frames[(self.i0 + int(max(0.0, t) * self.fps)) % len(self.frames)]
 
     def at(self, t: float) -> list:
-        if self.start is None:
-            if t < FADE_S:
-                x = t / FADE_S
-                x = x * x * (3 - 2 * x)                 # smoothstep, perceptual
-                return [c * x ** GAMMA for c in self.frames[self.i0]]
-            return self.frame(t - FADE_S)
         target = self.frame(t)
-        if t >= CONTINUE_S:
+        if t >= self.blend_s:
             return target
-        w = t / CONTINUE_S
+        w = t / self.blend_s
         w = w * w * (3 - 2 * w)
         return [((a ** (1 / GAMMA)) + ((b ** (1 / GAMMA)) - (a ** (1 / GAMMA))) * w) ** GAMMA
                 for a, b in zip(self.start, target)]
@@ -503,7 +499,9 @@ def main() -> int:
     log("chips: " + ", ".join(f"GPIO{g}={os.path.basename(c)}"
                               for g, c in zip(GPIOS, chips)))
     period = configured_period()
-    channels = [Channel(c, period) for c in chips]
+    # Cold: the first duties are stage 0's ember (a handover's channels are
+    # already enabled and keep what they show).
+    channels = [Channel(c, period, 0.0 if mode else e) for c, e in zip(chips, EMBER)]
 
     look = LOOKS[mode or "amber"]
     balance = look["balance"]
@@ -511,13 +509,15 @@ def main() -> int:
     if table is not None:
         # haslerd's own frames (night-scaled, calibrated): its levels for the state.
         look = {**look, "floor": table["floor"], "peak": table["peak"], "period_s": table["period_s"]}
-    start = 0.0
-    lit = [ch.lit() for ch in channels]
+    # Where the breath starts: what the LED shows (a handover), or stage 0's
+    # ember (a cold start: the firmware's glow, blended up over FADE_S).
+    lit = [ch.lit() for ch in channels] if mode else list(EMBER)
+    blend = CONTINUE_S if mode else FADE_S
+    # Perceptual; the red channel carries every look.
+    start = lit[0] ** (1.0 / GAMMA)
     if mode is not None:
-        # What the LED shows (the red channel carries both looks), perceptual.
-        start = channels[0].lit() ** (1.0 / GAMMA)
         log(f"handover ({mode}): breathing on from {start:.2f}")
-    player = TablePlayer(table, lit if mode else None) if table is not None else None
+    player = TablePlayer(table, lit, blend) if table is not None else None
 
     t0 = time.monotonic()
     state = {"colour": "amber", "t0_monotonic": t0,          # busy is amber, whatever the mode
@@ -553,7 +553,7 @@ def main() -> int:
             p = max(rgb) ** (1.0 / GAMMA)
             duties = [ch.set(d) for ch, d in zip(channels, rgb)]
         else:
-            p = continue_at(t, start, look) if mode else level_at(t)
+            p = continue_at(t, start, look, blend)
             lin = p ** GAMMA
             duties = [ch.set(lin * k) for ch, k in zip(channels, balance)]
         if args.print:

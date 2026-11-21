@@ -424,13 +424,25 @@ def frames(out):
     return [float(line.split("level=")[1].split()[0]) for line in out.splitlines() if "level=" in line]
 
 
+def first_duties(out):
+    line = next(line for line in out.splitlines() if "duty_ns=" in line)
+    return json.loads(line.split("duty_ns=")[1])
+
+
+# Stage 0's ember (the firmware's pull-down glow), perceptual: where a cold start begins.
+EMBER_RED = 0.0075
+EMBER_P = EMBER_RED ** (1 / 2.2)
+
+
 class TestBootScript:
-    def test_cold_boot_fades_up_from_dark_at_the_remembered_period(self, tmp_path):
+    def test_cold_boot_grows_from_the_ember_at_the_remembered_period(self, tmp_path):
         (tmp_path / "lamp-period").write_text("2500000\n")
         res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "0.3")
         assert res.returncode == 0, res.stderr
         levels = frames(res.stdout)
-        assert levels[0] < 0.01 and levels == sorted(levels)
+        assert abs(levels[0] - EMBER_P) < 0.01 and levels == sorted(levels)    # the firmware's glow, not dark
+        red, green, blue = first_duties(res.stdout)                              # the very first frame
+        assert red == round(EMBER_RED * 2500000) and blue == 0 and green <= 0.15 * red + 1
         assert (tmp_path / "pwm" / "pwmchip0" / "pwm0" / "period").read_text().strip() == "2500000"
         state = json.loads((tmp_path / "run" / "boot").read_text())
         assert state["released"] is True and (state["floor"], state["peak"]) == (0.22, 0.70)
@@ -462,7 +474,7 @@ class TestBootScript:
         (tmp_path / "run").mkdir()
         (tmp_path / "run" / "handover").write_text(json.dumps({"mode": "ember", "at": time.time() - 3600}))
         res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "0.2")
-        assert frames(res.stdout)[0] < 0.01                  # the cold fade
+        assert abs(frames(res.stdout)[0] - EMBER_P) < 0.01   # the cold start, from the ember
 
     def test_lets_go_when_haslerd_asks(self, tmp_path):
         full = {**os.environ, "HASLER_PWM_ROOT": str(tmp_path / "pwm"), "HASLER_LAMP_RUN": str(tmp_path / "run"),
@@ -609,7 +621,7 @@ class TestBootScriptWithNotes:
         res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "3.5")
         assert res.returncode == 0, res.stderr
         levels = frames(res.stdout)
-        assert levels[0] < 0.01                                          # still a fade up from dark
+        assert abs(levels[0] - EMBER_P) < 0.01                           # still from the firmware's ember
         assert max(levels) < 0.45                                        # never the day's 70 % in the bedroom
         assert max(levels[len(levels) // 2:]) > 0.25
         state = json.loads((tmp_path / "run" / "boot").read_text())
@@ -632,6 +644,6 @@ class TestBootScriptWithNotes:
     def test_odd_notes_fall_back_to_the_scripts_own_breath(self, tmp_path):
         (tmp_path / "lamp-boot.json").write_text('{"looks": {"amber": {"day": {"frames": "nope"}}}, "fps": 25}')
         res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "0.3")
-        assert res.returncode == 0 and frames(res.stdout)[0] < 0.01
+        assert res.returncode == 0 and abs(frames(res.stdout)[0] - EMBER_P) < 0.01
         state = json.loads((tmp_path / "run" / "boot").read_text())
         assert (state["floor"], state["peak"]) == (0.22, 0.70)               # the script's own busy breath
