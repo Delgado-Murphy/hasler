@@ -447,9 +447,10 @@ already on just saves it - the radio says "Saved - the radio stays
 connected" and doesn't restart.
 
 **After a power cut** the radio may start before your router and make its
-own network. You don't need to do anything: it keeps looking for your Wi-Fi
-and goes back by itself. To hurry it, unplug and replug once the router is
-up.
+own network. You don't need to do anything: it looks for your Wi-Fi every
+minute at first and goes back by itself, usually a minute or two after the
+router is up. It waits while a phone is on its network, so if a phone joined
+it by itself, switch that phone's Wi-Fi off and on.
 
 ### Changing networks at home
 

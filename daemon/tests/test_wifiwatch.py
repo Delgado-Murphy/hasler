@@ -33,27 +33,31 @@ def run(dog, state, until, step=1.0):
         state["t"] += step
 
 
-def test_waits_before_the_first_try_then_backs_off():
+def test_every_minute_for_ten_minutes_then_every_five_for_an_hour_then_every_ten():
     dog, wifi, state = make()
     run(dog, state, wifiwatch.FIRST_S - 1)
-    assert wifi.calls == []                       # a phone may be on its way
+    assert wifi.calls == []
     run(dog, state, wifiwatch.FIRST_S + 1)
-    assert wifi.calls == [False]
-    t1 = state["t"]
-    run(dog, state, t1 + wifiwatch.EVERY_S[0] + 1)
-    assert len(wifi.calls) == 2
-    t2 = state["t"]
-    run(dog, state, t2 + wifiwatch.EVERY_S[0] + 1)
-    assert len(wifi.calls) == 2                   # the second wait is longer
-    run(dog, state, t2 + wifiwatch.EVERY_S[1] + 1)
-    assert len(wifi.calls) == 3
+    assert wifi.calls == [False]                  # a minute in
+    run(dog, state, 600)
+    assert 9 <= len(wifi.calls) <= 10             # every minute for the first ten
+    n = len(wifi.calls)
+    run(dog, state, 600 + 3600)
+    assert 11 <= len(wifi.calls) - n <= 13        # every five for the hour after
+    n = len(wifi.calls)
+    run(dog, state, 600 + 3600 + 3600)
+    assert 5 <= len(wifi.calls) - n <= 7          # then every ten
     assert dog.status()["last"]["result"] == "not-visible" and dog.status()["active"]
+
+
+def test_retry_delay():
+    assert [wifiwatch.retry_delay(t) for t in (0, 599, 600, 4199, 4200, 86400)] == [60, 60, 300, 300, 600, 600]
 
 
 def test_keeps_trying_for_as_long_as_it_takes():
     dog, wifi, state = make()
     run(dog, state, 6 * 3600, step=10.0)          # a router that stays off for six hours
-    assert len(wifi.calls) >= 6 * 3600 / wifiwatch.EVERY_S[-1] - 1
+    assert len(wifi.calls) >= 6 * 3600 / wifiwatch.LATER_S
 
 
 def test_a_phone_on_the_hotspot_or_music_puts_it_off_without_backing_off():
@@ -63,14 +67,14 @@ def test_a_phone_on_the_hotspot_or_music_puts_it_off_without_backing_off():
     run(dog, state, state["t"] + wifiwatch.BUSY_S + 1)
     assert len(wifi.calls) == 2 and dog.attempts == 1     # busy is not an attempt
     state["idle"] = False                         # Bluetooth playing: not now
-    run(dog, state, state["t"] + wifiwatch.EVERY_S[0] + 5)
+    run(dog, state, state["t"] + 300 + 5)
     assert len(wifi.calls) == 2
 
 
 def test_wrong_password_waits_for_a_person_and_nothing_saved_stops():
     dog, wifi, state = make({"ok": True, "result": "failed", "reason": "secrets"})
     run(dog, state, wifiwatch.FIRST_S + 1)
-    run(dog, state, state["t"] + wifiwatch.EVERY_S[-1] + 1)
+    run(dog, state, state["t"] + wifiwatch.LATER_S + 1)
     assert len(wifi.calls) == 1
     assert 0 < dog.status()["next_in"] <= wifiwatch.WRONG_PASSWORD_S
 
@@ -121,3 +125,13 @@ def test_the_hotspot_check_runs_once_soon_after_start():
     assert wifi.ensured == 0
     run(dog, state, 3600, step=5.0)
     assert wifi.ensured == 1
+
+
+def test_being_put_off_is_logged_once_per_reason(caplog):
+    import logging
+    dog, _wifi, state = make(*[{"ok": True, "result": "busy", "stations": 1}] * 5)
+    with caplog.at_level(logging.INFO, logger="haslerd.wifiwatch"):
+        run(dog, state, wifiwatch.FIRST_S + 5 * wifiwatch.BUSY_S + 5)
+    put_off = [r for r in caplog.messages if "not looking" in r]
+    assert len(put_off) == 1 and "setup network" in put_off[0]
+    assert any("looking for the saved Wi-Fi again" in r for r in caplog.messages)

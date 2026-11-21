@@ -12,8 +12,12 @@ This asks the root helper (scripts/hasler-wifi-join "retry") to look for the
 saved networks now and then while the radio is a hotspot and nobody is on it.
 If one is back, the helper joins it and restarts the radio onto it.
 
-When: first ``FIRST_S`` after the hotspot appears (time for a phone that is
-already on its way), then backing off along ``EVERY_S``; a wrong password
+When: by the time since the hotspot appeared (``retry_delay``): every minute
+for the first ten (a router back from the same power cut is usually up by
+then), every five for the next hour, then every ten for as long as it takes.
+The look itself doesn't drop the hotspot where the chip can scan as one, and a
+phone on the hotspot puts it off, so trying often costs a setup nothing (the
+journal says, once, when a phone or the music puts it off). A wrong password
 waits ``WRONG_PASSWORD_S`` (it needs a person: the setup page). A phone on the
 hotspot, or the radio playing (Bluetooth works without Wi-Fi), puts it off by
 ``BUSY_S``. Nothing is tried when moOde was told to be a hotspot on purpose
@@ -47,8 +51,10 @@ from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
-FIRST_S = 180.0
-EVERY_S = (300.0, 600.0, 900.0, 1800.0)      # then every 30 min, for as long as it takes
+# (seconds since the hotspot appeared, try every) - then LATER_S for as long as it takes.
+SCHEDULE = ((600.0, 60.0), (600.0 + 3600.0, 300.0))
+LATER_S = 600.0
+FIRST_S = SCHEDULE[0][1]
 WRONG_PASSWORD_S = 3600.0
 BUSY_S = 60.0
 ERROR_S = 600.0
@@ -59,6 +65,14 @@ ENSURE_AFTER_S = 30.0       # the hotspot check (Wifi.ensure_hotspot), once, off
 # the watchdog starts it. Watched only during the first BOOT_WINDOW_S.
 NO_WIFI_S = 120.0
 BOOT_WINDOW_S = 900.0
+
+
+def retry_delay(elapsed: float) -> float:
+    """The wait before the next look, ``elapsed`` seconds into setup mode."""
+    for until, every in SCHEDULE:
+        if elapsed < until:
+            return every
+    return LATER_S
 
 
 class HotspotWatchdog:
@@ -82,7 +96,7 @@ class HotspotWatchdog:
         self._busy = threading.Lock()
         self._since: float | None = None      # hotspot seen since
         self._next: float | None = None       # next try
-        self._step = 0
+        self._waiting = ""                    # why tries are being put off ("phone" | "playing"), logged once
         self._next_scan = 0.0
         self._ensure_at: float | None = None
         self._started: float | None = None
@@ -111,7 +125,7 @@ class HotspotWatchdog:
             if self._since is not None:
                 log.info("setup mode over")
             self._since = self._next = None
-            self._step, self.stopped = 0, ""
+            self._waiting, self.stopped = "", ""
             if self._no_network(now):
                 return
             if now >= self._next_scan and self._safe(self._offline):
@@ -125,7 +139,7 @@ class HotspotWatchdog:
         if self.stopped or self._next is None or now < self._next:
             return
         later = self._next
-        self._next = now + EVERY_S[-1]        # until the helper answers
+        self._next = now + LATER_S            # until the helper answers
         if not self._spawn(self._try):
             self._next = later                # (a scan still running: next poll)
 
@@ -227,6 +241,7 @@ class HotspotWatchdog:
     def _try(self) -> None:
         # Here, off the main loop: "idle" asks the player (health.py).
         if not self._safe(self._idle):
+            self._put_off("playing", "the radio is playing")
             self._next = self._clock() + BUSY_S
             return
         self._attempt(False)
@@ -239,18 +254,27 @@ class HotspotWatchdog:
         self._schedule(reply)
         return reply
 
+    def _put_off(self, why: str, words: str) -> None:
+        if self._waiting != why:
+            log.info("setup mode: not looking for the saved Wi-Fi while %s", words)
+            self._waiting = why
+
     def _schedule(self, reply: dict) -> None:
         now = self._clock()
         result = str(reply.get("result") or "error")
         self.last = {"result": result, "reason": str(reply.get("reason") or ""),
                      "ssid": str(reply.get("ssid") or ""), "error": str(reply.get("error") or "")}
         if result == "busy":
+            self._put_off("phone", f"{reply.get('stations') or 'a'} phone(s) on the setup network")
             self._next = now + BUSY_S
             return
+        if self._waiting:
+            log.info("setup mode: looking for the saved Wi-Fi again")
+            self._waiting = ""
         self.attempts += 1
         if result == "joined":
             log.warning("setup mode: %s is back - restarting onto it", reply.get("ssid"))
-            self._next = now + EVERY_S[-1]
+            self._next = now + LATER_S
         elif result == "no-network":
             # No saved network, or moOde was set to "Activate Hotspot" on purpose.
             self.stopped = "no-network"
@@ -261,8 +285,7 @@ class HotspotWatchdog:
             log.warning("setup mode: the saved Wi-Fi refused its password")
             self._next = now + WRONG_PASSWORD_S
         elif result in ("not-visible", "failed"):
-            delay = EVERY_S[min(self._step, len(EVERY_S) - 1)]
-            self._step += 1
+            delay = retry_delay(now - (self._since if self._since is not None else now))
             log.info("setup mode: saved Wi-Fi %s; again in %.0f s",
                      "not there" if result == "not-visible" else "did not answer", delay)
             self._next = now + delay

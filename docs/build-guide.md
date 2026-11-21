@@ -604,9 +604,10 @@ password, press **Connect**; the radio restarts onto it. The owner's steps are i
 - **When it starts.** moOde's worker waits up to 90 s (`ipaddr_timeout`) for
   wlan0 to get an address, then brings up its `Hotspot` profile
   (`activateHotspot()`) - only at boot, and it never leaves it by itself.
-  haslerd's watchdog (`haslerd/wifiwatch.py`) does: 3 min after the hotspot
-  appears, then after 5, 10, 15 and every 30 min, while no phone is on the
-  hotspot and nothing plays, it asks `hasler-wifi-join` (`"retry"`) to look
+  haslerd's watchdog (`haslerd/wifiwatch.py`) does: every minute for the first
+  10 min after the hotspot appears, every 5 min for the next hour, then every
+  10 min, while no phone is on the hotspot and nothing plays (the journal says
+  when a phone or the music puts it off), it asks `hasler-wifi-join` (`"retry"`) to look
   for moOde's network and the saved ones. If one is back, the helper joins it
   and restarts the radio onto it; a wrong password waits an hour. So a power
   cut where the router boots slower than the radio heals by itself.
