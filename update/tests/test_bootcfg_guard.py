@@ -294,6 +294,84 @@ def test_guard_reasserts_amp_after_hdmi_fallback(box):
     assert box.repair() == 0 and box.db_get()["adevname"] == "snd_rpi_hifiberry_dacplus"
 
 
+MPD_CONF_SOFT = """#########################################
+# This file is managed by moOde
+#########################################
+
+audio_output {
+type "alsa"
+name "ALSA Default"
+device "_audioout"
+mixer_type "software"
+dop "no"
+}
+
+audio_output {
+type "alsa"
+name "ALSA Bluetooth"
+device "_audioout"
+mixer_type "software"
+}
+"""
+
+
+def _mpd_table(box, mixer_type: str) -> None:
+    con = sqlite3.connect(box.paths.moode_db)
+    con.execute("CREATE TABLE IF NOT EXISTS cfg_mpd (id INTEGER PRIMARY KEY, param CHAR(32), value CHAR(32))")
+    con.execute("DELETE FROM cfg_mpd WHERE param='mixer_type'")
+    con.execute("INSERT INTO cfg_mpd (param, value) VALUES ('mixer_type', ?)", (mixer_type,))
+    con.commit()
+    con.close()
+
+
+def _mpd_mixer(box) -> str:
+    con = sqlite3.connect(box.paths.moode_db)
+    try:
+        return con.execute("SELECT value FROM cfg_mpd WHERE param='mixer_type'").fetchone()[0]
+    finally:
+        con.close()
+
+
+@pytest.mark.parametrize("adev", ["Pi HDMI 1", "snd_rpi_hifiberry_dacplus"], ids=["from-hdmi", "amp-already"])
+def test_guard_puts_the_volume_back_on_the_amp(box, adev):
+    """21 Nov, later: the amp was back but moOde's volume stayed "software" from the
+    HDMI fallback, MPD's own volume at 0 - silence. The mixer goes back to hardware,
+    and mpd.conf too, since MPD starts before moOde's worker rewrites it."""
+    box.db_set(adevname=adev, mpdmixer="software")
+    _mpd_table(box, "software")
+    conf = box.paths.mpd_conf
+    conf.parent.mkdir(parents=True, exist_ok=True)
+    conf.write_text(MPD_CONF_SOFT)
+    box.write(GOOD)
+    assert box.repair() == 0
+    assert box.db_get()["mpdmixer"] == "hardware" and _mpd_mixer(box) == "hardware"
+    assert box.db_get()["adevname"] == "snd_rpi_hifiberry_dacplus"
+    text = conf.read_text()
+    default, bluetooth = text.split('name "ALSA Bluetooth"')
+    assert 'mixer_type "hardware"' in default and 'mixer_control "Digital"' in default
+    assert 'mixer_device "hw:CARD=sndrpihifiberry"' in default and 'mixer_type "software"' not in default
+    assert 'mixer_type "software"' in bluetooth                         # Bluetooth keeps its own
+    assert 'dop "no"' in default
+    entry = box.doc()["repairs"][-1]
+    assert "mpd.conf: the amp's mixer" in entry["changed"] and box.reboots == 0
+    # the next boot: nothing to do, mpd.conf untouched
+    n, before = len(box.doc()["repairs"]), conf.read_text()
+    assert box.repair() == 0 and len(box.doc()["repairs"]) == n and conf.read_text() == before
+
+
+def test_guard_leaves_a_hardware_mixer_and_other_outputs_alone(box):
+    box.db_set(adevname="USB Audio Device", mpdmixer="software")
+    _mpd_table(box, "software")
+    box.write(GOOD)
+    box.repair()
+    assert box.db_get()["mpdmixer"] == "software" and _mpd_mixer(box) == "software"   # a USB DAC: its choice
+    box.db_set(adevname="snd_rpi_hifiberry_dacplus", mpdmixer="hardware")
+    _mpd_table(box, "hardware")
+    box.repair()
+    assert box.db_get()["mpdmixer"] == "hardware"
+    assert not box.paths.state_file.exists() or all(r["file"] != "moode-db" for r in box.doc().get("repairs", []))
+
+
 @pytest.mark.parametrize("overlay,adev", [
     ("hifiberry-amp4pro", "snd_rpi_hifiberry_dacplus"),     # the amp: as it should be
     ("hifiberry-amp4pro", "USB Audio Device"),              # a USB DAC chosen in moOde

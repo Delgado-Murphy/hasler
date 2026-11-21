@@ -45,6 +45,14 @@ the worker starts; the worker then finds the card, reassigns cardnum and
 regenerates MPD's config itself. Any other output (a USB DAC, another I2S
 device) is a choice and stays.
 
+The same fallback also turns moOde's volume to "software" (cfg_system mpdmixer,
+cfg_mpd mixer_type); with the amp back but that left, MPD's own volume sits at
+0 and the radio plays silence (bench, 21 Nov 2026). So with the amp chosen -
+put back or already there - a software mixer goes back to "hardware", and
+/etc/mpd.conf's "ALSA Default" output gets the amp's mixer at once: MPD starts
+before moOde's worker rewrites that file and would keep the silent one until
+its next restart.
+
 Loop guard: at most one repair reboot per 10 minutes. If a repair did not hold
 (still broken within that window) it leaves everything alone and says so.
 Stdlib only, run as root. HASLER_ROOT prefixes every path (tests).
@@ -75,6 +83,9 @@ BLOCKS = (LAMP_BLOCK,
 AMP_OVERLAY = "hifiberry-amp4pro"
 HDMI_NAMES = ("Pi HDMI 1", "Pi HDMI 2")
 AMP_SETTINGS = (("adevname", "snd_rpi_hifiberry_dacplus"), ("amixname", "Digital"), ("alsa_output_mode", "plughw"))
+AMP_NAME = AMP_SETTINGS[0][1]
+AMP_MIXER = "Digital"
+AMP_CTL = "hw:CARD=sndrpihifiberry"     # by name: the card number is moOde's to reassign
 WINDOW_S = 600          # at most one repair reboot per 10 minutes
 KEEP_BAD = 3            # broken copies kept for a post-mortem
 
@@ -114,6 +125,10 @@ class Paths:
     @property
     def moode_db(self) -> Path:
         return self.p("/var/local/www/db/moode-sqlite3.db")
+
+    @property
+    def mpd_conf(self) -> Path:
+        return self.p("/etc/mpd.conf")
 
     @property
     def release_block(self) -> Path:
@@ -237,20 +252,72 @@ def moode_amp(paths: Paths) -> list[str]:
     try:
         con = sqlite3.connect(str(db), timeout=5)
         try:
+            names += ("mpdmixer",)
             rows = dict(con.execute(f"SELECT param, value FROM cfg_system WHERE param IN ({','.join('?' * len(names))})",
                                     names).fetchall())
-            if rows.get("i2soverlay") != AMP_OVERLAY or rows.get("adevname") not in HDMI_NAMES:
+            if rows.get("i2soverlay") != AMP_OVERLAY or rows.get("adevname") not in HDMI_NAMES + (AMP_NAME,):
                 return []
             with con:
-                for k, v in AMP_SETTINGS:
-                    if rows.get(k) != v and con.execute("UPDATE cfg_system SET value=? WHERE param=?",
-                                                        (v, k)).rowcount:
-                        changed.append(f"{k} {rows.get(k)!r} -> {v!r}")
+                if rows.get("adevname") in HDMI_NAMES:
+                    for k, v in AMP_SETTINGS:
+                        if rows.get(k) != v and con.execute("UPDATE cfg_system SET value=? WHERE param=?",
+                                                            (v, k)).rowcount:
+                            changed.append(f"{k} {rows.get(k)!r} -> {v!r}")
+                if rows.get("mpdmixer") == "software" and con.execute(
+                        "UPDATE cfg_system SET value='hardware' WHERE param='mpdmixer'").rowcount:
+                    changed.append("mpdmixer 'software' -> 'hardware'")
+                try:
+                    mpd = con.execute("SELECT value FROM cfg_mpd WHERE param='mixer_type'").fetchone()
+                except sqlite3.OperationalError:
+                    mpd = None      # no cfg_mpd table (not moOde as we know it)
+                if mpd and mpd[0] == "software" and con.execute(
+                        "UPDATE cfg_mpd SET value='hardware' WHERE param='mixer_type'").rowcount:
+                    changed.append("mixer_type 'software' -> 'hardware'")
         finally:
             con.close()
     except sqlite3.Error as e:
         log(f"moOde's database: could not check its audio output ({e})", 4)
         return []
+    if any(c.startswith(("mpdmixer", "mixer_type")) for c in changed) and mpd_conf_amp_mixer(paths):
+        changed.append("mpd.conf: the amp's mixer")
+    return changed
+
+
+def mpd_conf_amp_mixer(paths: Paths) -> bool:
+    """Give mpd.conf's "ALSA Default" output the amp's hardware mixer (docstring,
+    "software"). moOde rewrites the file later in the boot the same way. True if changed."""
+    data = read(paths.mpd_conf)
+    text = text_of(data)
+    if not text or MOODE_MAIN not in text:
+        return False
+    lines = text.split("\n")
+    out: list[str] = []
+    i, changed = 0, False
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().startswith("audio_output") and "{" in line:
+            j = i + 1
+            while j < len(lines) and lines[j].strip() != "}":
+                j += 1
+            body = lines[i + 1:j]
+            if any(b.strip() == 'name "ALSA Default"' for b in body) and \
+                    not any(b.strip() == 'mixer_type "hardware"' for b in body):
+                keep = [b for b in body if not b.strip().startswith(
+                    ("mixer_type", "mixer_control", "mixer_device", "mixer_index"))]
+                at = next((k + 1 for k, b in enumerate(keep) if b.strip().startswith("device ")), len(keep))
+                keep[at:at] = ['mixer_type "hardware"', f'mixer_control "{AMP_MIXER}"',
+                               f'mixer_device "{AMP_CTL}"', 'mixer_index "0"']
+                body, changed = keep, True
+            out += [line] + body
+            i = j
+            continue
+        out.append(line)
+        i += 1
+    if changed:
+        st = os.stat(paths.mpd_conf)
+        write_file(paths.mpd_conf, "\n".join(out).encode(), st.st_mode & 0o7777)
+        if os.geteuid() == 0:
+            os.chown(paths.mpd_conf, st.st_uid, st.st_gid)
     return changed
 
 
@@ -437,7 +504,7 @@ def cmd_repair(paths: Paths, allow_reboot: bool = True) -> int:
     # its worker starts (it reads the output from there).
     amp = moode_amp(paths)
     if amp:
-        log("moOde's output was HDMI with the Amp4 Pro chosen - the amp is back in its database: "
+        log("moOde had left the Amp4 Pro (HDMI output or a software volume) - the amp is back in its database: "
             + "; ".join(amp) + ("" if system_state() in ("initializing", "starting")
                                  else " (moOde uses it from its next start)"), 4)
         doc.setdefault("repairs", []).append({"file": "moode-db", "at": int(now()), "boot_id": boot_id(),
