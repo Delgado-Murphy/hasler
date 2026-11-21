@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.7.7 - 2026-11-21
+
+- A power cut can no longer leave a YouTube Music song that won't play:
+  songs are saved safely, and empty ones are thrown away.
+- A YouTube Music key that keeps failing skips the bad song, then switches to
+  a radio station (or goes quiet at night). Press the key to try again.
+- Choose what happens after a power cut: play, play but not at night, or stay
+  quiet. Settings → Sound.
+- An Excelsior key left down no longer starts music after a power cut.
+- The boot lamp grows out of a faint glow instead of from dark.
+
+For makers
+- `ytm.py`: fsync before rename, 0-byte or non-audio files dropped on load and
+  reuse, `forget(vid)` for the watchdog; links bound to an old `ip=` dropped.
+- Watchdog: relapses counted across recoveries, mid-playlist skip, fallback
+  (`when_music_fails`, `fallback_preset`; `status.fallback`).
+- `after_power_cut` (`resume|night_only|standby`, default `night_only`).
+- `hasler-bootcfg-guard repair` puts moOde back on the amp when it fell back
+  to HDMI (`adevname`, `amixname`, `alsa_output_mode`), and a restored
+  known-good copy keeps the release's lamp block.
+
 ## 1.7.6 - 2026-11-14
 
 - Security updates for the system underneath install at night again. Since
