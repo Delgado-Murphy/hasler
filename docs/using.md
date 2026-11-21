@@ -366,7 +366,7 @@ and so on. A row is done when the radio knows it is. Optional rows have
 
 | Row | What you find there |
 |---|---|
-| **Sound** | The **volume ceiling** (30 up to the top for this speaker; 90 on the Hasler HM). The **quietest step**. **Mono** (on to start). **What the tone knob does**. **A knob feels off?**: **Calibrate**. |
+| **Sound** | The **volume ceiling** (30 up to the top for this speaker; 90 on the Hasler HM). The **quietest step**. **Mono** (on to start). **What the tone knob does**. **When the power comes back** and **When music won't play** (with the **Fallback station**). **A knob feels off?**: **Calibrate**. |
 | **Keys** | Edit keys, what **PU** steps through, and Reset keys. |
 | **Phones** | Spotify, AirPlay, Bluetooth and UPnP on or off. **Your phones** (with the Bluetooth codec while one plays) and **Pair a phone**. **Back to the radio when a phone stops**. The name phones see. |
 | **Music accounts** | **Spotify**: the radio's own account. **YouTube Music**: your sign-in, for Liked songs and private playlists (it takes a computer and a few technical steps; the makers can do it for you over remote help). |
@@ -563,7 +563,12 @@ What changed in each version: the
 - The lamp breathes amber, and after about 15 seconds the music comes back.
 - If the power comes back **at night**, the radio stays asleep. Press a key in
   the morning.
-- If the tone knob is clicked off, the radio stays asleep.
+- You choose this in **Settings → Sound → When the power comes back**:
+  **Play where it left off**, **Play, but not at night** (as it comes), or
+  **Stay quiet until a key is pressed**. Asleep, the lamp glows ember; one
+  key press plays what was playing. A restart after an update always plays on.
+- If the tone knob is clicked off, the radio stays asleep. So does an
+  Excelsior with a key left down: the key counts once you press another.
 - If the music can't come back (no internet, say), the lamp glows red, then
   dim amber. Press a key.
 - If the power goes often (a plug timer? a wall switch?), use the tone knob
@@ -607,6 +612,11 @@ the top. Tell them. When it clears, Settings says so.
 **Settings → Music accounts** (sign-ins can expire after months, or when a
 password changes). The radio mends its YouTube Music helper by itself,
 usually within hours.
+
+**A YouTube Music key switched to a radio station.** It kept failing, so the
+radio played a station instead and the front page says so. Press the key again
+to try YouTube Music again. At night or without internet it goes quiet instead.
+Choose in **Settings → Sound → When music won't play**.
 
 **My phone won't connect over Bluetooth.** **Forget** it in **Settings →
 Phones**, then hold **PU** and pair again.
