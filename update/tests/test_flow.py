@@ -307,34 +307,6 @@ def test_config_txt_block_needs_reboot_flag(installed_v1: World):
     assert "dtoverlay" not in (w.root / "boot/firmware/config.txt").read_text()
 
 
-def test_old_block_radio_gets_the_ember_block(installed_v1: World):
-    """1.7.7: a radio on the old lamp block (all three pins op,dh) gets the ember
-    block from the release - not by the nightly apply (it refuses before the
-    trial), by `apply --allow-reboot`: the block is written, the box reboots into
-    the trial, and the commit refreshes the boot-config guard's known-good."""
-    from hasler_update import integrate as integ
-    w = installed_v1
-    old = "[all]\ngpio=17,22,27=op,dh\ndtoverlay=pwm-gpio,gpio=17\ndtoverlay=pwm-gpio,gpio=22\ndtoverlay=pwm-gpio,gpio=27\n"
-    new = (Path(__file__).resolve().parents[2] / "config/configtxt/hasler.block").read_bytes()
-    cfg = w.root / "boot/firmware/config.txt"
-    cfg.write_text(integ.render_config_txt(cfg.read_text(), old))
-    w.publish("1.1.0", 2, extra={"integration/configtxt/hasler.block": new})
-    w.checker().stage()
-    with pytest.raises(Exception, match="reboot"):
-        w.applier().apply(auto=True)
-    assert integ.config_block(cfg.read_text()).strip("\n") == old.strip("\n")
-    ap = w.applier()
-    assert ap.apply(allow_reboot=True) == "rebooting into the trial"
-    text = cfg.read_text()
-    assert integ.config_block(text).strip("\n") == new.decode().strip("\n")
-    assert "gpio=17=ip,pd" in text and "gpio=17,22,27" not in text and text.startswith("arm_64bit=1\n")
-    assert w.state()["phase"] == "trial" and w.current() == "1.1.0"
-    assert w.applier().boot() == "trial boot 1"           # the boot with the new block
-    ap = w.applier()
-    assert "committed" in ap.resume()
-    assert ("bootcfg-save",) in ap.hooks.calls
-
-
 # --- a major release with system files of a kind the running updater has no rule for --------
 
 PKG = Path(__file__).resolve().parents[1] / "hasler_update"

@@ -272,16 +272,12 @@ Like a valve radio: light comes first, and sound follows as the valves warm.
 
 | t | Stage | Lamp |
 |---|---|---|
-| 0 - ember ~1 s | power, firmware | a faint steady red: `gpio=17=ip,pd` in config.txt leaves red on its weak pull-down (a glow through the common-anode LED), `gpio=22,27=op,dh` holds green and blue off. Steady, so never mistaken for SOS (which blinks) |
-| ~3-5 s | early `hasler-lamp-boot` service | grows out of the ember into the amber breath (22-70 %, 2.8 s), a slow 2 s blend - no dark gap |
+| 0-3 s | power, firmware | dark - `gpio=17,22,27=op,dh` in config.txt holds the LED off |
+| ~3-5 s | early `hasler-lamp-boot` service | fades up into the amber breath (22-70 %, 2.8 s) |
 | ~10 s | haslerd takes over | the engine writes nothing until its first Look and glides from the boot glow (`seed`) - no blink at the handover |
 | music resumes | playing | rise to the gold filament (80 %) with the first sound |
 | nothing to resume | ready | settle to amber 45 % |
 
-- **The ember** is the pin's pull-down, not PWM: the firmware can't dim, so
-  its brightness is the hardware's. `hasler-lamp-boot` starts its blend at the
-  same glow (`EMBER_RED`, matched by eye on a cold boot). Too faint by day? The
-  fallback is full red (`gpio=17=op,dl`).
 - **Knob off at power-on:** starting is busy: the amber breath, then the
   still ember.
 - **No Wi-Fi:** the amber warm-up, then CQ when the hotspot is up.

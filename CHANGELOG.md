@@ -1,6 +1,18 @@
 # Changelog
 
-## 1.7.8 - 2026-11-21
+## 1.7.9 - 2026-11-21
+
+- Updates are more patient after a restart: 1.7.8 undid itself because the
+  player's own page was still starting. The faint red glow at power-on comes
+  back in 1.7.10. No restart with this one.
+
+For makers
+- Health hold: a lost moOde UI counts only after 30 s in a row.
+- Rollback: the state snapshot sync skips haslerd's `.hasler-*` temp files and
+  a file vanishing mid-sync (it died on ENOENT and left the trial half undone).
+- `hasler.block` is back to 1.7.7's, so this release installs without a reboot.
+
+## 1.7.8 - 2026-11-21 (rolled back on the bench; superseded by 1.7.10)
 
 - The lamp glows faint red as soon as the power comes on, then breathes amber
   while the radio starts. This update restarts the radio once.
