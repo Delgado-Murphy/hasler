@@ -1043,6 +1043,12 @@ dialog .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 .attn{border-color:rgba(233,179,92,.45);background:linear-gradient(180deg,#2A1D10,#21160D)}
 .attn .set-row .li-title{color:#F3CF8C}
 .attn-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 8px rgba(255,178,56,.6)}
+/* a row that can be put away (YouTube Music stopped): the row and its "×" share one line */
+.attn-x{display:flex;align-items:stretch;border-top:1px solid var(--line)}
+.attn-x:first-child{border-top:0}
+.attn-x .set-row{flex:1;min-width:0;border-top:0}
+.attn-close{flex:none;width:44px;background:none;border:0;border-left:1px solid var(--line);color:var(--brass);font-size:20px;line-height:1;cursor:pointer}
+.attn-close:hover{color:var(--cream)}
 /* Make it yours: the quieter sibling of Needs attention. Open rows carry a ring (the two core ones a filled dot),
    the row's title is the link, Skip sits beside it; done and skipped rows fold into one line at the bottom. */
 .yours-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
@@ -2079,6 +2085,8 @@ function setSong(title, sub, thumb, kind, explicit){
     else c.append(kind === 'bt' ? IC.dots() : kind === 'radio' ? IC.radio('#7A5E38', 20) : IC.note('#7A5E38'));
   }
 }
+// The fallback from YouTube Music (/api/status fallback), said plainly: "Too Many Zooz wouldn't play, so here's Radio Nacional."
+const fallbackLine = fb => ((fb.from && fb.from.name) || 'YouTube Music') + ' wouldn’t play, so ' + (fb.to ? 'here’s ' + fb.to.name + '.' : 'the radio went quiet.');
 function renderDial(){
   const glass = $('glass');
   const cur = currentKey();
@@ -2092,7 +2100,9 @@ function renderDial(){
   } else if (!status){
     head = 'Tuning…'; name = 'Hasler'; setSong('', '', '', 'none');
   } else if (status.standby){
-    head = 'Standby'; name = 'Standby'; setSong('', 'Tap any key to wake the radio', '', 'none');
+    // YouTube Music wouldn't play and the radio went quiet instead (player/watchdog.py).
+    const fb = status.fallback && !status.fallback.to ? status.fallback : null;
+    head = 'Standby'; name = 'Standby'; setSong(fb ? fallbackLine(fb) : '', 'Tap any key to wake the radio', '', 'none');
   } else if (!status.playing && (status.played_from === 'room' || (mrOn() && grp.role === 'follow'))){
     const L = roomName(grp && grp.leader);
     head = 'Rooms · with ' + L; name = L; setSong('Playing along', 'Same music as ' + L, '', 'note');
@@ -2116,7 +2126,9 @@ function renderDial(){
     head = (k ? keyLabel(k) : 'From the page') + ' · ' + (SRC_HEAD[pl.source] || pl.source || '');
     name = pl.name || 'Playing';
     const t = status.track;
-    if (pl.source === 'radio') setSong(t && t.title ? t.title : '', t && t.title ? (t.artist || 'Live radio') : 'Live radio', t && t.thumb, 'radio');
+    const fb = status.fallback && status.fallback.to && status.fallback.to.n === pl.n ? status.fallback : null;
+    if (fb) setSong(fallbackLine(fb), t && t.title ? [t.title, t.artist].filter(Boolean).join(' · ') : 'Live radio', t && t.thumb, 'radio');
+    else if (pl.source === 'radio') setSong(t && t.title ? t.title : '', t && t.title ? (t.artist || 'Live radio') : 'Live radio', t && t.thumb, 'radio');
     else setSong(t && t.title ? t.title : '', t ? t.artist || t.album || '' : (pl.source === 'spotify' ? 'Spotify' : ''), t && (t.art || t.thumb), 'note', !!(t && t.explicit));
     live = 'Now playing ' + name; at = cur || '_page'; bold = true;
   } else if (status.played_from === 'phone' || status.waiting){
@@ -6159,13 +6171,27 @@ function attentionFromHealth(){
   }
   return out;
 }
+// YouTube Music stopped and the radio fell back (/api/status fallback_notice): until that key is pressed
+// again, or the row is put away (remembered on this phone by the fallback's time).
+const FALLBACK_SEEN_KEY = 'hasler.fallbackSeen';
+function fallbackSeen(){ try { return localStorage.getItem(FALLBACK_SEEN_KEY) || ''; } catch (_) { return ''; } }
+function keyForPreset(n){ return ((cfg && cfg.keys) || []).find(k => k.tap && k.tap.do === 'preset' && k.tap.n === n) || null; }
+function attnFallback(){
+  const fb = status && status.fallback_notice;
+  if (!fb || !fb.at || fallbackSeen() === fb.at) return null;
+  const k = fb.from ? keyForPreset(fb.from.n) : null, at = String(fb.at).slice(11, 16);
+  const again = k ? 'Press ' + String(k.label || k.id) + ' to try again.' : 'Press its key to try again.';
+  return {id:'attn-fallback', title:'YouTube Music stopped',
+    sub: (fb.to ? 'Switched to ' + fb.to.name : 'Went quiet') + (at ? ' at ' + at : '') + '. ' + again,
+    href:'#settings/sound/fails', dismiss: () => { try { localStorage.setItem(FALLBACK_SEEN_KEY, fb.at); } catch (_) {} }};
+}
 // The radio joined a Wi-Fi in the last day (settings.wifi_joined, main.consume_wifi_joined): moved house?
 function attnNewWifi(){
   const j = settings && settings.wifi_joined;
   if (!j || !j.ssid) return null;
   return {id:'attn-newwifi', title:'New Wi-Fi: ' + j.ssid, sub:'Moved house? Open Moving this radio', href:'#settings/radio/move'};
 }
-const ATTENTION = [attentionFromHealth, attnUpdate, attnRollback, attnSpotify, attnYtm, attnHaMissing, attnHaLost, attnHelp, attnWifi, attnNewWifi];
+const ATTENTION = [attentionFromHealth, attnUpdate, attnRollback, attnSpotify, attnYtm, attnFallback, attnHaMissing, attnHaLost, attnHelp, attnWifi, attnNewWifi];
 // Each entry gives a row, null, or a list of rows.
 function setAttention(){ return ATTENTION.flatMap(f => f() || []); }
 // The front page's gear carries a dot while the list has rows.
@@ -6177,7 +6203,12 @@ function loadAttention(){ Promise.all([loadSoftware(), loadHelp(), loadMusic(), 
 function setHomeAttention(panel){
   const attn = setAttention();
   if (attn.length) panel.append(h('section', {class:'grp-sec', id:'sec-attention', 'aria-labelledby':'attnH'}, h('h3', {class:'mono grp-lbl', id:'attnH'}, 'Needs attention'),
-    h('div', {class:'set-list attn'}, attn.map(a => setRow(a.id, a.title, a.sub, a.href, h('span', {class:'attn-dot', 'aria-hidden':'true'}))))));
+    h('div', {class:'set-list attn'}, attn.map(a => a.dismiss ? attnDismissable(a) : setRow(a.id, a.title, a.sub, a.href, h('span', {class:'attn-dot', 'aria-hidden':'true'}))))));
+}
+// A row the owner may put away (a thing that happened, not a thing to fix): the row, and a small "×".
+function attnDismissable(a){
+  return h('div', {class:'attn-x'}, setRow(a.id, a.title, a.sub, a.href, h('span', {class:'attn-dot', 'aria-hidden':'true'})),
+    h('button', {type:'button', class:'attn-close', id: a.id + '-x', 'aria-label':'Put away: ' + a.title, onclick: () => { a.dismiss(); rerender(); paintGearDot(); }}, '×'));
 }
 function setHomeRows(panel){
   const rows = SET_PAGES.filter(p => p.summary && (!p.shown || p.shown()));
@@ -6501,7 +6532,62 @@ function renderSound(panel){
     panel.append(setGroup('tone', tune.length === 1 ? 'What the ' + fxName(tune[0]).toLowerCase() + ' knob does' : 'What the knobs do', fxs,
       h('p', {class:'hint', style:'padding:0 4px'}, 'Turn the knob on the radio to hear the difference.')));
   } else if (!fx) panel.append(setGroup('tone', 'What the tone knob does', skel(1)));
+  panel.append(...resilienceGroups());
   const kn = knobLiveGroup(); if (kn) panel.append(kn);
+}
+/* When the power comes back (after_power_cut, bootresume.py) and when YouTube Music won't play
+   (when_music_fails, fallback_preset: player/watchdog.py). Each choice applies at once, with Undo. */
+const POWER_OPTS = [['resume', 'Play where it left off'], ['night_only', 'Play, but not at night'], ['standby', 'Stay quiet until a key is pressed']];
+const FAILS_OPTS = [['radio', 'Switch to a radio station'], ['standby', 'Go quiet'], ['keep_trying', 'Keep trying']];
+const resUi = {busy: ''};
+function resPicker(id, label, opts, value, field){
+  const pick = h('div', {class:'picker plain', role:'radiogroup', 'aria-labelledby': id + 'Lbl'});
+  for (const [v, t] of opts)
+    pick.append(h('button', {type:'button', role:'radio', id: id + '-' + v, 'aria-checked': String(value === v), disabled: resUi.busy === field,
+      onclick: () => { if (value !== v) saveResilience({[field]: v}, {[field]: value}); }},
+      h('span', {class:'radio-dot', 'aria-hidden':'true'}), h('span', null, t)));
+  return h('div', {class:'li col', style:'gap:6px'}, h('span', {class:'li-title sr', id: id + 'Lbl'}, label), pick);
+}
+// The radio presets the fallback may switch to, named by their key where one plays them.
+function radioPresetsForFallback(){
+  return ((cfg && cfg.presets) || []).filter(p => p.source === 'radio').sort((a, b) => a.n - b.n)
+    .map(p => { const k = keyForPreset(p.n); return {n: p.n, text: (k ? keyLabel(k) + ' · ' : '') + (p.name || 'Station ' + p.n)}; });
+}
+function resilienceGroups(){
+  if (!settings || !settings.after_power_cut) return [];
+  const apc = settings.after_power_cut, wmf = settings.when_music_fails || 'radio', fb = settings.fallback_preset ?? null;
+  const power = setGroup('power', 'When the power comes back', h('div', {class:'list'},
+    resPicker('apc', 'When the power comes back', POWER_OPTS, apc, 'after_power_cut'),
+    h('div', {class:'li', style:'min-height:0'}, h('span', {class:'li-sub'}, 'Only after a power cut. A restart after an update always plays on.'))));
+  const rows = [resPicker('wmf', 'When music won’t play', FAILS_OPTS, wmf, 'when_music_fails')];
+  if (wmf === 'radio'){
+    const sel = h('select', {id:'fallbackPreset', disabled: resUi.busy === 'fallback_preset',
+      onchange: e => { const v = e.target.value === '' ? null : +e.target.value; saveResilience({fallback_preset: v}, {fallback_preset: fb}); }},
+      h('option', {value:'', selected: fb == null}, 'Automatic'),
+      radioPresetsForFallback().map(p => h('option', {value: String(p.n), selected: fb === p.n}, p.text)));
+    rows.push(h('div', {class:'li col', style:'gap:6px'},
+      h('label', {class:'li-title', for:'fallbackPreset'}, 'Fallback station'),
+      h('span', {class:'li-sub'}, fb == null ? 'Automatic: the radio station played last, or the first one' : 'The station it switches to'), sel));
+  }
+  rows.push(h('div', {class:'li', style:'min-height:0'}, h('span', {class:'li-sub'},
+    'When a YouTube Music key keeps failing. It goes quiet instead at night or without internet; press the key to try again.')));
+  return [power, setGroup('fails', 'When music won’t play', h('div', {class:'list'}, ...rows))];
+}
+async function saveResilience(change, was){
+  const field = Object.keys(change)[0];
+  resUi.busy = field; rerender();
+  let ok = false;
+  try {
+    const r = await api('PUT', '/api/settings', change);
+    if (r.ok && r.json){ settings = Object.assign(settings || {}, r.json); ok = true; }
+    else if (hostOf(r)) failToast(r, 'The radio didn’t change', () => saveResilience(change, was));
+    else toast(capFirst((r.json && r.json.error) || 'The radio didn’t change') + '.', true);
+  } catch (_) { toast(NET_ERR, true); }
+  resUi.busy = '';
+  if (onPage('sound')) rerender();
+  if (ok && was) toast('Saved', {undo: () => saveResilience(was, null)});
+  const f = $(field === 'after_power_cut' ? 'apc-' + change[field] : field === 'when_music_fails' ? 'wmf-' + change[field] : 'fallbackPreset');
+  if (f) f.focus({preventScroll:true});
 }
 function loadSound(){
   loadSettings().then(() => { if (onPage('sound')) rerender(); });

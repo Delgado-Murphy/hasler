@@ -358,6 +358,37 @@ class MoodePlayer:
         finally:
             self._route_lock.release()
 
+    def skip_mpd(self, expect_gen: int, pos: int) -> bool:
+        """``play pos`` on MPD's queue (a YouTube Music track stuck: the next
+        one), unless anyone routed since ``expect_gen`` or is routing now."""
+        if not self._route_lock.acquire(timeout=1.0):
+            return False
+        try:
+            with self._want_cv:
+                if self._gen != expect_gen or self._want is not None or self._busy:
+                    return False
+            radio = self.sources.get("radio")
+            if radio is None:
+                return False
+            radio.mpd().play(pos)
+            return True
+        finally:
+            self._route_lock.release()
+
+    def switch_to(
+        self, preset: Preset, expect_gen: int, on_error: Callable[[Exception], None] | None = None
+    ) -> int | None:
+        """``start_preset(preset)`` in place of what plays (the watchdog's
+        fallback from YouTube Music), unless anyone routed since ``expect_gen``
+        or is routing now. The new generation, or None."""
+        self._source_for(preset)
+        with self._want_cv:
+            if (self._gen != expect_gen or self._want is not None or self._busy
+                    or self._starting is not None):
+                return None
+            self._request(preset, on_error)
+            return self._gen
+
     def restart(
         self, preset: Preset, expect_gen: int, on_error: Callable[[Exception], None] | None = None
     ) -> int | None:

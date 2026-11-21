@@ -290,6 +290,58 @@ class TestLatchingStatus:
         assert cfg["keys"][6]["hold"] == {"do": "bt_pair", "seconds": 120}
 
 
+class TestLatchedAtBoot:
+    """A key left latched when the power went: the starting point, not a press (main.starting_point)."""
+
+    def boot(self, radio, tmp_path, kid, saved, hold):
+        from haslerd.bootresume import BootResume, boot_hold
+        from haslerd.main import starting_point
+        from haslerd.state import StateStore
+        radio.actions.state = StateStore(tmp_path / "state.json")
+        if saved is not None:
+            radio.actions.state.save(saved)
+        radio.actions.restore()
+        banks = {c.id: c for c in radio.panel.controls if isinstance(c, InterlockedBank)}
+        radio.panel.digital.set(PINS[kid], True)
+        for _ in range(int(0.15 / DT)):           # main.settle's window
+            radio.actions.dispatch_all(starting_point(banks, radio.actions, radio.panel.poll(radio.t)))
+            radio.t = round(radio.t + DT, 4)
+        outcomes = []
+        resume = BootResume(radio.actions, night_hold=boot_hold("power-cut", hold, lambda: True,
+                                                                  synced=lambda: True),
+                            on_done=outcomes.append, clock=lambda: radio.t, spawn=lambda fn: fn())
+        for _ in range(10):
+            resume.tick(radio.t)
+            radio.run(0.1)
+        return outcomes
+
+    def test_latched_key_at_boot_held_when_standby(self, radio, tmp_path):
+        outcomes = self.boot(radio, tmp_path, "k3", {"last_preset": 2, "standby": False}, "standby")
+        assert outcomes == ["standby"] and radio.actions.standby
+        radio.run(2.0)                            # no hold for a key that was already down either
+        assert radio.player.playing is None and radio.actions.standby
+        assert not any(c[0] == "play_preset" for c in radio.player.calls)
+        radio.latch("k5")                         # the next key is a press
+        assert radio.player.playing.n == 5 and not radio.actions.standby
+
+    def test_latched_key_held_at_night(self, radio, tmp_path):
+        outcomes = self.boot(radio, tmp_path, "k3", {"last_preset": 2, "standby": False}, "night_only")
+        assert outcomes == ["night"] and radio.player.playing is None
+
+    def test_latched_key_does_not_wake_a_radio_left_in_standby(self, radio, tmp_path):
+        outcomes = self.boot(radio, tmp_path, "k3", {"last_preset": 2, "standby": True}, "resume")
+        assert outcomes in (["nothing"], ["cancelled"]) and radio.actions.standby
+        assert radio.player.playing is None
+
+    def test_by_day_the_remembered_preset_resumes(self, radio, tmp_path):
+        outcomes = self.boot(radio, tmp_path, "k3", {"last_preset": 2, "standby": False}, "resume")
+        assert outcomes == ["playing"] and radio.player.playing.n == 2
+
+    def test_a_new_radio_resumes_the_latched_key(self, radio, tmp_path):
+        outcomes = self.boot(radio, tmp_path, "k3", None, "resume")
+        assert outcomes == ["playing"] and radio.player.playing.n == 3
+
+
 class TestNotLatching:
     def test_keys_have_tap_and_hold_key_0_first(self, modified):
         cfg = modified.app.config()

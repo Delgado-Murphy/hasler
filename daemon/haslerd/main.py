@@ -37,8 +37,8 @@ import yaml
 from . import boxconfig
 from . import presets as starter_sets
 from .actions import RENDERERS, SHUTDOWN_PREPARE_S, Actions
-from .bootresume import (AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, night_hold, note_power_cut,
-                         shutdown_kind)
+from .bootresume import (AMP_CARD, RESUME_WINDOW_S, BootResume, FirstSound, after_power_cut, boot_hold,
+                         note_power_cut, shutdown_kind)
 from .ha.rest import HomeAssistant
 from .player.bluetooth import Bluetooth
 from .player.btvolume import PhoneVolume
@@ -106,6 +106,7 @@ except ImportError:
 from .net import Connectivity, tcp_probe
 from .wifiwatch import HotspotWatchdog
 from .ytdlp_lane import YtdlpLane
+from .panel.controls import InterlockedBank
 from .player.base import FakePlayer, Preset
 from .player.moode import SOURCE_MPD_S, MoodeConfig, MoodePlayer
 from .player.sources.radio import mpd_patience
@@ -479,6 +480,8 @@ class LampKeeper:
         ``outcome`` is BootResume's. "playing" has been heard already, so the
         lamp goes straight to playing (the fade lands with the swell);
         "failed" leaves a started-but-silent preset not looking like music.
+        "night" and "standby" (after_power_cut) are the same quiet verdict:
+        standby's ember, never the red pulses.
         """
         self._resume_done = True
         self._resume_outcome = outcome
@@ -1469,13 +1472,35 @@ def settle(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S) -> N
     ``off`` (-> standby) before anything resumes.
     """
     actions.restore()
+    banks = {c.id: c for c in getattr(panel, "controls", ()) if isinstance(c, InterlockedBank)}
     end = time.monotonic() + settle_s
     while time.monotonic() < end:
-        actions.dispatch_all(panel.poll(time.monotonic()))
+        actions.dispatch_all(starting_point(banks, actions, panel.poll(time.monotonic())))
         time.sleep(0.01)
     take_downs = getattr(panel, "take_downs", None)
     if callable(take_downs):
         take_downs()    # a key held at power-up is no press to answer
+
+
+def starting_point(banks: dict, actions: Actions, events: list) -> list:
+    """The events of a settling panel, less a latched key's position.
+
+    An Excelsior key left down when the power went is read at boot as the
+    bank's first settled pattern: the starting point, not a press - or it
+    would play its preset over the boot's hold (a power cut at night, or
+    after_power_cut "standby") and over standby itself. Nor does it fire a
+    hold a minute later. On a radio that remembers nothing yet, its preset
+    is what the boot resumes.
+    """
+    kept = []
+    for event in events:
+        bank = banks.get(event.control)
+        if bank is None or event.kind != "select":
+            kept.append(event)
+            continue
+        bank.adopt()
+        actions.starting_point(event)
+    return kept
 
 
 def boot(panel: Panel, actions: Actions, settle_s: float = BOOT_SETTLE_S, quiet: bool = False) -> bool:
@@ -1578,19 +1603,23 @@ def amp_card(player) -> int | str:
 
 
 def boot_resume(
-    actions: Actions, power_cut: bool, settings_file: Path | None,
+    actions: Actions, kind: str, settings_file: Path | None,
     keeper: LampKeeper | None = None,
 ) -> BootResume:
-    """The boot resume, wired to the lamp and to the page's night settings."""
+    """The boot resume, wired to the lamp and to the page's settings: night,
+    and what a power cut does (after_power_cut). ``kind`` is shutdown_kind's."""
     night = None
     if night_mode_active is not None:
         def night() -> bool:
             return bool(night_mode_active(datetime.now(), load_settings(settings_file)))
 
+    mode = after_power_cut(load_settings(settings_file))
+    if kind == "power-cut":
+        log.info("after a power cut: %s", mode)
     resume = BootResume(
         actions,
         sounding=preset_sounding,
-        night_hold=night_hold(power_cut, night),
+        night_hold=boot_hold(kind, mode, night),
         on_done=keeper.boot_done if keeper is not None else None,
     )
     if keeper is not None:
@@ -1611,7 +1640,11 @@ def build_stream_watchdog(actions: Actions, app: Any, keeper: LampKeeper | None)
     counters = getattr(app, "day_counters", None) if app is not None else None
     if counters is not None:
         events.on_add = counters.event          # stalls and MPD restarts, for the check-in's 24 h counts
-    watchdog = StreamWatchdog(actions, night=night, events=events, lock=getattr(app, "lock", None))
+    conn = getattr(app, "connectivity", None) if app is not None else None
+    online = (lambda: bool(conn.online)) if conn is not None else None
+    resilience = getattr(app, "resilience_settings", None) if app is not None else None
+    watchdog = StreamWatchdog(actions, night=night, events=events, lock=getattr(app, "lock", None),
+                              online=online, settings=resilience if callable(resilience) else None)
     actions.stalled = watchdog.stalled_on      # its key plays it again, not "again"
     if keeper is not None:
         keeper.watchdog = watchdog
@@ -1753,8 +1786,9 @@ def main(argv=None) -> int:
         if keeper is not None:
             keeper.arm()
         # The remembered preset comes back as soon as its player answers
-        # (moOde starts MPD late), swelling up; not after a power cut at night.
-        resume = boot_resume(actions, kind == "power-cut", getattr(app, "settings_file", None), keeper)
+        # (moOde starts MPD late), swelling up; after a power cut as the owner
+        # chose (after_power_cut: not at night, by default).
+        resume = boot_resume(actions, kind, getattr(app, "settings_file", None), keeper)
 
         while running:
             now = time.monotonic()

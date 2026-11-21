@@ -23,6 +23,24 @@ locked client (radio.py; no second connection) and:
   ``PULSE_AFTER`` failed attempts the lamp shows its red pulses once (not at
   night) and the watchdog keeps trying, quietly.
 
+YouTube Music presets go further (the 2026-11-21 power cut: two empty track
+files, each a 40 s silence, "recovered" by a re-start ~20 times in an hour):
+
+* a stall in the middle of a playlist first **skips** to the next track, and
+  the stuck one is forgotten by the source for a while (``YtmSource.forget``)
+  - a re-start begins on a kept track and only loops back to the bad one;
+* stalls are **counted across recoveries** (``RELAPSE_LIMIT`` within
+  ``RELAPSE_WINDOW_S``), and only a hand's routing resets the count;
+* after ``FALLBACK_AFTER`` failed attempts, or that many relapses, the radio
+  **falls back** (settings.json ``when_music_fails``, default "radio"): to
+  ``fallback_preset`` if set, else the radio preset played most recently,
+  else the lowest-numbered one - or to standby when that is the choice, the
+  internet is down, it is night, or there is no radio preset. Once per
+  hand's routing, never a chain, never back by itself; the fallback station
+  silent for ``FALLBACK_SOUND_S`` is standby too. It isn't remembered as the
+  last preset, so a key press (or the next boot) tries YouTube Music again.
+  ``status_doc()["fallback"]`` says so, with one red pulse by day.
+
 It never fights a hand. Every start and stop goes through the player's
 router, which numbers them (``MoodePlayer.route_gen``): a key again, standby,
 the PU key, the page's stop, a group, the boot resume - any routing this
@@ -63,6 +81,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -95,6 +114,34 @@ MPD_RESTART_GAP_S = (60.0, 300.0)   # after the 1st restart, then after each lat
 MPD_RESTART = ("sudo", "-n", "/usr/bin/systemctl", "restart", "mpd.service")
 MPD_RESTART_TIMEOUT_S = 60.0
 MPD_PROBE_S = 2.0
+# YouTube Music presets only
+SKIP_VERIFY_S = 15.0      # after skipping a stuck track: moving by then, or start the preset again
+RELAPSE_LIMIT = 3         # stalls on one YTM preset since a hand routed it...
+RELAPSE_WINDOW_S = 1200.0  # ...within this long: fall back, however each "recovered"
+FALLBACK_AFTER = 3        # failed attempts on a YTM preset before falling back
+FALLBACK_SOUND_S = 25.0   # the fallback station heard by then, or standby
+WHEN_MUSIC_FAILS = ("radio", "standby", "keep_trying")   # settings.json when_music_fails
+WHEN_MUSIC_FAILS_DEFAULT = "radio"
+_YTM_ID = re.compile(r"/ytm/([A-Za-z0-9_-]+)")
+
+
+def fallback_target(actions: Any, settings: dict) -> Preset | None:
+    """Where a failing YouTube Music preset falls back to: settings.json
+    ``fallback_preset`` if it is a radio preset, else the radio preset played
+    most recently, else the lowest-numbered radio preset (None: there is none)."""
+    presets = getattr(actions, "presets", None) or {}
+    chosen = settings.get("fallback_preset")
+    if isinstance(chosen, int) and not isinstance(chosen, bool):
+        preset = presets.get(chosen)
+        if preset is not None and preset.source == "radio":
+            return preset
+    recent = getattr(actions, "_recent_preset", None)
+    if callable(recent):
+        preset = recent(("radio",))
+        if preset is not None:
+            return preset
+    radio = sorted(n for n, p in presets.items() if p.source == "radio")
+    return presets[radio[0]] if radio else None
 
 
 class StreamEvents:
@@ -315,8 +362,16 @@ class StreamWatchdog:
         events: StreamEvents | None = None,
         lock: Any = None,
         run: Callable[..., Any] = subprocess.run,
+        online: Callable[[], bool] | None = None,
+        settings: Callable[[], dict] | None = None,
+        wall: Callable[[], datetime] = datetime.now,
     ) -> None:
         self.actions = actions
+        # The internet probe (net.Connectivity.online) and settings.json
+        # (when_music_fails, fallback_preset), asked only when falling back.
+        self.online = online
+        self.settings = settings
+        self.wall = wall
         self.events = events if events is not None else StreamEvents(None)
         # The web page's lock (WebApp.lock), held while the preset is started
         # again after an MPD outage, as a key press from the page would be.
@@ -345,6 +400,14 @@ class StreamWatchdog:
         self._deadline = 0.0
         self._restart_failed = False
         self._pulsed = False
+        self._skipped = False               # this stall's skip to the next track tried
+        # YouTube Music: stalls since a hand routed the preset (monotonic), relapses included.
+        self._stalls: deque = deque()
+        self._fell_back = False             # once per hand's routing
+        self._fallback: dict | None = None  # {"from", "to", "at", "why"} until a hand routes
+        self._notice: dict | None = None    # ... and for the page, until that preset is pressed again
+        self._fallback_until: float | None = None   # the fallback station heard by then, or standby
+        self._fallback_failed = False
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
         radio = (getattr(actions.player, "sources", None) or {}).get("radio")
@@ -401,8 +464,16 @@ class StreamWatchdog:
 
     def status_doc(self) -> dict:
         s = self.stalled_s()
+        fallback = self._fallback
+        if fallback is not None and getattr(self.actions.player, "route_gen", self._gen) != self._gen:
+            fallback = None                 # a hand routed since; the next poll forgets it
         return {"recovering": self.recovering, "stalled_s": None if s is None else round(s, 1),
-                "reason": self.reason}
+                "reason": self.reason,
+                # YouTube Music gave up on: {"from": {n, name, source}, "to": {n, name} | None
+                # (standby), "at": ISO local, "why"}; None once a hand has routed since.
+                "fallback": None if fallback is None else dict(fallback),
+                # The same, kept until that preset is played again (the page's Needs attention).
+                "fallback_notice": None if self._notice is None else dict(self._notice)}
 
     # -- the thread -------------------------------------------------------
 
@@ -439,6 +510,8 @@ class StreamWatchdog:
             self._watch(gen, player.current())
         if actions.standby or getattr(actions, "shutting_down", False):
             return self._quiet()
+        if self._fallback_until is not None and (self._fallback_failed or now >= self._fallback_until):
+            return self._fallback_silent()
         if player.routing:
             return                      # a start or stop under way (ours included): wait for it
         group = getattr(actions, "group", None)
@@ -471,6 +544,7 @@ class StreamWatchdog:
             if progressed:
                 self._armed = True
                 self._stop_since = None
+                self._fallback_until = None     # the fallback station is heard
             if not self._armed:
                 return                      # not heard yet: the loading lamp's job
             self._detect(status, now)
@@ -486,6 +560,14 @@ class StreamWatchdog:
         self._armed = self._cast = self._finished = False
         self._progress_at = self._stop_since = self._elapsed = None
         self._clear_stall()
+        # A hand: YouTube Music gets its chances again; the fallback is over.
+        self._stalls.clear()
+        self._fell_back = False
+        self._fallback = None
+        self._fallback_until = None
+        notice = self._notice
+        if notice is not None and preset is not None and preset.n == (notice.get("from") or {}).get("n"):
+            self._notice = None
 
     def _quiet(self) -> None:
         self._clear_stall()
@@ -496,7 +578,7 @@ class StreamWatchdog:
         self._stalled_at = None
         self._attempts = 0
         self._phase = "wait"
-        self._restart_failed = self._pulsed = False
+        self._restart_failed = self._pulsed = self._skipped = False
 
     def _record(self, action: str, state: str | None, error: str | None, **extra: Any) -> None:
         try:
@@ -645,7 +727,16 @@ class StreamWatchdog:
         self._attempts = 0
         self._phase = "wait"
         self._deadline = now                # the first attempt at once
-        self._pulsed = self._restart_failed = False
+        self._pulsed = self._restart_failed = self._skipped = False
+        if self._preset is None or self._preset.source != "ytm":
+            return
+        # A relapse is a stall too, however the last one "recovered" (a re-start
+        # opens on a kept track, then the playlist comes back to the bad one).
+        self._stalls.append(now)
+        while self._stalls and now - self._stalls[0] > RELAPSE_WINDOW_S:
+            self._stalls.popleft()
+        if len(self._stalls) >= RELAPSE_LIMIT and self._falls_back():
+            self._fall_back(f"{len(self._stalls)} stalls in {RELAPSE_WINDOW_S / 60:.0f} min", now)
 
     def _recover(self, status: dict, progressed: bool, now: float) -> None:
         if progressed:
@@ -661,18 +752,30 @@ class StreamWatchdog:
         if self._phase == "wait":
             if now < self._deadline:
                 return
+            if self._attempts == 0 and not self._skipped and self._mid_playlist(status):
+                # A YouTube Music track that won't play: the next one, not the
+                # preset again (which loops back to it).
+                self._skipped = True
+                vid = self._current_vid()
+                self._phase, self._deadline = "skip", now + SKIP_VERIFY_S
+                log.info("stream watchdog: attempt 1 for preset %s: skipping track %s", self._name(), vid or "?")
+                self._record("skip track", self._state, self._error, attempt=1, video_id=vid)
+                if not self._skip(vid):
+                    self._deadline = now    # refused: straight to a re-start next poll
+                return
             self._phase, self._deadline = "play", now + VERIFY_S
             log.info("stream watchdog: attempt %d for preset %s: play", self._attempts + 1, self._name())
             self._record("play", self._state, self._error, attempt=self._attempts + 1)
             if not self._resume():
                 self._deadline = now        # refused: straight to a re-start next poll
             return
-        if self._phase == "play":
+        if self._phase in ("play", "skip"):
             if now < self._deadline:
                 return
+            tried = "the next track" if self._phase == "skip" else "play"
             self._phase, self._deadline = "preset", now + RESTART_VERIFY_S
-            log.info("stream watchdog: attempt %d for preset %s: play did not bring it back; "
-                     "starting the preset again", self._attempts + 1, self._name())
+            log.info("stream watchdog: attempt %d for preset %s: %s did not bring it back; "
+                     "starting the preset again", self._attempts + 1, self._name(), tried)
             self._restart_failed = False
             self._record("restart preset", self._state, self._error, attempt=self._attempts + 1)
             if not self._restart():
@@ -685,6 +788,10 @@ class StreamWatchdog:
         log.info("stream watchdog: attempt %d for preset %s failed; next in %.0f s",
                  self._attempts, self._name(), wait)
         self._phase, self._deadline = "wait", now + wait
+        if self._attempts >= FALLBACK_AFTER and self._falls_back():
+            self._record("attempt failed", self._state, self._error, attempt=self._attempts)
+            self._fall_back(f"{self._attempts} failed attempts", now)
+            return
         pulse = self._attempts >= PULSE_AFTER and not self._pulsed and not self._is_night()
         self._record("attempt failed", self._state, self._error, attempt=self._attempts,
                      next_in_s=wait, lamp_fail=pulse)
@@ -700,6 +807,178 @@ class StreamWatchdog:
                     self.actions.reply("fail")
                 except Exception:
                     log.debug("lamp fail reply failed", exc_info=True)
+
+    # -- YouTube Music: skip, fall back ------------------------------------
+
+    def _mid_playlist(self, status: dict) -> bool:
+        """A YTM preset stuck on a track with more after it."""
+        if self._preset is None or self._preset.source != "ytm" or self._song is None:
+            return False
+        try:
+            length = int(status.get("playlistlength") or 0)
+        except (TypeError, ValueError):
+            return False
+        return self._song + 1 < length
+
+    def _current_vid(self) -> str | None:
+        """The video id of the track MPD is stuck on (our proxy URL), if it says."""
+        radio = (getattr(self.actions.player, "sources", None) or {}).get("radio")
+        mpd = getattr(radio, "mpd", None)
+        if not callable(mpd):
+            return None
+        try:
+            found = _YTM_ID.search(str(mpd().currentsong().get("file") or ""))
+        except Exception:
+            return None
+        return found.group(1) if found else None
+
+    def _skip(self, vid: str | None) -> bool:
+        """Forget the stuck track for a while (ytm.py), play the next one."""
+        ytm = (getattr(self.actions.player, "sources", None) or {}).get("ytm")
+        forget = getattr(ytm, "forget", None)
+        if vid and callable(forget):
+            try:
+                forget(vid)
+            except Exception:
+                log.debug("ytm forget(%s) failed", vid, exc_info=True)
+        skip = getattr(self.actions.player, "skip_mpd", None)
+        if not callable(skip) or self._song is None:
+            return False
+        try:
+            ok = bool(skip(self._gen, self._song + 1))
+        except Exception as exc:
+            log.info("stream watchdog: MPD refused the next track: %s", exc)
+            return False
+        if ok:
+            self._elapsed = None            # a new track: two fresh samples to count as moving
+        return ok
+
+    def _settings(self) -> dict:
+        if self.settings is None:
+            return {}
+        try:
+            doc = self.settings()
+        except Exception:
+            log.debug("stream watchdog: settings unreadable", exc_info=True)
+            return {}
+        return doc if isinstance(doc, dict) else {}
+
+    def _mode(self) -> str:
+        mode = self._settings().get("when_music_fails")
+        return mode if mode in WHEN_MUSIC_FAILS else WHEN_MUSIC_FAILS_DEFAULT
+
+    def _falls_back(self) -> bool:
+        return (self._preset is not None and self._preset.source == "ytm" and not self._fell_back
+                and self._mode() != "keep_trying")
+
+    def _offline(self) -> bool:
+        if self.online is None:
+            return False
+        try:
+            return not self.online()
+        except Exception:
+            return False
+
+    def _fall_back(self, why: str, now: float) -> None:
+        """YouTube Music gave up on: a radio preset, or standby. Not remembered."""
+        self._fell_back = True
+        source = self._preset
+        mode, target, quiet = self._mode(), None, None
+        if mode == "standby":
+            quiet = "set to go quiet"
+        elif self._offline():
+            quiet = "no internet"
+        elif self._is_night():
+            quiet = "night"
+        else:
+            target = fallback_target(self.actions, self._settings())
+            if target is None:
+                quiet = "no radio preset"
+        self._clear_stall()
+        self._fallback = self._notice = {
+            "from": None if source is None else {"n": source.n, "name": source.name, "source": source.source},
+            "to": None if target is None else {"n": target.n, "name": target.name},
+            "at": self.wall().isoformat(timespec="seconds"), "why": why}
+        night = self._is_night()
+        self._record("fallback", self._state, self._error, reason=why,
+                     to=None if target is None else target.n, quiet=quiet, lamp_fail=not night)
+        if target is not None:
+            log.warning("stream watchdog: YouTube Music preset %s won't play (%s); switching to preset %s (%s)",
+                        self._name(), why, target.n, target.name)
+        else:
+            log.warning("stream watchdog: YouTube Music preset %s won't play (%s); standby (%s)",
+                        self._name(), why, quiet)
+        if not night:
+            try:
+                self.actions.reply("fail")  # one red pulse, by day
+            except Exception:
+                log.debug("lamp fail reply failed", exc_info=True)
+        if target is not None:
+            routed = self._route_to(target, now)
+            if routed != "failed":
+                return                      # playing it, or a hand got there first
+        self._go_quiet()
+
+    def _route_to(self, preset: Preset, now: float) -> str:
+        """Start the fallback station in place of the YTM preset: "ok", "hand"
+        (somebody routed meanwhile: theirs) or "failed"."""
+        actions, player = self.actions, self.actions.player
+        switch = getattr(player, "switch_to", None)
+        if not callable(switch):
+            return "failed"
+
+        def failed(exc: Exception) -> None:
+            self._fallback_failed = True    # the player's worker already logged it
+
+        lock = self.lock
+        got = lock.acquire(timeout=2.0) if lock is not None else False
+        try:
+            on_start = getattr(actions, "on_start", None)
+            if callable(on_start):
+                try:
+                    on_start(preset)        # the lamp's loading breath, as for a key
+                except Exception:
+                    log.debug("on_start hook failed", exc_info=True)
+            self._fallback_failed = False
+            gen = switch(preset, self._gen, on_error=failed)
+        except Exception as exc:
+            log.info("stream watchdog: could not start preset %s: %s", preset.n, exc)
+            return "failed"
+        finally:
+            if got:
+                lock.release()
+        if gen is None:
+            return "hand"
+        self._gen, self._preset = gen, preset   # ours: watch the fallback station
+        self._armed = self._finished = False
+        self._progress_at = self._stop_since = self._elapsed = self._song = None
+        self._fallback_until = now + FALLBACK_SOUND_S
+        return "ok"
+
+    def _fallback_silent(self) -> None:
+        """The fallback station didn't play either: standby, no chain."""
+        log.warning("stream watchdog: fallback preset %s silent after %.0f s; standby",
+                    self._name(), FALLBACK_SOUND_S)
+        self._record("fallback silent", self._state, self._error)
+        for doc in (self._fallback, self._notice):
+            if doc is not None:
+                doc["to"] = None
+        self._go_quiet()
+
+    def _go_quiet(self) -> None:
+        """Standby, not remembered (state.json keeps the YTM preset for the next boot)."""
+        self._fallback_until = None
+        self._clear_stall()
+        lock = self.lock
+        got = lock.acquire(timeout=2.0) if lock is not None else False
+        try:
+            self.actions.enter_standby(persist=False)
+        except Exception:
+            log.exception("stream watchdog: could not go to standby")
+        finally:
+            if got:
+                lock.release()
+            self._gen = self.actions.player.route_gen   # our stop, not a hand's
 
     def _resume(self) -> bool:
         try:

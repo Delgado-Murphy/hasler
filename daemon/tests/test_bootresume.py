@@ -12,7 +12,8 @@ from conftest import VARIANTS
 from haslerd import bootresume
 from haslerd.actions import Actions
 from haslerd.bootresume import (
-    BootResume, FirstSound, Probe, clock_synced, mpd_answers, night_hold, shutdown_kind,
+    BootResume, FirstSound, Probe, after_power_cut, boot_hold, clock_synced, mpd_answers, night_hold,
+    shutdown_kind,
 )
 from haslerd.main import BOOT_MAX_S, LampKeeper
 from haslerd.lamp import policy
@@ -315,6 +316,75 @@ class TestNight:
         assert clock_synced(tmp_path / "ts") is False
         (tmp_path / "ts" / "synchronized").touch()
         assert clock_synced(tmp_path / "ts") is True
+
+
+class TestAfterPowerCut:
+    """settings.json after_power_cut (Settings -> Sound, "When the power comes back")."""
+
+    def make(self, box, hold):
+        return TestNight.make(self, box, hold)
+
+    def test_settings_default_is_night_only(self):
+        assert after_power_cut({}) == "night_only" and after_power_cut(None) == "night_only"
+        assert after_power_cut({"after_power_cut": "standby"}) == "standby"
+        assert after_power_cut({"after_power_cut": "whenever"}) == "night_only"
+
+    def test_power_cut_standby_mode_no_clock_wait(self, box, tmp_path):
+        clock = box[0]
+        night = []
+        hold = boot_hold("power-cut", "standby", lambda: night.append(1) or False,
+                         synced=lambda: False, clock=clock)
+        clock, player, actions, resume, outcomes = self.make(box, hold)
+        run(resume, clock, 0.5)                 # the clock never synced: no wait for it
+        assert outcomes == ["standby"] and actions.standby and plays(player) == []
+        assert night == []                      # not even asked what time it is
+
+    def test_power_cut_resume_mode_plays_at_night(self, box):
+        hold = boot_hold("power-cut", "resume", lambda: True, synced=lambda: True)
+        clock, player, actions, resume, outcomes = self.make(box, hold)
+        run(resume, clock, 2)
+        assert outcomes == ["playing"] and not actions.standby
+
+    def test_night_only_matches_today(self, box):
+        for night in (True, False):
+            for synced in (True, False):
+                clock = Clock()
+                new = boot_hold("power-cut", "night_only", lambda: night, synced=lambda: synced, clock=clock)
+                old = night_hold(True, lambda: night, synced=lambda: synced, clock=clock)
+                for _ in range(2):
+                    assert bool(new()) == bool(old()) and (new() is None) == (old() is None)
+                    clock.t += bootresume.CLOCK_WAIT_S
+        clock, player, actions, resume, outcomes = self.make(
+            box, boot_hold("power-cut", "night_only", lambda: True, synced=lambda: True))
+        run(resume, clock, 2)
+        assert outcomes == ["night"] and actions.standby
+
+    @pytest.mark.parametrize("kind", ["clean", "restart", "unknown"])
+    @pytest.mark.parametrize("mode", ["standby", "night_only", "resume"])
+    def test_clean_and_restart_ignore_setting(self, kind, mode):
+        assert boot_hold(kind, mode, lambda: True, synced=lambda: True)() is False
+
+    def test_standby_boot_keeps_last_preset(self, box, tmp_path):
+        clock, player, actions, resume, outcomes = self.make(
+            box, boot_hold("power-cut", "standby", lambda: False, synced=lambda: True))
+        run(resume, clock, 1)
+        assert actions.standby and outcomes == ["standby"]
+        saved = StateStore(tmp_path / "state.json").load()
+        assert saved["last_preset"] == 2 and saved["standby"] is False     # not remembered as standby
+        actions._standby_toggle(None, {})       # one key press plays it
+        assert player.playing is not None and player.playing.n == 2
+
+    def test_boot_done_standby_ember_no_pulse(self):
+        clock, actions, keeper = TestLamp.keeper(self)
+        keeper.resume_started()
+        actions.enter_standby(persist=False)
+        keeper.boot_done("standby")
+        keeper.tick(clock())
+        assert keeper.boot_stage(clock()) == "done"
+        assert keeper.gather(clock()).standby
+        clock.t += 60
+        keeper.tick(clock())
+        assert "fail" not in keeper.driver.replies
 
 
 class TestShutdownKind:

@@ -104,6 +104,10 @@ const SW = {ok: true, installed: true, version: '1.4.0', channel: 'stable', upda
       const heads = await page.$$eval('#panel h3.grp-lbl', hs => hs.map(x => x.textContent.trim()));
       const secs = await page.$$eval('#panel .grp-sec', ss => ss.map(x => x.id));
       assert(heads[0] === 'Volume' && secs[secs.length - 1] === 'sec-knobs', 'headings: ' + heads.join('|') + ' / ' + secs.join('|'));
+      // After a power cut and when music won't play: just before the knobs (1.7.7).
+      const at = secs.indexOf('sec-power');
+      assert(at > 0 && secs[at + 1] === 'sec-fails' && secs[at + 2] === 'sec-knobs', 'power/fails groups: ' + secs.join('|'));
+      assert(heads.includes('When the power comes back') && heads.includes('When music won’t play'), 'headings: ' + heads.join('|'));
       assert((await page.textContent('#more-knobs summary')) === 'A knob feels off?' && !(await page.getAttribute('#more-knobs', 'open')), 'the knobs fold');
       assert((await page.$$('#sec-knobs button:has-text("Calibrate")')).length >= 1, 'no Calibrate');
       assert(await page.getAttribute('#limit', 'aria-valuetext') === '70 of 100', 'valuetext ' + await page.getAttribute('#limit', 'aria-valuetext'));
@@ -111,6 +115,55 @@ const SW = {ok: true, installed: true, version: '1.4.0', channel: 'stable', upda
       await page.goto(radio.base + '/#settings/phones');
       await until(() => page.isVisible('#pageNote'), 4000, 'the Phones note');
       assert(/waits for Save/.test(await page.textContent('#pageNote')), 'Phones note: ' + await page.textContent('#pageNote'));
+      await page.close();
+    });
+
+    await check('Sound: when the power comes back and when music won’t play save at once, with Undo', async () => {
+      const page = await fresh('#settings/sound');
+      await until(() => page.isVisible('#apc-night_only'), 6000, 'the power group');
+      assert(await page.getAttribute('#apc-night_only', 'aria-checked') === 'true', 'night_only is the default');
+      assert(await page.getAttribute('#wmf-radio', 'aria-checked') === 'true', 'radio is the default');
+      assert((await page.textContent('#apc-standby')).trim() === 'Stay quiet until a key is pressed', 'copy: ' + await page.textContent('#apc-standby'));
+      assert(await page.$eval('#fallbackPreset', s => s.options[0].textContent === 'Automatic' && s.value === ''), 'Automatic first and chosen');
+      await page.click('#apc-standby');
+      await until(async () => (await get(radio.base, '/api/settings')).after_power_cut === 'standby', 4000, 'after_power_cut saved');
+      await until(async () => await page.getAttribute('#apc-standby', 'aria-checked') === 'true', 3000, 'the choice shown');
+      const opts = await page.$$eval('#fallbackPreset option', os => os.map(o => o.value).filter(Boolean));
+      assert(opts.length >= 1, 'no radio presets to fall back to');
+      await page.selectOption('#fallbackPreset', opts[0]);
+      await until(async () => (await get(radio.base, '/api/settings')).fallback_preset === +opts[0], 4000, 'fallback_preset saved');
+      await page.click('#wmf-keep_trying');
+      await until(async () => !(await page.$('#fallbackPreset')), 4000, 'the station picker gone for Keep trying');
+      await page.click('#toast button:has-text("Undo")').catch(() => {});
+      await until(async () => (await get(radio.base, '/api/settings')).when_music_fails === 'radio', 4000, 'Undo');
+      await send(radio.base, 'PUT', '/api/settings', {after_power_cut: 'night_only', when_music_fails: 'radio', fallback_preset: null});
+      await shot(page, 'ia-sound-power');
+      await page.close();
+    });
+
+    await check('YouTube Music fell back: the dial says so, Needs attention lists it until put away', async () => {
+      const page = await ctx.newPage();
+      page.on('pageerror', e => errors.push('fallback: ' + e.message));
+      const cfgDoc = await get(radio.base, '/api/config');
+      const radioKey = cfgDoc.keys.find(k => k.tap && k.tap.do === 'preset' && (cfgDoc.presets.find(p => p.n === k.tap.n) || {}).source === 'radio');
+      const to = cfgDoc.presets.find(p => p.n === radioKey.tap.n);
+      const fb = {from: {n: 99, name: 'Too Many Zooz', source: 'ytm'}, to: {n: to.n, name: to.name}, at: '2026-11-21T14:03:00', why: '3 failed attempts'};
+      await page.route('**/api/status', async route => {
+        const r = await route.fetch(); const doc = await r.json();
+        Object.assign(doc, {fallback: fb, fallback_notice: fb, standby: false, played_from: 'key', source: 'radio',
+          playing: Object.assign({}, to), current_key: radioKey.id});
+        route.fulfill({response: r, json: doc});
+      });
+      await page.goto(radio.base + '/');
+      await until(async () => /wouldn’t play, so here’s/.test(await page.textContent('#songTitle')), 6000, 'the dial line');
+      assert((await page.textContent('#songTitle')) === 'Too Many Zooz wouldn’t play, so here’s ' + to.name + '.', 'line: ' + await page.textContent('#songTitle'));
+      await page.goto(radio.base + '/#settings');
+      await until(() => page.isVisible('#setrow-attn-fallback'), 6000, 'the attention row');
+      const sub = await page.textContent('#setrow-attn-fallback .li-sub');
+      assert(sub === 'Switched to ' + to.name + ' at 14:03. Press its key to try again.', 'sub: ' + sub);
+      await page.click('#attn-fallback-x');
+      await until(async () => !(await page.$('#setrow-attn-fallback')), 3000, 'the row put away');
+      await shot(page, 'ia-fallback');
       await page.close();
     });
 

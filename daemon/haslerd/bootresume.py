@@ -21,9 +21,14 @@ player itself rather than for a timer or the internet probe:
 * **Not after following a group.** A radio that was playing another Hasler's
   music (multiroom) comes back alone and silent: ``Actions.resume_preset`` is
   None when state.json says ``"follower": true``, so the resume is "nothing".
-* **Not at night after a power cut.** A box that lost power while playing and
-  comes back in the small hours stays asleep (ember). Clean vs power cut is a
-  marker hasler-clean-shutdown.service leaves (``shutdown_kind``).
+* **After a power cut, as the owner chose.** settings.json ``after_power_cut``
+  (Settings -> Sound, "When the power comes back"): "night_only" (the
+  default) - a box that comes back in the small hours stays asleep (ember);
+  "resume" - it plays whatever the hour; "standby" - it stays asleep until a
+  key is pressed, without waiting for the clock. Asleep is standby without
+  remembering it, so the last preset is kept for that key. A haslerd restart
+  (an update, a crash) always resumes, a clean shutdown never holds. Clean vs
+  power cut is a marker hasler-clean-shutdown.service leaves (``shutdown_kind``).
 
 Separately, ``FirstSound`` logs when the amp's PCM first runs - the number the
 boot timeline is judged by.
@@ -55,6 +60,8 @@ GUARD_S = 60.0           # sticky resume, unless moOde says ready first
 GUARD_POLL_S = 1.0
 GUARD_MISSES = 2         # consecutive "not playing" reads before a re-start
 CLOCK_WAIT_S = 60.0      # how long night waits for NTP after a power cut
+AFTER_POWER_CUT = ("resume", "night_only", "standby")    # settings.json after_power_cut
+AFTER_POWER_CUT_DEFAULT = "night_only"
 
 CLEAN_SHUTDOWN_FILE = "clean-shutdown"   # hasler-clean-shutdown.service writes it
 BOOT_ID_FILE = "boot-id"                 # ours: which boot we last started in
@@ -120,7 +127,9 @@ class BootResume:
     ``starting`` (started; waiting for sound), ``guard`` (playing; the sticky
     minute), ``done``. ``on_done(outcome)`` fires once when the resume itself
     is over: "playing", "nothing" (standby, or no preset remembered),
-    "night", "cancelled" or "failed".
+    "night", "standby" (after a power cut, as set), "cancelled" or "failed".
+    ``night_hold()`` is ``boot_hold``'s verdict: False (resume), None (ask
+    again), True / "night" or "standby" (stay asleep).
     """
 
     def __init__(
@@ -130,7 +139,7 @@ class BootResume:
         ready: Callable[[Preset], bool] | None = None,
         still_playing: Callable[[Preset], bool] | None = None,
         wrkready: Callable[[], int | None] | None = None,
-        night_hold: Callable[[], bool | None] | None = None,
+        night_hold: Callable[[], bool | str | None] | None = None,
         on_done: Callable[[str], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         spawn: Callable[[Callable[[], None]], None] | None = None,
@@ -163,7 +172,7 @@ class BootResume:
         self._next = 0.0
         self._not_before = 0.0
         self._start_at = 0.0
-        self._night: bool | None = None
+        self._night: bool | str | None = None
         self._guard_until = 0.0
         self._misses = 0
         self._restarted = False
@@ -213,9 +222,11 @@ class BootResume:
         if self._night is None:
             self._night = self.night_hold()     # None: the clock is not set yet
             if self._night:
-                log.info("power cut at night: staying asleep instead of resuming preset %s", preset.n)
+                outcome = "standby" if self._night == "standby" else "night"
+                log.info("power cut%s: staying asleep instead of resuming preset %s",
+                         " (after_power_cut: standby)" if outcome == "standby" else " at night", preset.n)
                 self.actions.enter_standby(persist=False)
-                self._finish("night")
+                self._finish(outcome)
                 return
         answer = self.probe.take(("ready", self.attempts))
         if answer is not None:
@@ -505,6 +516,48 @@ def clock_synced(timesync_dir: Path = TIMESYNC_DIR) -> bool:
     return (timesync_dir / "synchronized").exists()
 
 
+def after_power_cut(settings: dict | None) -> str:
+    """settings.json ``after_power_cut``, or the default (absent, or not one we know)."""
+    mode = (settings or {}).get("after_power_cut")
+    return mode if mode in AFTER_POWER_CUT else AFTER_POWER_CUT_DEFAULT
+
+
+def boot_hold(
+    kind: str,
+    mode: str,
+    night: Callable[[], bool] | None,
+    synced: Callable[[], bool] = clock_synced,
+    clock: Callable[[], float] = time.monotonic,
+    wait_s: float = CLOCK_WAIT_S,
+) -> Callable[[], bool | str | None]:
+    """BootResume's question: False = resume, "night" / "standby" = stay
+    asleep, None = ask again.
+
+    Only a power cut (``kind``, shutdown_kind's) is ever held, as
+    ``after_power_cut`` (``mode``) says: "standby" at once, "resume" never,
+    "night_only" at night by the page's settings - that verdict waits up to
+    ``wait_s`` for the clock to be set by NTP.
+    """
+    started = clock()
+
+    def hold() -> bool | str | None:
+        if kind != "power-cut" or mode == "resume":
+            return False
+        if mode == "standby":
+            return "standby"
+        if night is None:
+            return False
+        if not synced() and clock() - started < wait_s:
+            return None
+        try:
+            return "night" if night() else False
+        except Exception:
+            log.debug("night check for the boot resume failed", exc_info=True)
+            return False
+
+    return hold
+
+
 def night_hold(
     power_cut: bool,
     night: Callable[[], bool] | None,
@@ -512,25 +565,14 @@ def night_hold(
     clock: Callable[[], float] = time.monotonic,
     wait_s: float = CLOCK_WAIT_S,
 ) -> Callable[[], bool | None]:
-    """BootResume's night question: True = stay asleep, None = ask again.
+    """The 1.7.6 question (``boot_hold`` with "night_only"): True = stay asleep."""
+    hold = boot_hold("power-cut" if power_cut else "clean", "night_only", night, synced, clock, wait_s)
 
-    Only a power cut is held back, and only at night by the page's settings;
-    the verdict waits up to ``wait_s`` for the clock to be set by NTP.
-    """
-    started = clock()
+    def verdict() -> bool | None:
+        answer = hold()
+        return None if answer is None else bool(answer)
 
-    def hold() -> bool | None:
-        if not power_cut or night is None:
-            return False
-        if not synced() and clock() - started < wait_s:
-            return None
-        try:
-            return bool(night())
-        except Exception:
-            log.debug("night check for the boot resume failed", exc_info=True)
-            return False
-
-    return hold
+    return verdict
 
 
 # -- the first sound ------------------------------------------------------------
