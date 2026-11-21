@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.10 - 2026-11-21
+
+- The lamp glows faint red as soon as the power comes on, then breathes amber
+  while the radio starts (1.7.8 again). This update restarts the radio once.
+
+For makers
+- `hasler.block`: `gpio=17=ip,pd`, `gpio=22,27=op,dh`, as in 1.7.8. Needs
+  `hasler-update apply --allow-reboot`; judged by 1.7.9's more patient updater.
+
 ## 1.7.9 - 2026-11-21
 
 - Updates are more patient after a restart: 1.7.8 undid itself because the

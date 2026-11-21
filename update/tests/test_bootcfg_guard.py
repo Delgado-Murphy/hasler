@@ -201,6 +201,10 @@ def test_restore_carries_the_release_block_over_an_old_known_good(box):
     assert box.repair() == 0 and box.cfg.read_text() == old
 
 
+def test_shipped_block_is_the_ember_block():
+    assert BLOCK == EMBER_BLOCK
+
+
 def test_overlay_changed_in_moode_is_not_reverted(box):
     """A new amp chosen in moOde's UI: config.txt and the DB agree, known-good is stale."""
     box.db("hifiberry-dacplus")

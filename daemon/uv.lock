@@ -202,7 +202,7 @@ wheels = [
 
 [[package]]
 name = "haslerd"
-version = "1.7.9"
+version = "1.7.10"
 source = { editable = "." }
 dependencies = [
     { name = "pyyaml" },

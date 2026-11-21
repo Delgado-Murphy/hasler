@@ -181,22 +181,29 @@ put_file "$REPO/scripts/hasler-web-front" /usr/local/sbin/hasler-web-front 0755 
 
 # --- pilot lamp: firmware, kernel PWM, boot breath, halt ----------------------
 # docs/lamp.md "Boot and shutdown". The LED (common anode, R17 / G22 / B27,
-# LOW = lit) is held dark by the firmware, then driven by the kernel's
-# pwm-gpio driver: hasler-lamp-boot breathes amber from ~3-5 s until haslerd
-# takes over, and a system-shutdown hook leaves it dark at halt.
+# LOW = lit) shows the firmware's faint red ember from ~1 s, then is driven by
+# the kernel's pwm-gpio driver: hasler-lamp-boot grows that ember into the
+# amber breath from ~3-5 s until haslerd takes over, and a system-shutdown
+# hook leaves it dark at halt.
 #
 # config.txt block = config/configtxt/hasler.block (what every release ships),
 # kept between the updater's markers so a later switch to releases finds it
 # unchanged (an older install.sh block is replaced in place):
-#   gpio=17,22,27=op,dh  firmware sets the pins output-high (= dark) right after
-#                        reading config.txt, ending the faint glow the reset
-#                        pull-downs give a common-anode LED.
+#   gpio=17=ip,pd        red an input with its weak pull-down: a faint steady
+#                        glow through the common-anode LED (stage 0's ember),
+#                        set right after the firmware reads config.txt. No dh:
+#                        a level is "only valid if set to be an output"
+#                        (pinctrl help; config.txt docs: "for outputs").
+#   gpio=22,27=op,dh     green and blue output-high (= dark), ending the glow
+#                        their reset pull-downs would add.
 #   dtoverlay=pwm-gpio,gpio=N  one software-PWM chip per pin (Raspberry Pi
 #                        overlays README, "Name: pwm-gpio"); the overlay
 #                        rewrites its reg so it can be loaded more than once.
-# The overlay's pinctrl only selects "output, no pull" (the latch keeps the
-# firmware's HIGH) and the driver takes the GPIO "as is", so the LED stays dark
-# until hasler-lamp-boot sets polarity "inversed" and fades in.
+# The overlay's pinctrl only selects "output, no pull" (green and blue keep the
+# firmware's HIGH; red shows its latch, which the firmware never drove, for
+# the ~0.1 s until hasler-lamp-boot finds the chips) and the driver takes the
+# GPIO "as is"; hasler-lamp-boot then sets polarity "inversed", writes the
+# ember's duty and enables, so the glow carries on into the breath.
 BOOT_CFG=/boot/firmware/config.txt
 [[ -f "$BOOT_CFG" ]] || BOOT_CFG=/boot/config.txt
 LAMP_BEGIN='# >>> hasler (managed by hasler-update; edits here are replaced) >>>'
