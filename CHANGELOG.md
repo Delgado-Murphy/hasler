@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.8 - 2026-11-21
+
+- The lamp glows faint red as soon as the power comes on, then breathes amber
+  while the radio starts. This update restarts the radio once.
+
+For makers
+- `hasler.block`: `gpio=17=ip,pd` (red on its pull-down, the stage-0 ember),
+  `gpio=22,27=op,dh`. Needs `hasler-update apply --allow-reboot`.
+
 ## 1.7.7 - 2026-11-21
 
 - A power cut can no longer leave a YouTube Music song that won't play:
