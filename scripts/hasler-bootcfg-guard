@@ -3,7 +3,8 @@
 
     hasler-bootcfg-guard check    # exit 0 = sane, 1 = not (the reasons on stderr)
     hasler-bootcfg-guard save     # sane -> refresh the known-good copies in /etc/hasler/boot
-    hasler-bootcfg-guard repair   # not sane -> write the known-good back (+ reboot once at boot)
+    hasler-bootcfg-guard repair   # not sane -> write the known-good back (+ reboot once at boot);
+                                  # and moOde stuck on HDMI -> the amp back in its database
 
 Why (docs/build-guide.md "Boot config guard"): moOde's worker rewrites
 config.txt with `sed -i` at every boot (updBootConfigTxt 'upd_fan_temp0'), and
@@ -25,6 +26,24 @@ edit (the updater's commit and rollback, scripts/bootstrap.sh).
     every hasler marked block the known-good copy has (and the updater's lamp
     block whenever the installed release ships one) is present.
   - cmdline.txt: one non-empty line with a root= argument.
+
+The restored copy carries the installed release's lamp block
+(/opt/hasler/current/integration/configtxt/hasler.block): a known-good saved
+before an update changed that block's lines would otherwise put the old lines
+back. Only the block's body is replaced; it is never added to a copy without it.
+
+moOde on HDMI: when the amp was missing as moOde's worker started (the
+config.txt a power cut emptied, a HAT not seated), the worker gives up on it
+after a minute and writes 'Pi HDMI 1' into its database (worker.php "reconfigure
+to HDMI 1"), and it stays there: at the next boot it finds that card and keeps
+it - moOde's own volume and MPD's mixer then point at HDMI. So `repair` also
+looks at moOde's database: with the Amp4 Pro's overlay chosen
+(i2soverlay hifiberry-amp4pro) and an HDMI output (adevname 'Pi HDMI 1' or
+'2'), it writes the amp back as hasler-install's moOde set-up has it (adevname
+snd_rpi_hifiberry_dacplus, amixname Digital, alsa_output_mode plughw), before
+the worker starts; the worker then finds the card, reassigns cardnum and
+regenerates MPD's config itself. Any other output (a USB DAC, another I2S
+device) is a choice and stays.
 
 Loop guard: at most one repair reboot per 10 minutes. If a repair did not hold
 (still broken within that window) it leaves everything alone and says so.
@@ -49,6 +68,13 @@ AUDIO_HEADER = "# Audio overlays"
 LAMP_BLOCK = ("# >>> hasler (managed by hasler-update; edits here are replaced) >>>", "# <<< hasler <<<")
 BLOCKS = (LAMP_BLOCK,
           ("# >>> hasler boot time (scripts/bootstrap.sh; edits here are replaced) >>>", "# <<< hasler boot time <<<"))
+# moOde (r1036): the Amp4 Pro's overlay, its HDMI fallbacks (www/inc/audio.php
+# PI_HDMI1/2, isHDMIDevice), and the amp as moOde names and drives it (its own
+# output-device cache on a working radio: snd_rpi_hifiberry_dacplus, plughw;
+# the PCM5122's mixer "Digital", haslerd's player/moode.py mixer).
+AMP_OVERLAY = "hifiberry-amp4pro"
+HDMI_NAMES = ("Pi HDMI 1", "Pi HDMI 2")
+AMP_SETTINGS = (("adevname", "snd_rpi_hifiberry_dacplus"), ("amixname", "Digital"), ("alsa_output_mode", "plughw"))
 WINDOW_S = 600          # at most one repair reboot per 10 minutes
 KEEP_BAD = 3            # broken copies kept for a post-mortem
 
@@ -180,6 +206,52 @@ def db_overlay(paths: Paths) -> str | None:
         return None
     val = str(row[0]).strip() if row and row[0] is not None else ""
     return None if val in ("", "None", "none") else f"dtoverlay={val}"
+
+
+def with_release_block(paths: Paths, data: bytes) -> bytes:
+    """``data`` (the known-good config.txt) with the installed release's lamp
+    block body, if both have one; else unchanged."""
+    text, block = text_of(data), text_of(read(paths.release_block))
+    if text is None or not block or not block.strip():
+        return data
+    lines = text.splitlines()
+    begin, end = LAMP_BLOCK
+    if begin not in lines or end not in lines or lines.index(end) < lines.index(begin):
+        return data
+    b, e = lines.index(begin), lines.index(end)
+    body = block.strip("\n").splitlines()
+    if lines[b + 1:e] == body:
+        return data
+    out = lines[:b + 1] + body + lines[e:]
+    return ("\n".join(out) + ("\n" if text.endswith("\n") else "")).encode()
+
+
+def moode_amp(paths: Paths) -> list[str]:
+    """moOde fell back to HDMI with the Amp4 Pro's overlay chosen: write the amp
+    back into its database (docstring, "moOde on HDMI"). The changes made."""
+    db = paths.moode_db
+    if not db.is_file():
+        return []
+    names = ("i2soverlay",) + tuple(k for k, _ in AMP_SETTINGS)
+    changed: list[str] = []
+    try:
+        con = sqlite3.connect(str(db), timeout=5)
+        try:
+            rows = dict(con.execute(f"SELECT param, value FROM cfg_system WHERE param IN ({','.join('?' * len(names))})",
+                                    names).fetchall())
+            if rows.get("i2soverlay") != AMP_OVERLAY or rows.get("adevname") not in HDMI_NAMES:
+                return []
+            with con:
+                for k, v in AMP_SETTINGS:
+                    if rows.get(k) != v and con.execute("UPDATE cfg_system SET value=? WHERE param=?",
+                                                        (v, k)).rowcount:
+                        changed.append(f"{k} {rows.get(k)!r} -> {v!r}")
+        finally:
+            con.close()
+    except sqlite3.Error as e:
+        log(f"moOde's database: could not check its audio output ({e})", 4)
+        return []
+    return changed
 
 
 def expectations(paths: Paths, good_text: str | None) -> dict:
@@ -361,6 +433,18 @@ def cmd_repair(paths: Paths, allow_reboot: bool = True) -> int:
     doc = load_state(paths)
     rc = 0
 
+    # moOde stuck on HDMI from an amp-missing boot: fixed in its database before
+    # its worker starts (it reads the output from there).
+    amp = moode_amp(paths)
+    if amp:
+        log("moOde's output was HDMI with the Amp4 Pro chosen - the amp is back in its database: "
+            + "; ".join(amp) + ("" if system_state() in ("initializing", "starting")
+                                 else " (moOde uses it from its next start)"), 4)
+        doc.setdefault("repairs", []).append({"file": "moode-db", "at": int(now()), "boot_id": boot_id(),
+                                              "changed": amp, "reboot": False})
+        doc["repairs"] = doc["repairs"][-20:]
+        save_state(paths, doc)
+
     # cmdline.txt: the kernel already booted with it (a broken one would not get
     # this far), so it only matters for the next boot: restore, no reboot.
     if a["cmd"]:
@@ -391,6 +475,8 @@ def cmd_repair(paths: Paths, allow_reboot: bool = True) -> int:
     if good is None:
         log(f"CRITICAL: {paths.config} is not sane ({why}) and there is no known-good copy - leaving it", 2)
         return 1
+    # The installed release's lamp block lines, not those of an older save.
+    good = with_release_block(paths, good)
     good_probs = config_problems(text_of(good), a["exp"])
     if good_probs:
         log(f"CRITICAL: {paths.config} is not sane ({why}), but the known-good copy is not either "

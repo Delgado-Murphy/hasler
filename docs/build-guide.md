@@ -961,7 +961,15 @@ no lamp. Three defences:
   per 10 min). A repair that did not hold is logged
   (`journalctl -u hasler-bootcfg-guard -p crit`). A broken `cmdline.txt` is
   restored without a reboot. `sudo hasler-bootcfg-guard check` tells you what it
-  would do.
+  would do. The restored copy gets the installed release's lamp block lines, so
+  an older save never brings back an older block.
+- The same `repair` also fixes moOde's output: if the amp was missing when
+  moOde's worker started (an emptied `config.txt`, a loose HAT), moOde switched
+  to `Pi HDMI 1` and stays there. With the Amp4 Pro overlay chosen and an HDMI
+  output in moOde's database, the guard writes the amp back (`adevname`
+  `snd_rpi_hifiberry_dacplus`, `amixname` `Digital`, `alsa_output_mode`
+  `plughw`) before the worker starts, and logs it. Any other output chosen in
+  moOde is left alone.
 
 ### Two proofs worth doing at the end
 

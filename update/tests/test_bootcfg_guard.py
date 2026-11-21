@@ -23,7 +23,14 @@ def _load():
 
 G = _load()
 
-LAMP = "\n".join([G.LAMP_BLOCK[0], "[all]", "gpio=17,22,27=op,dh", "dtoverlay=pwm-gpio,gpio=17", G.LAMP_BLOCK[1]])
+BLOCK = (ROOT / "config/configtxt/hasler.block").read_text()     # what this tree ships
+OLD_BLOCK = "[all]\ngpio=17,22,27=op,dh\ndtoverlay=pwm-gpio,gpio=17\ndtoverlay=pwm-gpio,gpio=22\ndtoverlay=pwm-gpio,gpio=27\n"
+EMBER_BLOCK = "[all]\ngpio=17=ip,pd\ngpio=22,27=op,dh\ndtoverlay=pwm-gpio,gpio=17\ndtoverlay=pwm-gpio,gpio=22\ndtoverlay=pwm-gpio,gpio=27\n"
+LAMP = "\n".join([G.LAMP_BLOCK[0], BLOCK.strip("\n"), G.LAMP_BLOCK[1]])
+
+
+def lamp(block: str) -> str:
+    return "\n".join([G.LAMP_BLOCK[0], block.strip("\n"), G.LAMP_BLOCK[1]])
 BOOT = "\n".join([G.BLOCKS[1][0], "[all]", "boot_delay=0", G.BLOCKS[1][1]])
 
 
@@ -84,9 +91,24 @@ class Box:
         con.commit()
         con.close()
 
-    def release_block(self) -> None:
+    def db_set(self, **params: str) -> None:
+        con = sqlite3.connect(self.paths.moode_db)
+        for k, v in params.items():
+            con.execute("DELETE FROM cfg_system WHERE param=?", (k,))
+            con.execute("INSERT INTO cfg_system (param, value) VALUES (?, ?)", (k, v))
+        con.commit()
+        con.close()
+
+    def db_get(self) -> dict:
+        con = sqlite3.connect(self.paths.moode_db)
+        try:
+            return dict(con.execute("SELECT param, value FROM cfg_system").fetchall())
+        finally:
+            con.close()
+
+    def release_block(self, block: str = BLOCK) -> None:
         self.paths.release_block.parent.mkdir(parents=True, exist_ok=True)
-        self.paths.release_block.write_text("[all]\ngpio=17,22,27=op,dh\n")
+        self.paths.release_block.write_text(block)
 
     def repair(self) -> int:
         return G.cmd_repair(self.paths)
@@ -145,10 +167,38 @@ def test_sane_config_untouched(box):
 
 def test_sane_with_different_lamp_block_body_untouched(box):
     """A trial boot after the updater changed the block: present, so sane."""
-    changed = GOOD.replace("gpio=17,22,27=op,dh", "gpio=17,22,27=op,dl")
+    changed = GOOD.replace(G.LAMP_BLOCK[1], "gpio=4=op,dl\n" + G.LAMP_BLOCK[1])
     box.write(changed)
     assert box.repair() == 0
     assert box.cfg.read_text() == changed and box.reboots == 0
+
+
+def test_upgraded_radio_with_the_new_block_is_sane(box):
+    """The ember block on a radio whose known-good still has the old lines:
+    present and marked, so sane - the old copy never puts the old lines back."""
+    new = GOOD.replace(LAMP, lamp(EMBER_BLOCK))
+    box.known_good(cfg=GOOD.replace(LAMP, lamp(OLD_BLOCK)))
+    box.release_block(EMBER_BLOCK)
+    box.write(new)
+    assert box.repair() == 0
+    assert box.cfg.read_text() == new and box.reboots == 0
+
+
+def test_restore_carries_the_release_block_over_an_old_known_good(box):
+    """A power cut after the update wrote the new block, before the known-good
+    was refreshed: the restored copy has the release's block lines."""
+    old = GOOD.replace(LAMP, lamp(OLD_BLOCK))
+    box.known_good(cfg=old)
+    box.release_block(EMBER_BLOCK)
+    box.write(b"")
+    assert box.repair() == 0 and box.reboots == 1
+    assert box.cfg.read_text() == GOOD.replace(LAMP, lamp(EMBER_BLOCK))
+    assert "gpio=17=ip,pd" in box.cfg.read_text() and "gpio=17,22,27" not in box.cfg.read_text()
+    # without a release block the known-good goes back as it is
+    box.paths.release_block.unlink()
+    box.t += G.WINDOW_S + 1
+    box.write(b"")
+    assert box.repair() == 0 and box.cfg.read_text() == old
 
 
 def test_overlay_changed_in_moode_is_not_reverted(box):
@@ -216,6 +266,52 @@ def test_cmdline_restored_without_reboot(box, cmd):
     assert box.repair() == 0
     assert box.paths.cmdline.read_text() == CMDLINE
     assert box.reboots == 0 and box.cfg.read_text() == GOOD
+
+
+# --- moOde stuck on HDMI ----------------------------------------------------------------
+
+def test_guard_reasserts_amp_after_hdmi_fallback(box):
+    """The 21 Nov power cut: an amp-missing boot left moOde on HDMI; repair puts
+    the amp back in its database before moOde's worker starts."""
+    box.db_set(adevname="Pi HDMI 1", amixname="PCM", alsa_output_mode="iec958", cardnum="0", i2sdevice="None")
+    box.write(GOOD)
+    assert box.repair() == 0
+    db = box.db_get()
+    assert (db["adevname"], db["amixname"], db["alsa_output_mode"]) == ("snd_rpi_hifiberry_dacplus", "Digital", "plughw")
+    assert db["cardnum"] == "0" and db["i2soverlay"] == "hifiberry-amp4pro"     # moOde reassigns the card itself
+    entry = box.doc()["repairs"][-1]
+    assert entry["file"] == "moode-db" and len(entry["changed"]) == 3 and entry["reboot"] is False
+    assert box.reboots == 0 and box.cfg.read_text() == GOOD                     # nothing else touched
+    # the next boot: already the amp, nothing to do
+    n = len(box.doc()["repairs"])
+    assert box.repair() == 0 and len(box.doc()["repairs"]) == n
+    # HDMI 2 is a fallback too
+    box.db_set(adevname="Pi HDMI 2")
+    assert box.repair() == 0 and box.db_get()["adevname"] == "snd_rpi_hifiberry_dacplus"
+
+
+@pytest.mark.parametrize("overlay,adev", [
+    ("hifiberry-amp4pro", "snd_rpi_hifiberry_dacplus"),     # the amp: as it should be
+    ("hifiberry-amp4pro", "USB Audio Device"),              # a USB DAC chosen in moOde
+    ("hifiberry-dacplus", "Pi HDMI 1"),                     # another board: not ours to judge
+    ("None", "Pi HDMI 1"),                                  # HDMI on purpose
+], ids=["amp", "usb", "other-overlay", "no-overlay"])
+def test_guard_leaves_named_i2s_alone(box, overlay, adev):
+    box.db(overlay)
+    box.db_set(adevname=adev, amixname="Master", alsa_output_mode="hw", i2sdevice="None")
+    before = box.db_get()
+    box.write(GOOD.replace("dtoverlay=hifiberry-amp4pro", f"dtoverlay={overlay}"))
+    box.repair()
+    assert box.db_get() == before
+    assert not box.paths.state_file.exists() or all(r["file"] != "moode-db" for r in box.doc().get("repairs", []))
+
+
+def test_guard_without_moode_db_or_with_a_broken_one(box):
+    box.paths.moode_db.unlink()
+    box.write(GOOD)
+    assert box.repair() == 0
+    box.paths.moode_db.write_bytes(b"not a database")
+    assert box.repair() == 0 and box.reboots == 0
 
 
 # --- save ----------------------------------------------------------------------------
