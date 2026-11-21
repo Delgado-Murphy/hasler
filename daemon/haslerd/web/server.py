@@ -131,10 +131,12 @@ from .. import presets as presets_mod
 from . import lamp_check
 from ..panel import calibrate
 from ..panel.controls import RAW_HISTORY, AnalogSelector, Event, Pot, bank_keys, bank_latching
+from ..bootresume import AFTER_POWER_CUT, AFTER_POWER_CUT_DEFAULT
 from ..player.base import Preset
 from ..player.glr_config import SpotifyGuests, guests_from
 from ..player.moode import SOURCE_MPD_S, treble_db
 from ..player.sources.radio import mpd_patience
+from ..player.watchdog import WHEN_MUSIC_FAILS, WHEN_MUSIC_FAILS_DEFAULT
 from . import clock as clock_mod
 from . import front as front_mod
 from . import keymap, lamp_api, stations
@@ -267,6 +269,16 @@ def load_settings(path: Path | None) -> dict:
         log.exception("could not read %s; using box.yaml's settings and the defaults", path)
         return {}
     return doc if isinstance(doc, dict) else {}
+
+
+def _merge_resilience(doc: dict, change: dict) -> None:
+    """after_power_cut / when_music_fails / fallback_preset into settings.json;
+    fallback_preset None (automatic) is the key's absence."""
+    for k, v in change.items():
+        if v is None:
+            doc.pop(k, None)
+        else:
+            doc[k] = v
 
 
 def _merge_dismissed(current: Any, change: dict) -> dict:
@@ -464,6 +476,7 @@ class WebApp:
         self._lamp_settings: dict = {}
         self._dismissed_mem: dict = {}      # the page's dismissed notices when there is no settings file
         self._made_mine_mem: dict = {}      # "Make it yours" (skipped, hidden) when there is no settings file
+        self._resilience_mem: dict = {}     # after_power_cut, when_music_fails, fallback_preset (no file)
         # When hasler-install finished (/api/info "installed_at"); main.py points a --fake radio at its state dir.
         self.install_done_file: Path = INSTALL_DONE
         # The lamp engine (lamp/engine.LampEngine: set_palette, preview), or
@@ -1053,6 +1066,12 @@ class WebApp:
             "stalled_s": stream["stalled_s"],
             # Why, in a few words ("MPD not answering for 34 s"); None when not recovering.
             "recovering_reason": stream.get("reason"),
+            # YouTube Music wouldn't play and the radio fell back (player/watchdog.py):
+            # {"from": {n, name, source}, "to": {n, name} | None (standby), "at": ISO local,
+            # "why"}; None once a hand has routed since. fallback_notice is the same, kept
+            # until that preset is played again (Needs attention).
+            "fallback": stream.get("fallback"),
+            "fallback_notice": stream.get("fallback_notice"),
             # The lamp's SOS reasons now (lamp/faults.py: "update", "storage",
             # "sound", "panel", "heat"; [] = none), and when the last SOS cleared
             # (ISO, local; None = never this run) - the page says it once.
@@ -1484,6 +1503,10 @@ class WebApp:
             # "Make it yours" (the Settings home): the rows the owner skipped, and
             # when they hid the list ({"skipped": [...], "hidden_at": time|null}).
             "made_mine": self._made_mine(),
+            # Settings -> Sound: after a power cut "resume" | "night_only" | "standby";
+            # when YouTube Music won't play "radio" | "standby" | "keep_trying", and the
+            # station it switches to (fallback_preset; None = automatic).
+            **self.resilience_settings(),
             "version": f"haslerd {__version__}",
             # The key page on port 80 (web/front.py): moOde's pages then on MOODE_PORT.
             "front": front_doc,
@@ -1555,15 +1578,36 @@ class WebApp:
         raw = load_settings(self.settings_file).get("made_mine") if self.settings_file is not None else self._made_mine_mem
         return _made_mine_doc(raw)
 
+    def resilience_settings(self) -> dict:
+        """``after_power_cut``, ``when_music_fails``, ``fallback_preset`` as they
+        apply (an absent or unknown value is the default; the stream watchdog
+        asks this when YouTube Music fails)."""
+        doc = load_settings(self.settings_file) if self.settings_file is not None else self._resilience_mem
+        apc, wmf, fb = doc.get("after_power_cut"), doc.get("when_music_fails"), doc.get("fallback_preset")
+        return {"after_power_cut": apc if apc in AFTER_POWER_CUT else AFTER_POWER_CUT_DEFAULT,
+                "when_music_fails": wmf if wmf in WHEN_MUSIC_FAILS else WHEN_MUSIC_FAILS_DEFAULT,
+                "fallback_preset": fb if isinstance(fb, int) and not isinstance(fb, bool) else None}
+
+    def _fallback_preset_from(self, value: Any) -> int | None:
+        """``fallback_preset``: a radio preset's number, or None (automatic)."""
+        if value is None:
+            return None
+        preset = self.actions.presets.get(value) if isinstance(value, int) and not isinstance(value, bool) else None
+        if preset is None or preset.source != "radio":
+            raise ValueError("fallback_preset must be the number of a radio preset, or null (automatic)")
+        return value
+
     def put_settings(self, body: Any, host: str | None = None) -> dict:
         """Validate, persist, apply live: ``volume_limit``, ``volume_floor``, ``mono``,
         ``location``, ``night``, ``room`` (web/room.py), ``spotify_guests``,
         ``ytm`` ({"hide_explicit": bool, "lyrics_offset_ms": int}), ``lamp`` ({"brightness", "key_replies"}),
         ``dismissed`` ({"rollback": "1.4.1"}: a notice the page has shown),
         ``timezone`` ("Europe/Madrid": the system clock's zone, web/clock.py),
-        ``made_mine`` ({"skipped": [...], "hidden_at": time|null}: "Make it yours")."""
+        ``made_mine`` ({"skipped": [...], "hidden_at": time|null}: "Make it yours"),
+        ``after_power_cut`` ("resume"|"night_only"|"standby"), ``when_music_fails``
+        ("radio"|"standby"|"keep_trying"), ``fallback_preset`` (a radio preset's n, null = automatic)."""
         keys = {"volume_limit", "volume_floor", "mono", "location", "night", "room", "spotify_guests", "ytm", "lamp",
-                "dismissed", "timezone", "made_mine"}
+                "dismissed", "timezone", "made_mine", "after_power_cut", "when_music_fails", "fallback_preset"}
         if not isinstance(body, dict) or not (keys & body.keys()):
             raise ValueError("expected {\"volume_limit\": 30-100}, {\"volume_floor\": 0-(limit-10)}, "
                              "{\"mono\": true|false}, "
@@ -1574,7 +1618,10 @@ class WebApp:
                              "{\"ytm\": {\"hide_explicit\": true|false}}, "
                              "{\"lamp\": {\"brightness\": \"low\"|\"normal\"|\"bright\", \"key_replies\": true|false}}, "
                              "{\"dismissed\": {\"rollback\": \"<version>\"}}, "
-                             "{\"made_mine\": {\"skipped\": [names], \"hidden_at\": \"<time>\"|null}}")
+                             "{\"made_mine\": {\"skipped\": [names], \"hidden_at\": \"<time>\"|null}}, "
+                             "{\"after_power_cut\": \"resume\"|\"night_only\"|\"standby\"}, "
+                             "{\"when_music_fails\": \"radio\"|\"standby\"|\"keep_trying\"}, "
+                             "{\"fallback_preset\": n|null}")
         dismissed = self._dismissed_from(body["dismissed"]) if "dismissed" in body else None
         made_mine = _made_mine_from(body["made_mine"]) if "made_mine" in body else None
         limit = volume_limit_from(body["volume_limit"], self._volume_cap()) if "volume_limit" in body else None
@@ -1608,6 +1655,17 @@ class WebApp:
                                   and abs(off) <= LYRICS_OFFSET_MAX_MS):
             raise ValueError("ytm must be {\"hide_explicit\": true|false, "
                              f"\"lyrics_offset_ms\": -{LYRICS_OFFSET_MAX_MS}..{LYRICS_OFFSET_MAX_MS}}}")
+        resilience: dict = {}
+        if "after_power_cut" in body:
+            if body["after_power_cut"] not in AFTER_POWER_CUT:
+                raise ValueError("after_power_cut must be one of: " + ", ".join(AFTER_POWER_CUT))
+            resilience["after_power_cut"] = body["after_power_cut"]
+        if "when_music_fails" in body:
+            if body["when_music_fails"] not in WHEN_MUSIC_FAILS:
+                raise ValueError("when_music_fails must be one of: " + ", ".join(WHEN_MUSIC_FAILS))
+            resilience["when_music_fails"] = body["when_music_fails"]
+        if "fallback_preset" in body:
+            resilience["fallback_preset"] = self._fallback_preset_from(body["fallback_preset"])
         zone = clock_mod.timezone_from(body["timezone"]) if "timezone" in body else None
         if zone is not None and zone != self._timezone():
             clock_mod.set_timezone(zone)       # the root helper; ValueError with its reason
@@ -1646,6 +1704,7 @@ class WebApp:
                     doc["dismissed"] = _merge_dismissed(doc.get("dismissed"), dismissed)
                 if made_mine is not None:
                     doc["made_mine"] = _merge_dismissed(doc.get("made_mine"), made_mine)
+                _merge_resilience(doc, resilience)
                 doc.setdefault("schema", boxconfig.SCHEMA)
                 save_settings(self.settings_file, doc)
             else:
@@ -1664,6 +1723,7 @@ class WebApp:
                     self._dismissed_mem = _merge_dismissed(self._dismissed_mem, dismissed)
                 if made_mine is not None:
                     self._made_mine_mem = _merge_dismissed(self._made_mine_mem, made_mine)
+                _merge_resilience(self._resilience_mem, resilience)
             if room is not None:
                 self.room.commit(room, body["room"])
             if guests is not None:
@@ -1699,6 +1759,8 @@ class WebApp:
                      "hidden" if self.ytm_settings()["hide_explicit"] else "shown with a badge")
         if ytm is not None and "lyrics_offset_ms" in ytm:
             log.info("lyrics offset set to %+d ms from the web page", ytm["lyrics_offset_ms"])
+        for k, v in resilience.items():
+            log.info("%s set to %s from the web page", k, "automatic" if v is None else v)
         return self.settings(host)
 
     def lamp_settings(self) -> dict:

@@ -405,6 +405,11 @@ class InterlockedBank(Control):
                 events.append(Event(self.id, "hold", self._selected))
         return events
 
+    def adopt(self) -> None:
+        """The selection just made is where the bank stood at boot (a key
+        left latched), not a press: no hold will follow it (main.starting_point)."""
+        self._hold_fired = True
+
     def state(self):
         return self._selected
 

@@ -474,6 +474,31 @@ class Actions:
             fresh = fresh or (at is not None and now - at < KICK_FRESH_S)
         return fresh
 
+    def select_preset(self, event: Event) -> int | None:
+        """The preset an interlocked bank's ``select`` would play (its key's
+        tap, else the bank's own preset_by_index), or None."""
+        kid = self.bank_key(event.control, event.value)
+        spec = self.variant.actions.get(f"{kid}.tap") if kid is not None else None
+        if spec is None:
+            spec = self.variant.actions.get(f"{event.control}.select")
+            if spec and spec.get("do") == "preset_by_index" and isinstance(event.value, int):
+                return event.value + 1
+            return None
+        if spec.get("do") == "preset":
+            try:
+                return int(spec["n"])
+            except (KeyError, TypeError, ValueError):
+                return None
+        return None
+
+    def starting_point(self, event: Event) -> None:
+        """A bank's position read at boot (main.starting_point): not a press.
+        Plays nothing; a radio that remembers no preset yet takes its key's."""
+        n = self.select_preset(event)
+        log.info("%s at boot: key %s already down - the starting point, not a press", event.control, event.value)
+        if n is not None and n in self.presets and self._last_preset is None and not self.standby:
+            self._remember(n)
+
     def bank_key(self, control: str, index: Any) -> str | None:
         """The id of interlocked bank ``control``'s key at ``index`` (0-based):
         ``("presets", 2)`` -> ``"k3"``. None if there is no such key."""
