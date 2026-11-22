@@ -101,7 +101,8 @@ def test_strict_release_integration(built):
               "avahi/hasler.service", "systemd/bluetooth.service.d/hasler-speaker.conf",
               "systemd/bluealsa-aplay@.service.d/hasler-buffer.conf",
               "systemd/bluealsa-aplay.service.d/hasler-moode-owns.conf",
-              "systemd/mpd.service.d/hasler-watchdog.conf"):
+              "systemd/mpd.service.d/hasler-watchdog.conf",
+              "systemd/rc-local.service.d/hasler-stop.conf"):
         assert f"integration/{p}" in integ_files, p
     assert files["integration/sbin/hasler-ytdlp-update"][1] == 0o755
     assert files["integration/sbin/hasler-help"][1] == 0o755

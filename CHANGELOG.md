@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.7.14 - 2026-11-22
+
+- A restart no longer hangs: the 1.7.10 and 1.7.13 updates sat 30 minutes at
+  a steady lamp until the radio gave up by itself or you unplugged it.
+  No restart with this one.
+
+For makers
+- `rc-local.service.d/hasler-stop.conf`: `TimeoutStopSec=20s`. moOde's
+  worker, AirPlay and the mount monitor run in rc-local's cgroup, and Debian's
+  `TimeoutSec=infinity` let one of them hold a reboot until reboot.target's
+  30 min timeout.
+
 ## 1.7.13 - 2026-11-22
 
 - The red light at power-on is full red now, easy to see: the pale glow was

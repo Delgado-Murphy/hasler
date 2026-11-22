@@ -131,6 +131,7 @@ ALLOWLIST: tuple[Rule, ...] = (
     Rule("config/systemd-dropins/bluealsa-aplay@.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay@.service.d/"),
     Rule("config/systemd-dropins/bluealsa-aplay.service.d/hasler-*.conf", "integration/systemd/bluealsa-aplay.service.d/"),
     Rule("config/systemd-dropins/mpd.service.d/hasler-*.conf", "integration/systemd/mpd.service.d/"),
+    Rule("config/systemd-dropins/rc-local.service.d/hasler-*.conf", "integration/systemd/rc-local.service.d/"),
     Rule("config/systemd-dropins/systemd-journal-flush.service.d/hasler-*.conf",
          "integration/systemd/systemd-journal-flush.service.d/"),
     Rule("config/configtxt/hasler.block", "integration/configtxt/"),
