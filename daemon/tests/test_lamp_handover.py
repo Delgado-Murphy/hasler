@@ -429,8 +429,8 @@ def first_duties(out):
     return json.loads(line.split("duty_ns=")[1])
 
 
-# Stage 0's ember (the firmware's pull-down glow), perceptual: where a cold start begins.
-EMBER_RED = 0.0075
+# Stage 0's red (the firmware's gpio=17=op,dl), perceptual: where a cold start begins.
+EMBER_RED = 1.0
 EMBER_P = EMBER_RED ** (1 / 2.2)
 
 
@@ -440,7 +440,8 @@ class TestBootScript:
         res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "0.3")
         assert res.returncode == 0, res.stderr
         levels = frames(res.stdout)
-        assert abs(levels[0] - EMBER_P) < 0.01 and levels == sorted(levels)    # the firmware's glow, not dark
+        assert abs(levels[0] - EMBER_P) < 0.01                                   # the firmware's red, not dark
+        assert max(abs(a - b) for a, b in zip(levels, levels[1:])) < 0.07        # a blend, no jump
         red, green, blue = first_duties(res.stdout)                              # the very first frame
         assert red == round(EMBER_RED * 2500000) and blue == 0 and green <= 0.15 * red + 1
         assert (tmp_path / "pwm" / "pwmchip0" / "pwm0" / "period").read_text().strip() == "2500000"
@@ -621,8 +622,8 @@ class TestBootScriptWithNotes:
         res = run_boot(tmp_path, "--fake-sysfs", "--print", "--seconds", "3.5")
         assert res.returncode == 0, res.stderr
         levels = frames(res.stdout)
-        assert abs(levels[0] - EMBER_P) < 0.01                           # still from the firmware's ember
-        assert max(levels) < 0.45                                        # never the day's 70 % in the bedroom
+        assert abs(levels[0] - EMBER_P) < 0.01                           # still from the firmware's red
+        assert max(levels[len(levels) // 2:]) < 0.45                     # then never the day's 70 % in the bedroom
         assert max(levels[len(levels) // 2:]) > 0.25
         state = json.loads((tmp_path / "run" / "boot").read_text())
         assert state["peak"] == policy.BUSY.night and state["floor"] < policy.BUSY.floor and state["colour"] == "amber"

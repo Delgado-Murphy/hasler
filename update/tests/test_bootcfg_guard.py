@@ -25,7 +25,7 @@ G = _load()
 
 BLOCK = (ROOT / "config/configtxt/hasler.block").read_text()     # what this tree ships
 OLD_BLOCK = "[all]\ngpio=17,22,27=op,dh\ndtoverlay=pwm-gpio,gpio=17\ndtoverlay=pwm-gpio,gpio=22\ndtoverlay=pwm-gpio,gpio=27\n"
-EMBER_BLOCK = "[all]\ngpio=17=ip,pd\ngpio=22,27=op,dh\ndtoverlay=pwm-gpio,gpio=17\ndtoverlay=pwm-gpio,gpio=22\ndtoverlay=pwm-gpio,gpio=27\n"
+EMBER_BLOCK = "[all]\ngpio=17=op,dl\ngpio=22,27=op,dh\ndtoverlay=pwm-gpio,gpio=17\ndtoverlay=pwm-gpio,gpio=22\ndtoverlay=pwm-gpio,gpio=27\n"
 LAMP = "\n".join([G.LAMP_BLOCK[0], BLOCK.strip("\n"), G.LAMP_BLOCK[1]])
 
 
@@ -193,7 +193,7 @@ def test_restore_carries_the_release_block_over_an_old_known_good(box):
     box.write(b"")
     assert box.repair() == 0 and box.reboots == 1
     assert box.cfg.read_text() == GOOD.replace(LAMP, lamp(EMBER_BLOCK))
-    assert "gpio=17=ip,pd" in box.cfg.read_text() and "gpio=17,22,27" not in box.cfg.read_text()
+    assert "gpio=17=op,dl" in box.cfg.read_text() and "gpio=17,22,27" not in box.cfg.read_text()
     # without a release block the known-good goes back as it is
     box.paths.release_block.unlink()
     box.t += G.WINDOW_S + 1

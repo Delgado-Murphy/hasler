@@ -327,7 +327,7 @@ def test_old_block_radio_gets_the_ember_block(installed_v1: World):
     assert ap.apply(allow_reboot=True) == "rebooting into the trial"
     text = cfg.read_text()
     assert integ.config_block(text).strip("\n") == new.decode().strip("\n")
-    assert "gpio=17=ip,pd" in text and "gpio=17,22,27" not in text and text.startswith("arm_64bit=1\n")
+    assert "gpio=17=op,dl" in text and "gpio=17,22,27" not in text and text.startswith("arm_64bit=1\n")
     assert w.state()["phase"] == "trial" and w.current() == "1.1.0"
     assert w.applier().boot() == "trial boot 1"           # the boot with the new block
     ap = w.applier()

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.7.13 - 2026-11-22
+
+- The red light at power-on is full red now, easy to see: the pale glow was
+  hard to spot by day. It still blends into the amber breath after a few
+  seconds. This update restarts the radio once.
+
+For makers
+- `hasler.block`: `gpio=17=op,dl` (was `ip,pd`); `hasler-lamp-boot` starts
+  its blend at full red (`EMBER_RED = 1.0`). Needs
+  `hasler-update apply --allow-reboot`.
+
 ## 1.7.12 - 2026-11-22
 
 - After a power cut that brings the radio up before the router, it looks for

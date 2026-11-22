@@ -189,11 +189,10 @@ put_file "$REPO/scripts/hasler-web-front" /usr/local/sbin/hasler-web-front 0755 
 # config.txt block = config/configtxt/hasler.block (what every release ships),
 # kept between the updater's markers so a later switch to releases finds it
 # unchanged (an older install.sh block is replaced in place):
-#   gpio=17=ip,pd        red an input with its weak pull-down: a faint steady
-#                        glow through the common-anode LED (stage 0's ember),
-#                        set right after the firmware reads config.txt. No dh:
-#                        a level is "only valid if set to be an output"
-#                        (pinctrl help; config.txt docs: "for outputs").
+#   gpio=17=op,dl        red output-low: steady full red through the
+#                        common-anode LED (stage 0), set right after the
+#                        firmware reads config.txt. (Until 1.7.13 ip,pd: the
+#                        pull-down's glow, too pale to see by day.)
 #   gpio=22,27=op,dh     green and blue output-high (= dark), ending the glow
 #                        their reset pull-downs would add.
 #   dtoverlay=pwm-gpio,gpio=N  one software-PWM chip per pin (Raspberry Pi

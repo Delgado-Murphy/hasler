@@ -411,8 +411,8 @@ blue on GPIO 27 (pin 13), common to 3.3 V. Wiring is in
 what it shows is in [lamp.md](lamp.md). `scripts/install.sh` sets up all of it
 (on a release radio, the same files come from the release):
 
-- a marked block at the end of `/boot/firmware/config.txt`: `gpio=17=ip,pd` and
-  `gpio=22,27=op,dh` (a faint red ember from the moment the firmware starts) and
+- a marked block at the end of `/boot/firmware/config.txt`: `gpio=17=op,dl` and
+  `gpio=22,27=op,dh` (steady red from the moment the firmware starts) and
   one `dtoverlay=pwm-gpio,gpio=N` per pin (kernel PWM at about 800 Hz);
 - `/etc/udev/rules.d/99-hasler-pwm.rules`, so `haslerd` (user `pi`, group `gpio`)
   can drive `/sys/class/pwm`;

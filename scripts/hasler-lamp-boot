@@ -7,13 +7,12 @@ stops itself when haslerd asks for the LED (/run/hasler-lamp/takeover, below)
 and haslerd.service's ExecStartPost stops it anyway (SIGTERM) for a haslerd
 too old to ask.
 
-What it shows: a cold start begins at stage 0's ember (EMBER, a faint steady
-red) and grows it over a slow 2 s blend into the light language's busy
-breath. With the ember block in config.txt (gpio=17=ip,pd: the red pin an
-input on its weak pull-down, a faint glow through a common-anode LED; green
-and blue held dark) the firmware already shows that glow, so the breath grows
-out of it; with the older block (all three op,dh: dark until here) the lamp
-simply lights at the ember and grows from there. The breath: 22 % -> 70 % (perceptual), 2.8 s period,
+What it shows: a cold start begins at stage 0's red (EMBER, steady full red)
+and blends it over a slow 2 s into the light language's busy breath. With the
+block in config.txt (gpio=17=op,dl: the red pin driven low, full red through a
+common-anode LED; green and blue held dark) the firmware already shows that
+red, so the breath grows out of it; with the older block (all three op,dh:
+dark until here) the lamp simply lights at that red and blends from there. The breath: 22 % -> 70 % (perceptual), 2.8 s period,
 raised cosine. Perceptual -> linear with gamma 2.2, then the amber balance R
 1.0 / G 0.15 / B 0. Starting is busy whatever the tone knob says (v2: asleep
 never moves), so it is always amber. haslerd's own warm-up carries this very
@@ -104,13 +103,11 @@ GPIOS = (17, 22, 27)              # red, green, blue - overlay declaration order
 PERIOD_NS = 1_250_000             # 800 Hz, unless haslerd left another (PERIOD_FILE)
 GAMMA = 2.2
 FADE_S = 2.0                      # a cold start's slow, visible blend up (the owner likes it slow)
-# Stage 0's ember as linear duties: what the red pin's pull-down glow
-# (config.txt gpio=17=ip,pd, ~50 kOhm against the 220 Ohm resistor, ~0.5 %)
-# looks like on this LED - matched by eye to that glow on a cold boot. It sits
-# at red's smallest reliable duty (the variants' min_duty), so the hand-over
-# from the firmware to the PWM is not a step (and with the older, dark block a
-# cold start just lights at this faint glow).
-EMBER_RED = 0.0075
+# Stage 0's red as linear duties: what the firmware shows (config.txt
+# gpio=17=op,dl, full red), so the hand-over from the firmware to the PWM is
+# not a step. Until 1.7.13 it was the pin's pull-down glow (gpio=17=ip,pd,
+# 0.0075 here) - too pale to see by day (owner, 2026-11-22).
+EMBER_RED = 1.0
 EMBER = (EMBER_RED, 0.0, 0.0)
 FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU
 WAIT_CHIPS_S = 10.0               # udev may still be loading pwm-gpio

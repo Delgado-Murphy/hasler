@@ -376,10 +376,10 @@ lamp shows is in [lamp.md](lamp.md).
 
 - **Common anode** (measured: in diode mode, with the red probe on the long leg,
   the colours glow). So a GPIO pin **LOW lights** its colour and HIGH is dark.
-  From the moment the firmware starts, `gpio=17=ip,pd` in config.txt leaves red
-  an input on its weak pull-down, which lights a common-anode LED faintly (the
-  boot ember, [lamp.md](lamp.md#boot-and-shutdown)), and `gpio=22,27=op,dh`
-  holds green and blue HIGH (dark), so the ember is pure red.
+  From the moment the firmware starts, `gpio=17=op,dl` in config.txt drives red
+  LOW (full red: the boot red, [lamp.md](lamp.md#boot-and-shutdown)), and
+  `gpio=22,27=op,dh` holds green and blue HIGH (dark), so it is pure red.
+  (Until 1.7.13 `ip,pd`: the weak pull-down's glow, too pale to see by day.)
 - Dark = safe to unplug: a shutdown hook (`hasler-lamp-halt`) drives the pins
   HIGH at halt.
 - **Resistors go on the colour legs, never on the common.** They keep each pin at
