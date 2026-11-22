@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.15 - 2026-11-22
+
+- The light at power-on is green now instead of red, then it blends into the
+  amber breath as before. This update restarts the radio once.
+
+For makers
+- `hasler.block`: `gpio=22=op,dl`, `gpio=17,27=op,dh`; `hasler-lamp-boot`
+  blends from full green channel by channel (`EMBER = (0, 1, 0)`). Needs
+  `hasler-update apply --allow-reboot`.
+
 ## 1.7.14 - 2026-11-22
 
 - A restart no longer hangs: the 1.7.10 and 1.7.13 updates sat 30 minutes at

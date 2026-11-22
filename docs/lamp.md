@@ -272,17 +272,17 @@ Like a valve radio: light comes first, and sound follows as the valves warm.
 
 | t | Stage | Lamp |
 |---|---|---|
-| 0 - red ~1 s | power, firmware | a steady full red: `gpio=17=op,dl` in config.txt drives red low (on, through the common-anode LED), `gpio=22,27=op,dh` holds green and blue off. Steady, so never mistaken for SOS (which blinks) |
-| ~3-5 s | early `hasler-lamp-boot` service | blends from the red into the amber breath (22-70 %, 2.8 s), a slow 2 s blend - no dark gap |
+| 0 - green ~1 s | power, firmware | a steady full green: `gpio=22=op,dl` in config.txt drives green low (on, through the common-anode LED), `gpio=17,27=op,dh` holds red and blue off. The one steady green: the firmware can't move a light (owner's choice, 2026-11-22). Steady, so never mistaken for SOS (which blinks) |
+| ~3-5 s | early `hasler-lamp-boot` service | blends from the green into the amber breath (22-70 %, 2.8 s), a slow 2 s blend - no dark gap |
 | ~10 s | haslerd takes over | the engine writes nothing until its first Look and glides from the boot glow (`seed`) - no blink at the handover |
 | music resumes | playing | rise to the gold filament (80 %) with the first sound |
 | nothing to resume | ready | settle to amber 45 % |
 
-- **The boot red** is the firmware's, not PWM: it can only switch a pin, so
-  it is full red. `hasler-lamp-boot` starts its blend at the same red
-  (`EMBER_RED = 1.0`). Until 1.7.13 it was the pin's pull-down glow
-  (`gpio=17=ip,pd`), too pale to see by day (owner, 2026-11-22); a softer red
-  needs a resistor from GPIO17 to ground on the board.
+- **The boot green** is the firmware's, not PWM: it can only switch a pin, so
+  it is full green. `hasler-lamp-boot` starts its blend at the same green
+  (`EMBER = (0, 1, 0)`), channel by channel. 1.7.13 had full red; before that
+  red's pull-down glow (`gpio=17=ip,pd`), too pale to see by day (owner,
+  2026-11-22).
 - **Knob off at power-on:** starting is busy: the amber breath, then the
   still ember.
 - **No Wi-Fi:** the amber warm-up, then CQ when the hotspot is up.

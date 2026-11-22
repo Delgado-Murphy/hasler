@@ -376,10 +376,10 @@ lamp shows is in [lamp.md](lamp.md).
 
 - **Common anode** (measured: in diode mode, with the red probe on the long leg,
   the colours glow). So a GPIO pin **LOW lights** its colour and HIGH is dark.
-  From the moment the firmware starts, `gpio=17=op,dl` in config.txt drives red
-  LOW (full red: the boot red, [lamp.md](lamp.md#boot-and-shutdown)), and
-  `gpio=22,27=op,dh` holds green and blue HIGH (dark), so it is pure red.
-  (Until 1.7.13 `ip,pd`: the weak pull-down's glow, too pale to see by day.)
+  From the moment the firmware starts, `gpio=22=op,dl` in config.txt drives
+  green LOW (full green: the boot green, [lamp.md](lamp.md#boot-and-shutdown)),
+  and `gpio=17,27=op,dh` holds red and blue HIGH (dark). (1.7.13: full red;
+  before that red's weak pull-down glow, too pale to see by day.)
 - Dark = safe to unplug: a shutdown hook (`hasler-lamp-halt`) drives the pins
   HIGH at halt.
 - **Resistors go on the colour legs, never on the common.** They keep each pin at

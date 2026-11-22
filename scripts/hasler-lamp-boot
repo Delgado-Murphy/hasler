@@ -7,12 +7,13 @@ stops itself when haslerd asks for the LED (/run/hasler-lamp/takeover, below)
 and haslerd.service's ExecStartPost stops it anyway (SIGTERM) for a haslerd
 too old to ask.
 
-What it shows: a cold start begins at stage 0's red (EMBER, steady full red)
-and blends it over a slow 2 s into the light language's busy breath. With the
-block in config.txt (gpio=17=op,dl: the red pin driven low, full red through a
-common-anode LED; green and blue held dark) the firmware already shows that
-red, so the breath grows out of it; with the older block (all three op,dh:
-dark until here) the lamp simply lights at that red and blends from there. The breath: 22 % -> 70 % (perceptual), 2.8 s period,
+What it shows: a cold start begins at stage 0's green (EMBER, steady full
+green) and blends it over a slow 2 s into the light language's busy breath.
+With the block in config.txt (gpio=22=op,dl: the green pin driven low, full
+green through a common-anode LED; red and blue held dark) the firmware already
+shows that green, so the breath grows out of it; with the older block (all
+three op,dh: dark until here) the lamp simply lights green and blends from
+there. The breath: 22 % -> 70 % (perceptual), 2.8 s period,
 raised cosine. Perceptual -> linear with gamma 2.2, then the amber balance R
 1.0 / G 0.15 / B 0. Starting is busy whatever the tone knob says (v2: asleep
 never moves), so it is always amber. haslerd's own warm-up carries this very
@@ -103,12 +104,12 @@ GPIOS = (17, 22, 27)              # red, green, blue - overlay declaration order
 PERIOD_NS = 1_250_000             # 800 Hz, unless haslerd left another (PERIOD_FILE)
 GAMMA = 2.2
 FADE_S = 2.0                      # a cold start's slow, visible blend up (the owner likes it slow)
-# Stage 0's red as linear duties: what the firmware shows (config.txt
-# gpio=17=op,dl, full red), so the hand-over from the firmware to the PWM is
-# not a step. Until 1.7.13 it was the pin's pull-down glow (gpio=17=ip,pd,
-# 0.0075 here) - too pale to see by day (owner, 2026-11-22).
-EMBER_RED = 1.0
-EMBER = (EMBER_RED, 0.0, 0.0)
+# Stage 0 as linear duties (red, green, blue): what the firmware shows
+# (config.txt gpio=22=op,dl, full green - the owner's choice, 2026-11-22), so
+# the hand-over from the firmware to the PWM is not a step. 1.7.13 had full
+# red; before that the red pin's pull-down glow (gpio=17=ip,pd, 0.0075 red),
+# too pale to see by day. (The name stays: it is what notes and tests call it.)
+EMBER = (0.0, 1.0, 0.0)
 FPS = 40                          # smooth enough for a 3 s breath, ~nothing on CPU
 WAIT_CHIPS_S = 10.0               # udev may still be loading pwm-gpio
 # haslerd never took the LED (a crash loop, a dead card): after this long the
@@ -343,10 +344,18 @@ class TablePlayer:
         target = self.frame(t)
         if t >= self.blend_s:
             return target
-        w = t / self.blend_s
-        w = w * w * (3 - 2 * w)
-        return [((a ** (1 / GAMMA)) + ((b ** (1 / GAMMA)) - (a ** (1 / GAMMA))) * w) ** GAMMA
-                for a, b in zip(self.start, target)]
+        return blend_rgb(self.start, target, t / self.blend_s)
+
+
+def blend_rgb(start: list, target: list, x: float) -> list:
+    """Linear duties ``x`` (0-1, smoothstepped) of the way from ``start`` to
+    ``target``, channel by channel, in perceptual space."""
+    if x >= 1.0:
+        return list(target)
+    w = max(0.0, x)
+    w = w * w * (3 - 2 * w)
+    return [((a ** (1 / GAMMA)) + ((b ** (1 / GAMMA)) - (a ** (1 / GAMMA))) * w) ** GAMMA
+            for a, b in zip(start, target)]
 
 
 def make_fake_sysfs() -> None:
@@ -510,8 +519,8 @@ def main() -> int:
     # ember (a cold start: the firmware's glow, blended up over FADE_S).
     lit = [ch.lit() for ch in channels] if mode else list(EMBER)
     blend = CONTINUE_S if mode else FADE_S
-    # Perceptual; the red channel carries every look.
-    start = lit[0] ** (1.0 / GAMMA)
+    # Perceptual: the brightest channel (a cold start's green, a handover's red).
+    start = max(lit) ** (1.0 / GAMMA)
     if mode is not None:
         log(f"handover ({mode}): breathing on from {start:.2f}")
     player = TablePlayer(table, lit, blend) if table is not None else None
@@ -547,6 +556,13 @@ def main() -> int:
             duties = [ch.set(lin if i == 0 else 0.0) for i, ch in enumerate(channels)]
         elif player is not None:
             rgb = player.at(t)
+            p = max(rgb) ** (1.0 / GAMMA)
+            duties = [ch.set(d) for ch, d in zip(channels, rgb)]
+        elif mode is None:
+            # A cold start: from stage 0's colour into the breath (from its
+            # floor), channel by channel - the firmware's colour isn't amber.
+            lvl = continue_at(t, look["floor"], look, 0.0)
+            rgb = blend_rgb(list(EMBER), [lvl ** GAMMA * k for k in balance], t / blend)
             p = max(rgb) ** (1.0 / GAMMA)
             duties = [ch.set(d) for ch, d in zip(channels, rgb)]
         else:

@@ -1,6 +1,6 @@
 [all]
-gpio=17=op,dl
-gpio=22,27=op,dh
+gpio=22=op,dl
+gpio=17,27=op,dh
 dtoverlay=pwm-gpio,gpio=17
 dtoverlay=pwm-gpio,gpio=22
 dtoverlay=pwm-gpio,gpio=27
