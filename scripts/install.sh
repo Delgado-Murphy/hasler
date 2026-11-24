@@ -28,8 +28,8 @@ DRY=0
 # and same-major deno merge by themselves). SHA-256 of the arm64 asset, hashed by
 # the workflow and checked against GitHub's own asset digest.
 # (scripts/release/build_release.py reads these too, for the release's bin/.)
-GLR_VERSION=v0.10.6
-GLR_SHA256=974a572b2634b050e461d99ad2f545a7be4f207f5f8bc845795172fe0cd45476
+GLR_VERSION=v0.10.7
+GLR_SHA256=1959a87033c5d8ff012e6f8acd1ca1994234104455d9796b688c8d2193e7f28b
 DENO_VERSION=v2.9.8
 DENO_SHA256=d49596c20b9788cf8f5d8ddf644103d4bde56ed239753f0bdb92ba9361d51905
 # yt-dlp is deliberately NOT pinned: YouTube breaks old versions within weeks.
